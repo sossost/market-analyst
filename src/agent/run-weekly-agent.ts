@@ -15,8 +15,12 @@ import { getPhase2Stocks } from "./tools/getPhase2Stocks";
 import { getStockDetail } from "./tools/getStockDetail";
 import { searchCatalyst } from "./tools/searchCatalyst";
 import { readReportHistory } from "./tools/readReportHistory";
-import { createSendDiscordReport } from "./tools/sendDiscordReport";
 import { saveReportLogTool } from "./tools/saveReportLog";
+import {
+  createDraftCaptureTool,
+  runReviewPipeline,
+  type ReportDraft,
+} from "./reviewAgent";
 
 const MODEL = "claude-opus-4-6";
 const MAX_TOKENS = 8192;
@@ -51,7 +55,7 @@ async function main() {
 
   // 1. 환경변수 검증
   validateAgentEnvironment();
-  logger.step("[1/4] Environment validated");
+  logger.step("[1/5] Environment validated");
 
   // 2. 최신 거래일 확인 (금요일 데이터)
   const targetDate = await getLatestTradeDate();
@@ -64,10 +68,12 @@ async function main() {
     await pool.end();
     return;
   }
-  logger.step(`[2/4] Target date: ${targetDate}`);
+  logger.step(`[2/5] Target date: ${targetDate}`);
 
-  // 3. Agent 실행
-  logger.step("[3/4] Running agent loop...\n");
+  // 3. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
+  logger.step("[3/5] Running agent loop...\n");
+
+  const reportDrafts: ReportDraft[] = [];
 
   const config: AgentConfig = {
     targetDate,
@@ -80,7 +86,7 @@ async function main() {
       getStockDetail,
       searchCatalyst,
       readReportHistory,
-      createSendDiscordReport("DISCORD_WEEKLY_WEBHOOK_URL"),
+      createDraftCaptureTool(reportDrafts),
       saveReportLogTool,
     ],
     model: MODEL,
@@ -91,7 +97,7 @@ async function main() {
   const result = await runAgentLoop(config);
 
   // 4. 결과 로깅
-  logger.step("\n[4/4] Agent result:");
+  logger.step("\n[4/5] Agent result:");
   logger.info("Result", `Success: ${result.success}`);
   logger.info(
     "Result",
@@ -116,6 +122,10 @@ async function main() {
   if (result.success === false) {
     throw new Error(`Agent failed: ${result.error}`);
   }
+
+  // 5. 리뷰 파이프라인 → 최종 발송
+  logger.step("[5/5] Running review pipeline...");
+  await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL");
 
   await pool.end();
   logger.step("\nDone.");
