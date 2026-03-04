@@ -30,8 +30,9 @@ export function validateString(value: unknown): string | null {
 export function validateNumber(
   value: unknown,
   fallback: number,
+  min = 1,
 ): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= min) {
     return value;
   }
   return fallback;

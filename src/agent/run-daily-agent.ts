@@ -103,13 +103,10 @@ async function main() {
 }
 
 main().catch(async (err) => {
-  console.error("\n=== Agent Core FAILED ===");
-  console.error(err);
-
-  // 슬랙 에러 알림
   const errorMsg = err instanceof Error ? err.message : String(err);
-  await sendSlackError(errorMsg);
+  logger.error("Agent", `Fatal: ${errorMsg}`);
 
+  await sendSlackError(errorMsg);
   await pool.end();
   process.exit(1);
 });
