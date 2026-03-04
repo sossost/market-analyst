@@ -177,7 +177,7 @@ export async function buildNoiseSignals() {
       ),
       merged AS (
         SELECT
-          COALESCE(vm.symbol, atr.symbol, bb.symbol, br.symbol, mc.symbol) AS symbol,
+          vm.symbol,
           (SELECT d FROM last_trade_date) AS date,
           vm.avg_dollar_volume_20d,
           vm.avg_volume_20d,
@@ -202,10 +202,10 @@ export async function buildNoiseSignals() {
           br.body_ratio,
           mc.ma20_ma50_distance_percent
         FROM volume_metrics vm
-        FULL OUTER JOIN atr_values atr ON atr.symbol = vm.symbol
-        FULL OUTER JOIN bb_width bb ON bb.symbol = COALESCE(vm.symbol, atr.symbol)
-        FULL OUTER JOIN body_ratio br ON br.symbol = COALESCE(vm.symbol, atr.symbol, bb.symbol)
-        FULL OUTER JOIN ma_convergence mc ON mc.symbol = COALESCE(vm.symbol, atr.symbol, bb.symbol, br.symbol)
+        LEFT JOIN atr_values atr ON atr.symbol = vm.symbol
+        LEFT JOIN bb_width bb ON bb.symbol = vm.symbol
+        LEFT JOIN body_ratio br ON br.symbol = vm.symbol
+        LEFT JOIN ma_convergence mc ON mc.symbol = vm.symbol
       )
       SELECT
         symbol,

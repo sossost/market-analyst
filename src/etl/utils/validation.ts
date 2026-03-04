@@ -162,12 +162,19 @@ export function validatePriceData(priceData: Record<string, unknown>): Validatio
     }
   }
 
-  if (
-    priceData.high != null &&
-    priceData.low != null &&
-    Number(priceData.high) < Number(priceData.low)
-  ) {
-    errors.push("high is less than low");
+  const { open, high, low, close } = priceData;
+  if (high != null && low != null) {
+    const nHigh = Number(high);
+    const nLow = Number(low);
+    if (nHigh < nLow) {
+      errors.push("high is less than low");
+    }
+    if (open != null && (Number(open) > nHigh || Number(open) < nLow)) {
+      errors.push("open price is outside of high/low range");
+    }
+    if (close != null && (Number(close) > nHigh || Number(close) < nLow)) {
+      errors.push("close price is outside of high/low range");
+    }
   }
 
   if (

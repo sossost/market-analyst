@@ -1,27 +1,20 @@
 import "dotenv/config";
 import { db } from "@/db/client";
-import { sql } from "drizzle-orm";
+import { eq, or, inArray } from "drizzle-orm";
+import { symbols } from "@/db/schema/screener";
+import { isValidTicker } from "@/etl/utils/common";
 
 async function cleanupInvalidSymbols() {
   console.log("🧹 비정상적인 종목들 정리 시작...");
 
-  const invalidSymbols = await db.execute(sql`
-    SELECT symbol
-    FROM symbols
-    WHERE
-      symbol !~ '^[A-Z]{1,5}$' OR
-      symbol LIKE '%W' OR
-      symbol LIKE '%X' OR
-      symbol LIKE '%.%' OR
-      symbol LIKE '%U' OR
-      symbol LIKE '%WS' OR
-      is_etf = true OR
-      is_fund = true
-  `);
+  const allSymbols = await db
+    .select({ symbol: symbols.symbol, isEtf: symbols.isEtf, isFund: symbols.isFund })
+    .from(symbols);
 
-  const symbolsToDelete = (invalidSymbols.rows as Record<string, unknown>[]).map(
-    (r) => r.symbol as string,
-  );
+  const symbolsToDelete = allSymbols
+    .filter((s) => !isValidTicker(s.symbol) || s.isEtf || s.isFund)
+    .map((s) => s.symbol);
+
   console.log(
     `🗑️ 삭제할 종목 ${symbolsToDelete.length}개:`,
     symbolsToDelete.slice(0, 10),
@@ -32,8 +25,11 @@ async function cleanupInvalidSymbols() {
     return;
   }
 
-  for (const symbol of symbolsToDelete) {
-    await db.execute(sql`DELETE FROM symbols WHERE symbol = ${symbol}`);
+  // Bulk delete in chunks to avoid exceeding parameter limits
+  const CHUNK_SIZE = 500;
+  for (let i = 0; i < symbolsToDelete.length; i += CHUNK_SIZE) {
+    const chunk = symbolsToDelete.slice(i, i + CHUNK_SIZE);
+    await db.delete(symbols).where(inArray(symbols.symbol, chunk));
   }
 
   console.log(`✅ ${symbolsToDelete.length}개 비정상 종목 삭제 완료`);

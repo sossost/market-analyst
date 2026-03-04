@@ -1,12 +1,13 @@
 import "dotenv/config";
 import { db, pool } from "@/db/client";
+import { sql } from "drizzle-orm";
 import { symbols } from "@/db/schema/screener";
 import {
   validateEnvironmentVariables,
   validateSymbolData,
 } from "@/etl/utils/validation";
 import { retryApiCall, DEFAULT_RETRY_OPTIONS } from "@/etl/utils/retry";
-import { fetchJson } from "@/etl/utils/common";
+import { fetchJson, isValidTicker } from "@/etl/utils/common";
 
 const API = process.env.DATA_API! + "/stable";
 const KEY = process.env.FMP_API_KEY!;
@@ -66,15 +67,9 @@ async function main() {
   const validSymbols = allSymbols
     .filter((r) => SUPPORTED_EXCHANGES.includes(r.exchangeShortName ?? ""))
     .filter((r) => {
-      const symbol = r.symbol;
       return (
-        symbol != null &&
-        /^[A-Z]{1,5}$/.test(symbol) &&
-        !symbol.endsWith("W") &&
-        !symbol.endsWith("X") &&
-        !symbol.includes(".") &&
-        !symbol.endsWith("U") &&
-        !symbol.endsWith("WS") &&
+        r.symbol != null &&
+        isValidTicker(r.symbol) &&
         !r.isEtf &&
         !r.isFund
       );
@@ -119,39 +114,48 @@ async function main() {
       `📊 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(validatedSymbols.length / batchSize)}`,
     );
 
-    for (const r of batch) {
-      const row = {
-        symbol: r.symbol,
-        companyName: r.companyName ?? null,
-        marketCap: r.marketCap?.toString() ?? null,
-        sector: r.sector ?? null,
-        industry: r.industry ?? null,
-        beta: r.beta?.toString() ?? null,
-        price: r.price?.toString() ?? null,
-        lastAnnualDividend: r.lastAnnualDividend?.toString() ?? null,
-        volume: r.volume?.toString() ?? null,
-        exchange: r.exchange ?? null,
-        exchangeShortName: r.exchangeShortName ?? null,
-        country: r.country ?? null,
-        isEtf: r.isEtf ?? false,
-        isFund: r.isFund ?? false,
-        isActivelyTrading: r.isActivelyTrading ?? true,
-        createdAt: new Date(),
-      };
+    const insertValues = batch.map((r) => ({
+      symbol: r.symbol,
+      companyName: r.companyName ?? null,
+      marketCap: r.marketCap?.toString() ?? null,
+      sector: r.sector ?? null,
+      industry: r.industry ?? null,
+      beta: r.beta?.toString() ?? null,
+      price: r.price?.toString() ?? null,
+      lastAnnualDividend: r.lastAnnualDividend?.toString() ?? null,
+      volume: r.volume?.toString() ?? null,
+      exchange: r.exchange ?? null,
+      exchangeShortName: r.exchangeShortName ?? null,
+      country: r.country ?? null,
+      isEtf: r.isEtf ?? false,
+      isFund: r.isFund ?? false,
+      isActivelyTrading: r.isActivelyTrading ?? true,
+    }));
 
-      await db
-        .insert(symbols)
-        .values(row)
-        .onConflictDoUpdate({
-          target: symbols.symbol,
-          set: {
-            ...row,
-            createdAt: new Date(),
-          },
-        });
+    await db
+      .insert(symbols)
+      .values(insertValues)
+      .onConflictDoUpdate({
+        target: symbols.symbol,
+        set: {
+          companyName: sql`EXCLUDED.company_name`,
+          marketCap: sql`EXCLUDED.market_cap`,
+          sector: sql`EXCLUDED.sector`,
+          industry: sql`EXCLUDED.industry`,
+          beta: sql`EXCLUDED.beta`,
+          price: sql`EXCLUDED.price`,
+          lastAnnualDividend: sql`EXCLUDED.last_annual_dividend`,
+          volume: sql`EXCLUDED.volume`,
+          exchange: sql`EXCLUDED.exchange`,
+          exchangeShortName: sql`EXCLUDED.exchange_short_name`,
+          country: sql`EXCLUDED.country`,
+          isEtf: sql`EXCLUDED.is_etf`,
+          isFund: sql`EXCLUDED.is_fund`,
+          isActivelyTrading: sql`EXCLUDED.is_actively_trading`,
+        },
+      });
 
-      processedCount++;
-    }
+    processedCount += batch.length;
   }
 
   console.log(`✅ Successfully processed ${processedCount} US symbols`);

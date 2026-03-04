@@ -1,7 +1,7 @@
 import "dotenv/config";
 import pLimit from "p-limit";
 import { db, pool } from "@/db/client";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
 import { dailyPrices, symbols } from "@/db/schema/screener";
 import {
@@ -64,39 +64,39 @@ async function loadOne(sym: string, N: number) {
     );
   }
 
-  const batchSize = 10;
+  const batchSize = 50;
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
 
-    for (const r of batch) {
-      await retryDatabaseOperation(
-        () =>
-          db
-            .insert(dailyPrices)
-            .values({
-              symbol: sym,
-              date: r.date as string,
-              open: toStrNum(r.open),
-              high: toStrNum(r.high),
-              low: toStrNum(r.low),
-              close: toStrNum(r.close),
-              adjClose: toStrNum((r.adjClose ?? r.close) as unknown),
-              volume: toStrNum(r.volume),
-            })
-            .onConflictDoUpdate({
-              target: [dailyPrices.symbol, dailyPrices.date],
-              set: {
-                open: toStrNum(r.open),
-                high: toStrNum(r.high),
-                low: toStrNum(r.low),
-                close: toStrNum(r.close),
-                adjClose: toStrNum((r.adjClose ?? r.close) as unknown),
-                volume: toStrNum(r.volume),
-              },
-            }),
-        DEFAULT_RETRY_OPTIONS,
-      );
-    }
+    const insertValues = batch.map((r) => ({
+      symbol: sym,
+      date: r.date as string,
+      open: toStrNum(r.open),
+      high: toStrNum(r.high),
+      low: toStrNum(r.low),
+      close: toStrNum(r.close),
+      adjClose: toStrNum((r.adjClose ?? r.close) as unknown),
+      volume: toStrNum(r.volume),
+    }));
+
+    await retryDatabaseOperation(
+      () =>
+        db
+          .insert(dailyPrices)
+          .values(insertValues)
+          .onConflictDoUpdate({
+            target: [dailyPrices.symbol, dailyPrices.date],
+            set: {
+              open: sql`EXCLUDED.open`,
+              high: sql`EXCLUDED.high`,
+              low: sql`EXCLUDED.low`,
+              close: sql`EXCLUDED.close`,
+              adjClose: sql`EXCLUDED.adj_close`,
+              volume: sql`EXCLUDED.volume`,
+            },
+          }),
+      DEFAULT_RETRY_OPTIONS,
+    );
   }
 
   console.log(`✅ Loaded ${rows.length} price records for ${sym}`);
