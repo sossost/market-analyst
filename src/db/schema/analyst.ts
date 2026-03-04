@@ -4,6 +4,7 @@
  */
 import {
   pgTable,
+  serial,
   text,
   numeric,
   integer,
@@ -138,6 +139,97 @@ export const industryRsDaily = pgTable(
     idx_sector_date: index("idx_industry_rs_daily_sector_date").on(
       t.sector,
       t.date,
+    ),
+  }),
+);
+
+/**
+ * recommendations — 추천 종목 성과 트래킹.
+ * 주간 에이전트가 저장, 일간 ETL이 업데이트.
+ */
+export const recommendations = pgTable(
+  "recommendations",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    recommendationDate: text("recommendation_date").notNull(),
+
+    // 진입 시점 스냅샷
+    entryPrice: numeric("entry_price").notNull(),
+    entryRsScore: integer("entry_rs_score"),
+    entryPhase: smallint("entry_phase").notNull(),
+    entryPrevPhase: smallint("entry_prev_phase"),
+    sector: text("sector"),
+    industry: text("industry"),
+    reason: text("reason"),
+
+    // 현재 상태 (ETL이 매일 업데이트)
+    status: text("status").notNull().default("ACTIVE"),
+    currentPrice: numeric("current_price"),
+    currentPhase: smallint("current_phase"),
+    currentRsScore: integer("current_rs_score"),
+    pnlPercent: numeric("pnl_percent"),
+    maxPnlPercent: numeric("max_pnl_percent"),
+    daysHeld: integer("days_held").default(0),
+    lastUpdated: text("last_updated"),
+
+    // 종료 정보
+    closeDate: text("close_date"),
+    closePrice: numeric("close_price"),
+    closeReason: text("close_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_recommendations_symbol_date").on(
+      t.symbol,
+      t.recommendationDate,
+    ),
+    idxStatus: index("idx_recommendations_status").on(t.status),
+    idxDate: index("idx_recommendations_date").on(t.recommendationDate),
+  }),
+);
+
+/**
+ * recommendation_factors — 추천 시점 팩터 스냅샷.
+ * Phase C 팩터 분석용 (현재는 저장만).
+ */
+export const recommendationFactors = pgTable(
+  "recommendation_factors",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    recommendationDate: text("recommendation_date").notNull(),
+
+    // 종목 팩터
+    rsScore: integer("rs_score"),
+    phase: smallint("phase"),
+    ma150Slope: numeric("ma150_slope"),
+    volRatio: numeric("vol_ratio"),
+    volumeConfirmed: boolean("volume_confirmed"),
+    pctFromHigh52w: numeric("pct_from_high_52w"),
+    pctFromLow52w: numeric("pct_from_low_52w"),
+    conditionsMet: text("conditions_met"),
+
+    // 그룹 팩터
+    sectorRs: numeric("sector_rs"),
+    sectorGroupPhase: smallint("sector_group_phase"),
+    industryRs: numeric("industry_rs"),
+    industryGroupPhase: smallint("industry_group_phase"),
+
+    // 시장 팩터
+    marketPhase2Ratio: numeric("market_phase2_ratio"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_rec_factors_symbol_date").on(
+      t.symbol,
+      t.recommendationDate,
     ),
   }),
 );

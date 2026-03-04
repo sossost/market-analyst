@@ -16,6 +16,8 @@ import { getStockDetail } from "./tools/getStockDetail";
 import { searchCatalyst } from "./tools/searchCatalyst";
 import { readReportHistory } from "./tools/readReportHistory";
 import { saveReportLogTool } from "./tools/saveReportLog";
+import { saveRecommendations } from "./tools/saveRecommendations";
+import { readRecommendationPerformance } from "./tools/readRecommendationPerformance";
 import {
   createDraftCaptureTool,
   runReviewPipeline,
@@ -86,8 +88,10 @@ async function main() {
       getStockDetail,
       searchCatalyst,
       readReportHistory,
+      readRecommendationPerformance,
       createDraftCaptureTool(reportDrafts),
       saveReportLogTool,
+      saveRecommendations,
     ],
     model: MODEL,
     maxTokens: MAX_TOKENS,
