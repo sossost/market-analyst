@@ -83,3 +83,5 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_ERROR_WEBHOOK_URL: ${{ secrets.DISCORD_ERROR_WEBHOOK_URL }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

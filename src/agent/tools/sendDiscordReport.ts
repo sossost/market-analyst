@@ -1,37 +1,98 @@
-import { sendDiscordMessage } from "@/agent/discord";
+import { sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
+import { createGist } from "@/agent/gist";
 import type { AgentTool } from "./types";
 import { validateString } from "./validation";
 
 /**
- * Discord Webhook으로 리포트를 전달한다.
+ * Discord Webhook으로 리포트를 전달하는 도구를 생성한다.
+ * markdownContent가 있으면 GitHub Gist로 생성하여 링크를 메시지에 추가.
+ * Gist 실패 시 기존 MD 파일 첨부로 fallback.
  */
-export const sendDiscordReport: AgentTool = {
-  definition: {
-    name: "send_discord_report",
-    description:
-      "Discord Webhook으로 리포트 메시지를 전달합니다. 마크다운 포맷으로 작성된 메시지를 전달하세요. 2000자 이내로 작성해야 합니다.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        message: {
-          type: "string",
-          description: "Discord로 전달할 리포트 메시지 (마크다운 포맷)",
+export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
+  return {
+    definition: {
+      name: "send_discord_report",
+      description:
+        "Discord Webhook으로 리포트를 전달합니다. message는 2000자 이내 요약, markdownContent는 상세 리포트로 GitHub Gist에 업로드되어 링크가 첨부됩니다.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          message: {
+            type: "string",
+            description: "Discord 메시지 본문 (2000자 이내 요약)",
+          },
+          markdownContent: {
+            type: "string",
+            description:
+              "상세 리포트 마크다운 (표 포함). GitHub Gist로 업로드됩니다.",
+          },
+          filename: {
+            type: "string",
+            description:
+              "파일명 (예: daily-2026-03-04.md). markdownContent와 함께 사용.",
+          },
         },
+        required: ["message"],
       },
-      required: ["message"],
     },
-  },
 
-  async execute(input) {
-    const message = validateString(input.message);
-    if (message == null) {
-      return JSON.stringify({ error: "메시지가 비어있거나 유효하지 않습니다" });
-    }
+    async execute(input) {
+      const message = validateString(input.message);
+      if (message == null) {
+        return JSON.stringify({
+          error: "메시지가 비어있거나 유효하지 않습니다",
+        });
+      }
 
-    await sendDiscordMessage(message);
-    return JSON.stringify({
-      success: true,
-      messageLength: message.length,
-    });
-  },
-};
+      const webhookUrl = process.env[webhookEnvVar];
+      if (webhookUrl == null || webhookUrl === "") {
+        return JSON.stringify({
+          error: `${webhookEnvVar} 환경변수가 설정되지 않았습니다`,
+        });
+      }
+
+      const mdContent = validateString(input.markdownContent);
+      const filename = validateString(input.filename) ?? "report.md";
+
+      try {
+        if (mdContent != null) {
+          // Gist 생성 시도
+          const gist = await createGist(filename, mdContent, filename);
+
+          if (gist != null) {
+            // Gist 성공 → 메시지에 링크 추가
+            const messageWithLink = `${message}\n\n📄 상세 리포트: ${gist.url}`;
+            await sendDiscordMessage(messageWithLink, webhookEnvVar);
+            return JSON.stringify({
+              success: true,
+              messageLength: messageWithLink.length,
+              gistUrl: gist.url,
+              gistId: gist.id,
+            });
+          }
+
+          // Gist 실패 → MD 파일 첨부 fallback
+          await sendDiscordFile(webhookUrl, message, filename, mdContent);
+          return JSON.stringify({
+            success: true,
+            messageLength: message.length,
+            fileAttached: true,
+            filename,
+            gistFallback: true,
+          });
+        }
+
+        // MD 없음 → 메시지만 전송
+        await sendDiscordMessage(message, webhookEnvVar);
+        return JSON.stringify({
+          success: true,
+          messageLength: message.length,
+          fileAttached: false,
+        });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return JSON.stringify({ success: false, error: reason });
+      }
+    },
+  };
+}

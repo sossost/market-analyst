@@ -1,0 +1,158 @@
+{
+  "date": "2026-02-20",
+  "reportedSymbols": [
+    {
+      "symbol": "OIS",
+      "phase": 2,
+      "rsScore": 97,
+      "sector": "Energy",
+      "industry": "Oil & Gas Equipment & Services",
+      "reason": "big_move +25.3%, high_volume 3.7x, 목표가 상향",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "FET",
+      "phase": 2,
+      "rsScore": 97,
+      "sector": "Energy",
+      "industry": "Oil & Gas Equipment & Services",
+      "reason": "big_move +9.1%, high_volume 3.1x, 목표가 78% 상향",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "VICR",
+      "phase": 2,
+      "rsScore": 97,
+      "sector": "Technology",
+      "industry": "Hardware, Equipment & Parts",
+      "reason": "big_move +11.2%, high_volume 2.9x, 연간보고서 호실적",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "SYRE",
+      "phase": 2,
+      "rsScore": 92,
+      "sector": "Healthcare",
+      "industry": "Biotechnology",
+      "reason": "big_move +14.3%, high_volume 3.4x, 바이오 모멘텀",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "EDRY",
+      "phase": 2,
+      "rsScore": 93,
+      "sector": "Industrials",
+      "industry": "Marine Shipping",
+      "reason": "big_move +9.5%, high_volume 6.1x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "FOSL",
+      "phase": 2,
+      "rsScore": 92,
+      "sector": "Consumer Cyclical",
+      "industry": "Luxury Goods",
+      "reason": "big_move +8.1%, high_volume 2.9x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "MAYS",
+      "phase": 2,
+      "rsScore": 90,
+      "sector": "Real Estate",
+      "industry": "Real Estate - Services",
+      "reason": "big_move +5.8%, high_volume 5.2x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "CC",
+      "phase": 2,
+      "rsScore": 89,
+      "sector": "Basic Materials",
+      "industry": "Chemicals - Specialty",
+      "reason": "big_move -16.5%, high_volume 3.1x, $700M 채권발행 급락",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "CMDB",
+      "phase": 2,
+      "rsScore": 87,
+      "sector": "Industrials",
+      "industry": "Marine Shipping",
+      "reason": "big_move -6.2%, high_volume 2.1x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "EGO",
+      "phase": 2,
+      "rsScore": 87,
+      "sector": "Basic Materials",
+      "industry": "Gold",
+      "reason": "big_move -9.7%, high_volume 3.3x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "WTTR",
+      "phase": 2,
+      "rsScore": 78,
+      "sector": "Utilities",
+      "industry": "Regulated Water",
+      "reason": "big_move -10.5%, high_volume 7.9x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "ST",
+      "phase": 2,
+      "rsScore": 75,
+      "sector": "Technology",
+      "industry": "Hardware, Equipment & Parts",
+      "reason": "big_move +6.1%, high_volume 2.4x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "RYI",
+      "phase": 2,
+      "rsScore": 71,
+      "sector": "Industrials",
+      "industry": "Manufacturing - Metal Fabrication",
+      "reason": "big_move +17.0%, high_volume 2.9x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "AKAM",
+      "phase": 2,
+      "rsScore": 67,
+      "sector": "Technology",
+      "industry": "Software - Infrastructure",
+      "reason": "big_move -14.1%, high_volume 3.4x",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "AMG",
+      "phase": 2,
+      "rsScore": 67,
+      "sector": "Financial Services",
+      "industry": "Asset Management",
+      "reason": "big_move -10.7%, high_volume 2.2x",
+      "firstReportedDate": "2026-02-20"
+    }
+  ],
+  "marketSummary": {
+    "phase2Ratio": 0,
+    "leadingSectors": [
+      "Energy",
+      "Basic Materials",
+      "Industrials"
+    ],
+    "totalAnalyzed": 15
+  },
+  "metadata": {
+    "model": "claude-opus-4-6",
+    "tokensUsed": {
+      "input": 0,
+      "output": 0
+    },
+    "toolCalls": 0,
+    "executionTime": 0
+  }
+}

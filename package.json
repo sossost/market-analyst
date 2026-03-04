@@ -9,6 +9,7 @@
     "etl:industry-rs": "tsx src/etl/jobs/build-industry-rs.ts",
     "etl:validate": "tsx src/etl/jobs/validate-data.ts",
     "agent:daily": "tsx src/agent/run-daily-agent.ts",
+    "agent:weekly": "tsx src/agent/run-weekly-agent.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

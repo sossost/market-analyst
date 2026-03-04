@@ -2,7 +2,7 @@ import "dotenv/config";
 import { pool } from "@/db/client";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { runAgentLoop } from "./agentLoop";
-import { buildDailySystemPrompt } from "./systemPrompt";
+import { buildWeeklySystemPrompt } from "./systemPrompt";
 import { sendDiscordError, sendDiscordMessage } from "./discord";
 import { logger } from "./logger";
 import type { AgentConfig } from "./tools/types";
@@ -11,15 +11,16 @@ import type { AgentConfig } from "./tools/types";
 import { getIndexReturns } from "./tools/getIndexReturns";
 import { getMarketBreadth } from "./tools/getMarketBreadth";
 import { getLeadingSectors } from "./tools/getLeadingSectors";
+import { getPhase2Stocks } from "./tools/getPhase2Stocks";
 import { getStockDetail } from "./tools/getStockDetail";
-import { getUnusualStocks } from "./tools/getUnusualStocks";
 import { searchCatalyst } from "./tools/searchCatalyst";
+import { readReportHistory } from "./tools/readReportHistory";
 import { createSendDiscordReport } from "./tools/sendDiscordReport";
 import { saveReportLogTool } from "./tools/saveReportLog";
 
 const MODEL = "claude-opus-4-6";
 const MAX_TOKENS = 8192;
-const MAX_ITERATIONS = 15;
+const MAX_ITERATIONS = 20;
 
 // Opus 4.6 pricing (USD per 1M tokens, as of 2026-03)
 const OPUS_INPUT_COST_PER_M = 5;
@@ -27,10 +28,13 @@ const OPUS_OUTPUT_COST_PER_M = 25;
 
 // Optional env vars (not validated here):
 // - DISCORD_ERROR_WEBHOOK_URL: routes errors to a separate channel.
-//   Falls back to DISCORD_WEBHOOK_URL if unset.
 // - BRAVE_API_KEY: for catalyst search. If unset, catalyst search returns empty.
 function validateAgentEnvironment(): void {
-  const required = ["DATABASE_URL", "ANTHROPIC_API_KEY", "DISCORD_WEBHOOK_URL"];
+  const required = [
+    "DATABASE_URL",
+    "ANTHROPIC_API_KEY",
+    "DISCORD_WEEKLY_WEBHOOK_URL",
+  ];
   const missing = required.filter(
     (key) => process.env[key] == null || process.env[key] === "",
   );
@@ -43,17 +47,20 @@ function validateAgentEnvironment(): void {
 }
 
 async function main() {
-  logger.step("=== Agent Core: Daily Market Analysis ===\n");
+  logger.step("=== Agent Core: Weekly Market Analysis ===\n");
 
   // 1. 환경변수 검증
   validateAgentEnvironment();
   logger.step("[1/4] Environment validated");
 
-  // 2. 최신 거래일 확인
+  // 2. 최신 거래일 확인 (금요일 데이터)
   const targetDate = await getLatestTradeDate();
   if (targetDate == null) {
     logger.step("No trade date found. Skipping.");
-    await sendDiscordMessage("📊 오늘은 거래일이 아닙니다. Agent 실행을 스킵합니다.");
+    await sendDiscordMessage(
+      "📊 거래 데이터가 없습니다. 주간 Agent 실행을 스킵합니다.",
+      "DISCORD_WEEKLY_WEBHOOK_URL",
+    );
     await pool.end();
     return;
   }
@@ -64,15 +71,16 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildDailySystemPrompt(),
+    systemPrompt: buildWeeklySystemPrompt(),
     tools: [
       getIndexReturns,
       getMarketBreadth,
       getLeadingSectors,
-      getUnusualStocks,
-      searchCatalyst,
+      getPhase2Stocks,
       getStockDetail,
-      createSendDiscordReport("DISCORD_WEBHOOK_URL"),
+      searchCatalyst,
+      readReportHistory,
+      createSendDiscordReport("DISCORD_WEEKLY_WEBHOOK_URL"),
       saveReportLogTool,
     ],
     model: MODEL,
@@ -96,9 +104,14 @@ async function main() {
     `Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`,
   );
 
-  const inputCost = (result.tokensUsed.input / 1_000_000) * OPUS_INPUT_COST_PER_M;
-  const outputCost = (result.tokensUsed.output / 1_000_000) * OPUS_OUTPUT_COST_PER_M;
-  logger.info("Result", `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`);
+  const inputCost =
+    (result.tokensUsed.input / 1_000_000) * OPUS_INPUT_COST_PER_M;
+  const outputCost =
+    (result.tokensUsed.output / 1_000_000) * OPUS_OUTPUT_COST_PER_M;
+  logger.info(
+    "Result",
+    `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`,
+  );
 
   if (result.success === false) {
     throw new Error(`Agent failed: ${result.error}`);

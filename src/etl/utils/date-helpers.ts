@@ -7,11 +7,14 @@ interface DateRow {
 }
 
 /**
- * Get the latest trade date from daily_prices (screener table).
+ * Get the latest trade date that has complete analysis data
+ * (daily_prices + stock_phases both populated).
  */
 export async function getLatestTradeDate(): Promise<string | null> {
   const result = await db.execute(sql`
-    SELECT MAX(date)::text AS result_date FROM daily_prices
+    SELECT MAX(sp.date)::text AS result_date
+    FROM stock_phases sp
+    WHERE EXISTS (SELECT 1 FROM daily_prices dp WHERE dp.date = sp.date)
   `);
   const row = result.rows[0] as DateRow | undefined;
   return row?.result_date ?? null;

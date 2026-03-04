@@ -75,6 +75,59 @@ export const getMarketBreadth: AgentTool = {
       ),
     );
 
+    // 상승/하락/보합 종목수 (Advance/Decline)
+    const { rows: adRows } = await retryDatabaseOperation(() =>
+      pool.query<{ advancers: string; decliners: string; unchanged: string }>(
+        `SELECT
+           COUNT(*) FILTER (WHERE dp.close::numeric > dp_prev.close::numeric)::text AS advancers,
+           COUNT(*) FILTER (WHERE dp.close::numeric < dp_prev.close::numeric)::text AS decliners,
+           COUNT(*) FILTER (WHERE dp.close::numeric = dp_prev.close::numeric)::text AS unchanged
+         FROM daily_prices dp
+         JOIN daily_prices dp_prev
+           ON dp.symbol = dp_prev.symbol
+           AND dp_prev.date = (SELECT MAX(date) FROM daily_prices WHERE date < $1)
+         JOIN symbols s ON dp.symbol = s.symbol
+         WHERE dp.date = $1
+           AND s.is_actively_trading = true
+           AND s.is_etf = false
+           AND s.is_fund = false`,
+        [date],
+      ),
+    );
+
+    const advancers = toNum(adRows[0]?.advancers);
+    const decliners = toNum(adRows[0]?.decliners);
+    const unchanged = toNum(adRows[0]?.unchanged);
+    const adRatio = decliners > 0 ? Number((advancers / decliners).toFixed(2)) : null;
+
+    // 52주 신고가/신저가
+    const { rows: hlRows } = await retryDatabaseOperation(() =>
+      pool.query<{ new_highs: string; new_lows: string }>(
+        `WITH yearly_range AS (
+           SELECT symbol,
+             MAX(high::numeric) AS high_52w,
+             MIN(low::numeric) AS low_52w
+           FROM daily_prices
+           WHERE date::date BETWEEN ($1::date - INTERVAL '365 days')::date AND ($1::date - INTERVAL '1 day')::date
+           GROUP BY symbol
+         )
+         SELECT
+           COUNT(*) FILTER (WHERE dp.close::numeric >= yr.high_52w)::text AS new_highs,
+           COUNT(*) FILTER (WHERE dp.close::numeric <= yr.low_52w)::text AS new_lows
+         FROM daily_prices dp
+         JOIN yearly_range yr ON dp.symbol = yr.symbol
+         JOIN symbols s ON dp.symbol = s.symbol
+         WHERE dp.date = $1
+           AND s.is_actively_trading = true
+           AND s.is_etf = false
+           AND s.is_fund = false`,
+        [date],
+      ),
+    );
+
+    const newHighs = toNum(hlRows[0]?.new_highs);
+    const newLows = toNum(hlRows[0]?.new_lows);
+
     // 상위 섹터 요약
     const { rows: topSectors } = await retryDatabaseOperation(() =>
       pool.query<{ sector: string; avg_rs: string; group_phase: number }>(
@@ -96,6 +149,8 @@ export const getMarketBreadth: AgentTool = {
         ((phase2Ratio - prevPhase2Ratio) * 100).toFixed(1),
       ),
       marketAvgRs: toNum(rsRows[0]?.avg_rs),
+      advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
+      newHighLow: { newHighs, newLows, ratio: newLows > 0 ? Number((newHighs / newLows).toFixed(2)) : null },
       topSectors: topSectors.map((s) => ({
         sector: s.sector,
         avgRs: toNum(s.avg_rs),
