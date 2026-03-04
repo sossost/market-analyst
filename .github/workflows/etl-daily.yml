@@ -1,0 +1,67 @@
+name: Daily ETL Pipeline
+
+on:
+  schedule:
+    # Run at UTC 00:00 (KST 09:00) — after screener ETL completes
+    - cron: "0 0 * * 1-5"
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  build-stock-phases:
+    name: Build Stock Phases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/etl/jobs/build-stock-phases.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  build-sector-rs:
+    name: Build Sector RS
+    needs: build-stock-phases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/etl/jobs/build-sector-rs.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  build-industry-rs:
+    name: Build Industry RS
+    needs: build-stock-phases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/etl/jobs/build-industry-rs.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  validate:
+    name: Validate Data
+    needs: [build-sector-rs, build-industry-rs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/etl/jobs/validate-data.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
