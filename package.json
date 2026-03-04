@@ -4,6 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "etl:symbols": "tsx src/etl/jobs/load-us-symbols.ts",
+    "etl:daily-prices": "tsx src/etl/jobs/load-daily-prices.ts",
+    "etl:backfill-daily-prices": "tsx src/etl/jobs/load-daily-prices.ts backfill",
+    "etl:daily-ma": "tsx src/etl/jobs/build-daily-ma.ts",
+    "etl:backfill-daily-ma": "tsx src/etl/jobs/build-daily-ma.ts backfill",
+    "etl:rs": "tsx src/etl/jobs/build-rs.ts",
+    "etl:rs-backfill": "tsx src/etl/jobs/build-rs.ts backfill",
+    "etl:daily-ratios": "tsx src/etl/jobs/calculate-daily-ratios.ts",
+    "etl:ratios": "tsx src/etl/jobs/load-ratios.ts",
+    "etl:quarterly-financials": "tsx src/etl/jobs/load-quarterly-financials.ts",
+    "etl:breakout-signals": "tsx src/etl/jobs/build-breakout-signals.ts",
+    "etl:noise-signals": "tsx src/etl/jobs/build-noise-signals.ts",
+    "etl:cleanup": "tsx src/etl/jobs/cleanup-invalid-symbols.ts",
     "etl:stock-phases": "tsx src/etl/jobs/build-stock-phases.ts",
     "etl:sector-rs": "tsx src/etl/jobs/build-sector-rs.ts",
     "etl:industry-rs": "tsx src/etl/jobs/build-industry-rs.ts",
@@ -22,6 +35,7 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.44.5",
+    "p-limit": "^7.3.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {

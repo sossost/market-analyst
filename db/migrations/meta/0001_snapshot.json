@@ -1,0 +1,523 @@
+{
+  "id": "3159c42d-2f2f-4d12-bd60-a81aed70165d",
+  "prevId": "6fbeef64-1793-4dce-a10e-13d95fd6bd5b",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.industry_rs_daily": {
+      "name": "industry_rs_daily",
+      "schema": "",
+      "columns": {
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "industry": {
+          "name": "industry",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sector": {
+          "name": "sector",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avg_rs": {
+          "name": "avg_rs",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rs_rank": {
+          "name": "rs_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stock_count": {
+          "name": "stock_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_4w": {
+          "name": "change_4w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_8w": {
+          "name": "change_8w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_12w": {
+          "name": "change_12w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "group_phase": {
+          "name": "group_phase",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prev_group_phase": {
+          "name": "prev_group_phase",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ma_ordered_ratio": {
+          "name": "ma_ordered_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phase2_ratio": {
+          "name": "phase2_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rs_above50_ratio": {
+          "name": "rs_above50_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_high_ratio": {
+          "name": "new_high_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phase1to2_count_5d": {
+          "name": "phase1to2_count_5d",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phase2to3_count_5d": {
+          "name": "phase2to3_count_5d",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revenue_accel_ratio": {
+          "name": "revenue_accel_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "income_accel_ratio": {
+          "name": "income_accel_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profitable_ratio": {
+          "name": "profitable_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_industry_rs_daily_date": {
+          "name": "idx_industry_rs_daily_date",
+          "columns": [
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_industry_rs_daily_sector_date": {
+          "name": "idx_industry_rs_daily_sector_date",
+          "columns": [
+            {
+              "expression": "sector",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_industry_rs_daily_date_industry": {
+          "name": "uq_industry_rs_daily_date_industry",
+          "nullsNotDistinct": false,
+          "columns": [
+            "date",
+            "industry"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sector_rs_daily": {
+      "name": "sector_rs_daily",
+      "schema": "",
+      "columns": {
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sector": {
+          "name": "sector",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "avg_rs": {
+          "name": "avg_rs",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rs_rank": {
+          "name": "rs_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stock_count": {
+          "name": "stock_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_4w": {
+          "name": "change_4w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_8w": {
+          "name": "change_8w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "change_12w": {
+          "name": "change_12w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "group_phase": {
+          "name": "group_phase",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prev_group_phase": {
+          "name": "prev_group_phase",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ma_ordered_ratio": {
+          "name": "ma_ordered_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phase2_ratio": {
+          "name": "phase2_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rs_above50_ratio": {
+          "name": "rs_above50_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_high_ratio": {
+          "name": "new_high_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phase1to2_count_5d": {
+          "name": "phase1to2_count_5d",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phase2to3_count_5d": {
+          "name": "phase2to3_count_5d",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revenue_accel_ratio": {
+          "name": "revenue_accel_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "income_accel_ratio": {
+          "name": "income_accel_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profitable_ratio": {
+          "name": "profitable_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_sector_rs_daily_date": {
+          "name": "idx_sector_rs_daily_date",
+          "columns": [
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_sector_rs_daily_date_sector": {
+          "name": "uq_sector_rs_daily_date_sector",
+          "nullsNotDistinct": false,
+          "columns": [
+            "date",
+            "sector"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.stock_phases": {
+      "name": "stock_phases",
+      "schema": "",
+      "columns": {
+        "symbol": {
+          "name": "symbol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phase": {
+          "name": "phase",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prev_phase": {
+          "name": "prev_phase",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ma150": {
+          "name": "ma150",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ma150_slope": {
+          "name": "ma150_slope",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rs_score": {
+          "name": "rs_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pct_from_high_52w": {
+          "name": "pct_from_high_52w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pct_from_low_52w": {
+          "name": "pct_from_low_52w",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conditions_met": {
+          "name": "conditions_met",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vol_ratio": {
+          "name": "vol_ratio",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_confirmed": {
+          "name": "volume_confirmed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_stock_phases_date": {
+          "name": "idx_stock_phases_date",
+          "columns": [
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_stock_phases_symbol_date": {
+          "name": "idx_stock_phases_symbol_date",
+          "columns": [
+            {
+              "expression": "symbol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_stock_phases_phase_date": {
+          "name": "idx_stock_phases_phase_date",
+          "columns": [
+            {
+              "expression": "phase",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_stock_phases_symbol_date": {
+          "name": "uq_stock_phases_symbol_date",
+          "nullsNotDistinct": false,
+          "columns": [
+            "symbol",
+            "date"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
