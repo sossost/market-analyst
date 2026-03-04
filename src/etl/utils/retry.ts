@@ -61,6 +61,13 @@ function isRetryableError(error: unknown): boolean {
     return true;
   }
 
+  // HTTP status codes (5xx, 429 Too Many Requests, 408 Request Timeout)
+  const status = (err as Record<string, Record<string, unknown>>).response
+    ?.status as number | undefined;
+  if (status != null && (status >= 500 || status === 429 || status === 408)) {
+    return true;
+  }
+
   // Timeout / connection errors
   const message = err.message as string | undefined;
   if (
@@ -68,7 +75,9 @@ function isRetryableError(error: unknown): boolean {
     message?.includes("canceled") ||
     message?.includes("connection terminated") ||
     message?.includes("connection closed") ||
-    message?.includes("server closed the connection")
+    message?.includes("server closed the connection") ||
+    message?.includes("rate limit") ||
+    message?.includes("quota exceeded")
   ) {
     return true;
   }
@@ -131,4 +140,39 @@ export async function retryDatabaseOperation<T>(
   }
 
   return result.data as T;
+}
+
+export async function retryApiCall<T>(
+  apiCall: () => Promise<T>,
+  options: Partial<RetryOptions> = {},
+): Promise<T> {
+  const result = await withRetry(apiCall, options);
+
+  if (!result.success) {
+    throw new Error(
+      `API call failed after ${result.attempts} attempts: ${result.error?.message ?? "unknown"}`,
+    );
+  }
+
+  return result.data as T;
+}
+
+export async function retryBatchOperation<T>(
+  items: T[],
+  operation: (item: T) => Promise<void>,
+  options: Partial<RetryOptions> = {},
+): Promise<{ success: T[]; failed: { item: T; error: Error }[] }> {
+  const success: T[] = [];
+  const failed: { item: T; error: Error }[] = [];
+
+  for (const item of items) {
+    try {
+      await retryApiCall(() => operation(item), options);
+      success.push(item);
+    } catch (error) {
+      failed.push({ item, error: error as Error });
+    }
+  }
+
+  return { success, failed };
 }

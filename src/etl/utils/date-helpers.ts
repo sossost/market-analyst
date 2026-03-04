@@ -21,6 +21,19 @@ export async function getLatestTradeDate(): Promise<string | null> {
 }
 
 /**
+ * Get the latest date that has price data (daily_prices only, no stock_phases join).
+ * Used by screener ETL jobs that run before stock_phases is built.
+ */
+export async function getLatestPriceDate(): Promise<string | null> {
+  const result = await db.execute(sql`
+    SELECT MAX(date)::text AS result_date
+    FROM daily_prices
+  `);
+  const row = result.rows[0] as DateRow | undefined;
+  return row?.result_date ?? null;
+}
+
+/**
  * Get the trade date before the given date.
  */
 export async function getPreviousTradeDate(

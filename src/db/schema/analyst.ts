@@ -8,6 +8,7 @@ import {
   numeric,
   integer,
   smallint,
+  boolean,
   timestamp,
   unique,
   index,
@@ -29,6 +30,8 @@ export const stockPhases = pgTable(
     pctFromHigh52w: numeric("pct_from_high_52w"),
     pctFromLow52w: numeric("pct_from_low_52w"),
     conditionsMet: text("conditions_met"), // JSON array of condition strings
+    volRatio: numeric("vol_ratio"), // today volume / vol_ma30
+    volumeConfirmed: boolean("volume_confirmed"), // sticky: true if vol >= 2x at Phase 1→2 entry
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
