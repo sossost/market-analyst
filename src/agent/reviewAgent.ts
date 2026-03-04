@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordFile, sendDiscordMessage } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
-import { saveReviewFeedback } from "./reviewFeedback";
+import { saveReviewFeedback, type ReviewVerdict } from "./reviewFeedback";
 import { SEND_DISCORD_REPORT_SCHEMA } from "./tools/sendDiscordReport";
 import type { AgentTool } from "./tools/types";
 
@@ -15,8 +15,6 @@ export interface ReportDraft {
   markdownContent?: string;
   filename?: string;
 }
-
-type ReviewVerdict = "OK" | "REVISE" | "REJECT";
 
 interface ReviewResult {
   verdict: ReviewVerdict;
@@ -493,13 +491,17 @@ export async function runReviewPipeline(
     }
 
     if (review.verdict !== "OK") {
-      saveReviewFeedback({
-        date: new Date().toISOString().slice(0, 10),
-        verdict: review.verdict,
-        feedback: review.feedback,
-        issues: review.issues,
-      });
-      logger.info("ReviewPipeline", "Review feedback saved for future reference");
+      try {
+        saveReviewFeedback({
+          date: new Date().toISOString().slice(0, 10),
+          verdict: review.verdict,
+          feedback: review.feedback,
+          issues: review.issues,
+        });
+        logger.info("ReviewPipeline", "Review feedback saved for future reference");
+      } catch (saveErr) {
+        logger.warn("ReviewPipeline", `Failed to save feedback: ${saveErr}`);
+      }
     }
 
     switch (review.verdict) {

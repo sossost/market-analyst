@@ -199,4 +199,58 @@ describe("buildFeedbackPromptSection", () => {
 
     expect(result).toContain("이번 리포트 작성 시 반드시 반영하세요");
   });
+
+  it("includes feedback prose text, not just issues", () => {
+    const entries = [
+      makeFeedback({ feedback: "리스크 분석이 전반적으로 부족합니다" }),
+    ];
+
+    const result = buildFeedbackPromptSection(entries);
+
+    expect(result).toContain("리스크 분석이 전반적으로 부족합니다");
+  });
+
+  it("handles entry with empty issues array gracefully", () => {
+    const entries = [
+      makeFeedback({ issues: [], feedback: "전반적으로 양호하나 소폭 수정 필요" }),
+    ];
+
+    const result = buildFeedbackPromptSection(entries);
+
+    expect(result).toContain("### 2026-03-04 (REVISE)");
+    expect(result).toContain("전반적으로 양호하나 소폭 수정 필요");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadRecentFeedback — corrupt file handling
+// ---------------------------------------------------------------------------
+
+describe("loadRecentFeedback (corrupt files)", () => {
+  it("skips corrupt JSON files and returns valid entries only", () => {
+    mkdirSync(testDir, { recursive: true });
+
+    const validEntry = makeFeedback({ date: "2026-03-04" });
+    writeFileSync(join(testDir, "2026-03-04.json"), JSON.stringify(validEntry));
+    writeFileSync(join(testDir, "2026-03-03.json"), "not valid json{{{");
+
+    const result = loadRecentFeedback(5, testDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].date).toBe("2026-03-04");
+  });
+
+  it("ignores files that do not match YYYY-MM-DD.json format", () => {
+    mkdirSync(testDir, { recursive: true });
+
+    const validEntry = makeFeedback({ date: "2026-03-04" });
+    writeFileSync(join(testDir, "2026-03-04.json"), JSON.stringify(validEntry));
+    writeFileSync(join(testDir, "notes.json"), '{"random": true}');
+    writeFileSync(join(testDir, "2026-3-4.json"), '{"unpadded": true}');
+
+    const result = loadRecentFeedback(5, testDir);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].date).toBe("2026-03-04");
+  });
 });

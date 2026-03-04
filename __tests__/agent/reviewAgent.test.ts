@@ -795,6 +795,19 @@ describe("runReviewPipeline", () => {
   it("exports REVIEW_COOLDOWN_MS as 60 seconds", () => {
     expect(REVIEW_COOLDOWN_MS).toBe(60_000);
   });
+
+  it("sends original drafts when the review API call throws", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockCreate.mockRejectedValueOnce(new Error("Network timeout"));
+
+    await runReviewPipeline(
+      [makeDraft({ message: "Original" })],
+      "TEST_WEBHOOK",
+      { skipCooldown: true },
+    );
+
+    expect(mockSendDiscordMessage).toHaveBeenCalledWith("Original", "TEST_WEBHOOK");
+  });
 });
 
 // ---------------------------------------------------------------------------

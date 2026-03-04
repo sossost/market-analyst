@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { logger } from "./logger";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type ReviewVerdict = "OK" | "REVISE" | "REJECT";
+export type ReviewVerdict = "OK" | "REVISE" | "REJECT";
 
 export interface ReviewFeedbackEntry {
   date: string;
@@ -61,14 +62,18 @@ export function loadRecentFeedback(
   }
 
   const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".json"))
-    .sort()
-    .reverse()
+    .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
+    .sort((a, b) => b.localeCompare(a))
     .slice(0, count);
 
-  return files.map((f) => {
-    const content = readFileSync(join(dir, f), "utf-8");
-    return JSON.parse(content) as ReviewFeedbackEntry;
+  return files.flatMap((f) => {
+    try {
+      const content = readFileSync(join(dir, f), "utf-8");
+      return [JSON.parse(content) as ReviewFeedbackEntry];
+    } catch {
+      logger.warn("ReviewFeedback", `Skipping corrupt file: ${f}`);
+      return [];
+    }
   });
 }
 
@@ -88,7 +93,7 @@ export function buildFeedbackPromptSection(
 
   const items = entries.map((e) => {
     const issueLines = e.issues.map((issue) => `- ${issue}`).join("\n");
-    return `### ${e.date} (${e.verdict})\n${issueLines}`;
+    return `### ${e.date} (${e.verdict})\n${e.feedback}\n${issueLines}`;
   });
 
   return `${header}\n\n${items.join("\n\n")}`;
