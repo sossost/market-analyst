@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordFile, sendDiscordMessage } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
+import { saveReviewFeedback, type ReviewVerdict } from "./reviewFeedback";
 import { SEND_DISCORD_REPORT_SCHEMA } from "./tools/sendDiscordReport";
 import type { AgentTool } from "./tools/types";
 
@@ -14,8 +15,6 @@ export interface ReportDraft {
   markdownContent?: string;
   filename?: string;
 }
-
-type ReviewVerdict = "OK" | "REVISE" | "REJECT";
 
 interface ReviewResult {
   verdict: ReviewVerdict;
@@ -33,6 +32,9 @@ const REFINE_MAX_TOKENS = 8192;
 const RAW_PREVIEW_LENGTH = 300;
 
 const VALID_VERDICTS: ReadonlySet<string> = new Set(["OK", "REVISE", "REJECT"]);
+
+/** 에이전트 루프 → 리뷰 파이프라인 사이 rate limit 방지 쿨다운 (ms) */
+export const REVIEW_COOLDOWN_MS = 60_000;
 
 const REVIEWER_SYSTEM_PROMPT = `당신은 경력 15년차 미국 주식 전문 투자자입니다.
 시장 분석 리포트를 받으면 다음 관점에서 냉정하게 평가합니다:
@@ -103,6 +105,8 @@ const client = new Anthropic({ maxRetries: 5 });
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * Claude가 markdown 코드 펜스로 감싼 JSON을 반환할 경우 벗겨낸다.
@@ -242,15 +246,14 @@ export async function reviewReport(
 // ---------------------------------------------------------------------------
 
 /**
- * 리뷰 피드백을 반영하여 리포트를 수정한다.
- * 단일 Claude API 호출 (Sonnet).
- * 파싱 실패 시 원본을 그대로 반환한다 (로그에 raw 응답 기록).
+ * 단일 draft를 리뷰 피드백 기반으로 수정한다.
+ * 파싱 실패 시 원본 draft를 반환한다.
  */
-export async function refineReport(
-  drafts: ReportDraft[],
+async function refineSingleDraft(
+  draft: ReportDraft,
   feedback: string,
-): Promise<ReportDraft[]> {
-  const draftText = buildDraftText(drafts);
+): Promise<ReportDraft> {
+  const draftText = buildDraftText([draft]);
 
   const response = await client.messages.create({
     model: REVIEW_MODEL,
@@ -273,28 +276,55 @@ ${feedback}`,
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock?.type === "text" ? textBlock.text : "";
 
-  try {
-    const jsonText = stripCodeFence(raw);
-    const parsed = JSON.parse(jsonText) as ReportDraft[];
+  const jsonText = stripCodeFence(raw);
+  const parsed = JSON.parse(jsonText) as ReportDraft | ReportDraft[];
 
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error("Empty or invalid response");
-    }
+  // Claude가 배열 또는 단일 객체로 응답할 수 있음
+  const item = Array.isArray(parsed) ? parsed[0] : parsed;
 
-    return parsed.map((d) => ({
-      message: typeof d.message === "string" ? d.message : "",
-      markdownContent:
-        typeof d.markdownContent === "string" ? d.markdownContent : undefined,
-      filename: typeof d.filename === "string" ? d.filename : undefined,
-    }));
-  } catch {
-    const rawPreview = raw.slice(0, RAW_PREVIEW_LENGTH);
-    logger.error(
-      "Refine",
-      `Failed to parse refined report. Raw: ${rawPreview}. Falling back to originals.`,
-    );
-    return drafts;
+  if (item == null || typeof item.message !== "string") {
+    throw new Error("Invalid refined draft structure");
   }
+
+  return {
+    message: item.message,
+    markdownContent:
+      typeof item.markdownContent === "string" ? item.markdownContent : undefined,
+    filename:
+      typeof item.filename === "string" ? item.filename : undefined,
+  };
+}
+
+/**
+ * 리뷰 피드백을 반영하여 리포트를 수정한다.
+ * 각 draft를 독립적으로 refine하여 한 draft의 실패가 다른 draft에 영향을 주지 않는다.
+ * 파싱 실패한 draft는 원본을 그대로 유지한다.
+ */
+export async function refineReport(
+  drafts: ReportDraft[],
+  feedback: string,
+): Promise<ReportDraft[]> {
+  if (drafts.length === 1) {
+    try {
+      const refined = await refineSingleDraft(drafts[0], feedback);
+      return [refined];
+    } catch {
+      logger.error("Refine", "Failed to refine single draft. Falling back to original.");
+      return drafts;
+    }
+  }
+
+  const results = await Promise.allSettled(
+    drafts.map((d) => refineSingleDraft(d, feedback)),
+  );
+
+  return results.map((r, i) => {
+    if (r.status === "fulfilled") {
+      return r.value;
+    }
+    logger.error("Refine", `Draft #${i + 1} refine failed: ${r.reason}. Keeping original.`);
+    return drafts[i];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -302,13 +332,12 @@ ${feedback}`,
 // ---------------------------------------------------------------------------
 
 /**
- * 리포트에서 주관적 분석/의견을 제거하고 팩트/데이터 섹션만 추출한다.
- * REJECT 판정 시 사용. 파싱 실패 시 원본을 그대로 반환한다.
+ * 단일 draft에서 팩트/데이터 섹션만 추출한다.
  */
-export async function extractDataOnly(
-  drafts: ReportDraft[],
-): Promise<ReportDraft[]> {
-  const draftText = buildDraftText(drafts);
+async function extractSingleDraftData(
+  draft: ReportDraft,
+): Promise<ReportDraft> {
+  const draftText = buildDraftText([draft]);
 
   const response = await client.messages.create({
     model: REVIEW_MODEL,
@@ -325,28 +354,52 @@ export async function extractDataOnly(
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock?.type === "text" ? textBlock.text : "";
 
-  try {
-    const jsonText = stripCodeFence(raw);
-    const parsed = JSON.parse(jsonText) as ReportDraft[];
+  const jsonText = stripCodeFence(raw);
+  const parsed = JSON.parse(jsonText) as ReportDraft | ReportDraft[];
 
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      throw new Error("Empty or invalid response");
-    }
+  const item = Array.isArray(parsed) ? parsed[0] : parsed;
 
-    return parsed.map((d) => ({
-      message: typeof d.message === "string" ? d.message : "",
-      markdownContent:
-        typeof d.markdownContent === "string" ? d.markdownContent : undefined,
-      filename: typeof d.filename === "string" ? d.filename : undefined,
-    }));
-  } catch {
-    const rawPreview = raw.slice(0, RAW_PREVIEW_LENGTH);
-    logger.error(
-      "ExtractData",
-      `Failed to parse data-only report. Raw: ${rawPreview}. Falling back to originals.`,
-    );
-    return drafts;
+  if (item == null || typeof item.message !== "string") {
+    throw new Error("Invalid data-only draft structure");
   }
+
+  return {
+    message: item.message,
+    markdownContent:
+      typeof item.markdownContent === "string" ? item.markdownContent : undefined,
+    filename:
+      typeof item.filename === "string" ? item.filename : undefined,
+  };
+}
+
+/**
+ * 리포트에서 주관적 분석/의견을 제거하고 팩트/데이터 섹션만 추출한다.
+ * REJECT 판정 시 사용. 각 draft를 독립 처리하여 실패 시 원본 유지.
+ */
+export async function extractDataOnly(
+  drafts: ReportDraft[],
+): Promise<ReportDraft[]> {
+  if (drafts.length === 1) {
+    try {
+      const extracted = await extractSingleDraftData(drafts[0]);
+      return [extracted];
+    } catch {
+      logger.error("ExtractData", "Failed to extract single draft. Falling back to original.");
+      return drafts;
+    }
+  }
+
+  const results = await Promise.allSettled(
+    drafts.map((d) => extractSingleDraftData(d)),
+  );
+
+  return results.map((r, i) => {
+    if (r.status === "fulfilled") {
+      return r.value;
+    }
+    logger.error("ExtractData", `Draft #${i + 1} extraction failed: ${r.reason}. Keeping original.`);
+    return drafts[i];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +461,7 @@ export async function sendDrafts(
 export async function runReviewPipeline(
   drafts: ReportDraft[],
   webhookEnvVar: string,
+  options?: { skipCooldown?: boolean },
 ): Promise<void> {
   if (drafts.length === 0) {
     logger.warn("ReviewPipeline", "No report drafts captured");
@@ -415,6 +469,14 @@ export async function runReviewPipeline(
   }
 
   logger.step("\n--- Review Pipeline ---");
+
+  if (options?.skipCooldown !== true) {
+    logger.info(
+      "ReviewPipeline",
+      `Waiting ${REVIEW_COOLDOWN_MS / 1_000}s for rate limit cooldown...`,
+    );
+    await sleep(REVIEW_COOLDOWN_MS);
+  }
 
   let finalDrafts: ReportDraft[];
 
@@ -425,6 +487,20 @@ export async function runReviewPipeline(
     if (review.issues.length > 0) {
       for (const issue of review.issues) {
         logger.info("Review", `Issue: ${issue}`);
+      }
+    }
+
+    if (review.verdict !== "OK") {
+      try {
+        saveReviewFeedback({
+          date: new Date().toISOString().slice(0, 10),
+          verdict: review.verdict,
+          feedback: review.feedback,
+          issues: review.issues,
+        });
+        logger.info("ReviewPipeline", "Review feedback saved for future reference");
+      } catch (saveErr) {
+        logger.warn("ReviewPipeline", `Failed to save feedback: ${saveErr}`);
       }
     }
 

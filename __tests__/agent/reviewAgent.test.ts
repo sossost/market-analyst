@@ -27,6 +27,12 @@ vi.mock("@/agent/gist", () => ({
   createGist: mockCreateGist,
 }));
 
+const mockSaveReviewFeedback = vi.fn();
+
+vi.mock("@/agent/reviewFeedback", () => ({
+  saveReviewFeedback: mockSaveReviewFeedback,
+}));
+
 // Import after mocks are registered
 const {
   createDraftCaptureTool,
@@ -35,6 +41,7 @@ const {
   extractDataOnly,
   sendDrafts,
   runReviewPipeline,
+  REVIEW_COOLDOWN_MS,
 } = await import("@/agent/reviewAgent");
 
 // ---------------------------------------------------------------------------
@@ -385,15 +392,14 @@ describe("refineReport", () => {
     expect(result).toEqual(originals);
   });
 
-  it("falls back to originals when Claude returns a non-array JSON value", async () => {
-    const originals = [makeDraft()];
+  it("accepts a single-object JSON response (not wrapped in array)", async () => {
     mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify({ message: "oops" })),
+      makeTextResponse(JSON.stringify({ message: "refined message" })),
     );
 
-    const result = await refineReport(originals, "feedback");
+    const result = await refineReport([makeDraft()], "feedback");
 
-    expect(result).toEqual(originals);
+    expect(result[0].message).toBe("refined message");
   });
 
   it("coerces missing markdownContent to undefined in refined draft", async () => {
@@ -414,13 +420,15 @@ describe("refineReport", () => {
     expect(result[0].filename).toBeUndefined();
   });
 
-  it("coerces non-string message to empty string in refined draft", async () => {
-    const refined = [{ message: null }];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+  it("falls back to original when message is not a string", async () => {
+    const originals = [makeDraft({ message: "Original" })];
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(JSON.stringify([{ message: null }])),
+    );
 
-    const result = await refineReport([makeDraft()], "feedback");
+    const result = await refineReport(originals, "feedback");
 
-    expect(result[0].message).toBe("");
+    expect(result[0].message).toBe("Original");
   });
 
   it("calls the Anthropic API with the correct model", async () => {
@@ -608,7 +616,7 @@ describe("runReviewPipeline", () => {
   });
 
   it("does nothing and skips review when drafts array is empty", async () => {
-    await runReviewPipeline([], "TEST_WEBHOOK");
+    await runReviewPipeline([], "TEST_WEBHOOK", { skipCooldown: true });
 
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockSendDiscordMessage).not.toHaveBeenCalled();
@@ -622,9 +630,8 @@ describe("runReviewPipeline", () => {
       ),
     );
 
-    await runReviewPipeline([makeDraft({ message: "Original" })], "TEST_WEBHOOK");
+    await runReviewPipeline([makeDraft({ message: "Original" })], "TEST_WEBHOOK", { skipCooldown: true });
 
-    // reviewReport called once, refineReport NOT called (mockCreate only called once)
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith("Original", "TEST_WEBHOOK");
   });
@@ -632,18 +639,16 @@ describe("runReviewPipeline", () => {
   it("refines drafts and sends refined version when verdict is REVISE", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    // First Claude call: reviewReport → REVISE
     mockCreate.mockResolvedValueOnce(
       makeTextResponse(
         JSON.stringify({ verdict: "REVISE", feedback: "Add risks.", issues: ["Missing risk"] }),
       ),
     );
 
-    // Second Claude call: refineReport → refined draft
-    const refined: ReportDraft[] = [{ message: "Refined with risks added" }];
+    const refined = { message: "Refined with risks added" };
     mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
 
-    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK");
+    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
 
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
@@ -655,7 +660,6 @@ describe("runReviewPipeline", () => {
   it("extracts data-only sections when verdict is REJECT", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    // First Claude call: reviewReport → REJECT
     mockCreate.mockResolvedValueOnce(
       makeTextResponse(
         JSON.stringify({
@@ -666,11 +670,10 @@ describe("runReviewPipeline", () => {
       ),
     );
 
-    // Second Claude call: extractDataOnly → data-only draft
-    const dataOnly: ReportDraft[] = [{ message: "S&P 500 +1.2%, NASDAQ +0.8% ⚠️ 리뷰어 판정에 따라 분석 섹션이 제외되었습니다." }];
+    const dataOnly = { message: "S&P 500 +1.2%, NASDAQ +0.8% ⚠️ 리뷰어 판정에 따라 분석 섹션이 제외되었습니다." };
     mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
 
-    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK");
+    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
 
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
@@ -688,12 +691,13 @@ describe("runReviewPipeline", () => {
       ),
     );
 
-    const refined: ReportDraft[] = [{ message: "Improved clarity version" }];
+    const refined = { message: "Improved clarity version" };
     mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
 
     await runReviewPipeline(
       [makeDraft({ message: "Original uncleated draft" })],
       "TEST_WEBHOOK",
+      { skipCooldown: true },
     );
 
     const sentMessage = mockSendDiscordMessage.mock.calls[0][0];
@@ -704,16 +708,13 @@ describe("runReviewPipeline", () => {
   it("calls refineReport when review parse fails (conservative REVISE fallback)", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    // Malformed JSON → reviewReport defaults to REVISE (conservative)
     mockCreate.mockResolvedValueOnce(makeTextResponse("invalid json"));
 
-    // refineReport is called → returns refined draft
-    const refined: ReportDraft[] = [{ message: "Conservatively refined" }];
+    const refined = { message: "Conservatively refined" };
     mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
 
-    await runReviewPipeline([makeDraft({ message: "Original" })], "TEST_WEBHOOK");
+    await runReviewPipeline([makeDraft({ message: "Original" })], "TEST_WEBHOOK", { skipCooldown: true });
 
-    // Two Claude calls: reviewReport + refineReport
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
       "Conservatively refined",
@@ -722,18 +723,197 @@ describe("runReviewPipeline", () => {
   });
 
   it("still sends drafts even when webhook env var is not set", async () => {
-    // TEST_WEBHOOK not set → sendDrafts will skip silently
     mockCreate.mockResolvedValueOnce(
       makeTextResponse(
         JSON.stringify({ verdict: "OK", feedback: "", issues: [] }),
       ),
     );
 
-    // Should not throw
     await expect(
-      runReviewPipeline([makeDraft()], "TEST_WEBHOOK"),
+      runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true }),
     ).resolves.toBeUndefined();
 
     expect(mockSendDiscordMessage).not.toHaveBeenCalled();
+  });
+
+  it("saves feedback when verdict is REVISE", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(
+        JSON.stringify({ verdict: "REVISE", feedback: "Add risks.", issues: ["Missing risk"] }),
+      ),
+    );
+
+    const refined = { message: "Refined" };
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+
+    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
+
+    expect(mockSaveReviewFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verdict: "REVISE",
+        feedback: "Add risks.",
+        issues: ["Missing risk"],
+      }),
+    );
+  });
+
+  it("saves feedback when verdict is REJECT", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(
+        JSON.stringify({ verdict: "REJECT", feedback: "Bad report.", issues: ["No data"] }),
+      ),
+    );
+
+    const dataOnly = { message: "Data only" };
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
+
+    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
+
+    expect(mockSaveReviewFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({ verdict: "REJECT" }),
+    );
+  });
+
+  it("does not save feedback when verdict is OK", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(
+        JSON.stringify({ verdict: "OK", feedback: "", issues: [] }),
+      ),
+    );
+
+    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
+
+    expect(mockSaveReviewFeedback).not.toHaveBeenCalled();
+  });
+
+  it("exports REVIEW_COOLDOWN_MS as 60 seconds", () => {
+    expect(REVIEW_COOLDOWN_MS).toBe(60_000);
+  });
+
+  it("sends original drafts when the review API call throws", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockCreate.mockRejectedValueOnce(new Error("Network timeout"));
+
+    await runReviewPipeline(
+      [makeDraft({ message: "Original" })],
+      "TEST_WEBHOOK",
+      { skipCooldown: true },
+    );
+
+    expect(mockSendDiscordMessage).toHaveBeenCalledWith("Original", "TEST_WEBHOOK");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refineReport — multi-draft individual processing
+// ---------------------------------------------------------------------------
+
+describe("refineReport (multi-draft)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("refines multiple drafts independently via separate API calls", async () => {
+    const refined1 = { message: "Refined draft 1" };
+    const refined2 = { message: "Refined draft 2" };
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined1)));
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined2)));
+
+    const originals = [
+      makeDraft({ message: "Original 1" }),
+      makeDraft({ message: "Original 2" }),
+    ];
+
+    const result = await refineReport(originals, "Add risks.");
+
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(result).toHaveLength(2);
+    expect(result[0].message).toBe("Refined draft 1");
+    expect(result[1].message).toBe("Refined draft 2");
+  });
+
+  it("keeps original draft when one draft fails to refine", async () => {
+    const refined1 = { message: "Refined draft 1" };
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined1)));
+    mockCreate.mockResolvedValueOnce(makeTextResponse("invalid json"));
+
+    const originals = [
+      makeDraft({ message: "Original 1" }),
+      makeDraft({ message: "Original 2" }),
+    ];
+
+    const result = await refineReport(originals, "feedback");
+
+    expect(result[0].message).toBe("Refined draft 1");
+    expect(result[1].message).toBe("Original 2");
+  });
+
+  it("handles single draft without Promise.allSettled", async () => {
+    const refined = { message: "Single refined" };
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+
+    const result = await refineReport([makeDraft()], "feedback");
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(result[0].message).toBe("Single refined");
+  });
+
+  it("handles Claude response as array for single draft", async () => {
+    const refined = [{ message: "Refined in array" }];
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+
+    const result = await refineReport([makeDraft()], "feedback");
+
+    expect(result[0].message).toBe("Refined in array");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractDataOnly — multi-draft individual processing
+// ---------------------------------------------------------------------------
+
+describe("extractDataOnly (multi-draft)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("extracts data from multiple drafts independently", async () => {
+    const data1 = { message: "Data only 1" };
+    const data2 = { message: "Data only 2" };
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(data1)));
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(data2)));
+
+    const originals = [
+      makeDraft({ message: "Original 1" }),
+      makeDraft({ message: "Original 2" }),
+    ];
+
+    const result = await extractDataOnly(originals);
+
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(result[0].message).toBe("Data only 1");
+    expect(result[1].message).toBe("Data only 2");
+  });
+
+  it("keeps original when one draft extraction fails", async () => {
+    const data1 = { message: "Data only 1" };
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(data1)));
+    mockCreate.mockResolvedValueOnce(makeTextResponse("broken"));
+
+    const originals = [
+      makeDraft({ message: "Original 1" }),
+      makeDraft({ message: "Original 2" }),
+    ];
+
+    const result = await extractDataOnly(originals);
+
+    expect(result[0].message).toBe("Data only 1");
+    expect(result[1].message).toBe("Original 2");
   });
 });
