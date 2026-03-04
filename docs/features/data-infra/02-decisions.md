@@ -107,4 +107,292 @@
 
 ---
 
-<!-- Architecture section will be added by /plan after codebase analysis -->
+## Architecture Decisions (from /plan)
+
+### 9. 프로젝트 기술 스택
+
+| Option | Pros | Cons |
+|--------|------|------|
+| A: screener와 동일 스택 (Drizzle + tsx + dotenv) | 패턴 재활용, 학습 비용 0 | 독립성 낮아질 수 있음 |
+| B: 다른 ORM/런타임 | 최신 도구 활용 | 불필요한 차이, 유지보수 부담 |
+
+**Chosen:** A: screener와 동일 스택
+**Reason:** DB를 공유하므로 ORM이 같아야 스키마 정의가 일관됨. ETL 패턴(retry, batch, validation)도 검증됨. 새로 만들 이유 없음.
+
+---
+
+### 10. 읽기 전용 스키마 정의 방식
+
+| Option | Pros | Cons |
+|--------|------|------|
+| A: screener 테이블 스키마를 market-analyst에서 재정의 (읽기 전용 표시) | 타입 안전한 쿼리, Drizzle 자동완성 | 스키마 동기화 수동 관리 |
+| B: Raw SQL로 기존 테이블 쿼리 | 스키마 정의 불필요 | 타입 안전성 없음, 실수 위험 |
+
+**Chosen:** A: 읽기 전용 스키마 재정의
+**Reason:** Phase 판별에서 daily_prices, daily_ma, symbols를 빈번히 조회. 타입 안전성이 필수. screener 스키마가 안정적이므로 동기화 부담 적음.
+
+---
+
+### 11. Phase 판별 로직 구조
+
+| Option | Pros | Cons |
+|--------|------|------|
+| A: 순수 함수로 분리 (DB 의존 없음) | 유닛 테스트 용이, 재사용 가능 | DB 조회와 판별 로직 분리 필요 |
+| B: ETL 스크립트에 인라인 | 구현 빠름 | 테스트 어려움, 재사용 불가 |
+
+**Chosen:** A: 순수 함수로 분리
+**Reason:** Phase 판별은 핵심 비즈니스 로직. 입력(가격, MA, RS, 52주 H/L)을 받아 Phase를 반환하는 순수 함수로 만들어야 테스트 가능. TDD로 구현.
+
+---
+
+### 12. Group RS 계산 로직 재사용
+
+| Option | Pros | Cons |
+|--------|------|------|
+| A: 공통 함수 + sector/industry 파라미터화 | 코드 중복 제거, 일관성 보장 | 추상화 설계 필요 |
+| B: sector-rs, industry-rs 각각 독립 구현 | 단순, 독립 수정 가능 | 동일 로직 중복 |
+
+**Chosen:** A: 공통 함수 파라미터화
+**Reason:** sector_rs_daily와 industry_rs_daily는 그룹핑 키(sector vs industry)와 최소 종목 수(10 vs 5)만 다를 뿐 로직이 동일. 공통 `buildGroupRs(groupBy, minStockCount)` 함수로 추출.
+
+---
+
+## Architecture
+
+### Structure
+
+```
+market-analyst/
+├── src/
+│   ├── db/
+│   │   ├── client.ts                # DB 커넥션 (screener와 동일 패턴)
+│   │   ├── schema/
+│   │   │   ├── readonly.ts          # screener 테이블 (읽기 전용 참조)
+│   │   │   └── analyst.ts           # 신규 테이블 (sector_rs, industry_rs, stock_phases)
+│   │   └── migrate.ts               # 마이그레이션 실행기
+│   ├── etl/
+│   │   ├── jobs/
+│   │   │   ├── build-stock-phases.ts
+│   │   │   ├── build-sector-rs.ts
+│   │   │   └── build-industry-rs.ts
+│   │   └── utils/
+│   │       ├── retry.ts             # screener 패턴 재사용
+│   │       ├── common.ts            # sleep, toNum 등
+│   │       ├── validation.ts        # 환경변수 검증
+│   │       └── date-helpers.ts      # 거래일 조회
+│   ├── lib/
+│   │   ├── phase-detection.ts       # 순수 함수: Phase 1/2/3/4 판별
+│   │   ├── group-rs.ts              # 공통 함수: 섹터/Industry RS 계산
+│   │   └── group-phase.ts           # 공통 함수: 섹터/Industry Phase 판별
+│   └── types/
+│       └── index.ts                 # 공유 타입 정의
+├── db/
+│   └── migrations/                  # Drizzle 마이그레이션 파일
+├── __tests__/
+│   ├── lib/
+│   │   ├── phase-detection.test.ts  # Phase 판별 유닛 테스트
+│   │   ├── group-rs.test.ts         # Group RS 유닛 테스트
+│   │   └── group-phase.test.ts      # Group Phase 유닛 테스트
+│   └── etl/
+│       └── integration.test.ts      # ETL 통합 테스트 (테스트 DB)
+├── .github/
+│   └── workflows/
+│       └── etl-daily.yml            # 스케줄링
+├── package.json
+├── tsconfig.json
+├── drizzle.config.ts
+└── .env.example
+```
+
+### Core Flow (Pseudo-code)
+
+```
+=== build-stock-phases.ts ===
+
+main():
+  1. validateEnvironment(DATABASE_URL)
+  2. targetDate = getLatestTradeDate() from screener DB
+  3. allSymbols = SELECT symbol, sector, industry FROM symbols
+                  WHERE isActivelyTrading = true AND isEtf = false
+
+  4. For each batch of 200 symbols:
+     a. Fetch from screener DB:
+        - daily_prices: close, rs_score (today + 252 trading days for 52w H/L)
+        - daily_ma: ma20, ma50, ma100, ma200 (today + 20 days ago for slope)
+
+     b. For each symbol in batch:
+        input = {
+          price: today.close,
+          ma50, ma150 (= ma100 proxy or calculated), ma200,
+          ma150_20d_ago,
+          rsScore,
+          high52w, low52w
+        }
+        phase = detectPhase(input)  // Pure function
+
+     c. Fetch prevPhase from stock_phases (yesterday)
+     d. Detect transitions (prevPhase → phase)
+
+     e. Batch upsert to stock_phases
+
+=== detectPhase(input) → { phase, detail } ===  (Pure Function)
+
+  ma150Slope = (ma150_today - ma150_20d_ago) / ma150_20d_ago
+
+  if isPhase2(input, ma150Slope):
+    return { phase: 2, detail: { ...conditions_met } }
+  if isPhase4(input, ma150Slope):
+    return { phase: 4, detail: { ... } }
+  if isPhase1(input, ma150Slope):
+    return { phase: 1, detail: { ... } }
+  return { phase: 3, detail: { ... } }  // Default
+
+=== build-sector-rs.ts / build-industry-rs.ts ===
+
+main():
+  1. validateEnvironment(DATABASE_URL)
+  2. targetDate = getLatestTradeDate()
+  3. buildGroupRs({
+       groupBy: 'sector',  // or 'industry'
+       minStockCount: 10,  // or 5
+       targetDate,
+       outputTable: sectorRsDaily,  // or industryRsDaily
+     })
+
+=== buildGroupRs(config) ===  (Shared Function)
+
+  // Step 1: RS 평균 + 랭킹
+  groups = SQL:
+    SELECT sector/industry, AVG(rs_score), COUNT(*)
+    FROM symbols JOIN daily_prices ON today
+    GROUP BY sector/industry
+    HAVING COUNT(*) >= minStockCount
+
+  // Step 2: 가속도 (4w/8w/12w 변화)
+  For each group:
+    prev4w = SELECT avg_rs FROM output_table WHERE date = targetDate - 20 trading days
+    change_4w = current_avg_rs - prev4w
+    (same for 8w, 12w)
+
+  // Step 3: 브레드스
+  For each group:
+    breadth = SQL:
+      SELECT
+        COUNT(CASE WHEN ma50>ma150 AND ma150>ma200 THEN 1 END) / COUNT(*) as ma_ordered_ratio,
+        COUNT(CASE WHEN sp.phase = 2 THEN 1 END) / COUNT(*) as phase2_ratio,
+        COUNT(CASE WHEN dp.rs_score > 50 THEN 1 END) / COUNT(*) as rs_above50_ratio,
+        COUNT(CASE WHEN dp.close >= MAX(dp.close) OVER 20d THEN 1 END) / COUNT(*) as new_high_ratio
+      FROM symbols s
+      JOIN daily_prices dp ON s.symbol = dp.symbol
+      JOIN daily_ma dm ON s.symbol = dm.symbol
+      JOIN stock_phases sp ON s.symbol = sp.symbol
+      WHERE s.sector/industry = group AND dp.date = targetDate
+
+  // Step 4: Phase 전환 급증
+  For each group:
+    transitions = SQL:
+      SELECT COUNT(*) FROM stock_phases
+      WHERE symbol IN (group_symbols)
+        AND date BETWEEN targetDate-5d AND targetDate
+        AND prev_phase = 1 AND phase = 2
+
+  // Step 5: 펀더멘털 가속
+  For each group:
+    fundamentals = SQL:
+      SELECT
+        COUNT(CASE WHEN rev_growth_2q THEN 1 END) / COUNT(*) as revenue_accel_ratio,
+        COUNT(CASE WHEN inc_growth_2q THEN 1 END) / COUNT(*) as income_accel_ratio,
+        COUNT(CASE WHEN eps > 0 THEN 1 END) / COUNT(*) as profitable_ratio
+      FROM quarterly_financials
+      WHERE symbol IN (group_symbols) AND latest 2 quarters
+
+  // Step 6: 그룹 Phase 판별
+  For each group:
+    groupPhase = detectGroupPhase(change_4w, change_8w, phase2_ratio)
+
+  // Step 7: Upsert all
+  upsert to output_table
+```
+
+### Key Interfaces
+
+```typescript
+// Phase Detection Input
+interface PhaseInput {
+  price: number
+  ma50: number
+  ma150: number
+  ma200: number
+  ma150_20dAgo: number
+  rsScore: number
+  high52w: number
+  low52w: number
+}
+
+// Phase Detection Output
+interface PhaseResult {
+  phase: 1 | 2 | 3 | 4
+  ma150Slope: number
+  detail: PhaseDetail
+}
+
+interface PhaseDetail {
+  price: number
+  ma50: number
+  ma150: number
+  ma200: number
+  ma150Slope: number
+  rsScore: number
+  high52w: number
+  low52w: number
+  pctFromLow: number
+  pctFromHigh: number
+  conditionsMet: string[]
+}
+
+// Group RS Config
+interface GroupRsConfig {
+  groupBy: 'sector' | 'industry'
+  minStockCount: number
+  targetDate: string
+}
+
+// Group RS Row (output to sector_rs_daily / industry_rs_daily)
+interface GroupRsRow {
+  date: string
+  groupName: string       // sector or industry name
+  parentGroup?: string    // sector (for industry only)
+
+  avgRs: number
+  rsRank: number
+  stockCount: number
+  change4w: number | null
+  change8w: number | null
+  change12w: number | null
+
+  groupPhase: 1 | 2 | 3 | 4
+  prevGroupPhase: number | null
+
+  maOrderedRatio: number
+  phase2Ratio: number
+  rsAbove50Ratio: number
+  newHighRatio: number
+
+  phase1to2_5dCount: number
+  phase2to3_5dCount: number
+
+  revenueAccelRatio: number
+  incomeAccelRatio: number
+  profitableRatio: number
+}
+```
+
+### MA150 계산 참고
+
+screener DB의 daily_ma에는 ma20, ma50, ma100, ma200만 있고 **ma150이 없다.**
+
+두 가지 접근:
+1. **ma100과 ma200의 중간값 근사**: `ma150 ≈ (ma100 + ma200) / 2` — 부정확
+2. **직접 계산**: daily_prices에서 최근 150일 close 평균 — 정확하지만 추가 쿼리
+
+**선택: 직접 계산.** build-stock-phases에서 각 종목의 최근 150일 + 170일(20일 전 MA150) close를 조회하여 직접 AVG 계산. Phase 판별의 정확도가 핵심이므로 근사하지 않는다.
