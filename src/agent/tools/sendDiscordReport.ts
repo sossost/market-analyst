@@ -1,7 +1,38 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
 import { createGist } from "@/agent/gist";
 import type { AgentTool } from "./types";
 import { validateString } from "./validation";
+
+/**
+ * send_discord_report 도구 스키마.
+ * createSendDiscordReport와 createDraftCaptureTool에서 공유한다.
+ */
+export const SEND_DISCORD_REPORT_SCHEMA: Anthropic.Tool = {
+  name: "send_discord_report",
+  description:
+    "Discord Webhook으로 리포트를 전달합니다. message는 2000자 이내 요약, markdownContent는 상세 리포트로 GitHub Gist에 업로드되어 링크가 첨부됩니다.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      message: {
+        type: "string",
+        description: "Discord 메시지 본문 (2000자 이내 요약)",
+      },
+      markdownContent: {
+        type: "string",
+        description:
+          "상세 리포트 마크다운 (표 포함). GitHub Gist로 업로드됩니다.",
+      },
+      filename: {
+        type: "string",
+        description:
+          "파일명 (예: daily-2026-03-04.md). markdownContent와 함께 사용.",
+      },
+    },
+    required: ["message"],
+  },
+};
 
 /**
  * Discord Webhook으로 리포트를 전달하는 도구를 생성한다.
@@ -10,31 +41,7 @@ import { validateString } from "./validation";
  */
 export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
   return {
-    definition: {
-      name: "send_discord_report",
-      description:
-        "Discord Webhook으로 리포트를 전달합니다. message는 2000자 이내 요약, markdownContent는 상세 리포트로 GitHub Gist에 업로드되어 링크가 첨부됩니다.",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          message: {
-            type: "string",
-            description: "Discord 메시지 본문 (2000자 이내 요약)",
-          },
-          markdownContent: {
-            type: "string",
-            description:
-              "상세 리포트 마크다운 (표 포함). GitHub Gist로 업로드됩니다.",
-          },
-          filename: {
-            type: "string",
-            description:
-              "파일명 (예: daily-2026-03-04.md). markdownContent와 함께 사용.",
-          },
-        },
-        required: ["message"],
-      },
-    },
+    definition: SEND_DISCORD_REPORT_SCHEMA,
 
     async execute(input) {
       const message = validateString(input.message);
