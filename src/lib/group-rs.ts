@@ -115,7 +115,7 @@ export async function buildGroupRs(
             SELECT MAX(dp2.high::numeric)
             FROM daily_prices dp2
             WHERE dp2.symbol = s.symbol
-              AND dp2.date > $2::date - INTERVAL '20 days'
+              AND dp2.date > ($2::date - INTERVAL '20 days')::text
               AND dp2.date <= $2
           )
         )::numeric / NULLIF(COUNT(*), 0), 0) AS new_high_ratio
