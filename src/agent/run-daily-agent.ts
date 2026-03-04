@@ -3,7 +3,7 @@ import { pool } from "@/db/client";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { runAgentLoop } from "./agentLoop";
 import { buildSystemPrompt } from "./systemPrompt";
-import { sendSlackError, sendSlackMessage } from "./slack";
+import { sendDiscordError, sendDiscordMessage } from "./discord";
 import { logger } from "./logger";
 import type { AgentConfig } from "./tools/types";
 
@@ -13,7 +13,7 @@ import { getLeadingSectors } from "./tools/getLeadingSectors";
 import { getPhase2Stocks } from "./tools/getPhase2Stocks";
 import { getStockDetail } from "./tools/getStockDetail";
 import { readReportHistory } from "./tools/readReportHistory";
-import { sendSlackReport } from "./tools/sendSlackReport";
+import { sendDiscordReport } from "./tools/sendDiscordReport";
 import { saveReportLogTool } from "./tools/saveReportLog";
 
 const MODEL = "claude-opus-4-6";
@@ -24,8 +24,11 @@ const MAX_ITERATIONS = 15;
 const OPUS_INPUT_COST_PER_M = 5;
 const OPUS_OUTPUT_COST_PER_M = 25;
 
+// Optional env vars (not validated here):
+// - DISCORD_ERROR_WEBHOOK_URL: routes errors to a separate channel.
+//   Falls back to DISCORD_WEBHOOK_URL if unset.
 function validateAgentEnvironment(): void {
-  const required = ["DATABASE_URL", "ANTHROPIC_API_KEY", "SLACK_WEBHOOK_URL"];
+  const required = ["DATABASE_URL", "ANTHROPIC_API_KEY", "DISCORD_WEBHOOK_URL"];
   const missing = required.filter(
     (key) => process.env[key] == null || process.env[key] === "",
   );
@@ -48,7 +51,7 @@ async function main() {
   const targetDate = await getLatestTradeDate();
   if (targetDate == null) {
     logger.step("No trade date found. Skipping.");
-    await sendSlackMessage("📊 오늘은 거래일이 아닙니다. Agent 실행을 스킵합니다.");
+    await sendDiscordMessage("📊 오늘은 거래일이 아닙니다. Agent 실행을 스킵합니다.");
     await pool.end();
     return;
   }
@@ -66,7 +69,7 @@ async function main() {
       getPhase2Stocks,
       getStockDetail,
       readReportHistory,
-      sendSlackReport,
+      sendDiscordReport,
       saveReportLogTool,
     ],
     model: MODEL,
@@ -106,7 +109,7 @@ main().catch(async (err) => {
   const errorMsg = err instanceof Error ? err.message : String(err);
   logger.error("Agent", `Fatal: ${errorMsg}`);
 
-  await sendSlackError(errorMsg);
+  await sendDiscordError(errorMsg);
   await pool.end();
   process.exit(1);
 });

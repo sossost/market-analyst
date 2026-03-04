@@ -39,7 +39,7 @@ export function buildSystemPrompt(): string {
 5. **개별 종목 심층 분석** (get_stock_detail) — 필요시
    - 주도주 후보의 상세 데이터 확인
 
-6. **리포트 작성 및 전달** (send_slack_report)
+6. **리포트 작성 및 전달** (send_discord_report)
 7. **이력 저장** (save_report_log)
 
 ## 중복 종목 필터링 가이드라인
@@ -58,7 +58,7 @@ export function buildSystemPrompt(): string {
 
 ## 리포트 포맷
 
-슬랙 마크다운 포맷으로 작성합니다. 4000자 이내를 유지하세요.
+Discord 마크다운 포맷으로 작성합니다. 2000자 이내를 유지하세요.
 
 \`\`\`
 📊 시장 일일 리포트 (YYYY-MM-DD)
@@ -87,7 +87,7 @@ export function buildSystemPrompt(): string {
 ## 규칙
 
 - 도구를 호출한 뒤에는 반드시 결과를 분석하고 다음 행동을 결정하세요
-- 리포트는 반드시 send_slack_report로 전달하세요
+- 리포트는 반드시 send_discord_report로 전달하세요
 - 리포트 전달 후 반드시 save_report_log로 이력을 저장하세요
 - 종목 수는 핵심만 선별하세요 (보통 3~8개)
 - 확신이 없는 종목은 포함하지 마세요`;
