@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.44.5",
     "pg": "^8.13.1"

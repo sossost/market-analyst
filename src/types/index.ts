@@ -72,3 +72,34 @@ export interface GroupRsRow {
   incomeAccelRatio: number;
   profitableRatio: number;
 }
+
+/**
+ * Agent Core types.
+ */
+
+export interface ReportedStock {
+  symbol: string;
+  phase: number;
+  prevPhase: number | null;
+  rsScore: number;
+  sector: string;
+  industry: string;
+  reason: string;
+  firstReportedDate: string;
+}
+
+export interface DailyReportLog {
+  date: string;
+  reportedSymbols: ReportedStock[];
+  marketSummary: {
+    phase2Ratio: number;
+    leadingSectors: string[];
+    totalAnalyzed: number;
+  };
+  metadata: {
+    model: string;
+    tokensUsed: { input: number; output: number };
+    toolCalls: number;
+    executionTime: number;
+  };
+}
