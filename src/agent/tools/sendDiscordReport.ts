@@ -1,17 +1,19 @@
 import { sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
+import { createGist } from "@/agent/gist";
 import type { AgentTool } from "./types";
 import { validateString } from "./validation";
 
 /**
  * Discord Webhook으로 리포트를 전달하는 도구를 생성한다.
- * webhookEnvVar로 채널을 분리할 수 있다 (일간/주간).
+ * markdownContent가 있으면 GitHub Gist로 생성하여 링크를 메시지에 추가.
+ * Gist 실패 시 기존 MD 파일 첨부로 fallback.
  */
 export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
   return {
     definition: {
       name: "send_discord_report",
       description:
-        "Discord Webhook으로 리포트를 전달합니다. message는 2000자 이내 요약, markdownContent는 상세 리포트(표 포함)로 MD 파일 첨부됩니다.",
+        "Discord Webhook으로 리포트를 전달합니다. message는 2000자 이내 요약, markdownContent는 상세 리포트로 GitHub Gist에 업로드되어 링크가 첨부됩니다.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -22,12 +24,12 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
           markdownContent: {
             type: "string",
             description:
-              "상세 리포트 마크다운 (표 포함). 제공 시 .md 파일로 첨부됩니다.",
+              "상세 리포트 마크다운 (표 포함). GitHub Gist로 업로드됩니다.",
           },
           filename: {
             type: "string",
             description:
-              "첨부 파일명 (예: daily-2026-03-04.md). markdownContent와 함께 사용.",
+              "파일명 (예: daily-2026-03-04.md). markdownContent와 함께 사용.",
           },
         },
         required: ["message"],
@@ -50,19 +52,37 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
       }
 
       const mdContent = validateString(input.markdownContent);
-      const filename = validateString(input.filename);
+      const filename = validateString(input.filename) ?? "report.md";
 
       try {
-        if (mdContent != null && filename != null) {
+        if (mdContent != null) {
+          // Gist 생성 시도
+          const gist = await createGist(filename, mdContent, filename);
+
+          if (gist != null) {
+            // Gist 성공 → 메시지에 링크 추가
+            const messageWithLink = `${message}\n\n📄 상세 리포트: ${gist.url}`;
+            await sendDiscordMessage(messageWithLink, webhookEnvVar);
+            return JSON.stringify({
+              success: true,
+              messageLength: messageWithLink.length,
+              gistUrl: gist.url,
+              gistId: gist.id,
+            });
+          }
+
+          // Gist 실패 → MD 파일 첨부 fallback
           await sendDiscordFile(webhookUrl, message, filename, mdContent);
           return JSON.stringify({
             success: true,
             messageLength: message.length,
             fileAttached: true,
             filename,
+            gistFallback: true,
           });
         }
 
+        // MD 없음 → 메시지만 전송
         await sendDiscordMessage(message, webhookEnvVar);
         return JSON.stringify({
           success: true,
