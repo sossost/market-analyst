@@ -2,7 +2,7 @@ import "dotenv/config";
 import { pool } from "@/db/client";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { runAgentLoop } from "./agentLoop";
-import { buildSystemPrompt } from "./systemPrompt";
+import { buildDailySystemPrompt } from "./systemPrompt";
 import { sendDiscordError, sendDiscordMessage } from "./discord";
 import { logger } from "./logger";
 import type { AgentConfig } from "./tools/types";
@@ -62,7 +62,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildSystemPrompt(),
+    systemPrompt: buildDailySystemPrompt(),
     tools: [
       getMarketBreadth,
       getLeadingSectors,
