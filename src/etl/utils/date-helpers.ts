@@ -9,12 +9,12 @@ interface DateRow {
 /**
  * Get the latest trade date from daily_prices (screener table).
  */
-export async function getLatestTradeDate(): Promise<string | undefined> {
+export async function getLatestTradeDate(): Promise<string | null> {
   const result = await db.execute(sql`
     SELECT MAX(date)::text AS result_date FROM daily_prices
   `);
   const row = result.rows[0] as DateRow | undefined;
-  return row?.result_date ?? undefined;
+  return row?.result_date ?? null;
 }
 
 /**

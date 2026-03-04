@@ -1,6 +1,5 @@
 import "dotenv/config";
-import { db } from "@/db/client";
-import { pool } from "@/db/client";
+import { db, pool } from "@/db/client";
 import { stockPhases } from "@/db/schema/analyst";
 import { detectPhase } from "@/lib/phase-detection";
 import { assertValidEnvironment } from "@/etl/utils/validation";

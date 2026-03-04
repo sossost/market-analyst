@@ -130,5 +130,8 @@ export async function retryDatabaseOperation<T>(
     throw new Error(`DB operation failed after ${result.attempts} attempts${code}: ${err?.message ?? "unknown"}`);
   }
 
-  return result.data!;
+  if (result.data === undefined) {
+    throw new Error("DB operation returned no data despite success");
+  }
+  return result.data;
 }

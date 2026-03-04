@@ -3,6 +3,11 @@ import { pool } from "@/db/client";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 
+const MIN_EXPECTED_PHASES = 1_000;
+const MIN_SECTOR_COUNT = 10;
+const MIN_INDUSTRY_COUNT = 50;
+const MIN_KNOWN_STOCKS_FOUND = 4;
+
 async function main() {
   assertValidEnvironment();
 
@@ -29,8 +34,8 @@ async function main() {
     console.log(`  Phase ${r.phase}: ${r.cnt}`);
   }
 
-  if (totalPhases < 1000) {
-    console.error("  ERROR: Expected at least 1000 stock phases");
+  if (totalPhases < MIN_EXPECTED_PHASES) {
+    console.error(`  ERROR: Expected at least ${MIN_EXPECTED_PHASES} stock phases`);
     hasErrors = true;
   }
 
@@ -42,8 +47,8 @@ async function main() {
   const sectorCount = Number(sectorRows[0].cnt);
   console.log(`\nSector RS: ${sectorCount} rows`);
 
-  if (sectorCount < 10) {
-    console.error("  ERROR: Expected at least 10 sectors");
+  if (sectorCount < MIN_SECTOR_COUNT) {
+    console.error(`  ERROR: Expected at least ${MIN_SECTOR_COUNT} sectors`);
     hasErrors = true;
   }
 
@@ -55,8 +60,8 @@ async function main() {
   const industryCount = Number(industryRows[0].cnt);
   console.log(`Industry RS: ${industryCount} rows`);
 
-  if (industryCount < 50) {
-    console.error("  ERROR: Expected at least 50 industries");
+  if (industryCount < MIN_INDUSTRY_COUNT) {
+    console.error(`  ERROR: Expected at least ${MIN_INDUSTRY_COUNT} industries`);
     hasErrors = true;
   }
 
@@ -125,8 +130,8 @@ async function main() {
     console.log(`  ${r.symbol}: Phase ${r.phase}, RS=${r.rs_score}`);
   }
 
-  if (knownResults.length < 4) {
-    console.error("  ERROR: Expected at least 4 known stocks");
+  if (knownResults.length < MIN_KNOWN_STOCKS_FOUND) {
+    console.error(`  ERROR: Expected at least ${MIN_KNOWN_STOCKS_FOUND} known stocks`);
     hasErrors = true;
   }
 

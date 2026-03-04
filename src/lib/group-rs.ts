@@ -2,7 +2,12 @@ import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { detectGroupPhase } from "@/lib/group-phase";
-import type { GroupRsConfig, GroupRsRow, Phase } from "@/types";
+import type { GroupBy, GroupRsConfig, GroupRsRow, Phase } from "@/types";
+
+const ALLOWED_GROUP_COLS = {
+  sector: { col: "s.sector", table: "sector_rs_daily", colName: "sector" },
+  industry: { col: "s.industry", table: "industry_rs_daily", colName: "industry" },
+} as const satisfies Record<GroupBy, { col: string; table: string; colName: string }>;
 
 /**
  * Build group-level RS data for sectors or industries.
@@ -12,7 +17,8 @@ export async function buildGroupRs(
   config: GroupRsConfig,
 ): Promise<GroupRsRow[]> {
   const { groupBy, minStockCount, targetDate } = config;
-  const groupCol = groupBy === "sector" ? "s.sector" : "s.industry";
+  const { col: groupCol, table: outputTable, colName: groupColName } =
+    ALLOWED_GROUP_COLS[groupBy];
 
   // Step 1: RS average + ranking per group
   const { rows: groupAvgs } = await retryDatabaseOperation(() =>
@@ -52,9 +58,6 @@ export async function buildGroupRs(
 
   // Step 2: Fetch historical avg RS for acceleration (4w/8w/12w)
   const tradingDays = { "4w": 20, "8w": 40, "12w": 60 };
-  const outputTable =
-    groupBy === "sector" ? "sector_rs_daily" : "industry_rs_daily";
-  const groupColName = groupBy;
 
   const historicalRs = new Map<
     string,

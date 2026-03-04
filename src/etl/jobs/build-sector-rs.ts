@@ -1,6 +1,5 @@
 import "dotenv/config";
-import { db } from "@/db/client";
-import { pool } from "@/db/client";
+import { db, pool } from "@/db/client";
 import { sectorRsDaily } from "@/db/schema/analyst";
 import { buildGroupRs } from "@/lib/group-rs";
 import { assertValidEnvironment } from "@/etl/utils/validation";

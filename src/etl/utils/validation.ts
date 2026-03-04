@@ -11,13 +11,15 @@ export function validateEnvironment(): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  if (!process.env.DATABASE_URL) {
-    errors.push("Missing required environment variable: DATABASE_URL");
-  }
+  const dbUrl = process.env.DATABASE_URL;
 
-  if (process.env.DATABASE_URL) {
+  if (dbUrl == null) {
+    errors.push("Missing required environment variable: DATABASE_URL");
+  } else if (dbUrl === "") {
+    errors.push("DATABASE_URL must not be empty");
+  } else {
     try {
-      new URL(process.env.DATABASE_URL);
+      new URL(dbUrl);
     } catch {
       errors.push("DATABASE_URL format is invalid");
     }
