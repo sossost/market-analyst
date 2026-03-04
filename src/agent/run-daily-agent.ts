@@ -8,12 +8,12 @@ import { logger } from "./logger";
 import type { AgentConfig } from "./tools/types";
 
 // Tools
+import { getIndexReturns } from "./tools/getIndexReturns";
 import { getMarketBreadth } from "./tools/getMarketBreadth";
 import { getLeadingSectors } from "./tools/getLeadingSectors";
 import { getStockDetail } from "./tools/getStockDetail";
 import { getUnusualStocks } from "./tools/getUnusualStocks";
 import { searchCatalyst } from "./tools/searchCatalyst";
-import { readReportHistory } from "./tools/readReportHistory";
 import { createSendDiscordReport } from "./tools/sendDiscordReport";
 import { saveReportLogTool } from "./tools/saveReportLog";
 
@@ -66,12 +66,12 @@ async function main() {
     targetDate,
     systemPrompt: buildDailySystemPrompt(),
     tools: [
+      getIndexReturns,
       getMarketBreadth,
       getLeadingSectors,
       getUnusualStocks,
       searchCatalyst,
       getStockDetail,
-      readReportHistory,
       createSendDiscordReport("DISCORD_WEBHOOK_URL"),
       saveReportLogTool,
     ],

@@ -8,6 +8,7 @@ import { logger } from "./logger";
 import type { AgentConfig } from "./tools/types";
 
 // Tools
+import { getIndexReturns } from "./tools/getIndexReturns";
 import { getMarketBreadth } from "./tools/getMarketBreadth";
 import { getLeadingSectors } from "./tools/getLeadingSectors";
 import { getPhase2Stocks } from "./tools/getPhase2Stocks";
@@ -72,6 +73,7 @@ async function main() {
     targetDate,
     systemPrompt: buildWeeklySystemPrompt(),
     tools: [
+      getIndexReturns,
       getMarketBreadth,
       getLeadingSectors,
       getPhase2Stocks,

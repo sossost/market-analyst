@@ -9,6 +9,11 @@ type UnusualCondition = "big_move" | "high_volume" | "phase_change";
 const BIG_MOVE_THRESHOLD = 0.05;
 const HIGH_VOLUME_RATIO = 2.0;
 const MIN_CONDITIONS = 2;
+const MIN_RS_SCORE = 40;
+const MAX_RESULTS = 15;
+
+// Phase 2 (상승 추세) 우선, Phase 1 (바닥→전환) 다음
+const PHASE_PRIORITY: Record<number, number> = { 2: 0, 1: 1, 3: 2, 4: 3 };
 
 interface UnusualRow {
   symbol: string;
@@ -127,13 +132,22 @@ export const getUnusualStocks: AgentTool = {
           conditions,
         };
       })
-      .filter((s) => s.conditions.length >= MIN_CONDITIONS)
-      .sort((a, b) => Math.abs(b.dailyReturn) - Math.abs(a.dailyReturn));
+      .filter(
+        (s) =>
+          s.conditions.length >= MIN_CONDITIONS && s.rsScore >= MIN_RS_SCORE,
+      )
+      .sort((a, b) => {
+        // Phase 2 우선, 같은 Phase면 RS 높은 순
+        const phaseDiff =
+          (PHASE_PRIORITY[a.phase] ?? 9) - (PHASE_PRIORITY[b.phase] ?? 9);
+        if (phaseDiff !== 0) return phaseDiff;
+        return b.rsScore - a.rsScore;
+      });
 
     return JSON.stringify({
       date,
       totalFound: unusual.length,
-      stocks: unusual.slice(0, 10),
+      stocks: unusual.slice(0, MAX_RESULTS),
     });
   },
 };
