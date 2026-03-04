@@ -176,8 +176,16 @@ ${ANALYSIS_FRAMEWORK}
    - 주도주 후보 각각에 대해 뉴스 검색
    - 펀더멘탈 이벤트, 산업 동향 파악
 
-7. **리포트 전달** (send_discord_report) — 분할 메시지 + MD 파일
-8. **이력 저장** (save_report_log)
+7. **과거 추천 성과 확인** (read_recommendation_performance)
+   - 활성 추천의 현재 상태 확인
+   - 종료된 추천의 승률, 평균 수익률 확인
+   - 반복 실패 패턴 있으면 이번 추천에 반영
+
+8. **리포트 전달** (send_discord_report) — 분할 메시지 + MD 파일
+9. **이력 저장** (save_report_log)
+10. **추천 종목 저장** (save_recommendations)
+    - 리포트에 포함된 모든 추천 종목을 DB에 저장
+    - 반드시 send_discord_report 이후에 호출
 
 ## 중복 종목 필터링 가이드라인
 
@@ -237,7 +245,10 @@ Discord 메시지를 섹션별로 분할 전송하고, 전체 상세 분석은 M
 - 마지막 호출에만 markdownContent를 포함하세요
 - 리포트 전달 후 반드시 save_report_log로 이력을 저장하세요
 - 종목 수는 핵심만 선별하세요 (보통 3~8개)
-- 확신이 없는 종목은 포함하지 마세요`;
+- 확신이 없는 종목은 포함하지 마세요
+- 추천 종목은 반드시 save_recommendations로 DB에 저장하세요
+- 과거 성과에서 반복 실패 패턴이 보이면 추천 기준을 자율 조정하세요
+- 활성 추천이 아직 Phase 2이면 "기존 추천 유지"로 표시하세요`;
 
   return appendFeedbackSection(base);
 }
