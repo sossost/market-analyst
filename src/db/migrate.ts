@@ -8,9 +8,16 @@ import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 
 async function migrate() {
+  const connectionString = process.env.DATABASE_URL;
+  if (connectionString == null || connectionString === "") {
+    throw new Error("DATABASE_URL environment variable is required");
+  }
+
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL!,
-    ssl: { rejectUnauthorized: false },
+    connectionString,
+    ssl: {
+      rejectUnauthorized: process.env.NODE_ENV === "production",
+    },
   });
 
   const migrationsDir = join(import.meta.dirname, "../../db/migrations");

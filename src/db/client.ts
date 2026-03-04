@@ -7,11 +7,14 @@ if (connectionString == null || connectionString === "") {
   throw new Error("DATABASE_URL environment variable is required");
 }
 
+const sslConfig =
+  process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: true }
+    : { rejectUnauthorized: false };
+
 const pool = new Pool({
   connectionString,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: sslConfig,
   max: 10,
   idleTimeoutMillis: 60000,
   connectionTimeoutMillis: 30000,

@@ -35,6 +35,19 @@ async function main() {
 
   console.log(`Active symbols: ${symbolRows.length}`);
 
+  // Pre-compute 52-week start date (shared across all batches)
+  const { rows: startDateRows } = await retryDatabaseOperation(() =>
+    pool.query<{ start_date: string }>(
+      `SELECT date::text AS start_date FROM (
+         SELECT DISTINCT date FROM daily_prices
+         WHERE date <= $1
+         ORDER BY date DESC LIMIT $2
+       ) sub ORDER BY date ASC LIMIT 1`,
+      [targetDate, HIGH_LOW_DAYS],
+    ),
+  );
+  const highLowStartDate = startDateRows[0]?.start_date ?? targetDate;
+
   const batches = chunk(symbolRows, BATCH_SIZE);
   let processed = 0;
   let phase2Count = 0;
@@ -90,22 +103,16 @@ async function main() {
       }
     }
 
-    // 4. Fetch 52-week high/low
+    // 4. Fetch 52-week high/low (using pre-computed start date)
     const { rows: highLowRows } = await retryDatabaseOperation(() =>
       pool.query<{ symbol: string; high_52w: string; low_52w: string }>(
         `SELECT symbol, MAX(high)::text AS high_52w, MIN(low)::text AS low_52w
          FROM daily_prices
          WHERE symbol = ANY($1)
-           AND date > (
-             SELECT date FROM (
-               SELECT DISTINCT date FROM daily_prices
-               WHERE date <= $2
-               ORDER BY date DESC LIMIT $3
-             ) sub ORDER BY date ASC LIMIT 1
-           )
-           AND date <= $2
+           AND date > $2
+           AND date <= $3
          GROUP BY symbol`,
-        [batchSymbols, targetDate, HIGH_LOW_DAYS],
+        [batchSymbols, highLowStartDate, targetDate],
       ),
     );
     const highLowBySymbol = new Map(
