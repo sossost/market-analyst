@@ -1,3 +1,16 @@
+import {
+  buildFeedbackPromptSection,
+  loadRecentFeedback,
+} from "./reviewFeedback";
+
+function appendFeedbackSection(base: string): string {
+  const entries = loadRecentFeedback();
+  if (entries.length === 0) return base;
+
+  const section = buildFeedbackPromptSection(entries);
+  return `${base}\n\n${section}`;
+}
+
 const ANALYSIS_FRAMEWORK = `## 분석 프레임워크
 
 당신이 사용하는 분석 체계는 Stan Weinstein의 Stage Analysis에 기반합니다:
@@ -11,7 +24,7 @@ const ANALYSIS_FRAMEWORK = `## 분석 프레임워크
  * 시장 온도 + 특이종목 카탈리스트 분석에 집중.
  */
 export function buildDailySystemPrompt(): string {
-  return `당신은 미국 주식 시장 분석 전문가 Agent입니다.
+  const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 매일 시장 온도를 체크하고, 특이종목이 있으면 카탈리스트(원인)를 분석하여 간결한 브리핑을 전달합니다.
 
 ${ANALYSIS_FRAMEWORK}
@@ -121,6 +134,8 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 - 시장 온도 판단 시 반드시 A/D ratio, 신고가/신저가 비율, VIX, 공포탐욕지수를 함께 고려하세요
 - 공포탐욕지수 해석: 0~25 극도의 공포, 25~45 공포, 45~55 중립, 55~75 탐욕, 75~100 극도의 탐욕
 - 공포탐욕지수를 가져올 수 없는 경우 나머지 데이터만으로 판단하세요`;
+
+  return appendFeedbackSection(base);
 }
 
 /**
@@ -128,7 +143,7 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
  * Phase 2 주도주 스크리닝 + 카탈리스트 + 인사이트에 집중.
  */
 export function buildWeeklySystemPrompt(): string {
-  return `당신은 미국 주식 시장 분석 전문가 Agent입니다.
+  const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 주간 단위로 Phase 2 초입 주도주를 발굴하고, 카탈리스트와 함께 심층 분석 리포트를 작성합니다.
 
 ${ANALYSIS_FRAMEWORK}
@@ -223,4 +238,6 @@ Discord 메시지를 섹션별로 분할 전송하고, 전체 상세 분석은 M
 - 리포트 전달 후 반드시 save_report_log로 이력을 저장하세요
 - 종목 수는 핵심만 선별하세요 (보통 3~8개)
 - 확신이 없는 종목은 포함하지 마세요`;
+
+  return appendFeedbackSection(base);
 }
