@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { executeTool } from "./tools/index";
+import { logger } from "./logger";
 import type { AgentConfig, AgentResult } from "./tools/types";
 
 /**
@@ -32,7 +33,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
     iteration < config.maxIterations;
     iteration++
   ) {
-    console.log(`  [Agent] Iteration ${iteration + 1}/${config.maxIterations}`);
+    logger.info("Agent", `Iteration ${iteration + 1}/${config.maxIterations}`);
 
     const response = await client.messages.create({
       model: config.model,
@@ -47,7 +48,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
 
     // Done — Claude finished naturally
     if (response.stop_reason === "end_turn") {
-      console.log(`  [Agent] Completed in ${iteration + 1} iterations`);
+      logger.info("Agent", `Completed in ${iteration + 1} iterations`);
       return {
         success: true,
         tokensUsed: { input: totalInputTokens, output: totalOutputTokens },
@@ -64,9 +65,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
 
     if (toolUseBlocks.length === 0) {
       // No tool calls and not end_turn — unexpected, treat as done
-      console.warn(
-        `  [Agent] Unexpected stop_reason: ${response.stop_reason}`,
-      );
+      logger.warn("Agent", `Unexpected stop_reason: ${response.stop_reason}`);
       return {
         success: true,
         tokensUsed: { input: totalInputTokens, output: totalOutputTokens },
@@ -79,32 +78,31 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
     // Append assistant response (preserves tool_use blocks)
     messages.push({ role: "assistant", content: response.content });
 
-    // Execute each tool and collect results
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-    for (const block of toolUseBlocks) {
-      console.log(`  [Agent] Tool call: ${block.name}`);
+    // Execute tools in parallel and collect results
+    const toolResultPromises = toolUseBlocks.map(async (block) => {
+      logger.info("Agent", `Tool call: ${block.name}`);
       const result = await executeTool(
         config.tools,
         block.name,
         block.input as Record<string, unknown>,
       );
-      toolCallCount++;
-      toolResults.push({
-        type: "tool_result",
+      return {
+        type: "tool_result" as const,
         tool_use_id: block.id,
         content: result,
-      });
-    }
+      };
+    });
+
+    const toolResults: Anthropic.ToolResultBlockParam[] =
+      await Promise.all(toolResultPromises);
+    toolCallCount += toolUseBlocks.length;
 
     // Send tool results back
     messages.push({ role: "user", content: toolResults });
   }
 
   // Exceeded max iterations
-  console.error(
-    `  [Agent] Max iterations (${config.maxIterations}) reached`,
-  );
+  logger.error("Agent", `Max iterations (${config.maxIterations}) reached`);
   return {
     success: false,
     error: `Max iterations (${config.maxIterations}) reached`,

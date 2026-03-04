@@ -2,6 +2,7 @@ import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
+import { validateDate, validateNumber } from "./validation";
 
 const DEFAULT_LIMIT = 10;
 
@@ -31,8 +32,11 @@ export const getLeadingSectors: AgentTool = {
   },
 
   async execute(input) {
-    const date = input.date as string;
-    const limit = (input.limit as number) ?? DEFAULT_LIMIT;
+    const date = validateDate(input.date);
+    if (date == null) {
+      return JSON.stringify({ error: "Invalid or missing date parameter" });
+    }
+    const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
     // 섹터 RS 랭킹
     const { rows: sectorRows } = await retryDatabaseOperation(() =>

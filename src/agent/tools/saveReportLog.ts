@@ -1,6 +1,7 @@
 import { saveReportLog } from "@/agent/reportLog";
 import type { DailyReportLog } from "@/types";
 import type { AgentTool } from "./types";
+import { validateDate } from "./validation";
 
 /**
  * 당일 리포트 이력을 JSON 파일로 저장한다.
@@ -65,24 +66,32 @@ export const saveReportLogTool: AgentTool = {
   },
 
   async execute(input) {
-    const reportData = input.report_data as DailyReportLog;
+    const rawData = input.report_data as Record<string, unknown>;
+    const date = validateDate(rawData?.date);
+    if (date == null) {
+      return JSON.stringify({ error: "Invalid or missing date in report_data" });
+    }
+
+    const reportData = rawData as unknown as DailyReportLog;
 
     // metadata는 Agent loop에서 나중에 채워짐. 여기서는 플레이스홀더.
-    if (reportData.metadata == null) {
-      reportData.metadata = {
+    const reportWithMetadata: DailyReportLog = {
+      ...reportData,
+      date,
+      metadata: reportData.metadata ?? {
         model: "claude-opus-4-6",
         tokensUsed: { input: 0, output: 0 },
         toolCalls: 0,
         executionTime: 0,
-      };
-    }
+      },
+    };
 
-    saveReportLog(reportData);
+    saveReportLog(reportWithMetadata);
 
     return JSON.stringify({
       success: true,
-      date: reportData.date,
-      symbolCount: reportData.reportedSymbols.length,
+      date: reportWithMetadata.date,
+      symbolCount: reportWithMetadata.reportedSymbols.length,
     });
   },
 };

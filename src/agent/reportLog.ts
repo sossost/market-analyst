@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { DailyReportLog } from "@/types";
+import { logger } from "./logger";
 
 const REPORTS_DIR = path.resolve(process.cwd(), "data/reports");
 
@@ -8,9 +9,7 @@ const REPORTS_DIR = path.resolve(process.cwd(), "data/reports");
  * Ensure the reports directory exists.
  */
 function ensureDir(): void {
-  if (!fs.existsSync(REPORTS_DIR)) {
-    fs.mkdirSync(REPORTS_DIR, { recursive: true });
-  }
+  fs.mkdirSync(REPORTS_DIR, { recursive: true });
 }
 
 /**
@@ -41,8 +40,9 @@ export function readReportLogs(daysBack: number): DailyReportLog[] {
         "utf-8",
       );
       logs.push(JSON.parse(content) as DailyReportLog);
-    } catch {
-      // Skip corrupted files
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "unknown error";
+      logger.warn("ReportLog", `Skipping corrupted file: ${files[i]} — ${msg}`);
     }
   }
 
@@ -56,5 +56,5 @@ export function saveReportLog(data: DailyReportLog): void {
   ensureDir();
   const filePath = reportPath(data.date);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-  console.log(`  [ReportLog] Saved: ${filePath}`);
+  logger.info("ReportLog", `Saved: ${filePath}`);
 }

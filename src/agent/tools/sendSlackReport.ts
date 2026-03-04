@@ -1,5 +1,6 @@
 import { sendSlackMessage } from "@/agent/slack";
 import type { AgentTool } from "./types";
+import { validateString } from "./validation";
 
 /**
  * 슬랙 Webhook으로 리포트를 전달한다.
@@ -22,10 +23,9 @@ export const sendSlackReport: AgentTool = {
   },
 
   async execute(input) {
-    const message = input.message as string;
-
-    if (message.length === 0) {
-      return JSON.stringify({ error: "메시지가 비어있습니다" });
+    const message = validateString(input.message);
+    if (message == null) {
+      return JSON.stringify({ error: "메시지가 비어있거나 유효하지 않습니다" });
     }
 
     await sendSlackMessage(message);

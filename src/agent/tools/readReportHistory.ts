@@ -1,5 +1,6 @@
 import { readReportLogs } from "@/agent/reportLog";
 import type { AgentTool } from "./types";
+import { validateNumber } from "./validation";
 
 const DEFAULT_DAYS_BACK = 7;
 
@@ -25,7 +26,7 @@ export const readReportHistory: AgentTool = {
   },
 
   async execute(input) {
-    const daysBack = (input.days_back as number) ?? DEFAULT_DAYS_BACK;
+    const daysBack = validateNumber(input.days_back, DEFAULT_DAYS_BACK);
     const logs = readReportLogs(daysBack);
 
     if (logs.length === 0) {

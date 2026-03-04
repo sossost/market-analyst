@@ -4,6 +4,7 @@ import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { runAgentLoop } from "./agentLoop";
 import { buildSystemPrompt } from "./systemPrompt";
 import { sendSlackError, sendSlackMessage } from "./slack";
+import { logger } from "./logger";
 import type { AgentConfig } from "./tools/types";
 
 // Tools
@@ -19,6 +20,10 @@ const MODEL = "claude-opus-4-6";
 const MAX_TOKENS = 8192;
 const MAX_ITERATIONS = 15;
 
+// Opus 4.6 pricing (USD per 1M tokens, as of 2026-03)
+const OPUS_INPUT_COST_PER_M = 5;
+const OPUS_OUTPUT_COST_PER_M = 25;
+
 function validateAgentEnvironment(): void {
   const required = ["DATABASE_URL", "ANTHROPIC_API_KEY", "SLACK_WEBHOOK_URL"];
   const missing = required.filter(
@@ -33,24 +38,24 @@ function validateAgentEnvironment(): void {
 }
 
 async function main() {
-  console.log("=== Agent Core: Daily Market Analysis ===\n");
+  logger.step("=== Agent Core: Daily Market Analysis ===\n");
 
   // 1. 환경변수 검증
   validateAgentEnvironment();
-  console.log("[1/4] Environment validated");
+  logger.step("[1/4] Environment validated");
 
   // 2. 최신 거래일 확인
   const targetDate = await getLatestTradeDate();
   if (targetDate == null) {
-    console.log("No trade date found. Skipping.");
+    logger.step("No trade date found. Skipping.");
     await sendSlackMessage("📊 오늘은 거래일이 아닙니다. Agent 실행을 스킵합니다.");
     await pool.end();
     return;
   }
-  console.log(`[2/4] Target date: ${targetDate}`);
+  logger.step(`[2/4] Target date: ${targetDate}`);
 
   // 3. Agent 실행
-  console.log("[3/4] Running agent loop...\n");
+  logger.step("[3/4] Running agent loop...\n");
 
   const config: AgentConfig = {
     targetDate,
@@ -72,26 +77,29 @@ async function main() {
   const result = await runAgentLoop(config);
 
   // 4. 결과 로깅
-  console.log("\n[4/4] Agent result:");
-  console.log(`  Success: ${result.success}`);
-  console.log(
-    `  Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`,
+  logger.step("\n[4/4] Agent result:");
+  logger.info("Result", `Success: ${result.success}`);
+  logger.info(
+    "Result",
+    `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`,
   );
-  console.log(`  Tool calls: ${result.toolCalls}`);
-  console.log(`  Iterations: ${result.iterationCount}`);
-  console.log(`  Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`);
+  logger.info("Result", `Tool calls: ${result.toolCalls}`);
+  logger.info("Result", `Iterations: ${result.iterationCount}`);
+  logger.info(
+    "Result",
+    `Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`,
+  );
 
-  // 비용 추정 (Opus 4.6: $5/1M input, $25/1M output)
-  const inputCost = (result.tokensUsed.input / 1_000_000) * 5;
-  const outputCost = (result.tokensUsed.output / 1_000_000) * 25;
-  console.log(`  Estimated cost: $${(inputCost + outputCost).toFixed(3)}`);
+  const inputCost = (result.tokensUsed.input / 1_000_000) * OPUS_INPUT_COST_PER_M;
+  const outputCost = (result.tokensUsed.output / 1_000_000) * OPUS_OUTPUT_COST_PER_M;
+  logger.info("Result", `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`);
 
-  if (!result.success) {
+  if (result.success === false) {
     throw new Error(`Agent failed: ${result.error}`);
   }
 
   await pool.end();
-  console.log("\nDone.");
+  logger.step("\nDone.");
 }
 
 main().catch(async (err) => {

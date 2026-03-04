@@ -2,6 +2,7 @@ import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
+import { validateDate, validateSymbol } from "./validation";
 
 /**
  * 개별 종목 상세 정보를 조회한다.
@@ -29,8 +30,14 @@ export const getStockDetail: AgentTool = {
   },
 
   async execute(input) {
-    const symbol = input.symbol as string;
-    const date = input.date as string;
+    const symbol = validateSymbol(input.symbol);
+    if (symbol == null) {
+      return JSON.stringify({ error: "Invalid or missing symbol parameter" });
+    }
+    const date = validateDate(input.date);
+    if (date == null) {
+      return JSON.stringify({ error: "Invalid or missing date parameter" });
+    }
 
     // 종목 Phase 데이터
     const { rows: phaseRows } = await retryDatabaseOperation(() =>

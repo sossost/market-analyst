@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { logger } from "./logger";
 
 const FALLBACK_DIR = path.resolve(process.cwd(), "data/reports/fallback");
 
@@ -10,7 +11,7 @@ const FALLBACK_DIR = path.resolve(process.cwd(), "data/reports/fallback");
 export async function sendSlackMessage(message: string): Promise<void> {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (webhookUrl == null || webhookUrl === "") {
-    console.warn("  [Slack] SLACK_WEBHOOK_URL not set, saving to fallback file");
+    logger.warn("Slack", "SLACK_WEBHOOK_URL not set, saving to fallback file");
     saveFallback(message);
     return;
   }
@@ -21,16 +22,14 @@ export async function sendSlackMessage(message: string): Promise<void> {
     body: JSON.stringify({ text: message }),
   });
 
-  if (!response.ok) {
+  if (response.ok === false) {
     const body = await response.text().catch(() => "");
-    console.error(
-      `  [Slack] Webhook failed (${response.status}): ${body}`,
-    );
+    logger.error("Slack", `Webhook failed (${response.status}): ${body}`);
     saveFallback(message);
     throw new Error(`Slack webhook failed: ${response.status}`);
   }
 
-  console.log("  [Slack] Message sent successfully");
+  logger.info("Slack", "Message sent successfully");
 }
 
 /**
@@ -43,7 +42,7 @@ export async function sendSlackError(errorMessage: string): Promise<void> {
   try {
     await sendSlackMessage(message);
   } catch {
-    console.error("  [Slack] Failed to send error notification");
+    logger.error("Slack", "Failed to send error notification");
   }
 }
 
@@ -51,12 +50,10 @@ export async function sendSlackError(errorMessage: string): Promise<void> {
  * Save message to local file as fallback when Slack fails.
  */
 function saveFallback(message: string): void {
-  if (!fs.existsSync(FALLBACK_DIR)) {
-    fs.mkdirSync(FALLBACK_DIR, { recursive: true });
-  }
+  fs.mkdirSync(FALLBACK_DIR, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filePath = path.join(FALLBACK_DIR, `slack-${timestamp}.txt`);
   fs.writeFileSync(filePath, message, "utf-8");
-  console.log(`  [Slack] Fallback saved: ${filePath}`);
+  logger.info("Slack", `Fallback saved: ${filePath}`);
 }

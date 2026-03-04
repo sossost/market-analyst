@@ -2,6 +2,7 @@ import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
+import { validateDate } from "./validation";
 
 /**
  * 전체 시장 브레드스 지표를 조회한다.
@@ -25,7 +26,10 @@ export const getMarketBreadth: AgentTool = {
   },
 
   async execute(input) {
-    const date = input.date as string;
+    const date = validateDate(input.date);
+    if (date == null) {
+      return JSON.stringify({ error: "Invalid or missing date parameter" });
+    }
 
     // Phase 분포
     const { rows: phaseRows } = await retryDatabaseOperation(() =>
