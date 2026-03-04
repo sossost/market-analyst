@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { pool } from "@/db/client";
 import { assertValidEnvironment } from "@/etl/utils/validation";
-import { getLatestTradeDate } from "@/etl/utils/date-helpers";
+import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 
 const MIN_EXPECTED_PHASES = 1_000;
 const MIN_SECTOR_COUNT = 10;
@@ -11,7 +11,7 @@ const MIN_KNOWN_STOCKS_FOUND = 4;
 async function main() {
   assertValidEnvironment();
 
-  const targetDate = await getLatestTradeDate();
+  const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
     console.error("No trade date found. Exiting.");
     process.exit(1);

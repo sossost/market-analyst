@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { pool } from "@/db/client";
-import { getLatestTradeDate } from "@/etl/utils/date-helpers";
+import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { runAgentLoop } from "./agentLoop";
 import { buildDailySystemPrompt } from "./systemPrompt";
 import { sendDiscordError, sendDiscordMessage } from "./discord";
@@ -54,7 +54,7 @@ async function main() {
   logger.step("[1/5] Environment validated");
 
   // 2. 최신 거래일 확인
-  const targetDate = await getLatestTradeDate();
+  const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
     logger.step("No trade date found. Skipping.");
     await sendDiscordMessage("📊 오늘은 거래일이 아닙니다. Agent 실행을 스킵합니다.");
@@ -86,33 +86,46 @@ async function main() {
     maxIterations: MAX_ITERATIONS,
   };
 
-  const result = await runAgentLoop(config);
+  // 에이전트 루프 실행 — 에러 발생해도 draft가 캡처됐으면 발송 진행
+  let loopError: string | null = null;
+  try {
+    const result = await runAgentLoop(config);
 
-  // 4. 결과 로깅
-  logger.step("\n[4/5] Agent result:");
-  logger.info("Result", `Success: ${result.success}`);
-  logger.info(
-    "Result",
-    `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`,
-  );
-  logger.info("Result", `Tool calls: ${result.toolCalls}`);
-  logger.info("Result", `Iterations: ${result.iterationCount}`);
-  logger.info(
-    "Result",
-    `Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`,
-  );
+    logger.step("\n[4/5] Agent result:");
+    logger.info("Result", `Success: ${result.success}`);
+    logger.info(
+      "Result",
+      `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`,
+    );
+    logger.info("Result", `Tool calls: ${result.toolCalls}`);
+    logger.info("Result", `Iterations: ${result.iterationCount}`);
+    logger.info(
+      "Result",
+      `Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`,
+    );
 
-  const inputCost = (result.tokensUsed.input / 1_000_000) * OPUS_INPUT_COST_PER_M;
-  const outputCost = (result.tokensUsed.output / 1_000_000) * OPUS_OUTPUT_COST_PER_M;
-  logger.info("Result", `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`);
+    const inputCost = (result.tokensUsed.input / 1_000_000) * OPUS_INPUT_COST_PER_M;
+    const outputCost = (result.tokensUsed.output / 1_000_000) * OPUS_OUTPUT_COST_PER_M;
+    logger.info("Result", `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`);
 
-  if (result.success === false) {
-    throw new Error(`Agent failed: ${result.error}`);
+    if (result.success === false) {
+      loopError = result.error ?? "Unknown error";
+      logger.error("Agent", `Agent loop failed: ${loopError}`);
+    }
+  } catch (err) {
+    loopError = err instanceof Error ? err.message : String(err);
+    logger.error("Agent", `Agent loop crashed: ${loopError}`);
   }
 
-  // 5. 리뷰 파이프라인 → 최종 발송
-  logger.step("[5/5] Running review pipeline...");
-  await runReviewPipeline(reportDrafts, "DISCORD_WEBHOOK_URL");
+  // 5. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
+  if (reportDrafts.length > 0) {
+    logger.step("[5/5] Running review pipeline...");
+    await runReviewPipeline(reportDrafts, "DISCORD_WEBHOOK_URL");
+  } else if (loopError != null) {
+    throw new Error(`Agent failed with no drafts: ${loopError}`);
+  } else {
+    logger.warn("Agent", "No report drafts captured");
+  }
 
   await pool.end();
   logger.step("\nDone.");

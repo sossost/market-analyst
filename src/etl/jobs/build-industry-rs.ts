@@ -3,7 +3,7 @@ import { db, pool } from "@/db/client";
 import { industryRsDaily } from "@/db/schema/analyst";
 import { buildGroupRs } from "@/lib/group-rs";
 import { assertValidEnvironment } from "@/etl/utils/validation";
-import { getLatestTradeDate } from "@/etl/utils/date-helpers";
+import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { chunk } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
@@ -13,7 +13,7 @@ const MIN_STOCK_COUNT = 5;
 async function main() {
   assertValidEnvironment();
 
-  const targetDate = await getLatestTradeDate();
+  const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
     console.error("No trade date found. Exiting.");
     process.exit(1);

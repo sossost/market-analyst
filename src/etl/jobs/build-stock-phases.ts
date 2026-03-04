@@ -3,9 +3,9 @@ import { db, pool } from "@/db/client";
 import { stockPhases } from "@/db/schema/analyst";
 import { detectPhase } from "@/lib/phase-detection";
 import { assertValidEnvironment } from "@/etl/utils/validation";
-import { getLatestTradeDate } from "@/etl/utils/date-helpers";
+import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
-import { chunk, toNum } from "@/etl/utils/common";
+import { chunk, toNum, resolveVolumeConfirmed } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
 import type { PhaseInput } from "@/types";
 
@@ -16,7 +16,7 @@ const HIGH_LOW_DAYS = 252; // ~1 year trading days
 async function main() {
   assertValidEnvironment();
 
-  const targetDate = await getLatestTradeDate();
+  const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
     console.error("No trade date found in daily_prices. Exiting.");
     process.exit(1);
@@ -78,15 +78,35 @@ async function main() {
       closesBySymbol.set(row.symbol, arr);
     }
 
-    // 2. Fetch MA data (today)
+    // 2. Fetch MA data (today) — includes vol_ma30 for volume ratio
     const { rows: maRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; ma50: string | null; ma200: string | null }>(
-        `SELECT symbol, ma50, ma200 FROM daily_ma
+      pool.query<{
+        symbol: string;
+        ma50: string | null;
+        ma200: string | null;
+        vol_ma30: string | null;
+      }>(
+        `SELECT symbol, ma50, ma200, vol_ma30 FROM daily_ma
          WHERE symbol = ANY($1) AND date = $2`,
         [batchSymbols, targetDate],
       ),
     );
     const maBySymbol = new Map(maRows.map((r) => [r.symbol, r]));
+
+    // 2b. Fetch today's volume for vol_ratio calculation
+    const { rows: volRows } = await retryDatabaseOperation(() =>
+      pool.query<{ symbol: string; volume: string | null }>(
+        `SELECT symbol, volume::text FROM daily_prices
+         WHERE symbol = ANY($1) AND date = $2`,
+        [batchSymbols, targetDate],
+      ),
+    );
+    const volBySymbol = new Map<string, number>();
+    for (const row of volRows) {
+      if (row.volume != null) {
+        volBySymbol.set(row.symbol, toNum(row.volume));
+      }
+    }
 
     // 3. Fetch RS scores (today)
     const { rows: rsRows } = await retryDatabaseOperation(() =>
@@ -122,10 +142,14 @@ async function main() {
       ]),
     );
 
-    // 5. Fetch previous day's phases for transition detection
+    // 5. Fetch previous day's phases + volume_confirmed for transition detection
     const { rows: prevPhaseRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; phase: number }>(
-        `SELECT symbol, phase FROM stock_phases
+      pool.query<{
+        symbol: string;
+        phase: number;
+        volume_confirmed: boolean | null;
+      }>(
+        `SELECT symbol, phase, volume_confirmed FROM stock_phases
          WHERE symbol = ANY($1)
            AND date = (SELECT MAX(date) FROM stock_phases WHERE date < $2)`,
         [batchSymbols, targetDate],
@@ -133,6 +157,9 @@ async function main() {
     );
     const prevPhaseBySymbol = new Map(
       prevPhaseRows.map((r) => [r.symbol, r.phase]),
+    );
+    const prevVolConfirmedBySymbol = new Map(
+      prevPhaseRows.map((r) => [r.symbol, r.volume_confirmed]),
     );
 
     // 6. Calculate phase for each symbol
@@ -169,6 +196,23 @@ async function main() {
       const result = detectPhase(input);
       const prevPhase = prevPhaseBySymbol.get(sym.symbol) ?? null;
 
+      // Volume ratio: today's volume / 30-day volume MA
+      const volume = volBySymbol.get(sym.symbol) ?? null;
+      const volMa30 = ma.vol_ma30 != null ? toNum(ma.vol_ma30) : null;
+      const volRatio =
+        volume != null && volMa30 != null && volMa30 > 0
+          ? volume / volMa30
+          : null;
+
+      const prevVolConfirmed =
+        prevVolConfirmedBySymbol.get(sym.symbol) ?? null;
+      const volumeConfirmed = resolveVolumeConfirmed(
+        result.phase,
+        prevPhase,
+        volRatio,
+        prevVolConfirmed,
+      );
+
       if (result.phase === 2) phase2Count++;
 
       upsertRows.push({
@@ -184,6 +228,8 @@ async function main() {
         pctFromLow52w:
           highLow.low > 0 ? (price - highLow.low) / highLow.low : null,
         conditionsMet: JSON.stringify(result.detail.conditionsMet),
+        volRatio,
+        volumeConfirmed,
       });
     }
 
@@ -224,6 +270,8 @@ type UpsertRow = {
   pctFromHigh52w: number | null;
   pctFromLow52w: number | null;
   conditionsMet: string | null;
+  volRatio: number | null;
+  volumeConfirmed: boolean | null;
 };
 
 async function batchUpsert(rows: UpsertRow[]) {
@@ -244,6 +292,8 @@ async function batchUpsert(rows: UpsertRow[]) {
       pctFromLow52w:
         r.pctFromLow52w != null ? String(r.pctFromLow52w) : null,
       conditionsMet: r.conditionsMet,
+      volRatio: r.volRatio != null ? String(r.volRatio) : null,
+      volumeConfirmed: r.volumeConfirmed,
     }));
 
     await db
@@ -260,6 +310,8 @@ async function batchUpsert(rows: UpsertRow[]) {
           pctFromHigh52w: sql`EXCLUDED.pct_from_high_52w`,
           pctFromLow52w: sql`EXCLUDED.pct_from_low_52w`,
           conditionsMet: sql`EXCLUDED.conditions_met`,
+          volRatio: sql`EXCLUDED.vol_ratio`,
+          volumeConfirmed: sql`EXCLUDED.volume_confirmed`,
         },
       });
   }

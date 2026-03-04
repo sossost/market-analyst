@@ -54,6 +54,8 @@ export const getPhase2Stocks: AgentTool = {
         pct_from_high_52w: string | null;
         pct_from_low_52w: string | null;
         conditions_met: string | null;
+        vol_ratio: string | null;
+        volume_confirmed: boolean | null;
         sector: string | null;
         industry: string | null;
       }>(
@@ -61,6 +63,7 @@ export const getPhase2Stocks: AgentTool = {
            sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
            sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
            sp.conditions_met,
+           sp.vol_ratio::text, sp.volume_confirmed,
            s.sector, s.industry
          FROM stock_phases sp
          JOIN symbols s ON sp.symbol = s.symbol
@@ -89,6 +92,8 @@ export const getPhase2Stocks: AgentTool = {
           ? Number((toNum(r.pct_from_low_52w) * 100).toFixed(1))
           : null,
       conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
+      volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
+      volumeConfirmed: r.volume_confirmed ?? false,
       sector: r.sector,
       industry: r.industry,
     }));

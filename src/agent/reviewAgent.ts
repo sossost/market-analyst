@@ -94,7 +94,7 @@ markdownContent와 filename이 원본에 없었으면 해당 필드는 생략합
 // Shared Anthropic client (module-level singleton)
 // ---------------------------------------------------------------------------
 
-const client = new Anthropic();
+const client = new Anthropic({ maxRetries: 5 });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -412,39 +412,45 @@ export async function runReviewPipeline(
 
   logger.step("\n--- Review Pipeline ---");
 
-  const review = await reviewReport(drafts);
-  logger.step(`Review verdict: ${review.verdict}`);
-
-  if (review.issues.length > 0) {
-    for (const issue of review.issues) {
-      logger.info("Review", `Issue: ${issue}`);
-    }
-  }
-
   let finalDrafts: ReportDraft[];
 
-  switch (review.verdict) {
-    case "OK":
-      finalDrafts = drafts;
-      break;
+  try {
+    const review = await reviewReport(drafts);
+    logger.step(`Review verdict: ${review.verdict}`);
 
-    case "REVISE":
-      finalDrafts = await refineReport(drafts, review.feedback);
-      logger.info("ReviewPipeline", "Report refined, sending revised version");
-      break;
-
-    case "REJECT":
-      logger.error(
-        "ReviewPipeline",
-        "Report REJECTED — extracting data-only sections",
-      );
-      finalDrafts = await extractDataOnly(drafts);
-      break;
-
-    default: {
-      const _exhaustive: never = review.verdict;
-      throw new Error(`Unhandled verdict: ${_exhaustive}`);
+    if (review.issues.length > 0) {
+      for (const issue of review.issues) {
+        logger.info("Review", `Issue: ${issue}`);
+      }
     }
+
+    switch (review.verdict) {
+      case "OK":
+        finalDrafts = drafts;
+        break;
+
+      case "REVISE":
+        finalDrafts = await refineReport(drafts, review.feedback);
+        logger.info("ReviewPipeline", "Report refined, sending revised version");
+        break;
+
+      case "REJECT":
+        logger.error(
+          "ReviewPipeline",
+          "Report REJECTED — extracting data-only sections",
+        );
+        finalDrafts = await extractDataOnly(drafts);
+        break;
+
+      default: {
+        const _exhaustive: never = review.verdict;
+        throw new Error(`Unhandled verdict: ${_exhaustive}`);
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("ReviewPipeline", `Review failed (${msg}), sending originals`);
+    finalDrafts = drafts;
   }
 
   await sendDrafts(finalDrafts, webhookEnvVar);
