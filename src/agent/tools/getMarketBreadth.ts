@@ -98,7 +98,7 @@ export const getMarketBreadth: AgentTool = {
     const advancers = toNum(adRows[0]?.advancers);
     const decliners = toNum(adRows[0]?.decliners);
     const unchanged = toNum(adRows[0]?.unchanged);
-    const adRatio = decliners > 0 ? Number((advancers / decliners).toFixed(2)) : 0;
+    const adRatio = decliners > 0 ? Number((advancers / decliners).toFixed(2)) : null;
 
     // 52주 신고가/신저가
     const { rows: hlRows } = await retryDatabaseOperation(() =>
@@ -108,7 +108,7 @@ export const getMarketBreadth: AgentTool = {
              MAX(high::numeric) AS high_52w,
              MIN(low::numeric) AS low_52w
            FROM daily_prices
-           WHERE date::date BETWEEN ($1::date - INTERVAL '365 days')::date AND $1::date
+           WHERE date::date BETWEEN ($1::date - INTERVAL '365 days')::date AND ($1::date - INTERVAL '1 day')::date
            GROUP BY symbol
          )
          SELECT
@@ -150,7 +150,7 @@ export const getMarketBreadth: AgentTool = {
       ),
       marketAvgRs: toNum(rsRows[0]?.avg_rs),
       advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
-      newHighLow: { newHighs, newLows, ratio: newLows > 0 ? Number((newHighs / newLows).toFixed(2)) : 0 },
+      newHighLow: { newHighs, newLows, ratio: newLows > 0 ? Number((newHighs / newLows).toFixed(2)) : null },
       topSectors: topSectors.map((s) => ({
         sector: s.sector,
         avgRs: toNum(s.avg_rs),

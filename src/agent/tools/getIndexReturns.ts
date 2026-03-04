@@ -11,12 +11,47 @@ interface IndexQuote {
   changePercent: number;
 }
 
-const INDEX_SYMBOLS: Record<string, string> = {
+const INDEX_SYMBOLS: Readonly<Record<string, string>> = {
   "^GSPC": "S&P 500",
   "^IXIC": "NASDAQ",
   "^DJI": "DOW 30",
   "^RUT": "Russell 2000",
-};
+} as const;
+
+async function fetchIndexQuote(symbol: string): Promise<IndexQuote | null> {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2d&interval=1d`;
+  const response = await fetch(url, {
+    headers: { "User-Agent": "market-analyst/1.0" },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (response.ok === false) {
+    logger.warn("IndexReturns", `HTTP ${response.status} for ${symbol}`);
+    return null;
+  }
+
+  const data = await response.json();
+  const result = data?.chart?.result?.[0];
+  if (result == null) return null;
+
+  const closes = result.indicators?.quote?.[0]?.close;
+  if (closes == null || closes.length < 2) return null;
+
+  const prevClose = closes[closes.length - 2];
+  const lastClose = closes[closes.length - 1];
+  if (prevClose == null || lastClose == null || prevClose === 0) return null;
+
+  const change = lastClose - prevClose;
+  const changePercent = (change / prevClose) * 100;
+
+  return {
+    symbol,
+    name: INDEX_SYMBOLS[symbol] ?? symbol,
+    close: Number(lastClose.toFixed(2)),
+    change: Number(change.toFixed(2)),
+    changePercent: Number(changePercent.toFixed(2)),
+  };
+}
 
 /**
  * Yahoo Finance API로 주요 지수의 일간 수익률을 조회한다.
@@ -34,47 +69,26 @@ export const getIndexReturns: AgentTool = {
     },
   },
 
-  async execute() {
+  async execute(_input: Record<string, unknown>) {
     const symbols = Object.keys(INDEX_SYMBOLS);
+
+    const settled = await Promise.allSettled(
+      symbols.map((symbol) => fetchIndexQuote(symbol)),
+    );
+
     const results: IndexQuote[] = [];
-
-    for (const symbol of symbols) {
-      try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2d&interval=1d`;
-        const response = await fetch(url, {
-          headers: { "User-Agent": "market-analyst/1.0" },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        });
-
-        if (response.ok === false) {
-          logger.warn("IndexReturns", `Failed to fetch ${symbol}: ${response.status}`);
-          continue;
-        }
-
-        const data = await response.json();
-        const result = data?.chart?.result?.[0];
-        if (result == null) continue;
-
-        const closes = result.indicators?.quote?.[0]?.close;
-        if (closes == null || closes.length < 2) continue;
-
-        const prevClose = closes[closes.length - 2];
-        const lastClose = closes[closes.length - 1];
-        if (prevClose == null || lastClose == null || prevClose === 0) continue;
-
-        const change = lastClose - prevClose;
-        const changePercent = (change / prevClose) * 100;
-
-        results.push({
-          symbol,
-          name: INDEX_SYMBOLS[symbol] ?? symbol,
-          close: Number(lastClose.toFixed(2)),
-          change: Number(change.toFixed(2)),
-          changePercent: Number(changePercent.toFixed(2)),
-        });
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        logger.warn("IndexReturns", `Error fetching ${symbol}: ${reason}`);
+    for (let i = 0; i < settled.length; i++) {
+      const outcome = settled[i];
+      if (outcome.status === "rejected") {
+        const reason =
+          outcome.reason instanceof Error
+            ? outcome.reason.message
+            : String(outcome.reason);
+        logger.warn("IndexReturns", `Error fetching ${symbols[i]}: ${reason}`);
+        continue;
+      }
+      if (outcome.value != null) {
+        results.push(outcome.value);
       }
     }
 

@@ -13,7 +13,7 @@ const MIN_RS_SCORE = 40;
 const MAX_RESULTS = 15;
 
 // Phase 2 (상승 추세) 우선, Phase 1 (바닥→전환) 다음
-const PHASE_PRIORITY: Record<number, number> = { 2: 0, 1: 1, 3: 2, 4: 3 };
+const PHASE_PRIORITY: Readonly<Record<number, number>> = { 2: 0, 1: 1, 3: 2, 4: 3 } as const;
 
 interface UnusualRow {
   symbol: string;
