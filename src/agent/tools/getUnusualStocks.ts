@@ -85,10 +85,11 @@ export const getUnusualStocks: AgentTool = {
            AND s.is_fund = false
            AND dm.vol_ma30::numeric > 0
            AND dp_prev.close::numeric > 0
-         HAVING
-           ABS((dp.close::numeric - dp_prev.close::numeric) / dp_prev.close::numeric) >= $2
-           OR dp.volume::numeric / NULLIF(dm.vol_ma30::numeric, 0) >= $3
-           OR (sp.prev_phase IS NOT NULL AND sp.prev_phase != sp.phase)`,
+           AND (
+             ABS((dp.close::numeric - dp_prev.close::numeric) / dp_prev.close::numeric) >= $2
+             OR dp.volume::numeric / NULLIF(dm.vol_ma30::numeric, 0) >= $3
+             OR (sp.prev_phase IS NOT NULL AND sp.prev_phase != sp.phase)
+           )`,
         [date, BIG_MOVE_THRESHOLD, HIGH_VOLUME_RATIO],
       ),
     );

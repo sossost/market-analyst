@@ -58,6 +58,7 @@ async function main() {
     logger.step("No trade date found. Skipping.");
     await sendDiscordMessage(
       "📊 거래 데이터가 없습니다. 주간 Agent 실행을 스킵합니다.",
+      "DISCORD_WEEKLY_WEBHOOK_URL",
     );
     await pool.end();
     return;

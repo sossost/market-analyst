@@ -52,22 +52,27 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
       const mdContent = validateString(input.markdownContent);
       const filename = validateString(input.filename);
 
-      if (mdContent != null && filename != null) {
-        await sendDiscordFile(webhookUrl, message, filename, mdContent);
+      try {
+        if (mdContent != null && filename != null) {
+          await sendDiscordFile(webhookUrl, message, filename, mdContent);
+          return JSON.stringify({
+            success: true,
+            messageLength: message.length,
+            fileAttached: true,
+            filename,
+          });
+        }
+
+        await sendDiscordMessage(message, webhookEnvVar);
         return JSON.stringify({
           success: true,
           messageLength: message.length,
-          fileAttached: true,
-          filename,
+          fileAttached: false,
         });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return JSON.stringify({ success: false, error: reason });
       }
-
-      await sendDiscordMessage(message);
-      return JSON.stringify({
-        success: true,
-        messageLength: message.length,
-        fileAttached: false,
-      });
     },
   };
 }

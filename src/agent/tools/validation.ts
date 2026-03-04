@@ -4,10 +4,15 @@
  */
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const SYMBOL_PATTERN = /^[A-Z]{1,5}$/;
+// Dot separator for share class tickers: BRK.B, BF.B (NYSE convention)
+const SYMBOL_PATTERN = /^[A-Z]{1,5}(\.[A-Z]{1,2})?$/;
 
 export function validateDate(value: unknown): string | null {
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
+    return null;
+  }
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts)) {
     return null;
   }
   return value;

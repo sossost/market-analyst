@@ -3,6 +3,7 @@ import path from "node:path";
 import { logger } from "./logger";
 
 const FALLBACK_DIR = path.resolve(process.cwd(), "data/reports/fallback");
+const FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Send a message to Discord via the given webhook URL.
@@ -16,6 +17,7 @@ async function sendToWebhook(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content: message }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (response.ok === false) {
@@ -29,16 +31,16 @@ async function sendToWebhook(
 }
 
 /**
- * Send a report/general message to Discord via DISCORD_WEBHOOK_URL.
+ * Send a message to Discord via the specified webhook env var.
  * Falls back to local file if webhook is not set or fails.
  */
-export async function sendDiscordMessage(message: string): Promise<void> {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+export async function sendDiscordMessage(
+  message: string,
+  webhookEnvVar: string = "DISCORD_WEBHOOK_URL",
+): Promise<void> {
+  const webhookUrl = process.env[webhookEnvVar];
   if (webhookUrl == null || webhookUrl === "") {
-    logger.warn(
-      "Discord",
-      "DISCORD_WEBHOOK_URL not set, saving to fallback file",
-    );
+    logger.warn("Discord", `${webhookEnvVar} not set, saving to fallback file`);
     saveFallback(message);
     return;
   }
@@ -95,6 +97,7 @@ export async function sendDiscordFile(
   const response = await fetch(webhookUrl, {
     method: "POST",
     body: formData,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (response.ok === false) {

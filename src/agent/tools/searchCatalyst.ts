@@ -4,6 +4,7 @@ import { validateString, validateSymbol } from "./validation";
 
 const BRAVE_NEWS_URL = "https://api.search.brave.com/res/v1/news/search";
 const MAX_RESULTS = 3;
+const FETCH_TIMEOUT_MS = 10_000;
 
 interface BraveNewsResult {
   title: string;
@@ -71,6 +72,7 @@ export const searchCatalyst: AgentTool = {
           Accept: "application/json",
           "X-Subscription-Token": apiKey,
         },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
 
       if (response.ok === false) {
