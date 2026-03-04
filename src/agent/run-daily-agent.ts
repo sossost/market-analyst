@@ -13,7 +13,7 @@ import { getLeadingSectors } from "./tools/getLeadingSectors";
 import { getPhase2Stocks } from "./tools/getPhase2Stocks";
 import { getStockDetail } from "./tools/getStockDetail";
 import { readReportHistory } from "./tools/readReportHistory";
-import { sendDiscordReport } from "./tools/sendDiscordReport";
+import { createSendDiscordReport } from "./tools/sendDiscordReport";
 import { saveReportLogTool } from "./tools/saveReportLog";
 
 const MODEL = "claude-opus-4-6";
@@ -69,7 +69,7 @@ async function main() {
       getPhase2Stocks,
       getStockDetail,
       readReportHistory,
-      sendDiscordReport,
+      createSendDiscordReport("DISCORD_WEBHOOK_URL"),
       saveReportLogTool,
     ],
     model: MODEL,

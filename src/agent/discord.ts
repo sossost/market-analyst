@@ -75,6 +75,39 @@ export async function sendDiscordError(errorMessage: string): Promise<void> {
 }
 
 /**
+ * Send a message with an attached MD file to Discord via multipart/form-data.
+ * Falls back to text-only message if file upload fails.
+ */
+export async function sendDiscordFile(
+  webhookUrl: string,
+  message: string,
+  filename: string,
+  mdContent: string,
+): Promise<void> {
+  const formData = new FormData();
+  formData.append("payload_json", JSON.stringify({ content: message }));
+  formData.append(
+    "files[0]",
+    new Blob([mdContent], { type: "text/markdown" }),
+    filename,
+  );
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (response.ok === false) {
+    const body = await response.text().catch(() => "");
+    logger.error("Discord", `File upload failed (${response.status}): ${body}`);
+    saveFallback(mdContent);
+    throw new Error(`Discord file upload failed: ${response.status}`);
+  }
+
+  logger.info("Discord", `File sent: ${filename}`);
+}
+
+/**
  * Save message to local file as fallback when Discord fails.
  */
 function saveFallback(message: string): void {
