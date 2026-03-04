@@ -64,7 +64,7 @@ function makeRec(overrides: Record<string, unknown> = {}) {
 
 describe("readRecommendationPerformance", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockFrom.mockReturnValue({ where: mockWhere });
     mockWhere.mockReturnValue({ orderBy: mockOrderBy });
     mockOrderBy.mockReturnValue({ limit: mockLimit });
@@ -157,7 +157,7 @@ describe("readRecommendationPerformance", () => {
       closeDate: "2026-03-04",
       closePrice: "110",
     });
-    mockLimit.mockResolvedValueOnce([]);
+    // status=CLOSED이면 active 쿼리를 스킵하므로 closed 결과만 설정
     mockLimit.mockResolvedValueOnce([closedRec]);
 
     const result = await readRecommendationPerformance.execute({

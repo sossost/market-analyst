@@ -39,25 +39,31 @@ export const readRecommendationPerformance: AgentTool = {
       typeof input.status === "string" ? input.status : "ALL";
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
-    // ACTIVE 추천 조회
-    const activeRecs = await retryDatabaseOperation(() =>
-      db
-        .select()
-        .from(recommendations)
-        .where(eq(recommendations.status, "ACTIVE"))
-        .orderBy(desc(recommendations.recommendationDate))
-        .limit(limit),
-    );
+    const fetchActive = statusFilter === "ACTIVE" || statusFilter === "ALL";
+    const fetchClosed = statusFilter === "CLOSED" || statusFilter === "ALL";
 
-    // CLOSED 추천 조회
-    const closedRecs = await retryDatabaseOperation(() =>
-      db
-        .select()
-        .from(recommendations)
-        .where(ne(recommendations.status, "ACTIVE"))
-        .orderBy(desc(recommendations.closeDate))
-        .limit(limit),
-    );
+    const [activeRecs, closedRecs] = await Promise.all([
+      fetchActive
+        ? retryDatabaseOperation(() =>
+            db
+              .select()
+              .from(recommendations)
+              .where(eq(recommendations.status, "ACTIVE"))
+              .orderBy(desc(recommendations.recommendationDate))
+              .limit(limit),
+          )
+        : Promise.resolve([]),
+      fetchClosed
+        ? retryDatabaseOperation(() =>
+            db
+              .select()
+              .from(recommendations)
+              .where(ne(recommendations.status, "ACTIVE"))
+              .orderBy(desc(recommendations.closeDate))
+              .limit(limit),
+          )
+        : Promise.resolve([]),
+    ]);
 
     // 전체 통계 계산
     const allClosed = closedRecs;

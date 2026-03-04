@@ -47,40 +47,38 @@ async function main() {
 
   const symbols = activeRecs.map((r) => r.symbol);
 
-  // 2. 현재 종가 조회
-  const { rows: priceRows } = await retryDatabaseOperation(() =>
-    pool.query<{ symbol: string; close: string }>(
-      `SELECT symbol, close::text FROM daily_prices
-       WHERE symbol = ANY($1) AND date = $2`,
+  // 2. 현재 종가 + Phase/RS 조회 (JOIN으로 단일 쿼리)
+  const { rows: dataRows } = await retryDatabaseOperation(() =>
+    pool.query<{
+      symbol: string;
+      close: string;
+      phase: number | null;
+      rs_score: number | null;
+    }>(
+      `SELECT p.symbol, p.close::text, sp.phase, sp.rs_score
+       FROM daily_prices p
+       LEFT JOIN stock_phases sp ON p.symbol = sp.symbol AND p.date = sp.date
+       WHERE p.symbol = ANY($1) AND p.date = $2`,
       [symbols, targetDate],
     ),
   );
-  const priceBySymbol = new Map(
-    priceRows.map((r) => [r.symbol, toNum(r.close)]),
-  );
-
-  // 3. 현재 Phase/RS 조회
-  const { rows: phaseRows } = await retryDatabaseOperation(() =>
-    pool.query<{ symbol: string; phase: number; rs_score: number | null }>(
-      `SELECT symbol, phase, rs_score FROM stock_phases
-       WHERE symbol = ANY($1) AND date = $2`,
-      [symbols, targetDate],
-    ),
-  );
-  const phaseBySymbol = new Map(
-    phaseRows.map((r) => [r.symbol, { phase: r.phase, rs: r.rs_score }]),
+  const dataBySymbol = new Map(
+    dataRows.map((r) => [
+      r.symbol,
+      { price: toNum(r.close), phase: r.phase, rs: r.rs_score },
+    ]),
   );
 
   // 4. 각 추천 업데이트
   let closedCount = 0;
 
   for (const rec of activeRecs) {
-    const currentPrice = priceBySymbol.get(rec.symbol);
-    if (currentPrice == null || currentPrice === 0) continue;
+    const data = dataBySymbol.get(rec.symbol);
+    if (data == null || data.price === 0) continue;
 
-    const phaseData = phaseBySymbol.get(rec.symbol);
-    const currentPhase = phaseData?.phase ?? null;
-    const currentRs = phaseData?.rs ?? null;
+    const currentPrice = data.price;
+    const currentPhase = data.phase ?? null;
+    const currentRs = data.rs ?? null;
 
     const entryPrice = toNum(rec.entryPrice);
     if (entryPrice === 0) continue;

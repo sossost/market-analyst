@@ -148,81 +148,92 @@ async function saveFactorSnapshot(
   symbol: string,
   date: string,
 ): Promise<void> {
-  // 종목 팩터
-  const { rows: phaseRows } = await retryDatabaseOperation(() =>
-    pool.query<{
-      rs_score: number | null;
-      phase: number;
-      ma150_slope: string | null;
-      vol_ratio: string | null;
-      volume_confirmed: boolean | null;
-      pct_from_high_52w: string | null;
-      pct_from_low_52w: string | null;
-      conditions_met: string | null;
-    }>(
-      `SELECT rs_score, phase, ma150_slope, vol_ratio, volume_confirmed,
-              pct_from_high_52w, pct_from_low_52w, conditions_met
-       FROM stock_phases WHERE symbol = $1 AND date = $2`,
-      [symbol, date],
-    ),
-  );
+  // 독립 쿼리 3개 병렬 실행
+  const [{ rows: phaseRows }, { rows: symbolRows }, { rows: breadthRows }] =
+    await Promise.all([
+      retryDatabaseOperation(() =>
+        pool.query<{
+          rs_score: number | null;
+          phase: number;
+          ma150_slope: string | null;
+          vol_ratio: string | null;
+          volume_confirmed: boolean | null;
+          pct_from_high_52w: string | null;
+          pct_from_low_52w: string | null;
+          conditions_met: string | null;
+        }>(
+          `SELECT rs_score, phase, ma150_slope, vol_ratio, volume_confirmed,
+                  pct_from_high_52w, pct_from_low_52w, conditions_met
+           FROM stock_phases WHERE symbol = $1 AND date = $2`,
+          [symbol, date],
+        ),
+      ),
+      retryDatabaseOperation(() =>
+        pool.query<{ sector: string | null; industry: string | null }>(
+          `SELECT sector, industry FROM symbols WHERE symbol = $1`,
+          [symbol],
+        ),
+      ),
+      retryDatabaseOperation(() =>
+        pool.query<{ phase2_ratio: string | null }>(
+          `SELECT
+             ROUND(COUNT(*) FILTER (WHERE phase = 2)::numeric / NULLIF(COUNT(*), 0) * 100, 1)::text AS phase2_ratio
+           FROM stock_phases WHERE date = $1`,
+          [date],
+        ),
+      ),
+    ]);
+
   const stockFactor = phaseRows[0] ?? null;
-
-  // 섹터 팩터 (종목의 섹터 조회 → sector_rs_daily)
-  const { rows: symbolRows } = await retryDatabaseOperation(() =>
-    pool.query<{ sector: string | null; industry: string | null }>(
-      `SELECT sector, industry FROM symbols WHERE symbol = $1`,
-      [symbol],
-    ),
-  );
   const symbolInfo = symbolRows[0] ?? null;
+  const marketPhase2Ratio =
+    breadthRows[0]?.phase2_ratio != null
+      ? toNum(breadthRows[0].phase2_ratio)
+      : null;
 
+  // 섹터/업종 팩터 병렬 조회 (symbolInfo 의존)
   let sectorRs: number | null = null;
   let sectorGroupPhase: number | null = null;
   let industryRs: number | null = null;
   let industryGroupPhase: number | null = null;
 
+  const groupQueries: Promise<void>[] = [];
+
   if (symbolInfo?.sector != null) {
-    const { rows: sectorRows } = await retryDatabaseOperation(() =>
-      pool.query<{ avg_rs: string | null; group_phase: number | null }>(
-        `SELECT avg_rs, group_phase FROM sector_rs_daily
-         WHERE sector = $1 AND date = $2`,
-        [symbolInfo.sector, date],
-      ),
+    groupQueries.push(
+      retryDatabaseOperation(() =>
+        pool.query<{ avg_rs: string | null; group_phase: number | null }>(
+          `SELECT avg_rs, group_phase FROM sector_rs_daily
+           WHERE sector = $1 AND date = $2`,
+          [symbolInfo.sector, date],
+        ),
+      ).then(({ rows }) => {
+        if (rows[0] != null) {
+          sectorRs = toNum(rows[0].avg_rs);
+          sectorGroupPhase = rows[0].group_phase;
+        }
+      }),
     );
-    if (sectorRows[0] != null) {
-      sectorRs = toNum(sectorRows[0].avg_rs);
-      sectorGroupPhase = sectorRows[0].group_phase;
-    }
   }
 
   if (symbolInfo?.industry != null) {
-    const { rows: industryRows } = await retryDatabaseOperation(() =>
-      pool.query<{ avg_rs: string | null; group_phase: number | null }>(
-        `SELECT avg_rs, group_phase FROM industry_rs_daily
-         WHERE industry = $1 AND date = $2`,
-        [symbolInfo.industry, date],
-      ),
+    groupQueries.push(
+      retryDatabaseOperation(() =>
+        pool.query<{ avg_rs: string | null; group_phase: number | null }>(
+          `SELECT avg_rs, group_phase FROM industry_rs_daily
+           WHERE industry = $1 AND date = $2`,
+          [symbolInfo.industry, date],
+        ),
+      ).then(({ rows }) => {
+        if (rows[0] != null) {
+          industryRs = toNum(rows[0].avg_rs);
+          industryGroupPhase = rows[0].group_phase;
+        }
+      }),
     );
-    if (industryRows[0] != null) {
-      industryRs = toNum(industryRows[0].avg_rs);
-      industryGroupPhase = industryRows[0].group_phase;
-    }
   }
 
-  // 시장 팩터 (Phase 2 비율)
-  let marketPhase2Ratio: number | null = null;
-  const { rows: breadthRows } = await retryDatabaseOperation(() =>
-    pool.query<{ phase2_ratio: string | null }>(
-      `SELECT
-         ROUND(COUNT(*) FILTER (WHERE phase = 2)::numeric / NULLIF(COUNT(*), 0) * 100, 1)::text AS phase2_ratio
-       FROM stock_phases WHERE date = $1`,
-      [date],
-    ),
-  );
-  if (breadthRows[0]?.phase2_ratio != null) {
-    marketPhase2Ratio = toNum(breadthRows[0].phase2_ratio);
-  }
+  await Promise.all(groupQueries);
 
   await retryDatabaseOperation(() =>
     db
