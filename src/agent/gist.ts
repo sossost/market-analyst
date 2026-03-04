@@ -18,9 +18,9 @@ export async function createGist(
   content: string,
   description: string,
 ): Promise<GistResult | null> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = process.env.GH_GIST_TOKEN ?? process.env.GITHUB_TOKEN;
   if (token == null || token === "") {
-    logger.warn("Gist", "GITHUB_TOKEN not set, skipping gist creation");
+    logger.warn("Gist", "GH_GIST_TOKEN not set, skipping gist creation");
     return null;
   }
 
