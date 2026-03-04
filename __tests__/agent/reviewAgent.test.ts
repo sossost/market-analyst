@@ -32,6 +32,7 @@ const {
   createDraftCaptureTool,
   reviewReport,
   refineReport,
+  extractDataOnly,
   sendDrafts,
   runReviewPipeline,
 } = await import("@/agent/reviewAgent");
@@ -445,6 +446,48 @@ describe("refineReport", () => {
 });
 
 // ---------------------------------------------------------------------------
+// extractDataOnly
+// ---------------------------------------------------------------------------
+
+describe("extractDataOnly", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns data-only drafts parsed from Claude's JSON response", async () => {
+    const dataOnly: ReportDraft[] = [
+      { message: "S&P 500 +1.2% ⚠️ 리뷰어 판정에 따라 분석 섹션이 제외되었습니다." },
+    ];
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
+
+    const result = await extractDataOnly([makeDraft()]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].message).toContain("S&P 500");
+  });
+
+  it("falls back to original drafts when Claude returns malformed JSON", async () => {
+    const originals = [makeDraft({ message: "Original with opinions" })];
+    mockCreate.mockResolvedValueOnce(makeTextResponse("not json"));
+
+    const result = await extractDataOnly(originals);
+
+    expect(result).toEqual(originals);
+  });
+
+  it("uses the DATA_ONLY system prompt (not REFINE)", async () => {
+    const dataOnly: ReportDraft[] = [{ message: "Data only" }];
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
+
+    await extractDataOnly([makeDraft()]);
+
+    const call = mockCreate.mock.calls[0][0];
+    expect(call.system).toContain("팩트/데이터 기반 섹션만");
+    expect(call.system).not.toContain("리뷰어의 지적사항");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // sendDrafts
 // ---------------------------------------------------------------------------
 
@@ -487,7 +530,7 @@ describe("sendDrafts", () => {
       "TEST_WEBHOOK",
     );
 
-    expect(mockCreateGist).toHaveBeenCalledWith("daily.md", "# Details", "daily.md");
+    expect(mockCreateGist).toHaveBeenCalledWith("daily.md", "# Details", "Summary");
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
       expect.stringContaining("https://gist.github.com/abc123"),
       "TEST_WEBHOOK",
@@ -609,7 +652,7 @@ describe("runReviewPipeline", () => {
     );
   });
 
-  it("refines drafts and sends refined version when verdict is REJECT", async () => {
+  it("extracts data-only sections when verdict is REJECT", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
     // First Claude call: reviewReport → REJECT
@@ -623,15 +666,15 @@ describe("runReviewPipeline", () => {
       ),
     );
 
-    // Second Claude call: refineReport
-    const refined: ReportDraft[] = [{ message: "Completely rewritten draft" }];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    // Second Claude call: extractDataOnly → data-only draft
+    const dataOnly: ReportDraft[] = [{ message: "S&P 500 +1.2%, NASDAQ +0.8% ⚠️ 리뷰어 판정에 따라 분석 섹션이 제외되었습니다." }];
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
 
     await runReviewPipeline([makeDraft()], "TEST_WEBHOOK");
 
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
-      "Completely rewritten draft",
+      expect.stringContaining("분석 섹션이 제외되었습니다"),
       "TEST_WEBHOOK",
     );
   });
