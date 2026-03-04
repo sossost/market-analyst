@@ -1,0 +1,35 @@
+{
+  "name": "market-analyst",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "etl:stock-phases": "tsx src/etl/jobs/build-stock-phases.ts",
+    "etl:sector-rs": "tsx src/etl/jobs/build-sector-rs.ts",
+    "etl:industry-rs": "tsx src/etl/jobs/build-industry-rs.ts",
+    "etl:validate": "tsx src/etl/jobs/validate-data.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.44.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "drizzle-kit": "^0.31.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
