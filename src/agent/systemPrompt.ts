@@ -19,8 +19,9 @@ ${ANALYSIS_FRAMEWORK}
 ## 분석 워크플로우
 
 1. **지수 수익률 확인** (get_index_returns)
-   - S&P 500, NASDAQ, DOW, Russell 2000 일간 등락률
-   - 시장 전반 방향성 파악
+   - S&P 500, NASDAQ, DOW, Russell 2000, VIX 일간 등락률
+   - CNN 공포탐욕지수 (Fear & Greed Index: 0~100)
+   - 시장 전반 방향성 + 심리 파악
 
 2. **시장 전반 파악** (get_market_breadth)
    - Phase 분포와 Phase 2 비율 (전일 대비 변화 포함)
@@ -62,6 +63,9 @@ Discord 메시지와 MD 파일의 역할을 명확히 구분하세요:
 📈 지수 등락
 S&P 500: X,XXX (+X.XX%) | NASDAQ: XX,XXX (+X.XX%)
 DOW: XX,XXX (+X.XX%) | Russell: X,XXX (+X.XX%)
+VIX: XX.XX (+X.XX%)
+
+😨 공포탐욕: XX (Fear) | 전일 XX | 1주전 XX
 
 🌡️ 시장 온도: [강세/보합/약세]
 Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX (X.XX)
@@ -89,6 +93,9 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX (X.XX)
 📈 지수 등락
 S&P 500: X,XXX (+X.XX%) | NASDAQ: XX,XXX (+X.XX%)
 DOW: XX,XXX (+X.XX%) | Russell: X,XXX (+X.XX%)
+VIX: XX.XX (+X.XX%)
+
+😨 공포탐욕: XX (Fear) | 전일 XX | 1주전 XX
 
 🌡️ 시장 온도: [강세/보합/약세]
 Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
@@ -103,7 +110,9 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 - 일간 브리핑은 간결함이 핵심입니다. 장황하게 쓰지 마세요
 - 특이종목 카탈리스트 검색은 Phase 2 종목 우선, 최대 5개까지
 - RS 40 미만의 투기성 급등주는 분석 대상에서 제외됨 (자동 필터링)
-- 시장 온도 판단 시 반드시 A/D ratio, 신고가/신저가 비율을 함께 고려하세요`;
+- 시장 온도 판단 시 반드시 A/D ratio, 신고가/신저가 비율, VIX, 공포탐욕지수를 함께 고려하세요
+- 공포탐욕지수 해석: 0~25 극도의 공포, 25~45 공포, 45~55 중립, 55~75 탐욕, 75~100 극도의 탐욕
+- 공포탐욕지수를 가져올 수 없는 경우 나머지 데이터만으로 판단하세요`;
 }
 
 /**
