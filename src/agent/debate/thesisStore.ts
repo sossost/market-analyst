@@ -1,6 +1,6 @@
 import { db } from "../../db/client.js";
 import { theses } from "../../db/schema/analyst.js";
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
 import type { Thesis } from "../../types/debate.js";
 
@@ -46,6 +46,73 @@ export async function loadActiveTheses() {
     .select()
     .from(theses)
     .where(eq(theses.status, "ACTIVE"));
+}
+
+/**
+ * ACTIVE thesis 중 timeframeDays가 지난 것을 EXPIRED로 변경.
+ * Returns count of expired theses.
+ */
+export async function expireStaleTheses(today: string): Promise<number> {
+  const result = await db
+    .update(theses)
+    .set({
+      status: "EXPIRED",
+      verificationDate: today,
+      closeReason: "timeframe_exceeded",
+    })
+    .where(
+      and(
+        eq(theses.status, "ACTIVE"),
+        sql`${theses.debateDate}::date + ${theses.timeframeDays} * interval '1 day' <= ${today}::date`,
+      ),
+    )
+    .returning({ id: theses.id });
+
+  if (result.length > 0) {
+    logger.info("ThesisStore", `${result.length}개 thesis 만료 처리 (${today})`);
+  }
+
+  return result.length;
+}
+
+/**
+ * ACTIVE thesis의 상태를 CONFIRMED 또는 INVALIDATED로 변경.
+ */
+export async function resolveThesis(
+  thesisId: number,
+  resolution: {
+    status: "CONFIRMED" | "INVALIDATED";
+    verificationDate: string;
+    verificationResult: string;
+    closeReason: string;
+  },
+): Promise<void> {
+  await db
+    .update(theses)
+    .set(resolution)
+    .where(
+      and(
+        eq(theses.id, thesisId),
+        eq(theses.status, "ACTIVE"),
+      ),
+    );
+
+  logger.info("ThesisStore", `Thesis #${thesisId} → ${resolution.status}: ${resolution.closeReason}`);
+}
+
+/**
+ * Thesis 상태별 통계 조회.
+ */
+export async function getThesisStats(): Promise<Record<string, number>> {
+  const rows = await db
+    .select({
+      status: theses.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(theses)
+    .groupBy(theses.status);
+
+  return Object.fromEntries(rows.map((r) => [r.status, r.count]));
 }
 
 /**

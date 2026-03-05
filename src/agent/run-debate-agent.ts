@@ -3,7 +3,7 @@ import { pool } from "@/db/client";
 import { runDebate } from "./debate/debateEngine";
 import { buildMemoryContext } from "./debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
-import { saveTheses } from "./debate/thesisStore";
+import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
@@ -137,6 +137,14 @@ async function main() {
 
   const marketDataContext = formatMarketSnapshot(marketSnapshot);
   logger.info("MarketData", `Loaded ${marketDataContext.length} chars (${marketSnapshot.sectors.length} sectors, ${marketSnapshot.newPhase2Stocks.length} new Phase 2, ${marketSnapshot.indices.length} indices)`);
+
+  // 2.5. 만료 thesis 정리
+  const expiredCount = await expireStaleTheses(debateDate);
+  if (expiredCount > 0) {
+    logger.info("Thesis", `${expiredCount}개 thesis 만료 처리`);
+  }
+  const stats = await getThesisStats();
+  logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
 
   // 3. 토론 실행
   logger.step(`[3/6] Running debate for ${debateDate}...`);
