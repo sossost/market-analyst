@@ -49,6 +49,22 @@ function checkAlertConditions(result: DebateResult): AlertDecision {
   return { send: false, reason: "" };
 }
 
+/**
+ * 리포트에서 "핵심 요약" 섹션을 추출하여 Discord 메시지에 포함.
+ * 못 찾으면 리포트 첫 300자를 사용.
+ */
+function extractCoreInsight(report: string): string {
+  // "## 1. 핵심 요약" ~ 다음 "##" 사이 추출
+  const match = report.match(/##\s*1\.\s*핵심 요약[^\n]*\n([\s\S]*?)(?=\n##\s*2\.|\n##\s*\d)/);
+  if (match != null) {
+    return match[1].trim();
+  }
+
+  // fallback: 첫 300자
+  const firstChunk = report.slice(0, 300).trim();
+  return firstChunk.endsWith(".") ? firstChunk : `${firstChunk}...`;
+}
+
 function buildDebateQuestion(debateDate: string): string {
   return `오늘은 ${debateDate}입니다.
 
@@ -64,6 +80,8 @@ function buildDebateQuestion(debateDate: string): string {
 5. 향후 1~3개월 내 검증 가능한 구체적 전망
 
 ## 필수 요구사항
+- 아래에 **실제 시장 데이터**가 제공됩니다. 지수, 섹터 RS, Phase 2 종목 등은 이미 있으니 **같은 데이터를 검색하지 마세요.**
+- 검색은 **뉴스, 이벤트, 촉매, 정책 변화** 등 제공된 데이터에 없는 정보를 찾는 데 집중하세요.
 - 검색에서 확인된 데이터만 사용하세요. **확인되지 않은 가격/수치는 절대 추정하지 마세요.**
 - 종목/ETF 언급 시 **반드시 티커**를 사용하세요 (예: NVDA, XLK)
 - ETF 티커(QQQ)와 지수(Nasdaq)를 혼동하지 마세요
@@ -90,7 +108,7 @@ async function main() {
 
   // 1. 환경변수 검증
   validateEnvironment();
-  logger.step("[1/5] Environment validated");
+  logger.step("[1/6] Environment validated");
 
   // 2. 장기 기억 + 시장 데이터 로드
   const debateDate = getDebateDate();
@@ -145,18 +163,25 @@ async function main() {
   if (shouldAlert.send) {
     logger.info("Alert", `Sending report: ${shouldAlert.reason}`);
 
+    // 핵심 요약 추출 (리포트 첫 섹션)
+    const coreInsight = extractCoreInsight(report);
+
     const thesesSummary = result.round3.theses
       .map((t) => {
         const confidence = t.confidence === "high" ? "🔴" : t.confidence === "medium" ? "🟡" : "⚪";
-        return `${confidence} ${t.thesis}`;
+        const timeframe = `${t.timeframeDays}일`;
+        return `${confidence} ${t.thesis} _(${timeframe}, ${t.consensusLevel} 합의)_`;
       })
       .join("\n");
 
     const summary = [
       `📊 **시장 브리핑** (${debateDate})`,
-      `⚡ ${shouldAlert.reason}`,
       "",
-      "**주요 전망**",
+      coreInsight,
+      "",
+      "---",
+      "",
+      "**검증 가능한 전망**",
       thesesSummary,
     ].join("\n");
 

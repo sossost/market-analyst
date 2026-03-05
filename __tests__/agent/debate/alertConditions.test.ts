@@ -105,3 +105,40 @@ describe("checkAlertConditions", () => {
     expect(result.reason).toContain("확신도 높은 전망");
   });
 });
+
+// Same logic as run-debate-agent.ts extractCoreInsight
+function extractCoreInsight(report: string): string {
+  const match = report.match(/##\s*1\.\s*핵심 요약[^\n]*\n([\s\S]*?)(?=\n##\s*2\.|\n##\s*\d)/);
+  if (match != null) {
+    return match[1].trim();
+  }
+  const firstChunk = report.slice(0, 300).trim();
+  return firstChunk.endsWith(".") ? firstChunk : `${firstChunk}...`;
+}
+
+describe("extractCoreInsight", () => {
+  it("extracts core insight section from report", () => {
+    const report = `# 시장 브리핑
+
+## 1. 핵심 요약
+
+**구조적 변화:** 실물 중심 패러다임 전환
+**주목 섹터:** Energy(XLE), Basic Materials(XLB)
+**리스크:** VIX 급등
+
+## 2. 시장 환경 판단
+
+지수 데이터...`;
+
+    const result = extractCoreInsight(report);
+    expect(result).toContain("구조적 변화");
+    expect(result).toContain("Energy(XLE)");
+    expect(result).not.toContain("시장 환경 판단");
+  });
+
+  it("falls back to first 300 chars when no section found", () => {
+    const report = "짧은 리포트 내용입니다.";
+    const result = extractCoreInsight(report);
+    expect(result).toContain("짧은 리포트");
+  });
+});
