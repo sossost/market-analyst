@@ -3,7 +3,7 @@ name: sentiment-analyst
 description: 시장 심리 분석가. 자금 흐름·포지셔닝·센티먼트·군중 심리 관점에서 시장의 과열/과매도를 판단한다. 시장 타이밍, 로테이션 신호, 극단적 심리 상태를 판별할 때 사용.
 model: sonnet
 memory: project
-tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
+tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
 
 # 시장 심리 분석가

@@ -62,13 +62,14 @@
 - 최대 50개 원칙 (토큰 ~4K)
 - 승격 조건: 동일 패턴 3회 이상 적중
 - 유효기간: 6개월, 적중률 하락 시 자동 강등
-- 저장: 파일 기반 (`data/debate/learnings.json`)
+- 저장: DB 기반 (`agent_learnings` 테이블)
 
 ### Rationale
 - system prompt에 들어가야 하니 크기 제한 필수
 - 3회 적중이면 우연이 아닌 패턴
 - 시장 레짐 변화 시 과거 원칙이 해가 되므로 유효기간 필요
-- DB보다 파일이 system prompt 주입에 간편
+- DB 저장이 검증 ETL과 일관성 유지에 유리 (thesis 테이블과 join 가능)
+- system prompt 주입 시 memoryLoader가 DB에서 로드 → 텍스트 변환
 
 ---
 
