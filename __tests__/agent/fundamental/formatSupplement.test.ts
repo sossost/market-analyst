@@ -9,6 +9,7 @@ function makeScore(symbol: string, grade: "A" | "B" | "C" | "F", epsValue: numbe
     symbol,
     grade,
     totalScore: 0,
+    rankScore: 0,
     requiredMet: 0,
     bonusMet: 0,
     criteria: {
@@ -64,5 +65,21 @@ describe("formatFundamentalSupplement", () => {
   it("includes header", () => {
     const result = formatFundamentalSupplement([makeScore("NVDA", "A", 100)]);
     expect(result).toContain("## 펀더멘탈 검증 결과");
+  });
+
+  it("shows S grade with star emoji", () => {
+    const result = formatFundamentalSupplement([makeScore("NVDA", "S" as any, 142)]);
+    expect(result).toContain("⭐ **NVDA** [S] — EPS YoY +142%");
+  });
+
+  it("sorts S before A", () => {
+    const result = formatFundamentalSupplement([
+      makeScore("AAPL", "A", 50),
+      makeScore("NVDA", "S" as any, 142),
+    ]);
+
+    const lines = result.split("\n").filter((l) => l.startsWith("⭐") || l.startsWith("🟢"));
+    expect(lines[0]).toContain("NVDA");
+    expect(lines[1]).toContain("AAPL");
   });
 });

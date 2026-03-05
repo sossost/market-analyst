@@ -117,7 +117,9 @@ function buildSummary(
   }
   parts.push(`펀더멘탈 ${score.grade}급`);
 
-  if (score.grade === "A") {
+  if (score.grade === "S") {
+    parts.push("— 최상위 슈퍼퍼포머 후보 (Top 3)");
+  } else if (score.grade === "A") {
     parts.push("— 기술 + 실적 모두 우수한 슈퍼퍼포머 후보");
   } else if (score.grade === "B") {
     parts.push("— 실적 양호, 추가 가속 여부 모니터링 필요");

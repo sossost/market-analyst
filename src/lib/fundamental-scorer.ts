@@ -48,8 +48,9 @@ export function scoreFundamentals(input: FundamentalInput): FundamentalScore {
 
   const grade = determineGrade(requiredMet, bonusMet);
   const totalScore = requiredMet * 30 + bonusMet * 20; // max 2×30 + 2×20 = 100
+  const rankScore = calcRankScore(criteria);
 
-  return { symbol, grade, totalScore, requiredMet, bonusMet, criteria };
+  return { symbol, grade, totalScore, rankScore, requiredMet, bonusMet, criteria };
 }
 
 // ─── Pure calculation helpers (exported for unit testing) ───────────
@@ -226,6 +227,7 @@ function makeInsufficientDataScore(symbol: string): FundamentalScore {
     symbol,
     grade: "F",
     totalScore: 0,
+    rankScore: 0,
     requiredMet: 0,
     bonusMet: 0,
     criteria: {
@@ -236,6 +238,57 @@ function makeInsufficientDataScore(symbol: string): FundamentalScore {
       roe: empty,
     },
   };
+}
+
+// ─── Rank score (A급 내 변별용) ─────────────────────────────────────
+
+/**
+ * 실적 강도 기반 랭킹 점수.
+ * EPS 성장률 + 매출 성장률 + 마진 수준 가산.
+ */
+export function calcRankScore(criteria: SEPACriteria): number {
+  let score = 0;
+
+  // EPS 성장률 반영 (가중 40%)
+  if (criteria.epsGrowth.value != null) {
+    score += Math.min(criteria.epsGrowth.value, 300); // cap at 300%
+  }
+
+  // 매출 성장률 반영 (가중 30%)
+  if (criteria.revenueGrowth.value != null) {
+    score += Math.min(criteria.revenueGrowth.value, 300) * 0.75;
+  }
+
+  // 이익률 수준 가산 (가중 20%)
+  if (criteria.marginExpansion.value != null) {
+    score += Math.min(criteria.marginExpansion.value, 70) * 2;
+  }
+
+  // 가속 보너스 (10%)
+  if (criteria.epsAcceleration.passed) {
+    score += 50;
+  }
+
+  return Math.round(score * 100) / 100;
+}
+
+const S_GRADE_TOP_N = 3;
+
+/**
+ * A급 종목 중 rankScore 상위 N개를 S등급으로 승격.
+ * 반드시 scoreFundamentals 이후, 전체 리스트에 대해 한 번 호출.
+ */
+export function promoteTopToS(scores: FundamentalScore[]): FundamentalScore[] {
+  const aGrades = scores.filter((s) => s.grade === "A");
+
+  if (aGrades.length === 0) return scores;
+
+  const sorted = [...aGrades].sort((a, b) => b.rankScore - a.rankScore);
+  const topSymbols = new Set(sorted.slice(0, S_GRADE_TOP_N).map((s) => s.symbol));
+
+  return scores.map((s) =>
+    topSymbols.has(s.symbol) ? { ...s, grade: "S" as FundamentalGrade } : s,
+  );
 }
 
 // ─── Quarter matching ───────────────────────────────────────────────

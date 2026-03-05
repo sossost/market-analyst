@@ -2,8 +2,8 @@
  * Minervini SEPA 기반 펀더멘탈 검증 타입.
  */
 
-/** 펀더멘탈 등급 */
-export type FundamentalGrade = "A" | "B" | "C" | "F";
+/** 펀더멘탈 등급 — S는 A급 중 상위 3개 */
+export type FundamentalGrade = "S" | "A" | "B" | "C" | "F";
 
 /** SEPA 개별 기준 판정 결과 */
 export interface SEPACriteria {
@@ -30,6 +30,8 @@ export interface FundamentalScore {
   symbol: string;
   grade: FundamentalGrade;
   totalScore: number;
+  /** A급 내 랭킹용 — 실적 강도 기반 (높을수록 강함) */
+  rankScore: number;
   requiredMet: number; // 0~2
   bonusMet: number; // 0~2 (ROE 미확보로 실질 최대 2)
   criteria: SEPACriteria;

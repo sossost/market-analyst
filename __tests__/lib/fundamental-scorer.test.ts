@@ -8,11 +8,14 @@ import {
   checkMarginExpansion,
   estimateROE,
   determineGrade,
+  calcRankScore,
+  promoteTopToS,
 } from "../../src/lib/fundamental-scorer.js";
 import type {
   QuarterlyData,
   FundamentalInput,
   FundamentalGrade,
+  FundamentalScore,
 } from "../../src/types/fundamental.js";
 
 // ─── helpers ────────────────────────────────────────────────────────
@@ -370,5 +373,103 @@ describe("scoreFundamentals — threshold boundary", () => {
 
     // 1.25 / 1.00 = 25% exactly → should NOT pass (> 25% required)
     expect(score.criteria.epsGrowth.passed).toBe(false);
+  });
+});
+
+// ─── rankScore ──────────────────────────────────────────────────────
+
+describe("calcRankScore", () => {
+  it("higher EPS growth → higher rank score", () => {
+    const low = calcRankScore({
+      epsGrowth: { passed: true, value: 30, detail: "" },
+      revenueGrowth: { passed: true, value: 30, detail: "" },
+      epsAcceleration: { passed: false, value: null, detail: "" },
+      marginExpansion: { passed: false, value: null, detail: "" },
+      roe: { passed: false, value: null, detail: "" },
+    });
+    const high = calcRankScore({
+      epsGrowth: { passed: true, value: 150, detail: "" },
+      revenueGrowth: { passed: true, value: 100, detail: "" },
+      epsAcceleration: { passed: true, value: null, detail: "" },
+      marginExpansion: { passed: false, value: null, detail: "" },
+      roe: { passed: false, value: null, detail: "" },
+    });
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it("acceleration adds bonus", () => {
+    const without = calcRankScore({
+      epsGrowth: { passed: true, value: 50, detail: "" },
+      revenueGrowth: { passed: true, value: 50, detail: "" },
+      epsAcceleration: { passed: false, value: null, detail: "" },
+      marginExpansion: { passed: false, value: null, detail: "" },
+      roe: { passed: false, value: null, detail: "" },
+    });
+    const withAccel = calcRankScore({
+      epsGrowth: { passed: true, value: 50, detail: "" },
+      revenueGrowth: { passed: true, value: 50, detail: "" },
+      epsAcceleration: { passed: true, value: null, detail: "" },
+      marginExpansion: { passed: false, value: null, detail: "" },
+      roe: { passed: false, value: null, detail: "" },
+    });
+    expect(withAccel).toBe(without + 50);
+  });
+});
+
+// ─── promoteTopToS ──────────────────────────────────────────────────
+
+describe("promoteTopToS", () => {
+  function fakeScore(symbol: string, grade: "A" | "B" | "C" | "F", rankScore: number): FundamentalScore {
+    return {
+      symbol, grade, totalScore: 0, rankScore, requiredMet: 0, bonusMet: 0,
+      criteria: {
+        epsGrowth: { passed: false, value: null, detail: "" },
+        revenueGrowth: { passed: false, value: null, detail: "" },
+        epsAcceleration: { passed: false, value: null, detail: "" },
+        marginExpansion: { passed: false, value: null, detail: "" },
+        roe: { passed: false, value: null, detail: "" },
+      },
+    };
+  }
+
+  it("promotes top 3 A-grade to S", () => {
+    const scores = [
+      fakeScore("NVDA", "A", 500),
+      fakeScore("PLTR", "A", 400),
+      fakeScore("MU", "A", 350),
+      fakeScore("AAPL", "A", 200),
+      fakeScore("MSFT", "B", 180),
+    ];
+
+    const result = promoteTopToS(scores);
+
+    expect(result.find((s) => s.symbol === "NVDA")!.grade).toBe("S");
+    expect(result.find((s) => s.symbol === "PLTR")!.grade).toBe("S");
+    expect(result.find((s) => s.symbol === "MU")!.grade).toBe("S");
+    expect(result.find((s) => s.symbol === "AAPL")!.grade).toBe("A");
+    expect(result.find((s) => s.symbol === "MSFT")!.grade).toBe("B");
+  });
+
+  it("promotes all if fewer than 3 A-grade", () => {
+    const scores = [
+      fakeScore("NVDA", "A", 500),
+      fakeScore("MSFT", "B", 300),
+    ];
+
+    const result = promoteTopToS(scores);
+
+    expect(result.find((s) => s.symbol === "NVDA")!.grade).toBe("S");
+    expect(result.find((s) => s.symbol === "MSFT")!.grade).toBe("B");
+  });
+
+  it("does nothing when no A-grade", () => {
+    const scores = [
+      fakeScore("MSFT", "B", 300),
+      fakeScore("BAD", "F", 0),
+    ];
+
+    const result = promoteTopToS(scores);
+
+    expect(result).toEqual(scores);
   });
 });

@@ -8,7 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { loadFundamentalData } from "../../lib/fundamental-data-loader.js";
-import { scoreFundamentals } from "../../lib/fundamental-scorer.js";
+import { scoreFundamentals, promoteTopToS } from "../../lib/fundamental-scorer.js";
 import { analyzeFundamentals } from "./fundamentalAgent.js";
 import { generateStockReport, publishStockReport } from "./stockReport.js";
 import { logger } from "../logger.js";
@@ -47,16 +47,16 @@ export async function runFundamentalValidation(
   const inputs = await loadFundamentalData(symbols);
   logger.info("Fundamental", `${inputs.length}개 종목 실적 데이터 로드 완료`);
 
-  // 3. 정량 스코어링
-  const scores = inputs.map(scoreFundamentals);
+  // 3. 정량 스코어링 + S등급 승격
+  const scores = promoteTopToS(inputs.map(scoreFundamentals));
 
-  const gradeCount = { A: 0, B: 0, C: 0, F: 0 };
+  const gradeCount = { S: 0, A: 0, B: 0, C: 0, F: 0 };
   for (const s of scores) gradeCount[s.grade]++;
-  logger.info("Fundamental", `등급 분포: A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`);
+  logger.info("Fundamental", `등급 분포: S=${gradeCount.S}, A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`);
 
-  // 4. A/B급 종목에 대해 LLM 분석
+  // 4. S/A/B급 종목에 대해 LLM 분석
   const client = new Anthropic();
-  const aOrBScores = scores.filter((s) => s.grade === "A" || s.grade === "B");
+  const aOrBScores = scores.filter((s) => s.grade === "S" || s.grade === "A" || s.grade === "B");
 
   const analyses = new Map<string, string>();
 
@@ -75,9 +75,9 @@ export async function runFundamentalValidation(
     }
   }
 
-  // 5. A급 종목 리포트 발행
+  // 5. S급 종목만 리포트 발행 (A급 top 3)
   if (options?.skipPublish !== true) {
-    const aGradeScores = scores.filter((s) => s.grade === "A");
+    const aGradeScores = scores.filter((s) => s.grade === "S");
 
     for (const score of aGradeScores) {
       const input = inputs.find((i) => i.symbol === score.symbol);
@@ -114,9 +114,9 @@ export function formatFundamentalSupplement(scores: FundamentalScore[]): string 
 
   for (const s of sorted) {
     const { criteria } = s;
-    const emoji = s.grade === "A" ? "🟢" : s.grade === "B" ? "🔵" : s.grade === "C" ? "🟡" : "🔴";
+    const emoji = s.grade === "S" ? "⭐" : s.grade === "A" ? "🟢" : s.grade === "B" ? "🔵" : s.grade === "C" ? "🟡" : "🔴";
 
-    if (s.grade === "A" || s.grade === "B") {
+    if (s.grade === "S" || s.grade === "A" || s.grade === "B") {
       const detail = criteria.epsGrowth.value != null ? `EPS YoY +${criteria.epsGrowth.value}%` : "";
       lines.push(`${emoji} **${s.symbol}** [${s.grade}] — ${detail}`);
     } else if (s.grade === "C") {
@@ -193,6 +193,6 @@ async function loadTechnicalData(
 }
 
 function gradeOrder(grade: string): number {
-  const order: Record<string, number> = { A: 0, B: 1, C: 2, F: 3 };
+  const order: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, F: 4 };
   return order[grade] ?? 99;
 }

@@ -8,6 +8,7 @@ function makeScore(overrides: Partial<FundamentalScore> = {}): FundamentalScore 
     symbol: "NVDA",
     grade: "A",
     totalScore: 100,
+    rankScore: 500,
     requiredMet: 2,
     bonusMet: 2,
     criteria: {
