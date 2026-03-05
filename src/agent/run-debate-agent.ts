@@ -6,6 +6,47 @@ import { saveTheses } from "./debate/thesisStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
+import type { DebateResult } from "../types/debate";
+
+interface AlertDecision {
+  send: boolean;
+  reason: string;
+}
+
+/**
+ * 리포트 발송 조건 판정.
+ * 매일 토론은 기억 축적이 목적 — 중요할 때만 알림.
+ *
+ * 발송 조건:
+ * 1. high confidence thesis가 1개 이상
+ * 2. 장관 간 의견 크게 갈림 (consensus 2/4 이하가 과반)
+ * 3. thesis가 3개 이상 (활발한 토론)
+ */
+function checkAlertConditions(result: DebateResult): AlertDecision {
+  const { theses } = result.round3;
+
+  if (theses.length === 0) {
+    return { send: false, reason: "" };
+  }
+
+  const highConfidence = theses.filter((t) => t.confidence === "high");
+  if (highConfidence.length > 0) {
+    return { send: true, reason: `High confidence thesis ${highConfidence.length}개 발견` };
+  }
+
+  const lowConsensus = theses.filter(
+    (t) => t.consensusLevel === "1/4" || t.consensusLevel === "2/4",
+  );
+  if (lowConsensus.length > theses.length / 2) {
+    return { send: true, reason: `장관 간 의견 분열 (${lowConsensus.length}/${theses.length} low consensus)` };
+  }
+
+  if (theses.length >= 3) {
+    return { send: true, reason: `활발한 토론 — ${theses.length}개 thesis 도출` };
+  }
+
+  return { send: false, reason: "" };
+}
 
 const DEBATE_QUESTION = `오늘 미국 주식시장에서 가장 주목할 변화와 시사점은 무엇인가?
 
@@ -75,45 +116,49 @@ async function main() {
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
-  // 5. Discord 발송
-  logger.step("[5/5] Sending report to Discord...");
+  // 5. 조건부 Discord 발송
+  // 매일 토론은 재귀 발전(기억 축적)이 목적. 리포트는 중요할 때만 발송.
+  logger.step("[5/5] Checking alert conditions...");
   const report = result.round3.report;
+  const shouldAlert = checkAlertConditions(result);
 
-  const summary = [
-    `🏛️ **내각 토론 리포트** (${debateDate})`,
-    "",
-    `참여: ${result.round1.outputs.length}/4명`,
-    `Thesis: ${result.round3.theses.length}개`,
-    `토큰: ${(result.metadata.totalTokens.input + result.metadata.totalTokens.output).toLocaleString()}`,
-    `소요: ${(result.metadata.totalDurationMs / 1000).toFixed(0)}초`,
-  ].join("\n");
+  if (shouldAlert.send) {
+    logger.info("Alert", `Sending report: ${shouldAlert.reason}`);
 
-  const webhookVar = "DISCORD_DEBATE_WEBHOOK_URL";
-  const webhookFallback = process.env[webhookVar] ?? process.env.DISCORD_WEBHOOK_URL;
+    const summary = [
+      `🏛️ **내각 토론 알림** (${debateDate})`,
+      `⚡ ${shouldAlert.reason}`,
+      "",
+      `참여: ${result.round1.outputs.length}/4명`,
+      `Thesis: ${result.round3.theses.length}개`,
+      `소요: ${(result.metadata.totalDurationMs / 1000).toFixed(0)}초`,
+    ].join("\n");
 
-  if (webhookFallback != null && webhookFallback !== "") {
-    // Gist에 전체 리포트 저장
-    try {
-      const gistUrl = await createGist(
-        `debate-${debateDate}.md`,
-        report,
-        `내각 토론 리포트 ${debateDate}`,
-      );
-      await sendDiscordMessage(
-        `${summary}\n\n📄 전체 리포트: ${gistUrl}`,
-        webhookVar,
-      );
-    } catch {
-      // Gist 실패 시 파일 첨부로 발송
-      await sendDiscordFile(
-        webhookFallback,
-        summary,
-        `debate-${debateDate}.md`,
-        report,
-      );
+    const webhookVar = "DISCORD_DEBATE_WEBHOOK_URL";
+    const webhookFallback = process.env[webhookVar] ?? process.env.DISCORD_WEBHOOK_URL;
+
+    if (webhookFallback != null && webhookFallback !== "") {
+      try {
+        const gistUrl = await createGist(
+          `debate-${debateDate}.md`,
+          report,
+          `내각 토론 리포트 ${debateDate}`,
+        );
+        await sendDiscordMessage(
+          `${summary}\n\n📄 전체 리포트: ${gistUrl}`,
+          webhookVar,
+        );
+      } catch {
+        await sendDiscordFile(
+          webhookFallback,
+          summary,
+          `debate-${debateDate}.md`,
+          report,
+        );
+      }
     }
   } else {
-    logger.warn("Discord", "No webhook URL configured, skipping send");
+    logger.info("Alert", "No alert conditions met — results saved to DB only");
   }
 
   await pool.end();
