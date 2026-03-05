@@ -20,7 +20,9 @@ export async function callAgent(
   client: Anthropic,
   systemPrompt: string,
   userMessage: string,
+  options?: { maxTokens?: number },
 ): Promise<AgentCallResult> {
+  const maxTokens = options?.maxTokens ?? MAX_TOKENS;
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userMessage },
   ];
@@ -31,7 +33,7 @@ export async function callAgent(
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: MAX_TOKENS,
+      max_tokens: maxTokens,
       system: systemPrompt,
       tools: DEBATE_TOOLS,
       messages,

@@ -108,7 +108,9 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
   const { client, moderator, round1Outputs, round2Outputs, question } = input;
 
   const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question);
-  const result = await callAgent(client, moderator.systemPrompt, userMessage);
+  const result = await callAgent(client, moderator.systemPrompt, userMessage, {
+    maxTokens: 8192,
+  });
 
   const theses = extractThesesFromText(result.content);
   logger.info("Round3", `Synthesis complete: ${theses.length} theses extracted`);

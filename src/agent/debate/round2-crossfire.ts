@@ -61,27 +61,33 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
     (e) => activePersonas.has(e.name as AgentPersona),
   );
 
-  const results = await Promise.allSettled(
-    activeExperts.map(async (expert) => {
-      const persona = expert.name as AgentPersona;
-      const userMessage = buildCrossfirePrompt(persona, round1Outputs, question);
-      const result = await callAgent(client, expert.systemPrompt, userMessage);
-      return { persona, result };
-    }),
-  );
+  // Rate limit 회피: 2명씩 배치로 순차 실행
+  const BATCH_SIZE = 2;
+  for (let i = 0; i < activeExperts.length; i += BATCH_SIZE) {
+    const batch = activeExperts.slice(i, i + BATCH_SIZE);
 
-  for (const settled of results) {
-    if (settled.status === "fulfilled") {
-      const { persona, result } = settled.value;
-      outputs.push({ persona, content: result.content });
-      totalInput += result.tokensUsed.input;
-      totalOutput += result.tokensUsed.output;
-      logger.info("Round2", `${persona} completed (${result.tokensUsed.output} output tokens)`);
-    } else {
-      const errorMsg = settled.reason instanceof Error
-        ? settled.reason.message
-        : String(settled.reason);
-      logger.error("Round2", `Crossfire failed: ${errorMsg}`);
+    const results = await Promise.allSettled(
+      batch.map(async (expert) => {
+        const persona = expert.name as AgentPersona;
+        const userMessage = buildCrossfirePrompt(persona, round1Outputs, question);
+        const result = await callAgent(client, expert.systemPrompt, userMessage);
+        return { persona, result };
+      }),
+    );
+
+    for (const settled of results) {
+      if (settled.status === "fulfilled") {
+        const { persona, result } = settled.value;
+        outputs.push({ persona, content: result.content });
+        totalInput += result.tokensUsed.input;
+        totalOutput += result.tokensUsed.output;
+        logger.info("Round2", `${persona} completed (${result.tokensUsed.output} output tokens)`);
+      } else {
+        const errorMsg = settled.reason instanceof Error
+          ? settled.reason.message
+          : String(settled.reason);
+        logger.error("Round2", `Crossfire failed: ${errorMsg}`);
+      }
     }
   }
 
