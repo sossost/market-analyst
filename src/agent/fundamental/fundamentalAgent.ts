@@ -13,6 +13,7 @@ import type { FundamentalScore, FundamentalInput } from "../../types/fundamental
 const PERSONA_PATH = resolve(import.meta.dirname, "../../../.claude/agents/fundamental-analyst.md");
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 2048;
+const MAX_NARRATIVE_LENGTH = 3000;
 
 interface FundamentalAnalysis {
   symbol: string;
@@ -54,7 +55,9 @@ function buildUserMessage(score: FundamentalScore, input: FundamentalInput): str
   lines.push("");
   lines.push("위 데이터를 바탕으로 이 종목의 펀더멘탈을 2-3문단으로 해석해주세요.");
 
-  return lines.join("\n");
+  // DB 데이터를 XML 래핑하여 프롬프트 인젝션 방어
+  const content = lines.join("\n");
+  return `<financial-data source="db" trust="internal">\n${content}\n</financial-data>`;
 }
 
 function formatLargeNumber(n: number): string {
@@ -81,10 +84,15 @@ export async function analyzeFundamentals(
     messages: [{ role: "user", content: userMessage }],
   });
 
-  const narrative = response.content
+  const rawNarrative = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
     .map((b) => b.text)
     .join("\n");
+
+  const narrative =
+    rawNarrative.length > MAX_NARRATIVE_LENGTH
+      ? rawNarrative.slice(0, MAX_NARRATIVE_LENGTH) + "…"
+      : rawNarrative;
 
   return {
     symbol: score.symbol,

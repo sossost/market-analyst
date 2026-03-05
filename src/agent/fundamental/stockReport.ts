@@ -4,7 +4,7 @@
  * A급 종목에 대해 구조화된 마크다운 리포트를 생성하고
  * Discord 파일 첨부 + Gist 저장한다.
  */
-import { sendDiscordFile, sendDiscordMessage } from "../discord.js";
+import { sendDiscordFile } from "../discord.js";
 import { createGist } from "../gist.js";
 import { logger } from "../logger.js";
 import type { FundamentalScore, FundamentalInput } from "../../types/fundamental.js";

@@ -146,12 +146,7 @@ describe("checkMarginExpansion", () => {
 // ─── ROE Estimation ─────────────────────────────────────────────────
 
 describe("estimateROE", () => {
-  it("estimates ROE from net margin and debt/equity is not available — uses net income / (net income / net margin * (1 - debt ratio))", () => {
-    // netMargin = 20%, netIncome = 200, implied equity proxy
-    // Simple: ROE ≈ trailing 4Q netIncome / (trailing 4Q revenue × netMargin ÷ some leverage)
-    // For now we use: trailing netIncome sum / (trailing revenue sum × avg netMargin) as proxy
-    // Actually, without equity we can't compute true ROE. We'll skip this.
-    // ROE = null when no equity data
+  it("returns null as ROE is not available (no equity data)", () => {
     expect(estimateROE([])).toBeNull();
   });
 
@@ -163,7 +158,7 @@ describe("estimateROE", () => {
 // ─── Full Scorer ────────────────────────────────────────────────────
 
 describe("scoreFundamentals", () => {
-  it("grades A when both required + 3 bonus met", () => {
+  it("grades A when both required + 2 bonus met", () => {
     // NVDA-like: explosive EPS growth, revenue growth, acceleration, margin expansion
     const input = makeInput("NVDA", [
       // Latest 4 quarters (newest first)
