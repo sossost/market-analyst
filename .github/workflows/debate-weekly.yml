@@ -1,0 +1,27 @@
+name: Weekly Debate Agent
+
+on:
+  schedule:
+    # Run Saturday UTC 03:00 (KST 12:00) — after weekly agent
+    - cron: "0 3 * * 6"
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  run-debate:
+    name: Run Cabinet Debate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/agent/run-debate-agent.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_DEBATE_WEBHOOK_URL: ${{ secrets.DISCORD_DEBATE_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_ERROR_WEBHOOK_URL: ${{ secrets.DISCORD_ERROR_WEBHOOK_URL }}
+          GH_GIST_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
