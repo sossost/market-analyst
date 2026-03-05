@@ -109,13 +109,40 @@ const client = new Anthropic({ maxRetries: 5 });
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
- * Claude가 markdown 코드 펜스로 감싼 JSON을 반환할 경우 벗겨낸다.
+ * LLM 응답에서 JSON을 안전하게 추출한다.
+ * 1. 코드 펜스 제거
+ * 2. 첫 번째 { 또는 [ 부터 마지막 } 또는 ] 까지 추출
+ * 3. 제어문자(탭 제외) 제거
  */
-function stripCodeFence(text: string): string {
-  return text
+function extractJson(text: string): string {
+  // 코드 펜스 제거
+  let cleaned = text
     .replace(/^```(?:json)?\s*\n?/, "")
     .replace(/\n?```\s*$/, "")
     .trim();
+
+  // JSON 시작/끝 위치 찾기
+  const firstBrace = cleaned.indexOf("{");
+  const firstBracket = cleaned.indexOf("[");
+  const start = firstBrace === -1 ? firstBracket
+    : firstBracket === -1 ? firstBrace
+    : Math.min(firstBrace, firstBracket);
+
+  if (start === -1) return cleaned;
+
+  const isArray = cleaned[start] === "[";
+  const closer = isArray ? "]" : "}";
+  const lastClose = cleaned.lastIndexOf(closer);
+
+  if (lastClose > start) {
+    cleaned = cleaned.slice(start, lastClose + 1);
+  }
+
+  // JSON 문자열 값 내의 이스케이프 안 된 제어문자 제거 (탭/줄바꿈 제외)
+  // eslint-disable-next-line no-control-regex
+  cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+
+  return cleaned;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +239,7 @@ export async function reviewReport(
   const raw = textBlock?.type === "text" ? textBlock.text : "";
 
   try {
-    const jsonText = stripCodeFence(raw);
+    const jsonText = extractJson(raw);
     const parsed = JSON.parse(jsonText) as ReviewResult;
 
     if (!VALID_VERDICTS.has(parsed.verdict)) {
@@ -276,8 +303,15 @@ ${feedback}`,
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock?.type === "text" ? textBlock.text : "";
 
-  const jsonText = stripCodeFence(raw);
-  const parsed = JSON.parse(jsonText) as ReportDraft | ReportDraft[];
+  const jsonText = extractJson(raw);
+
+  let parsed: ReportDraft | ReportDraft[];
+  try {
+    parsed = JSON.parse(jsonText) as ReportDraft | ReportDraft[];
+  } catch (parseErr) {
+    logger.error("Refine", `JSON parse failed. Raw (${raw.length} chars): ${raw.slice(0, RAW_PREVIEW_LENGTH)}`);
+    throw parseErr;
+  }
 
   // Claude가 배열 또는 단일 객체로 응답할 수 있음
   const item = Array.isArray(parsed) ? parsed[0] : parsed;
@@ -354,8 +388,15 @@ async function extractSingleDraftData(
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock?.type === "text" ? textBlock.text : "";
 
-  const jsonText = stripCodeFence(raw);
-  const parsed = JSON.parse(jsonText) as ReportDraft | ReportDraft[];
+  const jsonText = extractJson(raw);
+
+  let parsed: ReportDraft | ReportDraft[];
+  try {
+    parsed = JSON.parse(jsonText) as ReportDraft | ReportDraft[];
+  } catch (parseErr) {
+    logger.error("ExtractData", `JSON parse failed. Raw (${raw.length} chars): ${raw.slice(0, RAW_PREVIEW_LENGTH)}`);
+    throw parseErr;
+  }
 
   const item = Array.isArray(parsed) ? parsed[0] : parsed;
 
