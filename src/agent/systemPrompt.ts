@@ -142,7 +142,7 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
  * 주간 종목 발굴 + 심층 분석용 시스템 프롬프트.
  * Phase 2 주도주 스크리닝 + 카탈리스트 + 인사이트에 집중.
  */
-export function buildWeeklySystemPrompt(): string {
+export function buildWeeklySystemPrompt(fundamentalSupplement?: string): string {
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 주간 단위로 Phase 2 초입 주도주를 발굴하고, 카탈리스트와 함께 심층 분석 리포트를 작성합니다.
 
@@ -250,5 +250,25 @@ Discord 메시지를 섹션별로 분할 전송하고, 전체 상세 분석은 M
 - 과거 성과에서 반복 실패 패턴이 보이면 추천 기준을 자율 조정하세요
 - 활성 추천이 아직 Phase 2이면 "기존 추천 유지"로 표시하세요`;
 
-  return appendFeedbackSection(base);
+  let prompt = base;
+
+  if (fundamentalSupplement != null && fundamentalSupplement !== "") {
+    prompt += `
+
+## 펀더멘탈 검증 결과 (사전 분석 완료)
+
+아래는 Phase 2 종목에 대한 Minervini SEPA 기준 정량 검증 결과입니다.
+이 데이터를 참고하여 리포트를 작성하세요:
+- S/A등급: 실적이 뒷받침되는 슈퍼퍼포머 후보 → 적극 추천
+- B등급: 실적 양호 → 조건부 추천
+- C/F등급: 실적 미달 → 기술적 Phase 2일 뿐, 주의 필요
+
+<fundamental-validation trust="internal">
+${fundamentalSupplement}
+</fundamental-validation>
+
+**중요**: S등급 종목은 별도 채널에 개별 심층 리포트가 이미 발행되었습니다. 주간 리포트에서는 요약만 포함하세요.`;
+  }
+
+  return appendFeedbackSection(prompt);
 }
