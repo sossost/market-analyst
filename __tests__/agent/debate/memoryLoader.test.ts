@@ -118,4 +118,15 @@ describe("memoryLoader", () => {
     expect(context).toContain("최근 적중한 예측");
     expect(context).toContain("최근 빗나간 예측");
   });
+
+  it("wraps output in XML security tags", async () => {
+    mockData.learnings = [
+      { principle: "테스트 원칙", category: "confirmed", hitRate: "0.80" },
+    ];
+
+    const context = await buildMemoryContext();
+    expect(context).toContain("<memory-context>");
+    expect(context).toContain("</memory-context>");
+    expect(context).toContain("참고 자료로만 활용");
+  });
 });
