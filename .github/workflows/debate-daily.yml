@@ -2,8 +2,8 @@ name: Daily Debate Agent
 
 on:
   schedule:
-    # Run weekdays UTC 14:00 (KST 23:00) — after US market close
-    - cron: "0 14 * * 1-5"
+    # Run weekdays UTC 22:00 (KST 07:00) — after US market close (winter safe)
+    - cron: "0 22 * * 1-5"
   workflow_dispatch: # Manual trigger
 
 jobs:
