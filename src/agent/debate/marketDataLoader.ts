@@ -422,13 +422,31 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
     );
   }
 
-  // 4. New Phase 2 entries
+  // 4. New Phase 2 entries — split by volume confirmation
   if (snapshot.newPhase2Stocks.length > 0) {
-    const stockLines = snapshot.newPhase2Stocks.slice(0, 10).map(formatStockLine);
-    sections.push(
-      `### 신규 상승 전환 진입 종목 (${snapshot.newPhase2Stocks.length}건, 시총 $3억 이상)\n` +
-      `※ 고점 대비 %가 -50% 이하인 종목은 바닥 반등일 수 있으니 RS만 보고 판단하지 마세요.\n${stockLines.join("\n")}`,
-    );
+    const confirmed = snapshot.newPhase2Stocks.filter((s) => s.volumeConfirmed);
+    const unconfirmed = snapshot.newPhase2Stocks.filter((s) => !s.volumeConfirmed);
+
+    const parts: string[] = [
+      `### 신규 상승 전환 진입 종목 (${snapshot.newPhase2Stocks.length}건, 시총 $3억 이상)`,
+    ];
+
+    if (confirmed.length > 0) {
+      parts.push(
+        `\n**거래량 돌파 확인 (${confirmed.length}건)** — 거래량 2배 이상 동반, 신뢰도 높음`,
+        ...confirmed.slice(0, 10).map(formatStockLine),
+      );
+    }
+
+    if (unconfirmed.length > 0) {
+      parts.push(
+        `\n**거래량 미확인 (${unconfirmed.length}건)** — 거래량 동반 없이 기술적 조건만 충족, 추가 확인 필요`,
+        `※ 고점 대비 %가 -50% 이하인 종목은 바닥 반등일 수 있으니 RS만 보고 판단하지 마세요.`,
+        ...unconfirmed.slice(0, 10).map(formatStockLine),
+      );
+    }
+
+    sections.push(parts.join("\n"));
   }
 
   // 5. Top Phase 2 by RS

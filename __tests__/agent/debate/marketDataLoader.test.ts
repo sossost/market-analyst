@@ -101,7 +101,7 @@ describe("formatMarketSnapshot", () => {
     expect(result).toContain("5일 1->2 전환 12건");
   });
 
-  it("includes new Phase 2 entries with 52w high and market cap context", () => {
+  it("splits new Phase 2 entries by volume confirmation", () => {
     const result = formatMarketSnapshot(
       createSnapshot({
         newPhase2Stocks: [
@@ -129,12 +129,43 @@ describe("formatMarketSnapshot", () => {
       }),
     );
 
-    expect(result).toContain("NVDA (RS 95, 고점 대비 -5.2%, 시총 $2800.5B");
-    expect(result).toContain("[거래량 확인]");
-    expect(result).toContain("ACME (RS 88, 고점 대비 -45%");
+    // Overall header
     expect(result).toContain("신규 상승 전환 진입 종목 (2건");
     expect(result).toContain("시총 $3억 이상");
+
+    // Confirmed section
+    expect(result).toContain("거래량 돌파 확인 (1건)");
+    expect(result).toContain("신뢰도 높음");
+    expect(result).toContain("NVDA (RS 95, 고점 대비 -5.2%, 시총 $2800.5B");
+    expect(result).toContain("[거래량 확인]");
+
+    // Unconfirmed section
+    expect(result).toContain("거래량 미확인 (1건)");
+    expect(result).toContain("추가 확인 필요");
+    expect(result).toContain("ACME (RS 88, 고점 대비 -45%");
     expect(result).toContain("바닥 반등일 수 있으니");
+  });
+
+  it("shows only confirmed section when all stocks are confirmed", () => {
+    const result = formatMarketSnapshot(
+      createSnapshot({
+        newPhase2Stocks: [
+          {
+            symbol: "AAPL",
+            rsScore: 85,
+            prevPhase: 1,
+            sector: "Technology",
+            industry: "Consumer Electronics",
+            volumeConfirmed: true,
+            pctFromHigh52w: -10,
+            marketCapB: 3500,
+          },
+        ],
+      }),
+    );
+
+    expect(result).toContain("거래량 돌파 확인 (1건)");
+    expect(result).not.toContain("거래량 미확인");
   });
 
   it("includes top Phase 2 stocks with market cap", () => {

@@ -75,6 +75,7 @@ export function resolveVolumeConfirmed(
     return volRatio != null && volRatio >= VOLUME_BREAKOUT_THRESHOLD;
   }
 
-  // Phase 2 continuation — inherit previous value
-  return prevVolumeConfirmed ?? false;
+  // Phase 2 continuation — keep if already confirmed, upgrade if volume spikes
+  if (prevVolumeConfirmed === true) return true;
+  return volRatio != null && volRatio >= VOLUME_BREAKOUT_THRESHOLD;
 }
