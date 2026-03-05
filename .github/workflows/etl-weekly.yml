@@ -71,3 +71,18 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           DATA_API: ${{ secrets.DATA_API }}
+
+  promote-learnings:
+    name: Promote Learnings
+    needs: [load-ratios, load-quarterly-financials]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/etl/jobs/promote-learnings.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
