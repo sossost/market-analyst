@@ -82,7 +82,7 @@ async function main() {
   let fundamentalSupplement = "";
   try {
     const validationResult = await runFundamentalValidation();
-    fundamentalSupplement = formatFundamentalSupplement(validationResult.scores);
+    fundamentalSupplement = formatFundamentalSupplement(validationResult.scores, { includeHeader: false });
 
     const { scores, reportsPublished, totalTokens } = validationResult;
     logger.info("Fundamental", `${scores.length}개 종목 검증 완료, S등급 리포트 ${reportsPublished.length}개 발행`);

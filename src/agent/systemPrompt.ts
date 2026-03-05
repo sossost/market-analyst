@@ -253,6 +253,7 @@ Discord 메시지를 섹션별로 분할 전송하고, 전체 상세 분석은 M
   let prompt = base;
 
   if (fundamentalSupplement != null && fundamentalSupplement !== "") {
+    const sanitized = fundamentalSupplement.replace(/</g, "&lt;").replace(/>/g, "&gt;");
     prompt += `
 
 ## 펀더멘탈 검증 결과 (사전 분석 완료)
@@ -264,7 +265,7 @@ Discord 메시지를 섹션별로 분할 전송하고, 전체 상세 분석은 M
 - C/F등급: 실적 미달 → 기술적 Phase 2일 뿐, 주의 필요
 
 <fundamental-validation trust="internal">
-${fundamentalSupplement}
+${sanitized}
 </fundamental-validation>
 
 **중요**: S등급 종목은 별도 채널에 개별 심층 리포트가 이미 발행되었습니다. 주간 리포트에서는 요약만 포함하세요.`;
