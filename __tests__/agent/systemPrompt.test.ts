@@ -116,6 +116,16 @@ describe("buildWeeklySystemPrompt", () => {
     expect(result).toContain("&lt;/fundamental-validation&gt;");
   });
 
+  it("escapes ampersands in supplement to prevent HTML entity injection", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const withAmpersand = "S&P 500 &lt;script&gt;";
+    const result = buildWeeklySystemPrompt({ fundamentalSupplement: withAmpersand });
+
+    expect(result).toContain("S&amp;P 500");
+    expect(result).toContain("&amp;lt;script&amp;gt;");
+  });
+
   it("does not include fundamental section when supplement is empty", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
