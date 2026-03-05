@@ -109,6 +109,51 @@ const client = new Anthropic({ maxRetries: 5 });
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
+ * 중첩 괄호를 고려하여 opener에 대응하는 closer 위치를 찾는다.
+ * JSON 문자열 리터럴 내의 괄호는 무시한다.
+ * 찾지 못하면 -1 반환.
+ */
+function findMatchingClose(
+  text: string,
+  startIndex: number,
+  opener: string,
+  closer: string,
+): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = startIndex; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === opener) depth++;
+    else if (ch === closer) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+
+  return -1;
+}
+
+/**
  * LLM 응답에서 JSON을 안전하게 추출한다.
  * 1. 코드 펜스 제거
  * 2. 첫 번째 { 또는 [ 부터 마지막 } 또는 ] 까지 추출
@@ -122,20 +167,17 @@ function extractJson(text: string): string {
     .trim();
 
   // JSON 시작/끝 위치 찾기
-  const firstBrace = cleaned.indexOf("{");
-  const firstBracket = cleaned.indexOf("[");
-  const start = firstBrace === -1 ? firstBracket
-    : firstBracket === -1 ? firstBrace
-    : Math.min(firstBrace, firstBracket);
+  const candidates = [cleaned.indexOf("{"), cleaned.indexOf("[")].filter((i) => i !== -1);
+  const start = candidates.length > 0 ? Math.min(...candidates) : -1;
 
   if (start === -1) return cleaned;
 
-  const isArray = cleaned[start] === "[";
-  const closer = isArray ? "]" : "}";
-  const lastClose = cleaned.lastIndexOf(closer);
+  const opener = cleaned[start];
+  const closer = opener === "[" ? "]" : "}";
+  const matchEnd = findMatchingClose(cleaned, start, opener, closer);
 
-  if (lastClose > start) {
-    cleaned = cleaned.slice(start, lastClose + 1);
+  if (matchEnd > start) {
+    cleaned = cleaned.slice(start, matchEnd + 1);
   }
 
   // JSON 문자열 값 내의 이스케이프 안 된 제어문자 제거 (탭/줄바꿈 제외)

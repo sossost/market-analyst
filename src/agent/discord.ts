@@ -16,7 +16,7 @@ async function sendToWebhook(
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: message }),
+    body: JSON.stringify({ content: message, allowed_mentions: { parse: [] } }),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
@@ -87,7 +87,7 @@ export async function sendDiscordFile(
   mdContent: string,
 ): Promise<void> {
   const formData = new FormData();
-  formData.append("payload_json", JSON.stringify({ content: message }));
+  formData.append("payload_json", JSON.stringify({ content: message, allowed_mentions: { parse: [] } }));
   formData.append(
     "files[0]",
     new Blob([mdContent], { type: "text/markdown" }),
