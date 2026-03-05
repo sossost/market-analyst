@@ -2,6 +2,7 @@ import "dotenv/config";
 import { pool } from "@/db/client";
 import { runDebate } from "./debate/debateEngine";
 import { buildMemoryContext } from "./debate/memoryLoader";
+import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
 import { saveTheses } from "./debate/thesisStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
@@ -91,23 +92,32 @@ async function main() {
   validateEnvironment();
   logger.step("[1/5] Environment validated");
 
-  // 2. 장기 기억 로드
-  logger.step("[2/5] Loading memory context...");
-  const memoryContext = await buildMemoryContext();
+  // 2. 장기 기억 + 시장 데이터 로드
+  const debateDate = getDebateDate();
+  logger.step("[2/6] Loading memory context & market data...");
+
+  const [memoryContext, marketSnapshot] = await Promise.all([
+    buildMemoryContext(),
+    loadMarketSnapshot(debateDate),
+  ]);
+
   if (memoryContext.length > 0) {
     logger.info("Memory", `Loaded ${memoryContext.length} chars of memory context`);
   } else {
     logger.info("Memory", "No prior learnings — starting fresh");
   }
 
+  const marketDataContext = formatMarketSnapshot(marketSnapshot);
+  logger.info("MarketData", `Loaded ${marketDataContext.length} chars (${marketSnapshot.sectors.length} sectors, ${marketSnapshot.newPhase2Stocks.length} new Phase 2, ${marketSnapshot.indices.length} indices)`);
+
   // 3. 토론 실행
-  const debateDate = getDebateDate();
-  logger.step(`[3/5] Running debate for ${debateDate}...`);
+  logger.step(`[3/6] Running debate for ${debateDate}...`);
 
   const result = await runDebate({
     question: buildDebateQuestion(debateDate),
     debateDate,
     memoryContext,
+    marketDataContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);
@@ -123,13 +133,12 @@ async function main() {
   }
 
   // 4. Thesis 저장
-  logger.step("[4/5] Saving theses...");
+  logger.step("[4/6] Saving theses...");
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
   // 5. 조건부 Discord 발송
-  // 매일 토론은 재귀 발전(기억 축적)이 목적. 리포트는 중요할 때만 발송.
-  logger.step("[5/5] Checking alert conditions...");
+  logger.step("[5/6] Checking alert conditions...");
   const report = result.round3.report;
   const shouldAlert = checkAlertConditions(result);
 
