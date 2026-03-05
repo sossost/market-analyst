@@ -101,7 +101,7 @@ describe("formatMarketSnapshot", () => {
     expect(result).toContain("5일 1->2 전환 12건");
   });
 
-  it("includes new Phase 2 entries", () => {
+  it("includes new Phase 2 entries with 52w high context", () => {
     const result = formatMarketSnapshot(
       createSnapshot({
         newPhase2Stocks: [
@@ -112,23 +112,26 @@ describe("formatMarketSnapshot", () => {
             sector: "Technology",
             industry: "Semiconductors",
             volumeConfirmed: true,
+            pctFromHigh52w: -5.2,
           },
           {
-            symbol: "AAPL",
-            rsScore: 85,
+            symbol: "RVSN",
+            rsScore: 100,
             prevPhase: 1,
-            sector: "Technology",
-            industry: "Consumer Electronics",
+            sector: "Industrials",
+            industry: "Railroads",
             volumeConfirmed: false,
+            pctFromHigh52w: -72.3,
           },
         ],
       }),
     );
 
-    expect(result).toContain("NVDA (RS 95");
+    expect(result).toContain("NVDA (RS 95, 고점 대비 -5.2%");
     expect(result).toContain("[거래량 확인]");
-    expect(result).toContain("AAPL (RS 85");
-    expect(result).toContain("신규 Phase 2 진입 종목 (2건)");
+    expect(result).toContain("RVSN (RS 100, 고점 대비 -72.3%");
+    expect(result).toContain("신규 상승 전환 진입 종목 (2건)");
+    expect(result).toContain("바닥 반등일 수 있으니");
   });
 
   it("includes top Phase 2 stocks", () => {
@@ -142,13 +145,14 @@ describe("formatMarketSnapshot", () => {
             sector: "Technology",
             industry: "Software",
             volumeConfirmed: false,
+            pctFromHigh52w: -8.1,
           },
         ],
       }),
     );
 
-    expect(result).toContain("Phase 2 RS 상위 종목");
-    expect(result).toContain("MSFT (RS 90");
+    expect(result).toContain("상승 초입 RS 상위 종목");
+    expect(result).toContain("MSFT (RS 90, 고점 대비 -8.1%");
   });
 
   it("warns not to estimate prices", () => {

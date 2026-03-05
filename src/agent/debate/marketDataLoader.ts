@@ -22,6 +22,7 @@ interface Phase2Stock {
   sector: string | null;
   industry: string | null;
   volumeConfirmed: boolean;
+  pctFromHigh52w: number | null;
 }
 
 interface MarketBreadthSnapshot {
@@ -112,8 +113,10 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: string | null;
     industry: string | null;
     volume_confirmed: boolean | null;
+    pct_from_high_52w: string | null;
   }>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry, sp.volume_confirmed
+    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
+            sp.volume_confirmed, sp.pct_from_high_52w::text
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
      WHERE sp.date = $1
@@ -133,8 +136,10 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: string | null;
     industry: string | null;
     volume_confirmed: boolean | null;
+    pct_from_high_52w: string | null;
   }>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry, sp.volume_confirmed
+    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
+            sp.volume_confirmed, sp.pct_from_high_52w::text
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
      WHERE sp.date = $1
@@ -152,6 +157,9 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: r.sector,
     industry: r.industry,
     volumeConfirmed: r.volume_confirmed ?? false,
+    pctFromHigh52w: r.pct_from_high_52w != null
+      ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
+      : null,
   });
 
   return {
@@ -397,10 +405,12 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
   if (snapshot.newPhase2Stocks.length > 0) {
     const stockLines = snapshot.newPhase2Stocks.slice(0, 10).map((s) => {
       const vol = s.volumeConfirmed ? " [거래량 확인]" : "";
-      return `- ${s.symbol} (RS ${s.rsScore}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
+      const high52w = s.pctFromHigh52w != null ? `, 고점 대비 ${s.pctFromHigh52w}%` : "";
+      return `- ${s.symbol} (RS ${s.rsScore}${high52w}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
     });
     sections.push(
-      `### 신규 Phase 2 진입 종목 (${snapshot.newPhase2Stocks.length}건)\n${stockLines.join("\n")}`,
+      `### 신규 상승 전환 진입 종목 (${snapshot.newPhase2Stocks.length}건)\n` +
+      `※ 고점 대비 %가 -50% 이하인 종목은 바닥 반등일 수 있으니 RS만 보고 판단하지 마세요.\n${stockLines.join("\n")}`,
     );
   }
 
@@ -408,10 +418,11 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
   if (snapshot.topPhase2Stocks.length > 0) {
     const stockLines = snapshot.topPhase2Stocks.slice(0, 10).map((s) => {
       const vol = s.volumeConfirmed ? " [거래량 확인]" : "";
-      return `- ${s.symbol} (RS ${s.rsScore}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
+      const high52w = s.pctFromHigh52w != null ? `, 고점 대비 ${s.pctFromHigh52w}%` : "";
+      return `- ${s.symbol} (RS ${s.rsScore}${high52w}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
     });
     sections.push(
-      `### Phase 2 RS 상위 종목 (RS >= 80)\n${stockLines.join("\n")}`,
+      `### 상승 초입 RS 상위 종목 (RS >= 80)\n${stockLines.join("\n")}`,
     );
   }
 
