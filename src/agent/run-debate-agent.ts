@@ -227,10 +227,22 @@ async function main() {
   logger.step("\nDone.");
 }
 
+function sanitizeErrorForDiscord(msg: string): string {
+  const MAX_LENGTH = 500;
+  // Remove potential connection strings and sensitive data
+  const sanitized = msg
+    .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
+    .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
+    .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]");
+  return sanitized.length > MAX_LENGTH
+    ? `${sanitized.slice(0, MAX_LENGTH)}...`
+    : sanitized;
+}
+
 main().catch(async (err) => {
   const errorMsg = err instanceof Error ? err.message : String(err);
   logger.error("Debate", `Fatal: ${errorMsg}`);
-  await sendDiscordError(errorMsg);
+  await sendDiscordError(sanitizeErrorForDiscord(errorMsg));
   await pool.end();
   process.exit(1);
 });

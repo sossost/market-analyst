@@ -17,6 +17,9 @@ export async function saveTheses(
     return 0;
   }
 
+  // 같은 날짜의 기존 thesis 삭제 (재실행 시 중복 방지)
+  await db.delete(theses).where(eq(theses.debateDate, debateDate));
+
   const rows = extractedTheses.map((t) => ({
     debateDate,
     agentPersona: t.agentPersona,

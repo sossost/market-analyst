@@ -168,3 +168,42 @@ describe("extractCoreInsight", () => {
     expect(result).toContain("짧은 리포트");
   });
 });
+
+// Same logic as run-debate-agent.ts sanitizeErrorForDiscord
+function sanitizeErrorForDiscord(msg: string): string {
+  const MAX_LENGTH = 500;
+  const sanitized = msg
+    .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
+    .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
+    .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]");
+  return sanitized.length > MAX_LENGTH
+    ? `${sanitized.slice(0, MAX_LENGTH)}...`
+    : sanitized;
+}
+
+describe("sanitizeErrorForDiscord", () => {
+  it("redacts postgres connection strings", () => {
+    const msg = "Connection failed: postgresql://user:pass@host:5432/db";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[DB_URL]");
+    expect(result).not.toContain("user:pass");
+  });
+
+  it("redacts URLs containing token", () => {
+    const msg = "Failed: https://api.example.com/token=abc123";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[REDACTED_URL]");
+    expect(result).not.toContain("abc123");
+  });
+
+  it("truncates long error messages", () => {
+    const msg = "x".repeat(1000);
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result.length).toBeLessThanOrEqual(503); // 500 + "..."
+  });
+
+  it("leaves normal errors unchanged", () => {
+    const msg = "Round 1 failed: no agents produced output";
+    expect(sanitizeErrorForDiscord(msg)).toBe(msg);
+  });
+});

@@ -46,7 +46,7 @@ describe("braveSearch", () => {
       expect(parsed.error).toContain("BRAVE_API_KEY");
     });
 
-    it("calls Brave web search API and returns results", async () => {
+    it("calls Brave web search API and returns XML-wrapped results", async () => {
       const mockResponse = {
         ok: true,
         json: () =>
@@ -66,14 +66,19 @@ describe("braveSearch", () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse as Response);
 
       const result = await executeDebateTool("web_search", { query: "fed rate decision 2026" });
-      const parsed = JSON.parse(result);
 
+      expect(result).toContain("<search-results");
+      expect(result).toContain("</search-results>");
+      expect(result).toContain('trust="external"');
+
+      const jsonMatch = result.match(/<search-results[^>]*>\n([\s\S]*?)\n<\/search-results>/);
+      const parsed = JSON.parse(jsonMatch![1]);
       expect(parsed.query).toBe("fed rate decision 2026");
       expect(parsed.results).toHaveLength(1);
       expect(parsed.results[0].title).toBe("Fed Rate Decision");
     });
 
-    it("calls Brave news search API", async () => {
+    it("calls Brave news search API with XML wrapping", async () => {
       const mockResponse = {
         ok: true,
         json: () =>
@@ -92,8 +97,10 @@ describe("braveSearch", () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse as Response);
 
       const result = await executeDebateTool("news_search", { query: "AI capex 2026" });
-      const parsed = JSON.parse(result);
 
+      expect(result).toContain("<search-results");
+      const jsonMatch = result.match(/<search-results[^>]*>\n([\s\S]*?)\n<\/search-results>/);
+      const parsed = JSON.parse(jsonMatch![1]);
       expect(parsed.results).toHaveLength(1);
       expect(parsed.results[0].title).toBe("AI Capex Surge");
       expect(parsed.results[0].age).toBe("2 hours ago");

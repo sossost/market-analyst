@@ -142,6 +142,26 @@ ${round2Section}
 \`\`\``;
 }
 
+const VALID_PERSONAS = new Set<string>(["macro", "tech", "geopolitics", "sentiment"]);
+const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
+const VALID_CONSENSUS = new Set<string>(["1/4", "2/4", "3/4", "4/4"]);
+const VALID_TIMEFRAMES = new Set<number>([30, 60, 90]);
+
+function isValidThesis(t: unknown): t is Thesis {
+  if (t == null || typeof t !== "object") return false;
+  const obj = t as Record<string, unknown>;
+  return (
+    VALID_PERSONAS.has(obj.agentPersona as string) &&
+    VALID_CONFIDENCE.has(obj.confidence as string) &&
+    VALID_CONSENSUS.has(obj.consensusLevel as string) &&
+    VALID_TIMEFRAMES.has(obj.timeframeDays as number) &&
+    typeof obj.thesis === "string" &&
+    obj.thesis.length > 0 &&
+    typeof obj.verificationMetric === "string" &&
+    typeof obj.targetCondition === "string"
+  );
+}
+
 interface ExtractionResult {
   theses: Thesis[];
   cleanReport: string;
@@ -172,7 +192,11 @@ export function extractThesesFromText(text: string): ExtractionResult {
       logger.warn("Round3", "Parsed JSON is not an array");
       return { theses: [], cleanReport };
     }
-    return { theses: parsed as Thesis[], cleanReport };
+    const validated = parsed.filter((t: unknown) => isValidThesis(t));
+    if (validated.length < parsed.length) {
+      logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
+    }
+    return { theses: validated, cleanReport };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);

@@ -51,6 +51,8 @@ export async function callAgent(
     };
   }
 
+  let lastTextContent = "";
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await client.messages.create({
       model: MODEL,
@@ -79,13 +81,17 @@ export async function callAgent(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
     );
 
+    // Track text content from each response for max-rounds fallback
+    const textBlocks = response.content.filter(
+      (block): block is Anthropic.TextBlock => block.type === "text",
+    );
+    if (textBlocks.length > 0) {
+      lastTextContent = textBlocks.map((b) => b.text).join("\n");
+    }
+
     if (toolUseBlocks.length === 0) {
-      // No tool calls and not end_turn — extract whatever text we got
-      const textBlocks = response.content.filter(
-        (block): block is Anthropic.TextBlock => block.type === "text",
-      );
       return {
-        content: textBlocks.map((b) => b.text).join("\n"),
+        content: lastTextContent,
         tokensUsed: { input: totalInput, output: totalOutput },
       };
     }
@@ -112,10 +118,13 @@ export async function callAgent(
     messages.push({ role: "user", content: toolResults });
   }
 
-  // Max rounds reached — extract text from last response
+  // Max rounds reached — use accumulated text or throw
   logger.warn("CallAgent", `Max tool rounds (${MAX_TOOL_ROUNDS}) reached`);
-  return {
-    content: "[분석 완료 — 검색 라운드 한도 도달]",
-    tokensUsed: { input: totalInput, output: totalOutput },
-  };
+  if (lastTextContent.length > 0) {
+    return {
+      content: lastTextContent,
+      tokensUsed: { input: totalInput, output: totalOutput },
+    };
+  }
+  throw new Error("Max tool rounds reached with no text output");
 }

@@ -338,6 +338,10 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
     fetchFearGreed().catch(() => null),
   ]);
 
+  if (sectors.length === 0 && breadth == null) {
+    logger.warn("MarketData", `No DB data found for ${date} — debate will run without market data`);
+  }
+
   logger.info("MarketData", `Loaded: ${sectors.length} sectors, ${phase2.newEntries.length} new Phase 2, ${indices.length} indices`);
 
   return {

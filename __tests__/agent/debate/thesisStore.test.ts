@@ -8,6 +8,8 @@ const mockReturning = vi.fn();
 const mockSelect = vi.fn();
 const mockFrom = vi.fn();
 const mockWhere = vi.fn();
+const mockDelete = vi.fn();
+const mockDeleteWhere = vi.fn();
 
 vi.mock("../../../src/db/client.js", () => ({
   db: {
@@ -20,6 +22,12 @@ vi.mock("../../../src/db/client.js", () => ({
             returning: (...rArgs: unknown[]) => mockReturning(...rArgs),
           };
         },
+      };
+    },
+    delete: (...args: unknown[]) => {
+      mockDelete(...args);
+      return {
+        where: (...wArgs: unknown[]) => mockDeleteWhere(...wArgs),
       };
     },
     select: (...args: unknown[]) => {
