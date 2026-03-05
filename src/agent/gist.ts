@@ -3,6 +3,22 @@ import { logger } from "./logger";
 const FETCH_TIMEOUT_MS = 15_000;
 const GITHUB_API = "https://api.github.com/gists";
 
+/**
+ * LLM이 생성한 마크다운 테이블의 흔한 오류를 수정한다.
+ * - 행 끝의 이중 파이프 `||` → `|`
+ * - 구분선 행의 잘못된 패턴 정리
+ */
+function sanitizeMarkdownTables(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => {
+      if (!line.includes("|")) return line;
+      // 행 끝의 이중 파이프 수정: `...-||` → `...---|`
+      return line.replace(/\|{2,}\s*$/g, "|");
+    })
+    .join("\n");
+}
+
 interface GistResult {
   url: string;
   id: string;
@@ -36,7 +52,7 @@ export async function createGist(
       body: JSON.stringify({
         description,
         public: false,
-        files: { [filename]: { content } },
+        files: { [filename]: { content: sanitizeMarkdownTables(content) } },
       }),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
