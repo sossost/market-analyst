@@ -110,6 +110,10 @@ async function demoteExpiredLearnings(
   return count;
 }
 
+/**
+ * sourceThesisIds 기준으로 hitCount/missCount를 절대값으로 재계산.
+ * 누적이 아닌 재계산 방식으로 중복 카운트 버그 방지.
+ */
 async function updateLearningStats(
   learnings: typeof agentLearnings.$inferSelect[],
   confirmedTheses: typeof theses.$inferSelect[],
@@ -125,18 +129,17 @@ async function updateLearningStats(
     const hits = sourceIds.filter((id) => confirmedIds.has(id)).length;
     const misses = sourceIds.filter((id) => invalidatedIds.has(id)).length;
 
-    if (hits === 0 && misses === 0) continue;
+    // 변화 없으면 스킵
+    if (hits === learning.hitCount && misses === learning.missCount) continue;
 
-    const totalHits = learning.hitCount + hits;
-    const totalMisses = learning.missCount + misses;
-    const total = totalHits + totalMisses;
-    const hitRate = total > 0 ? totalHits / total : null;
+    const total = hits + misses;
+    const hitRate = total > 0 ? hits / total : null;
 
     await db
       .update(agentLearnings)
       .set({
-        hitCount: totalHits,
-        missCount: totalMisses,
+        hitCount: hits,
+        missCount: misses,
         hitRate: hitRate != null ? String(hitRate.toFixed(2)) : null,
         lastVerified: today,
       })
@@ -218,7 +221,8 @@ async function promoteNewLearnings(
     const hitRate = candidate.hitCount / total;
     const allIds = [...candidate.confirmedIds, ...candidate.invalidatedIds];
 
-    const principle = `[${candidate.persona}] ${candidate.metric} 관련 전망이 ${candidate.hitCount}회 적중 (적중률 ${(hitRate * 100).toFixed(0)}%)`;
+    const sanitizedMetric = candidate.metric.replace(/[\n\r]/g, " ").slice(0, 100);
+    const principle = `[${candidate.persona}] ${sanitizedMetric} 관련 전망이 ${candidate.hitCount}회 적중 (적중률 ${(hitRate * 100).toFixed(0)}%)`;
     const category = hitRate >= 0.7 ? "confirmed" : "caution";
 
     await db.insert(agentLearnings).values({

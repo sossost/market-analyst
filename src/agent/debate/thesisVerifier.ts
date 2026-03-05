@@ -107,26 +107,23 @@ ${thesesText}
   const judgments = parseJudgments(rawText, activeTheses.map((t) => t.id));
 
   // Apply judgments
-  let confirmed = 0;
-  let invalidated = 0;
-  let held = 0;
+  // 병렬 DB 업데이트
+  await Promise.all(
+    judgments
+      .filter((j) => j.verdict !== "HOLD")
+      .map((j) =>
+        resolveThesis(j.thesisId, {
+          status: j.verdict,
+          verificationDate: debateDate,
+          verificationResult: j.reason,
+          closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
+        }),
+      ),
+  );
 
-  for (const j of judgments) {
-    if (j.verdict === "HOLD") {
-      held++;
-      continue;
-    }
-
-    await resolveThesis(j.thesisId, {
-      status: j.verdict,
-      verificationDate: debateDate,
-      verificationResult: j.reason,
-      closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
-    });
-
-    if (j.verdict === "CONFIRMED") confirmed++;
-    else invalidated++;
-  }
+  const confirmed = judgments.filter((j) => j.verdict === "CONFIRMED").length;
+  const invalidated = judgments.filter((j) => j.verdict === "INVALIDATED").length;
+  const held = judgments.filter((j) => j.verdict === "HOLD").length;
 
   logger.info(
     "ThesisVerifier",
