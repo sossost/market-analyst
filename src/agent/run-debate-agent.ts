@@ -4,6 +4,7 @@ import { runDebate } from "./debate/debateEngine";
 import { buildMemoryContext } from "./debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
 import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
+import { verifyTheses } from "./debate/thesisVerifier";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
@@ -118,11 +119,11 @@ async function main() {
 
   // 1. 환경변수 검증
   validateEnvironment();
-  logger.step("[1/6] Environment validated");
+  logger.step("[1/7] Environment validated");
 
   // 2. 장기 기억 + 시장 데이터 로드
   const debateDate = getDebateDate();
-  logger.step("[2/6] Loading memory context & market data...");
+  logger.step("[2/7] Loading memory context & market data...");
 
   const [memoryContext, marketSnapshot] = await Promise.all([
     buildMemoryContext(),
@@ -146,8 +147,21 @@ async function main() {
   const stats = await getThesisStats();
   logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
 
-  // 3. 토론 실행
-  logger.step(`[3/6] Running debate for ${debateDate}...`);
+  // 3. 기존 thesis 검증 (시장 데이터 기반)
+  logger.step("[3/7] Verifying active theses...");
+  try {
+    const verifyResult = await verifyTheses(marketDataContext, debateDate);
+    if (verifyResult.confirmed > 0 || verifyResult.invalidated > 0) {
+      logger.info("Verify", `${verifyResult.confirmed} confirmed, ${verifyResult.invalidated} invalidated, ${verifyResult.held} held`);
+    } else {
+      logger.info("Verify", `${verifyResult.held} theses held (no changes)`);
+    }
+  } catch (err) {
+    logger.warn("Verify", `Thesis verification failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 4. 토론 실행
+  logger.step(`[4/7] Running debate for ${debateDate}...`);
 
   const result = await runDebate({
     question: buildDebateQuestion(debateDate),
@@ -168,13 +182,13 @@ async function main() {
     }
   }
 
-  // 4. Thesis 저장
-  logger.step("[4/6] Saving theses...");
+  // 5. Thesis 저장
+  logger.step("[5/7] Saving theses...");
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
-  // 5. 조건부 Discord 발송
-  logger.step("[5/6] Checking alert conditions...");
+  // 6. 조건부 Discord 발송
+  logger.step("[6/7] Checking alert conditions...");
   const report = result.round3.report;
   const shouldAlert = checkAlertConditions(result);
 

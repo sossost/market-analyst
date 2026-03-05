@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { buildPromotionCandidates } from "@/etl/jobs/promote-learnings";
 
 /**
- * 장기 기억 승격/강등 로직의 핵심: 만료 판정 + 적중률 계산.
+ * 장기 기억 승격/강등 로직의 핵심: 만료 판정 + 적중률 계산 + 승격 후보 생성.
  * DB 의존 없이 순수 로직만 테스트.
  */
 
@@ -26,6 +27,27 @@ function calculateHitRate(hits: number, misses: number): number | null {
   const total = hits + misses;
   if (total === 0) return null;
   return hits / total;
+}
+
+function makeThesis(overrides: Record<string, unknown>) {
+  return {
+    id: 1,
+    debateDate: "2026-03-01",
+    agentPersona: "macro",
+    thesis: "test thesis",
+    timeframeDays: 30,
+    verificationMetric: "S&P 500",
+    targetCondition: ">5800",
+    invalidationCondition: null,
+    confidence: "high",
+    consensusLevel: "3/4",
+    status: "CONFIRMED",
+    verificationDate: "2026-03-05",
+    verificationResult: "confirmed",
+    closeReason: "condition_met",
+    createdAt: new Date(),
+    ...overrides,
+  } as any;
 }
 
 describe("promote-learnings logic", () => {
@@ -66,6 +88,80 @@ describe("promote-learnings logic", () => {
 
     it("returns 0 for all misses", () => {
       expect(calculateHitRate(0, 3)).toBe(0);
+    });
+  });
+
+  describe("buildPromotionCandidates", () => {
+    it("groups confirmed theses by persona + metric with 3+ hits", () => {
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].persona).toBe("macro");
+      expect(result[0].metric).toBe("Fed funds rate");
+      expect(result[0].hitCount).toBe(3);
+    });
+
+    it("excludes groups with fewer than 3 confirmed", () => {
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "GDP" }),
+        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "GDP" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(0);
+    });
+
+    it("excludes thesis IDs already in existing learnings", () => {
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "tech", verificationMetric: "capex" }),
+        makeThesis({ id: 2, agentPersona: "tech", verificationMetric: "capex" }),
+        makeThesis({ id: 3, agentPersona: "tech", verificationMetric: "capex" }),
+      ];
+
+      const existingIds = new Set([1, 2, 3]);
+      const result = buildPromotionCandidates(confirmed, [], existingIds);
+      expect(result).toHaveLength(0);
+    });
+
+    it("counts invalidated theses for the same group", () => {
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
+        makeThesis({ id: 2, agentPersona: "sentiment", verificationMetric: "VIX" }),
+        makeThesis({ id: 3, agentPersona: "sentiment", verificationMetric: "VIX" }),
+      ];
+      const invalidated = [
+        makeThesis({ id: 4, agentPersona: "sentiment", verificationMetric: "VIX", status: "INVALIDATED" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].hitCount).toBe(3);
+      expect(result[0].missCount).toBe(1);
+      expect(result[0].invalidatedIds).toEqual([4]);
+    });
+
+    it("handles multiple groups from different personas", () => {
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "CPI" }),
+        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "CPI" }),
+        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "CPI" }),
+        makeThesis({ id: 4, agentPersona: "tech", verificationMetric: "AI capex" }),
+        makeThesis({ id: 5, agentPersona: "tech", verificationMetric: "AI capex" }),
+        makeThesis({ id: 6, agentPersona: "tech", verificationMetric: "AI capex" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(2);
+    });
+
+    it("returns empty for no confirmed theses", () => {
+      const result = buildPromotionCandidates([], [], new Set());
+      expect(result).toHaveLength(0);
     });
   });
 });
