@@ -178,7 +178,7 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
     phaseRows.map((r) => [`phase${r.phase}`, toNum(r.count)]),
   );
   const phase2Count = phaseDistribution.phase2 ?? 0;
-  const phase2Ratio = total > 0 ? Number(((phase2Count / total) * 100).toFixed(1)) : 0;
+  const phase2RatioRaw = total > 0 ? (phase2Count / total) * 100 : 0;
 
   // Previous day comparison
   const { rows: prevRows } = await pool.query<{ phase2_count: string; total_count: string }>(
@@ -191,7 +191,7 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   );
   const prevTotal = toNum(prevRows[0]?.total_count);
   const prevPhase2 = toNum(prevRows[0]?.phase2_count);
-  const prevPhase2Ratio = prevTotal > 0 ? (prevPhase2 / prevTotal) * 100 : 0;
+  const prevPhase2RatioRaw = prevTotal > 0 ? (prevPhase2 / prevTotal) * 100 : 0;
 
   // Market avg RS
   const { rows: rsRows } = await pool.query<{ avg_rs: string }>(
@@ -202,8 +202,8 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   return {
     totalStocks: total,
     phaseDistribution,
-    phase2Ratio,
-    phase2RatioChange: Number((phase2Ratio - prevPhase2Ratio).toFixed(1)),
+    phase2Ratio: Number(phase2RatioRaw.toFixed(1)),
+    phase2RatioChange: Number((phase2RatioRaw - prevPhase2RatioRaw).toFixed(1)),
     marketAvgRs: toNum(rsRows[0]?.avg_rs),
   };
 }

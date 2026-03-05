@@ -65,6 +65,16 @@ function extractCoreInsight(report: string): string {
   return firstChunk.endsWith(".") ? firstChunk : `${firstChunk}...`;
 }
 
+/**
+ * Discord 멘션 sanitize — LLM 생성 텍스트에서 @everyone, @here 등 제거.
+ */
+function sanitizeDiscordMentions(text: string): string {
+  return text
+    .replace(/@everyone/gi, "@\u200Beveryone")
+    .replace(/@here/gi, "@\u200Bhere")
+    .replace(/<@[!&]?\d+>/g, "[mention]");
+}
+
 function buildDebateQuestion(debateDate: string): string {
   return `오늘은 ${debateDate}입니다.
 
@@ -197,7 +207,7 @@ async function main() {
         );
         const reportLink = gist != null ? `\n\n📄 전체 리포트: ${gist.url}` : "";
         await sendDiscordMessage(
-          `${summary}${reportLink}`,
+          sanitizeDiscordMentions(`${summary}${reportLink}`),
           webhookVar,
         );
       } catch {

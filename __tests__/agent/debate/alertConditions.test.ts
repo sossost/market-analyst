@@ -116,6 +116,32 @@ function extractCoreInsight(report: string): string {
   return firstChunk.endsWith(".") ? firstChunk : `${firstChunk}...`;
 }
 
+function sanitizeDiscordMentions(text: string): string {
+  return text
+    .replace(/@everyone/gi, "@\u200Beveryone")
+    .replace(/@here/gi, "@\u200Bhere")
+    .replace(/<@[!&]?\d+>/g, "[mention]");
+}
+
+describe("sanitizeDiscordMentions", () => {
+  it("neutralizes @everyone and @here", () => {
+    const result = sanitizeDiscordMentions("Alert @everyone check @here now");
+    expect(result).not.toContain("@everyone");
+    expect(result).not.toContain("@here");
+    expect(result).toContain("@\u200Beveryone");
+  });
+
+  it("removes user/role mentions", () => {
+    const result = sanitizeDiscordMentions("Thanks <@123456> and <@&789>");
+    expect(result).toBe("Thanks [mention] and [mention]");
+  });
+
+  it("leaves normal text unchanged", () => {
+    const text = "S&P 500 up 1.2% today";
+    expect(sanitizeDiscordMentions(text)).toBe(text);
+  });
+});
+
 describe("extractCoreInsight", () => {
   it("extracts core insight section from report", () => {
     const report = `# 시장 브리핑

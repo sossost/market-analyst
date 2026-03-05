@@ -109,5 +109,23 @@ describe("extractThesesFromText", () => {
     expect(cleanReport).toContain("시장 분석 내용");
     expect(cleanReport).not.toContain("```json");
     expect(cleanReport).not.toContain("agentPersona");
+    // "검증 가능한 전망 추출" 헤더가 제거됨
+    expect(cleanReport).not.toContain("검증 가능한 전망 추출");
+  });
+
+  it("preserves normal section titles containing '전망'", () => {
+    const text = `### 4. 주도섹터/주도주 전망
+
+부상하는 섹터 분석...
+
+### 검증 가능한 전망 추출
+
+\`\`\`json
+[{"agentPersona": "macro", "thesis": "test"}]
+\`\`\``;
+
+    const { cleanReport } = extractThesesFromText(text);
+    expect(cleanReport).toContain("주도섹터/주도주 전망");
+    expect(cleanReport).not.toContain("검증 가능한 전망 추출");
   });
 });

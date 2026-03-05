@@ -4,6 +4,8 @@ import { logger } from "../logger.js";
 import type { RoundOutput, SynthesisResult, Thesis } from "../../types/debate.js";
 import type { PersonaDefinition } from "../../types/debate.js";
 
+const MODERATOR_MAX_TOKENS = 8192;
+
 interface Round3Input {
   client: Anthropic;
   moderator: PersonaDefinition;
@@ -107,7 +109,7 @@ ${round2Section}
 - "Phase 4" → **"하락 추세"**
 - "Phase 1→2 전환" → **"바닥 돌파"** 또는 **"상승 전환 진입"**
 - 내부 시스템 용어(Phase 1/2/3/4)를 리포트에 그대로 노출하지 마세요.
-- 검색에서 확인되지 않은 가격이나 수치는 **절대 추정하지 마세요**. 확인된 데이터만 사용하세요.
+- 이전 라운드 분석에서 제공된 데이터만 사용하세요. **제공되지 않은 수치를 추정하거나 지어내지 마세요.**
 - **출처/소스 URL을 리포트에 포함하지 마세요.** 깔끔한 분석 리포트를 작성하세요.
 - 최소 1,500자 이상 작성하세요
 
@@ -159,7 +161,7 @@ export function extractThesesFromText(text: string): ExtractionResult {
 
   // JSON 블록과 그 앞의 헤더/설명 텍스트를 제거하여 유저용 리포트 생성
   const cleanReport = text
-    .replace(/#{1,3}\s*(?:검증 가능한 전망|Thesis|전망)\s*(?:추출)?[^\n]*\n?/gi, "")
+    .replace(/#{1,3}\s*(?:검증 가능한 전망 추출|Thesis 추출|전망 추출)[^\n]*\n?/gi, "")
     .replace(/```json\s*[\s\S]*?```/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -187,7 +189,7 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
 
   const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question);
   const result = await callAgent(client, moderator.systemPrompt, userMessage, {
-    maxTokens: 8192,
+    maxTokens: MODERATOR_MAX_TOKENS,
     disableTools: true,
   });
 
