@@ -68,7 +68,7 @@ function extractCoreInsight(report: string): string {
 function buildDebateQuestion(debateDate: string): string {
   return `오늘은 ${debateDate}입니다.
 
-우리의 목표는 **Phase 2(상승 초입) 진입 중인 주도섹터와 주도주를 남들보다 먼저 포착**하는 것입니다.
+우리의 목표는 **상승 초입(바닥을 돌파하여 본격 상승이 시작되는 구간)에 진입 중인 주도섹터와 주도주를 남들보다 먼저 포착**하는 것입니다.
 
 최신 뉴스와 데이터를 반드시 검색하세요. 검색 결과의 날짜를 확인하고 ${debateDate} 기준 최신 데이터만 사용하세요.
 
