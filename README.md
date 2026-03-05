@@ -43,14 +43,14 @@ cp .env.example .env  # 환경변수 설정
 ### Environment Variables
 
 ```env
-DATABASE_URL=postgresql://...                  # Supabase 연결
-ANTHROPIC_API_KEY=sk-ant-...                   # Claude API
-DISCORD_WEBHOOK_URL=https://...                # 일간 리포트 채널
-DISCORD_WEEKLY_WEBHOOK_URL=https://...         # 주간 리포트 채널
-DISCORD_STOCK_REPORT_WEBHOOK_URL=https://...   # S등급 종목 리포트 채널
-DISCORD_ERROR_WEBHOOK_URL=https://...          # 에러 알림 채널 (optional)
-BRAVE_API_KEY=BSA...                           # 카탈리스트 뉴스 검색
-GITHUB_TOKEN=gho_...                           # Gist MD 첨부
+DATABASE_URL=postgresql://...               # Supabase 연결
+ANTHROPIC_API_KEY=sk-ant-...                # Claude API
+DISCORD_WEBHOOK_URL=https://...             # 일간 리포트 채널
+DISCORD_WEEKLY_WEBHOOK_URL=https://...      # 주간 리포트 채널
+DISCORD_STOCK_REPORT_WEBHOOK_URL=https://...  # S등급 종목 리포트 채널
+DISCORD_ERROR_WEBHOOK_URL=https://...       # 에러 알림 채널 (optional)
+BRAVE_API_KEY=BSA...                        # 카탈리스트 뉴스 검색
+GITHUB_TOKEN=gho_...                        # Gist MD 첨부
 ```
 
 ### Run
@@ -80,16 +80,21 @@ npm run db:push             # 스키마 적용
 ## Architecture
 
 ```
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│     ETL      │    │   Debate     │    │    Agent     │    │   Delivery   │
-│              │    │              │    │              │    │              │
-│ Stock Phases │───▶│ 4 Ministers  │───▶│ Claude Opus  │───▶│   Discord    │
-│ Sector RS    │    │ 3-Round Talk │    │ + 12 Tools   │    │   + Gist     │
-│ Industry RS  │    │ + Moderator  │    │ + Fundamental│    │              │
-└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
-        │                  │                    │                    │
-        └──────────────────┴────────────────────┴────────────────────┘
-                              Supabase (PostgreSQL)
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│     ETL      │    │   Debate     │    │    Agent     │
+│              │    │              │    │              │
+│ Stock Phases │───▶│ 4 Ministers  │───▶│ Claude Opus  │
+│ Sector RS    │    │ 3-Round Talk │    │ + 12 Tools   │
+│ Industry RS  │    │ + Moderator  │    │ + Fundamental│
+└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+       │                   │                   │
+       │            ┌──────▼───────┐           │
+       └───────────▶│   Delivery   │◀──────────┘
+                    │  Discord     │
+                    │  + Gist      │
+                    └──────┬───────┘
+                           │
+                    Supabase (PostgreSQL)
 ```
 
 ### Agent Tools
