@@ -184,6 +184,25 @@ describe("scoreFundamentals", () => {
     expect(score.criteria.marginExpansion.passed).toBe(true);
   });
 
+  it("handles FMP DB quarter format (2025Q4 instead of Q4 2025)", () => {
+    const input = makeInput("NVDA", [
+      q("2025Q4", "2025-12-31", { epsDiluted: 1.89, revenue: 35_100_000_000, netMargin: 57 }),
+      q("2025Q3", "2025-09-30", { epsDiluted: 1.27, revenue: 30_000_000_000, netMargin: 53 }),
+      q("2025Q2", "2025-06-30", { epsDiluted: 0.98, revenue: 26_000_000_000, netMargin: 50 }),
+      q("2025Q1", "2025-03-31", { epsDiluted: 0.82, revenue: 22_000_000_000, netMargin: 45 }),
+      q("2024Q4", "2024-12-31", { epsDiluted: 0.78, revenue: 18_000_000_000, netMargin: 39 }),
+      q("2024Q3", "2024-09-30", { epsDiluted: 0.55, revenue: 15_000_000_000, netMargin: 33 }),
+      q("2024Q2", "2024-06-30", { epsDiluted: 0.45, revenue: 12_000_000_000, netMargin: 29 }),
+      q("2024Q1", "2024-03-31", { epsDiluted: 0.35, revenue: 10_000_000_000, netMargin: 25 }),
+    ]);
+
+    const score = scoreFundamentals(input);
+
+    expect(score.grade).toBe("A");
+    expect(score.criteria.epsGrowth.passed).toBe(true);
+    expect(score.criteria.revenueGrowth.passed).toBe(true);
+  });
+
   it("grades B when 1 required + 2 bonus met", () => {
     const input = makeInput("GOOD", [
       q("Q4 2025", "2025-12-31", { epsDiluted: 1.50, revenue: 5_000_000_000, netIncome: 500_000_000, netMargin: 10 }),
