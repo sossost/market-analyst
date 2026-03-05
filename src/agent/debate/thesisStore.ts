@@ -89,12 +89,7 @@ export async function resolveThesis(
 ): Promise<void> {
   await db
     .update(theses)
-    .set({
-      status: resolution.status,
-      verificationDate: resolution.verificationDate,
-      verificationResult: resolution.verificationResult,
-      closeReason: resolution.closeReason,
-    })
+    .set(resolution)
     .where(
       and(
         eq(theses.id, thesisId),
@@ -117,11 +112,7 @@ export async function getThesisStats(): Promise<Record<string, number>> {
     .from(theses)
     .groupBy(theses.status);
 
-  const stats: Record<string, number> = {};
-  for (const r of rows) {
-    stats[r.status] = r.count;
-  }
-  return stats;
+  return Object.fromEntries(rows.map((r) => [r.status, r.count]));
 }
 
 /**
