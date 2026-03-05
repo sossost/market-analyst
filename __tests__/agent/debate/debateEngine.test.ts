@@ -123,4 +123,34 @@ describe("debateEngine", () => {
       expect(systemPrompt).toContain("RSI 다이버전스");
     }
   });
+
+  it("injects market data context into question for all rounds", async () => {
+    for (let i = 0; i < 8; i++) {
+      createMock.mockResolvedValueOnce(makeResponse(`Response ${i}`));
+    }
+    createMock.mockResolvedValueOnce(
+      makeResponse("종합...\n\n```json\n[]\n```"),
+    );
+
+    const marketData = "## 실제 시장 데이터\nS&P 500: 5,200 (+1.2%)";
+
+    await runDebate({
+      question: "Test question",
+      debateDate: "2026-03-05",
+      marketDataContext: marketData,
+    });
+
+    // All 9 calls should have the market data in the user message
+    for (const call of createMock.mock.calls) {
+      const messages = call[0].messages;
+      const userMsg = messages[0];
+      expect(userMsg.role).toBe("user");
+      // Round 1 & 2 have market data in the question directly
+      // Round 3 has it in the synthesis prompt which includes the question
+      const content = typeof userMsg.content === "string"
+        ? userMsg.content
+        : JSON.stringify(userMsg.content);
+      expect(content).toContain("실제 시장 데이터");
+    }
+  });
 });

@@ -10,6 +10,7 @@ interface DebateConfig {
   question: string;
   debateDate: string;
   memoryContext?: string;
+  marketDataContext?: string;
 }
 
 /**
@@ -22,7 +23,7 @@ interface DebateConfig {
  * Individual agent failures are tolerated — debate continues with remaining agents.
  */
 export async function runDebate(config: DebateConfig): Promise<DebateResult> {
-  const { question, debateDate, memoryContext = "" } = config;
+  const { question, debateDate, memoryContext = "", marketDataContext = "" } = config;
   const startTime = Date.now();
 
   const client = new Anthropic();
@@ -30,15 +31,23 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
   const moderator = loadModeratorPersona();
   const agentErrors: DebateResult["metadata"]["agentErrors"] = [];
 
+  // Combine question with market data context
+  const fullQuestion = marketDataContext.length > 0
+    ? `${question}\n\n---\n\n${marketDataContext}`
+    : question;
+
   logger.info("Debate", `Starting debate for ${debateDate}`);
   logger.info("Debate", `Question: ${question.slice(0, 100)}...`);
+  if (marketDataContext.length > 0) {
+    logger.info("Debate", `Market data context: ${marketDataContext.length} chars`);
+  }
 
   // Round 1 — Independent Analysis
   logger.info("Debate", "=== Round 1: Independent Analysis ===");
   const round1Result = await runRound1({
     client,
     experts,
-    question,
+    question: fullQuestion,
     memoryContext,
   });
 
@@ -55,7 +64,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     client,
     experts,
     round1Outputs: round1Result.round.outputs,
-    question,
+    question: fullQuestion,
   });
 
   const activeInRound1 = round1Result.round.outputs.map((o) => o.persona);
@@ -73,7 +82,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     moderator,
     round1Outputs: round1Result.round.outputs,
     round2Outputs: round2Result.round.outputs,
-    question,
+    question: fullQuestion,
   });
 
   const totalDurationMs = Date.now() - startTime;
