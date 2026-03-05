@@ -15,7 +15,6 @@ const PERSONA_FILE_MAP: Record<AgentPersona | "moderator", string> = {
 const EXPERT_PERSONAS: AgentPersona[] = ["macro", "tech", "geopolitics", "sentiment"];
 
 interface Frontmatter {
-  name: string;
   description: string;
   model: string;
 }
@@ -27,18 +26,23 @@ function parseFrontmatter(raw: string): { frontmatter: Frontmatter; body: string
   }
 
   const [, frontmatterBlock, body] = match;
-  const frontmatter: Record<string, string> = {};
+  const fields: Record<string, string> = {};
 
   for (const line of frontmatterBlock.split("\n")) {
     const colonIndex = line.indexOf(":");
     if (colonIndex === -1) continue;
     const key = line.slice(0, colonIndex).trim();
     const value = line.slice(colonIndex + 1).trim();
-    frontmatter[key] = value;
+    fields[key] = value;
+  }
+
+  const { description, model } = fields;
+  if (description == null || description === "" || model == null || model === "") {
+    throw new Error("Invalid agent file: frontmatter must contain description and model");
   }
 
   return {
-    frontmatter: frontmatter as unknown as Frontmatter,
+    frontmatter: { description, model },
     body: body.trim(),
   };
 }
@@ -66,7 +70,8 @@ export function loadModeratorPersona(): PersonaDefinition {
 }
 
 export function loadAllPersonas(): PersonaDefinition[] {
-  return [...loadExpertPersonas(), loadModeratorPersona()];
+  const allRoles: DebateRole[] = [...EXPERT_PERSONAS, "moderator"];
+  return allRoles.map(loadPersona);
 }
 
 export function getAvailableAgentFiles(): string[] {
