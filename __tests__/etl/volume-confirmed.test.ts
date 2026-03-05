@@ -43,16 +43,32 @@ describe("resolveVolumeConfirmed", () => {
   });
 
   describe("Phase 2 continuation (prevPhase == 2)", () => {
-    it("inherits true from previous", () => {
+    it("keeps true once confirmed", () => {
       expect(resolveVolumeConfirmed(2, 2, 0.8, true)).toBe(true);
     });
 
-    it("inherits false from previous", () => {
-      expect(resolveVolumeConfirmed(2, 2, 3.0, false)).toBe(false);
+    it("upgrades to true when vol_ratio >= 2.0 and previously unconfirmed", () => {
+      expect(resolveVolumeConfirmed(2, 2, 2.5, false)).toBe(true);
     });
 
-    it("defaults to false when prevVolumeConfirmed is null", () => {
+    it("upgrades to true when vol_ratio == 2.0 boundary and previously unconfirmed", () => {
+      expect(resolveVolumeConfirmed(2, 2, 2.0, false)).toBe(true);
+    });
+
+    it("stays false when vol_ratio < 2.0 and previously unconfirmed", () => {
+      expect(resolveVolumeConfirmed(2, 2, 1.5, false)).toBe(false);
+    });
+
+    it("stays false when vol_ratio is null and previously unconfirmed", () => {
+      expect(resolveVolumeConfirmed(2, 2, null, false)).toBe(false);
+    });
+
+    it("defaults to false when prevVolumeConfirmed is null and vol < 2x", () => {
       expect(resolveVolumeConfirmed(2, 2, 1.5, null)).toBe(false);
+    });
+
+    it("upgrades from null to true when vol >= 2x", () => {
+      expect(resolveVolumeConfirmed(2, 2, 3.0, null)).toBe(true);
     });
   });
 });
