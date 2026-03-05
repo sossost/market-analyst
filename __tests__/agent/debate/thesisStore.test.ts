@@ -44,7 +44,7 @@ vi.mock("../../../src/db/client.js", () => ({
   },
 }));
 
-import { saveTheses, loadActiveTheses } from "../../../src/agent/debate/thesisStore.js";
+import { saveTheses, loadActiveTheses, formatThesesForPrompt } from "../../../src/agent/debate/thesisStore.js";
 
 describe("thesisStore", () => {
   beforeEach(() => {
@@ -125,6 +125,95 @@ describe("thesisStore", () => {
       expect(mockSelect).toHaveBeenCalled();
       expect(mockFrom).toHaveBeenCalled();
       expect(mockWhere).toHaveBeenCalled();
+    });
+  });
+
+  describe("formatThesesForPrompt", () => {
+    it("returns empty string for empty array", () => {
+      expect(formatThesesForPrompt([])).toBe("");
+    });
+
+    it("formats thesis with correct persona label and confidence", () => {
+      const rows = [
+        {
+          id: 1,
+          debateDate: "2026-03-05",
+          agentPersona: "macro",
+          thesis: "금리 인하 가속화",
+          timeframeDays: 30,
+          verificationMetric: "10Y Yield",
+          targetCondition: "< 4.0%",
+          invalidationCondition: "> 4.5%",
+          confidence: "high",
+          consensusLevel: "3/4",
+          status: "ACTIVE",
+          verificationDate: null,
+          verificationResult: null,
+          closeReason: null,
+          createdAt: new Date(),
+        },
+      ];
+
+      const result = formatThesesForPrompt(rows as any);
+
+      expect(result).toContain("[HIGH/3/4]");
+      expect(result).toContain("매크로 이코노미스트");
+      expect(result).toContain("금리 인하 가속화");
+      expect(result).toContain("30일");
+      expect(result).toContain("< 4.0%");
+    });
+
+    it("formats all persona types correctly", () => {
+      const personas = ["tech", "geopolitics", "sentiment"];
+      const labels = ["테크 애널리스트", "지정학 전략가", "시장 심리 분석가"];
+
+      const rows = personas.map((p, i) => ({
+        id: i + 1,
+        debateDate: "2026-03-05",
+        agentPersona: p,
+        thesis: `thesis ${i}`,
+        timeframeDays: 30,
+        verificationMetric: "metric",
+        targetCondition: "condition",
+        invalidationCondition: null,
+        confidence: "medium",
+        consensusLevel: "2/4",
+        status: "ACTIVE",
+        verificationDate: null,
+        verificationResult: null,
+        closeReason: null,
+        createdAt: new Date(),
+      }));
+
+      const result = formatThesesForPrompt(rows as any);
+
+      for (const label of labels) {
+        expect(result).toContain(label);
+      }
+    });
+
+    it("maps confidence levels correctly", () => {
+      const makeRow = (confidence: string) => ({
+        id: 1,
+        debateDate: "2026-03-05",
+        agentPersona: "macro",
+        thesis: "test",
+        timeframeDays: 30,
+        verificationMetric: "m",
+        targetCondition: "c",
+        invalidationCondition: null,
+        confidence,
+        consensusLevel: "4/4",
+        status: "ACTIVE",
+        verificationDate: null,
+        verificationResult: null,
+        closeReason: null,
+        createdAt: new Date(),
+      });
+
+      expect(formatThesesForPrompt([makeRow("high")] as any)).toContain("[HIGH/4/4]");
+      expect(formatThesesForPrompt([makeRow("medium")] as any)).toContain("[MED/4/4]");
+      expect(formatThesesForPrompt([makeRow("low")] as any)).toContain("[LOW/4/4]");
     });
   });
 });

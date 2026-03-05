@@ -27,6 +27,10 @@ import {
   runFundamentalValidation,
   formatFundamentalSupplement,
 } from "./fundamental/runFundamentalValidation";
+import {
+  loadActiveTheses,
+  formatThesesForPrompt,
+} from "./debate/thesisStore";
 
 const MODEL = "claude-opus-4-6";
 const MAX_TOKENS = 8192;
@@ -61,7 +65,7 @@ async function main() {
 
   // 1. 환경변수 검증
   validateAgentEnvironment();
-  logger.step("[1/6] Environment validated");
+  logger.step("[1/7] Environment validated");
 
   // 2. 최신 거래일 확인 (금요일 데이터)
   const targetDate = await getLatestPriceDate();
@@ -74,10 +78,10 @@ async function main() {
     await pool.end();
     return;
   }
-  logger.step(`[2/6] Target date: ${targetDate}`);
+  logger.step(`[2/7] Target date: ${targetDate}`);
 
   // 3. 펀더멘탈 검증 (Phase 2 종목 SEPA 스코어링 + S등급 리포트 발행)
-  logger.step("[3/6] Running fundamental validation...");
+  logger.step("[3/7] Running fundamental validation...");
 
   let fundamentalSupplement = "";
   try {
@@ -92,14 +96,29 @@ async function main() {
     logger.error("Fundamental", `검증 실패 (에이전트는 계속 진행): ${reason}`);
   }
 
+  // 3.5. 장관 토론 전망 로드
+  let thesesContext = "";
+  try {
+    const activeTheses = await loadActiveTheses();
+    thesesContext = formatThesesForPrompt(activeTheses);
+    if (activeTheses.length > 0) {
+      logger.info("Theses", `${activeTheses.length}개 ACTIVE thesis 로드 완료`);
+    } else {
+      logger.info("Theses", "ACTIVE thesis 없음 — 토론 컨텍스트 생략");
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error("Theses", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+  }
+
   // 4. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
-  logger.step("[4/6] Running agent loop...\n");
+  logger.step("[4/7] Running agent loop...\n");
 
   const reportDrafts: ReportDraft[] = [];
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildWeeklySystemPrompt(fundamentalSupplement),
+    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext }),
     tools: [
       getIndexReturns,
       getMarketBreadth,
@@ -123,7 +142,7 @@ async function main() {
   try {
     const result = await runAgentLoop(config);
 
-    logger.step("\n[5/6] Agent result:");
+    logger.step("\n[5/7] Agent result:");
     logger.info("Result", `Success: ${result.success}`);
     logger.info(
       "Result",
@@ -156,7 +175,7 @@ async function main() {
 
   // 6. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (reportDrafts.length > 0) {
-    logger.step("[6/6] Running review pipeline...");
+    logger.step("[6/7] Running review pipeline...");
     await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL");
   } else if (loopError != null) {
     throw new Error(`Agent failed with no drafts: ${loopError}`);
@@ -165,7 +184,7 @@ async function main() {
   }
 
   await pool.end();
-  logger.step("\nDone.");
+  logger.step("\n[7/7] Done.");
 }
 
 main().catch(async (err) => {
