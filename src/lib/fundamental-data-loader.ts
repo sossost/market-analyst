@@ -38,7 +38,7 @@ export async function loadFundamentalData(
       FROM quarterly_financials f
       LEFT JOIN quarterly_ratios r
         ON f.symbol = r.symbol AND f.period_end_date = r.period_end_date
-      WHERE f.symbol = ANY(${symbols})
+      WHERE f.symbol IN (${sql.join(symbols.map((s) => sql`${s}`), sql`, `)})
     ) sub
     WHERE rn <= ${QUARTERS_TO_LOAD}
     ORDER BY symbol, period_end_date DESC

@@ -314,7 +314,13 @@ function findYoYQuarter(
 }
 
 function parseQuarterLabel(asOfQ: string): { quarter: number; year: number } | null {
-  const match = asOfQ.match(/Q(\d)\s+(\d{4})/);
-  if (match == null) return null;
-  return { quarter: Number(match[1]), year: Number(match[2]) };
+  // "Q4 2025" format
+  const match1 = asOfQ.match(/Q(\d)\s+(\d{4})/);
+  if (match1 != null) return { quarter: Number(match1[1]), year: Number(match1[2]) };
+
+  // "2025Q4" format (FMP DB)
+  const match2 = asOfQ.match(/(\d{4})Q(\d)/);
+  if (match2 != null) return { quarter: Number(match2[2]), year: Number(match2[1]) };
+
+  return null;
 }
