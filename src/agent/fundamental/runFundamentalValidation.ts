@@ -43,8 +43,14 @@ export async function runFundamentalValidation(
     return { scores: [], reportsPublished, totalTokens };
   }
 
-  // 2. DB에서 분기 실적 로드
-  const inputs = await loadFundamentalData(symbols);
+  // 2. DB에서 분기 실적 로드 (500개씩 배치)
+  const BATCH_SIZE = 500;
+  const inputs = [];
+  for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+    const batch = symbols.slice(i, i + BATCH_SIZE);
+    const batchInputs = await loadFundamentalData(batch);
+    inputs.push(...batchInputs);
+  }
   logger.info("Fundamental", `${inputs.length}개 종목 실적 데이터 로드 완료`);
 
   // 3. 정량 스코어링 + S등급 승격
