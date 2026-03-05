@@ -48,22 +48,27 @@ function checkAlertConditions(result: DebateResult): AlertDecision {
   return { send: false, reason: "" };
 }
 
-const DEBATE_QUESTION = `오늘 미국 주식시장에서 가장 주목할 변화와 시사점은 무엇인가?
+function buildDebateQuestion(debateDate: string): string {
+  return `오늘은 ${debateDate}입니다.
 
-최신 뉴스와 데이터를 반드시 검색한 후 분석해 주세요.
+우리의 목표는 **Phase 2(상승 초입) 진입 중인 주도섹터와 주도주를 남들보다 먼저 포착**하는 것입니다.
+
+최신 뉴스와 데이터를 반드시 검색하세요. 검색 결과의 날짜를 확인하고 ${debateDate} 기준 최신 데이터만 사용하세요.
 
 ## 분석 관점
-1. 오늘/최근 시장을 움직인 핵심 이벤트와 그 구조적 의미
-2. 향후 1~3개월 내 돈이 몰릴 섹터/산업 변화
-3. 현재 시장이 과소평가하거나 과대평가하는 테마
-4. 주요 리스크 팩터와 그 발생 확률
-5. 구체적이고 검증 가능한 예측
+1. 최근 시장의 구조적 변화 — 자금 흐름, 섹터 로테이션, 매크로 전환점
+2. 지금 부상하고 있는 섹터/산업은 무엇이고, 왜 지금인가
+3. 시장이 아직 충분히 반영하지 못한 구조적 테마
+4. 현재 과열 신호가 보이거나 모멘텀이 꺾이는 섹터
+5. 향후 1~3개월 내 검증 가능한 구체적 전망
 
 ## 필수 요구사항
-- 모든 수치에 **현재 기준값과 날짜**를 명시하세요 (예: "S&P 500 현재 5,100pt 기준, 3월 5일")
-- 종목 언급 시 **티커와 현재 주가**를 포함하세요 (예: "NVDA $820")
-- "변동성 확대 예상" 같은 **누구나 하는 말은 하지 마세요**. 구체적이고 반증 가능한 주장만 하세요.
-- 예측은 반드시 숫자와 기한이 포함되어야 합니다`;
+- 검색에서 확인된 데이터만 사용하세요. **확인되지 않은 가격/수치는 절대 추정하지 마세요.**
+- 종목/ETF 언급 시 **반드시 티커**를 사용하세요 (예: NVDA, XLK)
+- ETF 티커(QQQ)와 지수(Nasdaq)를 혼동하지 마세요
+- "변동성 확대" 같은 **누구나 하는 말은 하지 마세요**
+- 반드시 한국어로 작성하세요`;
+}
 
 function validateEnvironment(): void {
   const required = ["DATABASE_URL", "ANTHROPIC_API_KEY"];
@@ -100,7 +105,7 @@ async function main() {
   logger.step(`[3/5] Running debate for ${debateDate}...`);
 
   const result = await runDebate({
-    question: DEBATE_QUESTION,
+    question: buildDebateQuestion(debateDate),
     debateDate,
     memoryContext,
   });

@@ -20,15 +20,36 @@ export async function callAgent(
   client: Anthropic,
   systemPrompt: string,
   userMessage: string,
-  options?: { maxTokens?: number },
+  options?: { maxTokens?: number; disableTools?: boolean },
 ): Promise<AgentCallResult> {
   const maxTokens = options?.maxTokens ?? MAX_TOKENS;
+  const useTools = options?.disableTools !== true;
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userMessage },
   ];
 
   let totalInput = 0;
   let totalOutput = 0;
+
+  // 도구 없이 단일 호출
+  if (!useTools) {
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages,
+    });
+    const textBlocks = response.content.filter(
+      (block): block is Anthropic.TextBlock => block.type === "text",
+    );
+    return {
+      content: textBlocks.map((b) => b.text).join("\n"),
+      tokensUsed: {
+        input: response.usage.input_tokens,
+        output: response.usage.output_tokens,
+      },
+    };
+  }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await client.messages.create({

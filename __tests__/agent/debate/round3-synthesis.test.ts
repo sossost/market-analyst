@@ -22,7 +22,7 @@ describe("extractThesesFromText", () => {
 ]
 \`\`\``;
 
-    const theses = extractThesesFromText(text);
+    const { theses } = extractThesesFromText(text);
     expect(theses).toHaveLength(1);
     expect(theses[0].agentPersona).toBe("macro");
     expect(theses[0].timeframeDays).toBe(90);
@@ -55,7 +55,7 @@ describe("extractThesesFromText", () => {
 ]
 \`\`\``;
 
-    const theses = extractThesesFromText(text);
+    const { theses } = extractThesesFromText(text);
     expect(theses).toHaveLength(2);
     expect(theses[0].agentPersona).toBe("tech");
     expect(theses[1].agentPersona).toBe("geopolitics");
@@ -63,7 +63,7 @@ describe("extractThesesFromText", () => {
 
   it("returns empty array when no JSON block found", () => {
     const text = "Just a regular report with no JSON.";
-    const theses = extractThesesFromText(text);
+    const { theses } = extractThesesFromText(text);
     expect(theses).toEqual([]);
   });
 
@@ -71,7 +71,7 @@ describe("extractThesesFromText", () => {
     const text = `\`\`\`json
 { invalid json
 \`\`\``;
-    const theses = extractThesesFromText(text);
+    const { theses } = extractThesesFromText(text);
     expect(theses).toEqual([]);
   });
 
@@ -79,7 +79,7 @@ describe("extractThesesFromText", () => {
     const text = `\`\`\`json
 { "not": "an array" }
 \`\`\``;
-    const theses = extractThesesFromText(text);
+    const { theses } = extractThesesFromText(text);
     expect(theses).toEqual([]);
   });
 
@@ -89,7 +89,25 @@ describe("extractThesesFromText", () => {
 \`\`\`json
 []
 \`\`\``;
-    const theses = extractThesesFromText(text);
+    const { theses } = extractThesesFromText(text);
     expect(theses).toEqual([]);
+  });
+
+  it("removes JSON block from clean report", () => {
+    const text = `## 핵심 요약
+
+시장 분석 내용...
+
+### 검증 가능한 전망 추출
+
+\`\`\`json
+[{"agentPersona": "macro", "thesis": "test"}]
+\`\`\``;
+
+    const { cleanReport } = extractThesesFromText(text);
+    expect(cleanReport).toContain("핵심 요약");
+    expect(cleanReport).toContain("시장 분석 내용");
+    expect(cleanReport).not.toContain("```json");
+    expect(cleanReport).not.toContain("agentPersona");
   });
 });
