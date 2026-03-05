@@ -105,10 +105,14 @@ export async function runFundamentalValidation(
  * 주간 리포트용 펀더멘탈 보조 정보 생성.
  * B 이상: 핵심 실적 한 줄, C/F: 경고 표시.
  */
-export function formatFundamentalSupplement(scores: FundamentalScore[]): string {
+export function formatFundamentalSupplement(
+  scores: FundamentalScore[],
+  options?: { includeHeader?: boolean },
+): string {
   if (scores.length === 0) return "";
 
-  const lines: string[] = ["## 펀더멘탈 검증 결과", ""];
+  const includeHeader = options?.includeHeader !== false;
+  const lines: string[] = includeHeader ? ["## 펀더멘탈 검증 결과", ""] : [];
 
   const sorted = [...scores].sort((a, b) => gradeOrder(a.grade) - gradeOrder(b.grade));
 

@@ -62,9 +62,15 @@ describe("formatFundamentalSupplement", () => {
     expect(lines[3]).toContain("BAD");
   });
 
-  it("includes header", () => {
+  it("includes header by default", () => {
     const result = formatFundamentalSupplement([makeScore("NVDA", "A", 100)]);
     expect(result).toContain("## 펀더멘탈 검증 결과");
+  });
+
+  it("excludes header when includeHeader is false", () => {
+    const result = formatFundamentalSupplement([makeScore("NVDA", "A", 100)], { includeHeader: false });
+    expect(result).not.toContain("## 펀더멘탈 검증 결과");
+    expect(result).toContain("NVDA");
   });
 
   it("shows S grade with star emoji", () => {
