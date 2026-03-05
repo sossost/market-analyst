@@ -31,7 +31,10 @@ const ANALYSIS_FRAMEWORK = `## 분석 프레임워크
  * 일간 시장 브리핑용 시스템 프롬프트.
  * 시장 온도 + 특이종목 카탈리스트 분석에 집중.
  */
-export function buildDailySystemPrompt(): string {
+export function buildDailySystemPrompt(options?: {
+  thesesContext?: string;
+}): string {
+  const { thesesContext } = options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 매일 시장 온도를 체크하고, 특이종목이 있으면 카탈리스트(원인)를 분석하여 간결한 브리핑을 전달합니다.
 
@@ -143,7 +146,25 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 - 공포탐욕지수 해석: 0~25 극도의 공포, 26~44 공포, 45~55 중립, 56~75 탐욕, 76~100 극도의 탐욕
 - 공포탐욕지수를 가져올 수 없는 경우 나머지 데이터만으로 판단하세요`;
 
-  return appendFeedbackSection(base);
+  let prompt = base;
+
+  if (thesesContext != null && thesesContext !== "") {
+    const sanitized = sanitizeXml(thesesContext);
+    prompt += `
+
+## 장관 토론 전망 (최근 ACTIVE theses)
+
+아래는 매일 진행되는 전문가 토론(매크로/테크/지정학/심리)에서 도출된 현재 유효한 전망입니다.
+일간 브리핑 작성 시 참고하세요:
+- HIGH confidence 전망이 오늘 시장 움직임과 일치하면 인사이트로 언급
+- 전망과 충돌하는 데이터가 있으면 리스크로 경고
+
+<debate-theses trust="internal">
+${sanitized}
+</debate-theses>`;
+  }
+
+  return appendFeedbackSection(prompt);
 }
 
 /**
