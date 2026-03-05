@@ -24,4 +24,5 @@ jobs:
           DISCORD_DEBATE_WEBHOOK_URL: ${{ secrets.DISCORD_DEBATE_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_ERROR_WEBHOOK_URL: ${{ secrets.DISCORD_ERROR_WEBHOOK_URL }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
           GH_GIST_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
