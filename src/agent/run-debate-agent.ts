@@ -7,13 +7,16 @@ import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord
 import { createGist } from "./gist";
 import { logger } from "./logger";
 
-const DEBATE_QUESTION = `현재 미국 주식시장에서 가장 주목해야 할 구조적 변화와 투자 기회는 무엇인가?
+const DEBATE_QUESTION = `오늘 미국 주식시장에서 가장 주목할 변화와 시사점은 무엇인가?
+
+최신 뉴스와 데이터를 반드시 검색한 후 분석해 주세요.
 
 다음 관점에서 분석해 주세요:
-1. 향후 1~3개월 내 돈이 몰릴 섹터/산업
-2. 현재 시장이 과소평가하거나 과대평가하는 테마
-3. 주요 리스크 팩터와 그 발생 확률
-4. 구체적이고 검증 가능한 예측 (thesis)`;
+1. 오늘/최근 시장을 움직인 핵심 이벤트와 그 구조적 의미
+2. 향후 1~3개월 내 돈이 몰릴 섹터/산업 변화
+3. 현재 시장이 과소평가하거나 과대평가하는 테마
+4. 주요 리스크 팩터와 그 발생 확률
+5. 구체적이고 검증 가능한 예측 (thesis)`;
 
 function validateEnvironment(): void {
   const required = ["DATABASE_URL", "ANTHROPIC_API_KEY"];
@@ -30,7 +33,7 @@ function getDebateDate(): string {
 }
 
 async function main() {
-  logger.step("=== Debate Agent: Weekly Cabinet Discussion ===\n");
+  logger.step("=== Debate Agent: Daily Cabinet Discussion ===\n");
 
   // 1. 환경변수 검증
   validateEnvironment();

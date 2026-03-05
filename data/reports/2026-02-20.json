@@ -2,138 +2,57 @@
   "date": "2026-02-20",
   "reportedSymbols": [
     {
-      "symbol": "OIS",
+      "symbol": "LITE",
       "phase": 2,
-      "rsScore": 97,
-      "sector": "Energy",
-      "industry": "Oil & Gas Equipment & Services",
-      "reason": "big_move +25.3%, high_volume 3.7x, 목표가 상향",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "FET",
-      "phase": 2,
-      "rsScore": 97,
-      "sector": "Energy",
-      "industry": "Oil & Gas Equipment & Services",
-      "reason": "big_move +9.1%, high_volume 3.1x, 목표가 78% 상향",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "VICR",
-      "phase": 2,
-      "rsScore": 97,
+      "rsScore": 98,
       "sector": "Technology",
-      "industry": "Hardware, Equipment & Parts",
-      "reason": "big_move +11.2%, high_volume 2.9x, 연간보고서 호실적",
+      "industry": "Communication Equipment",
+      "reason": "NVIDIA $4B 전략적 투자 및 광학기술 파트너십 발표, 52주 고가 -1.5%, MA150 기울기 +26.8%",
       "firstReportedDate": "2026-02-20"
     },
     {
-      "symbol": "SYRE",
+      "symbol": "AXTI",
       "phase": 2,
-      "rsScore": 92,
-      "sector": "Healthcare",
-      "industry": "Biotechnology",
-      "reason": "big_move +14.3%, high_volume 3.4x, 바이오 모멘텀",
+      "rsScore": 99,
+      "sector": "Technology",
+      "industry": "Semiconductors",
+      "reason": "RS 99 반도체 소재 리더, 갭업 매수세 + 목표가 상향, 거래량 1.95x, MA150 기울기 +35.2%",
       "firstReportedDate": "2026-02-20"
     },
     {
-      "symbol": "EDRY",
+      "symbol": "ICHR",
       "phase": 2,
-      "rsScore": 93,
-      "sector": "Industrials",
-      "industry": "Marine Shipping",
-      "reason": "big_move +9.5%, high_volume 6.1x",
+      "rsScore": 98,
+      "sector": "Technology",
+      "industry": "Semiconductors",
+      "reason": "52주 고가 -0.3% 신고가 도전, Bull Case 부각, 안정적 MA150 기울기 +11.2%",
       "firstReportedDate": "2026-02-20"
     },
     {
-      "symbol": "FOSL",
+      "symbol": "UCTT",
       "phase": 2,
-      "rsScore": 92,
+      "rsScore": 98,
+      "sector": "Technology",
+      "industry": "Semiconductors",
+      "reason": "Vanguard 지분 확대 + $525M 전환사채 증액 발행 성공, 52주 고가 -2.8%",
+      "firstReportedDate": "2026-02-20"
+    },
+    {
+      "symbol": "AMCR",
+      "phase": 2,
+      "rsScore": 99,
       "sector": "Consumer Cyclical",
-      "industry": "Luxury Goods",
-      "reason": "big_move +8.1%, high_volume 2.9x",
+      "industry": "Packaging & Containers",
+      "reason": "52주 고가 -0.2% 사실상 신고가, MA150 기울기 +47.1% 최강 모멘텀, 시총 $23.3B",
       "firstReportedDate": "2026-02-20"
     },
     {
-      "symbol": "MAYS",
+      "symbol": "AZN",
       "phase": 2,
-      "rsScore": 90,
-      "sector": "Real Estate",
-      "industry": "Real Estate - Services",
-      "reason": "big_move +5.8%, high_volume 5.2x",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "CC",
-      "phase": 2,
-      "rsScore": 89,
-      "sector": "Basic Materials",
-      "industry": "Chemicals - Specialty",
-      "reason": "big_move -16.5%, high_volume 3.1x, $700M 채권발행 급락",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "CMDB",
-      "phase": 2,
-      "rsScore": 87,
-      "sector": "Industrials",
-      "industry": "Marine Shipping",
-      "reason": "big_move -6.2%, high_volume 2.1x",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "EGO",
-      "phase": 2,
-      "rsScore": 87,
-      "sector": "Basic Materials",
-      "industry": "Gold",
-      "reason": "big_move -9.7%, high_volume 3.3x",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "WTTR",
-      "phase": 2,
-      "rsScore": 78,
-      "sector": "Utilities",
-      "industry": "Regulated Water",
-      "reason": "big_move -10.5%, high_volume 7.9x",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "ST",
-      "phase": 2,
-      "rsScore": 75,
-      "sector": "Technology",
-      "industry": "Hardware, Equipment & Parts",
-      "reason": "big_move +6.1%, high_volume 2.4x",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "RYI",
-      "phase": 2,
-      "rsScore": 71,
-      "sector": "Industrials",
-      "industry": "Manufacturing - Metal Fabrication",
-      "reason": "big_move +17.0%, high_volume 2.9x",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "AKAM",
-      "phase": 2,
-      "rsScore": 67,
-      "sector": "Technology",
-      "industry": "Software - Infrastructure",
-      "reason": "big_move -14.1%, high_volume 3.4x",
-      "firstReportedDate": "2026-02-20"
-    },
-    {
-      "symbol": "AMG",
-      "phase": 2,
-      "rsScore": 67,
-      "sector": "Financial Services",
-      "industry": "Asset Management",
-      "reason": "big_move -10.7%, high_volume 2.2x",
+      "rsScore": 98,
+      "sector": "Healthcare",
+      "industry": "Drug Manufacturers - General",
+      "reason": "Morgan Stanley 목표가 상향, 파이프라인 진전 긍정 평가, $633B 메가캡 방어적 리더",
       "firstReportedDate": "2026-02-20"
     }
   ],
@@ -142,9 +61,11 @@
     "leadingSectors": [
       "Energy",
       "Basic Materials",
-      "Industrials"
+      "Industrials",
+      "Utilities",
+      "Financial Services"
     ],
-    "totalAnalyzed": 15
+    "totalAnalyzed": 30
   },
   "metadata": {
     "model": "claude-opus-4-6",
