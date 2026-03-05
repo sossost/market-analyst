@@ -91,7 +91,8 @@ async function fetchBrave(
       age: r.age,
     }));
 
-    return JSON.stringify({ query, results });
+    const json = JSON.stringify({ query, results });
+    return `<search-results source="brave" trust="external">\n${json}\n</search-results>`;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("BraveSearch", `Search failed: ${msg}`);

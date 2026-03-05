@@ -58,13 +58,13 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     agentErrors.push({ persona, round: 1, error: "Failed to produce output" });
   }
 
-  // Round 2 — Crossfire
+  // Round 2 — Crossfire (market data already in Round 1 outputs, no need to repeat)
   logger.info("Debate", "=== Round 2: Crossfire ===");
   const round2Result = await runRound2({
     client,
     experts,
     round1Outputs: round1Result.round.outputs,
-    question: fullQuestion,
+    question,
   });
 
   const activeInRound1 = round1Result.round.outputs.map((o) => o.persona);
@@ -75,14 +75,14 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     agentErrors.push({ persona, round: 2, error: "Failed to produce output" });
   }
 
-  // Round 3 — Moderator Synthesis
+  // Round 3 — Moderator Synthesis (market data already in Round 1 outputs)
   logger.info("Debate", "=== Round 3: Moderator Synthesis ===");
   const round3Result = await runRound3({
     client,
     moderator,
     round1Outputs: round1Result.round.outputs,
     round2Outputs: round2Result.round.outputs,
-    question: fullQuestion,
+    question,
   });
 
   const totalDurationMs = Date.now() - startTime;

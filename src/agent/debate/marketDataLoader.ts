@@ -15,6 +15,8 @@ interface SectorSnapshot {
   phase1to2Count5d: number;
 }
 
+const MIN_MARKET_CAP = 300_000_000; // $300M — 초소형주 제외
+
 interface Phase2Stock {
   symbol: string;
   rsScore: number;
@@ -22,6 +24,8 @@ interface Phase2Stock {
   sector: string | null;
   industry: string | null;
   volumeConfirmed: boolean;
+  pctFromHigh52w: number | null;
+  marketCapB: number | null; // billions
 }
 
 interface MarketBreadthSnapshot {
@@ -112,17 +116,21 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: string | null;
     industry: string | null;
     volume_confirmed: boolean | null;
+    pct_from_high_52w: string | null;
+    market_cap: string | null;
   }>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry, sp.volume_confirmed
+    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
+            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
      WHERE sp.date = $1
        AND sp.phase = 2
        AND sp.prev_phase IS NOT NULL
        AND sp.prev_phase != 2
+       AND (s.market_cap IS NULL OR s.market_cap::numeric >= $2)
      ORDER BY sp.rs_score DESC
      LIMIT 20`,
-    [date],
+    [date, MIN_MARKET_CAP],
   );
 
   // Top Phase 2 by RS (regardless of when they entered)
@@ -133,16 +141,20 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: string | null;
     industry: string | null;
     volume_confirmed: boolean | null;
+    pct_from_high_52w: string | null;
+    market_cap: string | null;
   }>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry, sp.volume_confirmed
+    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
+            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
      WHERE sp.date = $1
        AND sp.phase = 2
        AND sp.rs_score >= 80
+       AND (s.market_cap IS NULL OR s.market_cap::numeric >= $2)
      ORDER BY sp.rs_score DESC
      LIMIT 15`,
-    [date],
+    [date, MIN_MARKET_CAP],
   );
 
   const mapStock = (r: typeof newRows[number]): Phase2Stock => ({
@@ -152,6 +164,12 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: r.sector,
     industry: r.industry,
     volumeConfirmed: r.volume_confirmed ?? false,
+    pctFromHigh52w: r.pct_from_high_52w != null
+      ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
+      : null,
+    marketCapB: r.market_cap != null
+      ? Number((toNum(r.market_cap) / 1_000_000_000).toFixed(1))
+      : null,
   });
 
   return {
@@ -178,7 +196,7 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
     phaseRows.map((r) => [`phase${r.phase}`, toNum(r.count)]),
   );
   const phase2Count = phaseDistribution.phase2 ?? 0;
-  const phase2Ratio = total > 0 ? Number(((phase2Count / total) * 100).toFixed(1)) : 0;
+  const phase2RatioRaw = total > 0 ? (phase2Count / total) * 100 : 0;
 
   // Previous day comparison
   const { rows: prevRows } = await pool.query<{ phase2_count: string; total_count: string }>(
@@ -191,7 +209,7 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   );
   const prevTotal = toNum(prevRows[0]?.total_count);
   const prevPhase2 = toNum(prevRows[0]?.phase2_count);
-  const prevPhase2Ratio = prevTotal > 0 ? (prevPhase2 / prevTotal) * 100 : 0;
+  const prevPhase2RatioRaw = prevTotal > 0 ? (prevPhase2 / prevTotal) * 100 : 0;
 
   // Market avg RS
   const { rows: rsRows } = await pool.query<{ avg_rs: string }>(
@@ -202,8 +220,8 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   return {
     totalStocks: total,
     phaseDistribution,
-    phase2Ratio,
-    phase2RatioChange: Number((phase2Ratio - prevPhase2Ratio).toFixed(1)),
+    phase2Ratio: Number(phase2RatioRaw.toFixed(1)),
+    phase2RatioChange: Number((phase2RatioRaw - prevPhase2RatioRaw).toFixed(1)),
     marketAvgRs: toNum(rsRows[0]?.avg_rs),
   };
 }
@@ -320,6 +338,10 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
     fetchFearGreed().catch(() => null),
   ]);
 
+  if (sectors.length === 0 && breadth == null) {
+    logger.warn("MarketData", `No DB data found for ${date} — debate will run without market data`);
+  }
+
   logger.info("MarketData", `Loaded: ${sectors.length} sectors, ${phase2.newEntries.length} new Phase 2, ${indices.length} indices`);
 
   return {
@@ -336,6 +358,13 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
 /**
  * Format market snapshot as readable text for debate question injection.
  */
+function formatStockLine(s: Phase2Stock): string {
+  const vol = s.volumeConfirmed ? " [거래량 확인]" : "";
+  const high52w = s.pctFromHigh52w != null ? `, 고점 대비 ${s.pctFromHigh52w}%` : "";
+  const cap = s.marketCapB != null ? `, 시총 $${s.marketCapB}B` : "";
+  return `- ${s.symbol} (RS ${s.rsScore}${high52w}${cap}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
+}
+
 export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
   const sections: string[] = [];
 
@@ -395,23 +424,18 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
 
   // 4. New Phase 2 entries
   if (snapshot.newPhase2Stocks.length > 0) {
-    const stockLines = snapshot.newPhase2Stocks.slice(0, 10).map((s) => {
-      const vol = s.volumeConfirmed ? " [거래량 확인]" : "";
-      return `- ${s.symbol} (RS ${s.rsScore}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
-    });
+    const stockLines = snapshot.newPhase2Stocks.slice(0, 10).map(formatStockLine);
     sections.push(
-      `### 신규 Phase 2 진입 종목 (${snapshot.newPhase2Stocks.length}건)\n${stockLines.join("\n")}`,
+      `### 신규 상승 전환 진입 종목 (${snapshot.newPhase2Stocks.length}건, 시총 $3억 이상)\n` +
+      `※ 고점 대비 %가 -50% 이하인 종목은 바닥 반등일 수 있으니 RS만 보고 판단하지 마세요.\n${stockLines.join("\n")}`,
     );
   }
 
   // 5. Top Phase 2 by RS
   if (snapshot.topPhase2Stocks.length > 0) {
-    const stockLines = snapshot.topPhase2Stocks.slice(0, 10).map((s) => {
-      const vol = s.volumeConfirmed ? " [거래량 확인]" : "";
-      return `- ${s.symbol} (RS ${s.rsScore}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
-    });
+    const stockLines = snapshot.topPhase2Stocks.slice(0, 10).map(formatStockLine);
     sections.push(
-      `### Phase 2 RS 상위 종목 (RS >= 80)\n${stockLines.join("\n")}`,
+      `### 상승 초입 RS 상위 종목 (RS >= 80, 시총 $3억 이상)\n${stockLines.join("\n")}`,
     );
   }
 

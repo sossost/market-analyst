@@ -101,7 +101,7 @@ describe("formatMarketSnapshot", () => {
     expect(result).toContain("5일 1->2 전환 12건");
   });
 
-  it("includes new Phase 2 entries", () => {
+  it("includes new Phase 2 entries with 52w high and market cap context", () => {
     const result = formatMarketSnapshot(
       createSnapshot({
         newPhase2Stocks: [
@@ -112,26 +112,32 @@ describe("formatMarketSnapshot", () => {
             sector: "Technology",
             industry: "Semiconductors",
             volumeConfirmed: true,
+            pctFromHigh52w: -5.2,
+            marketCapB: 2800.5,
           },
           {
-            symbol: "AAPL",
-            rsScore: 85,
+            symbol: "ACME",
+            rsScore: 88,
             prevPhase: 1,
-            sector: "Technology",
-            industry: "Consumer Electronics",
+            sector: "Industrials",
+            industry: "Machinery",
             volumeConfirmed: false,
+            pctFromHigh52w: -45.0,
+            marketCapB: 1.2,
           },
         ],
       }),
     );
 
-    expect(result).toContain("NVDA (RS 95");
+    expect(result).toContain("NVDA (RS 95, 고점 대비 -5.2%, 시총 $2800.5B");
     expect(result).toContain("[거래량 확인]");
-    expect(result).toContain("AAPL (RS 85");
-    expect(result).toContain("신규 Phase 2 진입 종목 (2건)");
+    expect(result).toContain("ACME (RS 88, 고점 대비 -45%");
+    expect(result).toContain("신규 상승 전환 진입 종목 (2건");
+    expect(result).toContain("시총 $3억 이상");
+    expect(result).toContain("바닥 반등일 수 있으니");
   });
 
-  it("includes top Phase 2 stocks", () => {
+  it("includes top Phase 2 stocks with market cap", () => {
     const result = formatMarketSnapshot(
       createSnapshot({
         topPhase2Stocks: [
@@ -142,13 +148,15 @@ describe("formatMarketSnapshot", () => {
             sector: "Technology",
             industry: "Software",
             volumeConfirmed: false,
+            pctFromHigh52w: -8.1,
+            marketCapB: 3100.0,
           },
         ],
       }),
     );
 
-    expect(result).toContain("Phase 2 RS 상위 종목");
-    expect(result).toContain("MSFT (RS 90");
+    expect(result).toContain("상승 초입 RS 상위 종목");
+    expect(result).toContain("MSFT (RS 90, 고점 대비 -8.1%, 시총 $3100B");
   });
 
   it("warns not to estimate prices", () => {

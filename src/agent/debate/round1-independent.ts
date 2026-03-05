@@ -26,7 +26,6 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
   let totalInput = 0;
   let totalOutput = 0;
   const outputs: RoundOutput[] = [];
-  const errors: Array<{ persona: AgentPersona; error: string }> = [];
 
   // Rate limit 회피: 2명씩 배치로 순차 실행
   const BATCH_SIZE = 2;
@@ -44,7 +43,8 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
       }),
     );
 
-    for (const settled of results) {
+    for (let index = 0; index < results.length; index++) {
+      const settled = results[index];
       if (settled.status === "fulfilled") {
         const { persona, result } = settled.value;
         outputs.push({ persona, content: result.content });
@@ -55,7 +55,7 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
         const errorMsg = settled.reason instanceof Error
           ? settled.reason.message
           : String(settled.reason);
-        logger.error("Round1", `Agent failed: ${errorMsg}`);
+        logger.error("Round1", `${batch[index].name} failed: ${errorMsg}`);
       }
     }
   }

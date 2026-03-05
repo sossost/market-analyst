@@ -4,6 +4,8 @@ import { logger } from "../logger.js";
 import type { RoundOutput, SynthesisResult, Thesis } from "../../types/debate.js";
 import type { PersonaDefinition } from "../../types/debate.js";
 
+const MODERATOR_MAX_TOKENS = 8192;
+
 interface Round3Input {
   client: Anthropic;
   moderator: PersonaDefinition;
@@ -70,7 +72,7 @@ ${round2Section}
 - 해당 변화로 인해 **어떤 섹터/산업이 구조적 수혜를 받는지** 연결
 
 ### 4. 주도섹터/주도주 전망 (가장 중요한 섹션)
-우리의 목표는 **Phase 2(상승 초입) 진입 중인 섹터와 종목을 남들보다 먼저 포착**하는 것입니다.
+우리의 목표는 **상승 초입에 진입 중인 섹터와 종목을 남들보다 먼저 포착**하는 것입니다.
 
 #### 부상하는 섹터/테마
 - 구조적 성장이 시작되거나 가속화되는 섹터/테마
@@ -96,9 +98,19 @@ ${round2Section}
 ## 품질 기준
 - **반드시 한국어로만 작성**하세요. 일본어, 영어 문장 혼재 금지.
 - 모든 수치에 **날짜 기준**을 명시하세요
-- 리포트의 목표는 **구조적 변화의 초기 신호를 포착하여 Phase 2 섹터/주도주를 선점**하는 것입니다
+- 리포트의 목표는 **구조적 변화의 초기 신호를 포착하여 상승 초입 섹터/주도주를 선점**하는 것입니다
 - 트레이딩 시그널(목표가, 손절가, 진입가)이 아니라 **왜 이 섹터가 지금 부상하는지**에 집중하세요
-- 검색에서 확인되지 않은 가격이나 수치는 **절대 추정하지 마세요**. 확인된 데이터만 사용하세요.
+
+## 용어 규칙 (필수)
+리포트에서 아래 용어 변환을 반드시 적용하세요:
+- "Phase 1" → **"바닥 다지기"**
+- "Phase 2" 또는 "Phase 2 진입" → **"상승 초입"** 또는 **"상승 전환"**
+- "Phase 3" → **"과열/천장권"**
+- "Phase 4" → **"하락 추세"**
+- "Phase 1→2 전환" → **"바닥 돌파"** 또는 **"상승 전환 진입"**
+- 내부 시스템 용어(Phase 1/2/3/4)를 리포트에 그대로 노출하지 마세요.
+- 이전 라운드 분석에서 제공된 데이터만 사용하세요. **제공되지 않은 수치를 추정하거나 지어내지 마세요.**
+- **출처/소스 URL을 리포트에 포함하지 마세요.** 깔끔한 분석 리포트를 작성하세요.
 - 최소 1,500자 이상 작성하세요
 
 ---
@@ -130,6 +142,26 @@ ${round2Section}
 \`\`\``;
 }
 
+const VALID_PERSONAS = new Set<string>(["macro", "tech", "geopolitics", "sentiment"]);
+const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
+const VALID_CONSENSUS = new Set<string>(["1/4", "2/4", "3/4", "4/4"]);
+const VALID_TIMEFRAMES = new Set<number>([30, 60, 90]);
+
+function isValidThesis(t: unknown): t is Thesis {
+  if (t == null || typeof t !== "object") return false;
+  const obj = t as Record<string, unknown>;
+  return (
+    VALID_PERSONAS.has(obj.agentPersona as string) &&
+    VALID_CONFIDENCE.has(obj.confidence as string) &&
+    VALID_CONSENSUS.has(obj.consensusLevel as string) &&
+    VALID_TIMEFRAMES.has(obj.timeframeDays as number) &&
+    typeof obj.thesis === "string" &&
+    obj.thesis.length > 0 &&
+    typeof obj.verificationMetric === "string" &&
+    typeof obj.targetCondition === "string"
+  );
+}
+
 interface ExtractionResult {
   theses: Thesis[];
   cleanReport: string;
@@ -149,7 +181,7 @@ export function extractThesesFromText(text: string): ExtractionResult {
 
   // JSON 블록과 그 앞의 헤더/설명 텍스트를 제거하여 유저용 리포트 생성
   const cleanReport = text
-    .replace(/#{1,3}\s*(?:검증 가능한 전망|Thesis|전망)\s*(?:추출)?[^\n]*\n?/gi, "")
+    .replace(/#{1,3}\s*(?:검증 가능한 전망 추출|Thesis 추출|전망 추출)[^\n]*\n?/gi, "")
     .replace(/```json\s*[\s\S]*?```/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -160,7 +192,11 @@ export function extractThesesFromText(text: string): ExtractionResult {
       logger.warn("Round3", "Parsed JSON is not an array");
       return { theses: [], cleanReport };
     }
-    return { theses: parsed as Thesis[], cleanReport };
+    const validated = parsed.filter((t: unknown) => isValidThesis(t));
+    if (validated.length < parsed.length) {
+      logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
+    }
+    return { theses: validated, cleanReport };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
@@ -177,7 +213,7 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
 
   const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question);
   const result = await callAgent(client, moderator.systemPrompt, userMessage, {
-    maxTokens: 8192,
+    maxTokens: MODERATOR_MAX_TOKENS,
     disableTools: true,
   });
 

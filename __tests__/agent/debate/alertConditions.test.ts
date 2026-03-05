@@ -105,3 +105,105 @@ describe("checkAlertConditions", () => {
     expect(result.reason).toContain("확신도 높은 전망");
   });
 });
+
+// Same logic as run-debate-agent.ts extractCoreInsight
+function extractCoreInsight(report: string): string {
+  const match = report.match(/##\s*1\.\s*핵심 요약[^\n]*\n([\s\S]*?)(?=\n##\s*2\.|\n##\s*\d)/);
+  if (match != null) {
+    return match[1].trim();
+  }
+  const firstChunk = report.slice(0, 300).trim();
+  return firstChunk.endsWith(".") ? firstChunk : `${firstChunk}...`;
+}
+
+function sanitizeDiscordMentions(text: string): string {
+  return text
+    .replace(/@everyone/gi, "@\u200Beveryone")
+    .replace(/@here/gi, "@\u200Bhere")
+    .replace(/<@[!&]?\d+>/g, "[mention]");
+}
+
+describe("sanitizeDiscordMentions", () => {
+  it("neutralizes @everyone and @here", () => {
+    const result = sanitizeDiscordMentions("Alert @everyone check @here now");
+    expect(result).not.toContain("@everyone");
+    expect(result).not.toContain("@here");
+    expect(result).toContain("@\u200Beveryone");
+  });
+
+  it("removes user/role mentions", () => {
+    const result = sanitizeDiscordMentions("Thanks <@123456> and <@&789>");
+    expect(result).toBe("Thanks [mention] and [mention]");
+  });
+
+  it("leaves normal text unchanged", () => {
+    const text = "S&P 500 up 1.2% today";
+    expect(sanitizeDiscordMentions(text)).toBe(text);
+  });
+});
+
+describe("extractCoreInsight", () => {
+  it("extracts core insight section from report", () => {
+    const report = `# 시장 브리핑
+
+## 1. 핵심 요약
+
+**구조적 변화:** 실물 중심 패러다임 전환
+**주목 섹터:** Energy(XLE), Basic Materials(XLB)
+**리스크:** VIX 급등
+
+## 2. 시장 환경 판단
+
+지수 데이터...`;
+
+    const result = extractCoreInsight(report);
+    expect(result).toContain("구조적 변화");
+    expect(result).toContain("Energy(XLE)");
+    expect(result).not.toContain("시장 환경 판단");
+  });
+
+  it("falls back to first 300 chars when no section found", () => {
+    const report = "짧은 리포트 내용입니다.";
+    const result = extractCoreInsight(report);
+    expect(result).toContain("짧은 리포트");
+  });
+});
+
+// Same logic as run-debate-agent.ts sanitizeErrorForDiscord
+function sanitizeErrorForDiscord(msg: string): string {
+  const MAX_LENGTH = 500;
+  const sanitized = msg
+    .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
+    .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
+    .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]");
+  return sanitized.length > MAX_LENGTH
+    ? `${sanitized.slice(0, MAX_LENGTH)}...`
+    : sanitized;
+}
+
+describe("sanitizeErrorForDiscord", () => {
+  it("redacts postgres connection strings", () => {
+    const msg = "Connection failed: postgresql://user:pass@host:5432/db";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[DB_URL]");
+    expect(result).not.toContain("user:pass");
+  });
+
+  it("redacts URLs containing token", () => {
+    const msg = "Failed: https://api.example.com/token=abc123";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[REDACTED_URL]");
+    expect(result).not.toContain("abc123");
+  });
+
+  it("truncates long error messages", () => {
+    const msg = "x".repeat(1000);
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result.length).toBeLessThanOrEqual(503); // 500 + "..."
+  });
+
+  it("leaves normal errors unchanged", () => {
+    const msg = "Round 1 failed: no agents produced output";
+    expect(sanitizeErrorForDiscord(msg)).toBe(msg);
+  });
+});

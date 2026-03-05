@@ -109,5 +109,72 @@ describe("extractThesesFromText", () => {
     expect(cleanReport).toContain("시장 분석 내용");
     expect(cleanReport).not.toContain("```json");
     expect(cleanReport).not.toContain("agentPersona");
+    // "검증 가능한 전망 추출" 헤더가 제거됨
+    expect(cleanReport).not.toContain("검증 가능한 전망 추출");
+  });
+
+  it("filters out theses with invalid fields", () => {
+    const text = `Report...
+
+\`\`\`json
+[
+  {
+    "agentPersona": "macro",
+    "thesis": "Valid thesis",
+    "timeframeDays": 30,
+    "verificationMetric": "CPI",
+    "targetCondition": "CPI < 3%",
+    "confidence": "medium",
+    "consensusLevel": "3/4"
+  },
+  {
+    "agentPersona": "unknown_persona",
+    "thesis": "Invalid persona",
+    "timeframeDays": 30,
+    "verificationMetric": "metric",
+    "targetCondition": "condition",
+    "confidence": "medium",
+    "consensusLevel": "3/4"
+  },
+  {
+    "agentPersona": "tech",
+    "thesis": "Invalid timeframe",
+    "timeframeDays": 999,
+    "verificationMetric": "metric",
+    "targetCondition": "condition",
+    "confidence": "medium",
+    "consensusLevel": "3/4"
+  },
+  {
+    "agentPersona": "sentiment",
+    "thesis": "",
+    "timeframeDays": 60,
+    "verificationMetric": "metric",
+    "targetCondition": "condition",
+    "confidence": "high",
+    "consensusLevel": "2/4"
+  }
+]
+\`\`\``;
+
+    const { theses } = extractThesesFromText(text);
+    expect(theses).toHaveLength(1);
+    expect(theses[0].agentPersona).toBe("macro");
+  });
+
+  it("preserves normal section titles containing '전망'", () => {
+    const text = `### 4. 주도섹터/주도주 전망
+
+부상하는 섹터 분석...
+
+### 검증 가능한 전망 추출
+
+\`\`\`json
+[{"agentPersona": "macro", "thesis": "test"}]
+\`\`\``;
+
+    const { cleanReport } = extractThesesFromText(text);
+    expect(cleanReport).toContain("주도섹터/주도주 전망");
+    expect(cleanReport).not.toContain("검증 가능한 전망 추출");
   });
 });

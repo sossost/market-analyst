@@ -124,7 +124,7 @@ describe("debateEngine", () => {
     }
   });
 
-  it("injects market data context into question for all rounds", async () => {
+  it("injects market data into Round 1 only, not Round 2/3", async () => {
     for (let i = 0; i < 8; i++) {
       createMock.mockResolvedValueOnce(makeResponse(`Response ${i}`));
     }
@@ -140,17 +140,24 @@ describe("debateEngine", () => {
       marketDataContext: marketData,
     });
 
-    // All 9 calls should have the market data in the user message
-    for (const call of createMock.mock.calls) {
-      const messages = call[0].messages;
-      const userMsg = messages[0];
-      expect(userMsg.role).toBe("user");
-      // Round 1 & 2 have market data in the question directly
-      // Round 3 has it in the synthesis prompt which includes the question
-      const content = typeof userMsg.content === "string"
-        ? userMsg.content
-        : JSON.stringify(userMsg.content);
+    // Round 1 (first 4 calls): should have market data
+    const round1Calls = createMock.mock.calls.slice(0, 4);
+    for (const call of round1Calls) {
+      const content = call[0].messages[0].content;
       expect(content).toContain("실제 시장 데이터");
     }
+
+    // Round 2 (next 4 calls): base question only, market data via Round 1 outputs
+    const round2Calls = createMock.mock.calls.slice(4, 8);
+    for (const call of round2Calls) {
+      const content = call[0].messages[0].content;
+      expect(content).toContain("Test question");
+      expect(content).not.toContain("실제 시장 데이터");
+    }
+
+    // Round 3 (last call): base question only
+    const round3Content = createMock.mock.calls[8][0].messages[0].content;
+    expect(round3Content).toContain("Test question");
+    expect(round3Content).not.toContain("실제 시장 데이터");
   });
 });
