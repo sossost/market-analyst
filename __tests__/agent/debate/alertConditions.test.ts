@@ -11,18 +11,18 @@ function checkAlertConditions(result: DebateResult): { send: boolean; reason: st
 
   const highConfidence = theses.filter((t) => t.confidence === "high");
   if (highConfidence.length > 0) {
-    return { send: true, reason: `High confidence thesis ${highConfidence.length}개 발견` };
+    return { send: true, reason: `확신도 높은 전망 ${highConfidence.length}건` };
   }
 
   const lowConsensus = theses.filter(
     (t) => t.consensusLevel === "1/4" || t.consensusLevel === "2/4",
   );
   if (lowConsensus.length > theses.length / 2) {
-    return { send: true, reason: `장관 간 의견 분열 (${lowConsensus.length}/${theses.length} low consensus)` };
+    return { send: true, reason: `분석가 간 의견 분열 — 주의 필요` };
   }
 
   if (theses.length >= 3) {
-    return { send: true, reason: `활발한 토론 — ${theses.length}개 thesis 도출` };
+    return { send: true, reason: `주요 전망 ${theses.length}건 도출` };
   }
 
   return { send: false, reason: "" };
@@ -62,7 +62,7 @@ describe("checkAlertConditions", () => {
       makeResult([makeThesis({ confidence: "high" })]),
     );
     expect(result.send).toBe(true);
-    expect(result.reason).toContain("High confidence");
+    expect(result.reason).toContain("확신도 높은 전망");
   });
 
   it("sends on low consensus majority", () => {
@@ -82,7 +82,7 @@ describe("checkAlertConditions", () => {
       makeResult([makeThesis(), makeThesis(), makeThesis()]),
     );
     expect(result.send).toBe(true);
-    expect(result.reason).toContain("3개 thesis");
+    expect(result.reason).toContain("주요 전망 3건");
   });
 
   it("does not send for 1-2 medium confidence, high consensus theses", () => {
@@ -102,6 +102,6 @@ describe("checkAlertConditions", () => {
       ]),
     );
     expect(result.send).toBe(true);
-    expect(result.reason).toContain("High confidence");
+    expect(result.reason).toContain("확신도 높은 전망");
   });
 });

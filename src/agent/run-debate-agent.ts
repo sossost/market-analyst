@@ -31,18 +31,18 @@ function checkAlertConditions(result: DebateResult): AlertDecision {
 
   const highConfidence = theses.filter((t) => t.confidence === "high");
   if (highConfidence.length > 0) {
-    return { send: true, reason: `High confidence thesis ${highConfidence.length}개 발견` };
+    return { send: true, reason: `확신도 높은 전망 ${highConfidence.length}건` };
   }
 
   const lowConsensus = theses.filter(
     (t) => t.consensusLevel === "1/4" || t.consensusLevel === "2/4",
   );
   if (lowConsensus.length > theses.length / 2) {
-    return { send: true, reason: `장관 간 의견 분열 (${lowConsensus.length}/${theses.length} low consensus)` };
+    return { send: true, reason: `분석가 간 의견 분열 — 주의 필요` };
   }
 
   if (theses.length >= 3) {
-    return { send: true, reason: `활발한 토론 — ${theses.length}개 thesis 도출` };
+    return { send: true, reason: `주요 전망 ${theses.length}건 도출` };
   }
 
   return { send: false, reason: "" };
@@ -125,13 +125,19 @@ async function main() {
   if (shouldAlert.send) {
     logger.info("Alert", `Sending report: ${shouldAlert.reason}`);
 
+    const thesesSummary = result.round3.theses
+      .map((t) => {
+        const confidence = t.confidence === "high" ? "🔴" : t.confidence === "medium" ? "🟡" : "⚪";
+        return `${confidence} ${t.thesis}`;
+      })
+      .join("\n");
+
     const summary = [
-      `🏛️ **내각 토론 알림** (${debateDate})`,
+      `📊 **시장 브리핑** (${debateDate})`,
       `⚡ ${shouldAlert.reason}`,
       "",
-      `참여: ${result.round1.outputs.length}/4명`,
-      `Thesis: ${result.round3.theses.length}개`,
-      `소요: ${(result.metadata.totalDurationMs / 1000).toFixed(0)}초`,
+      "**주요 전망**",
+      thesesSummary,
     ].join("\n");
 
     const webhookVar = "DISCORD_DEBATE_WEBHOOK_URL";
@@ -139,20 +145,21 @@ async function main() {
 
     if (webhookFallback != null && webhookFallback !== "") {
       try {
-        const gistUrl = await createGist(
-          `debate-${debateDate}.md`,
+        const gist = await createGist(
+          `briefing-${debateDate}.md`,
           report,
-          `내각 토론 리포트 ${debateDate}`,
+          `시장 브리핑 ${debateDate}`,
         );
+        const reportLink = gist != null ? `\n\n📄 전체 리포트: ${gist.url}` : "";
         await sendDiscordMessage(
-          `${summary}\n\n📄 전체 리포트: ${gistUrl}`,
+          `${summary}${reportLink}`,
           webhookVar,
         );
       } catch {
         await sendDiscordFile(
           webhookFallback,
           summary,
-          `debate-${debateDate}.md`,
+          `briefing-${debateDate}.md`,
           report,
         );
       }
