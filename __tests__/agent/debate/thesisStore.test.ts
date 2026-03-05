@@ -10,6 +10,11 @@ const mockFrom = vi.fn();
 const mockWhere = vi.fn();
 const mockDelete = vi.fn();
 const mockDeleteWhere = vi.fn();
+const mockUpdate = vi.fn();
+const mockSet = vi.fn();
+const mockUpdateWhere = vi.fn();
+const mockUpdateReturning = vi.fn();
+const mockGroupBy = vi.fn();
 
 vi.mock("../../../src/db/client.js", () => ({
   db: {
@@ -37,6 +42,23 @@ vi.mock("../../../src/db/client.js", () => ({
           mockFrom(...fArgs);
           return {
             where: (...wArgs: unknown[]) => mockWhere(...wArgs),
+            groupBy: (...gArgs: unknown[]) => mockGroupBy(...gArgs),
+          };
+        },
+      };
+    },
+    update: (...args: unknown[]) => {
+      mockUpdate(...args);
+      return {
+        set: (...sArgs: unknown[]) => {
+          mockSet(...sArgs);
+          return {
+            where: (...wArgs: unknown[]) => {
+              mockUpdateWhere(...wArgs);
+              return {
+                returning: (...rArgs: unknown[]) => mockUpdateReturning(...rArgs),
+              };
+            },
           };
         },
       };
@@ -44,7 +66,14 @@ vi.mock("../../../src/db/client.js", () => ({
   },
 }));
 
-import { saveTheses, loadActiveTheses, formatThesesForPrompt } from "../../../src/agent/debate/thesisStore.js";
+import {
+  saveTheses,
+  loadActiveTheses,
+  formatThesesForPrompt,
+  expireStaleTheses,
+  resolveThesis,
+  getThesisStats,
+} from "../../../src/agent/debate/thesisStore.js";
 
 describe("thesisStore", () => {
   beforeEach(() => {
@@ -214,6 +243,75 @@ describe("thesisStore", () => {
       expect(formatThesesForPrompt([makeRow("high")] as any)).toContain("[HIGH/4/4]");
       expect(formatThesesForPrompt([makeRow("medium")] as any)).toContain("[MED/4/4]");
       expect(formatThesesForPrompt([makeRow("low")] as any)).toContain("[LOW/4/4]");
+    });
+  });
+
+  describe("expireStaleTheses", () => {
+    it("calls update with EXPIRED status and returns count", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([{ id: 1 }, { id: 2 }]);
+
+      const count = await expireStaleTheses("2026-03-06");
+
+      expect(count).toBe(2);
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "EXPIRED",
+          closeReason: "timeframe_exceeded",
+          verificationDate: "2026-03-06",
+        }),
+      );
+    });
+
+    it("returns 0 when no theses expired", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([]);
+
+      const count = await expireStaleTheses("2026-03-06");
+
+      expect(count).toBe(0);
+    });
+  });
+
+  describe("resolveThesis", () => {
+    it("updates thesis to CONFIRMED", async () => {
+      mockUpdateWhere.mockResolvedValueOnce(undefined);
+
+      await resolveThesis(42, {
+        status: "CONFIRMED",
+        verificationDate: "2026-03-06",
+        verificationResult: "10Y Yield dropped to 3.8%",
+        closeReason: "target_met",
+      });
+
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "CONFIRMED",
+          verificationResult: "10Y Yield dropped to 3.8%",
+        }),
+      );
+    });
+  });
+
+  describe("getThesisStats", () => {
+    it("returns status counts", async () => {
+      mockGroupBy.mockResolvedValueOnce([
+        { status: "ACTIVE", count: 5 },
+        { status: "EXPIRED", count: 3 },
+        { status: "CONFIRMED", count: 1 },
+      ]);
+
+      const stats = await getThesisStats();
+
+      expect(stats).toEqual({ ACTIVE: 5, EXPIRED: 3, CONFIRMED: 1 });
+    });
+
+    it("returns empty object when no theses exist", async () => {
+      mockGroupBy.mockResolvedValueOnce([]);
+
+      const stats = await getThesisStats();
+
+      expect(stats).toEqual({});
     });
   });
 });
