@@ -193,6 +193,67 @@ export const recommendations = pgTable(
 );
 
 /**
+ * theses — Thesis Ledger.
+ * 토론에서 나온 검증 가능한 예측을 기록하고, 시장 데이터로 검증 결과를 추적한다.
+ */
+export const theses = pgTable(
+  "theses",
+  {
+    id: serial("id").primaryKey(),
+    debateDate: text("debate_date").notNull(),
+    agentPersona: text("agent_persona").notNull(), // 'macro' | 'tech' | 'geopolitics' | 'sentiment'
+    thesis: text("thesis").notNull(),
+    timeframeDays: integer("timeframe_days").notNull(), // 30 | 60 | 90
+    verificationMetric: text("verification_metric").notNull(),
+    targetCondition: text("target_condition").notNull(),
+    invalidationCondition: text("invalidation_condition"),
+    confidence: text("confidence").notNull(), // 'low' | 'medium' | 'high'
+    consensusLevel: text("consensus_level").notNull(), // '4/4' | '3/4' | '2/4' | '1/4'
+
+    status: text("status").notNull().default("ACTIVE"), // ACTIVE | CONFIRMED | INVALIDATED | EXPIRED
+    verificationDate: text("verification_date"),
+    verificationResult: text("verification_result"),
+    closeReason: text("close_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    idxStatus: index("idx_theses_status").on(t.status),
+    idxDebateDate: index("idx_theses_debate_date").on(t.debateDate),
+  }),
+);
+
+/**
+ * agent_learnings — 장기 기억 (검증된 원칙).
+ * 반복 적중 패턴을 승격하고, 적중률 하락/유효기간 만료 시 강등한다.
+ */
+export const agentLearnings = pgTable(
+  "agent_learnings",
+  {
+    id: serial("id").primaryKey(),
+    principle: text("principle").notNull(),
+    category: text("category").notNull(), // 'confirmed' | 'caution'
+    hitCount: integer("hit_count").notNull().default(0),
+    missCount: integer("miss_count").notNull().default(0),
+    hitRate: numeric("hit_rate"), // 0.00 ~ 1.00
+    sourceThesisIds: text("source_thesis_ids"), // JSON array of thesis IDs
+    firstConfirmed: text("first_confirmed"),
+    lastVerified: text("last_verified"),
+    expiresAt: text("expires_at"),
+    isActive: boolean("is_active").default(true),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    idxActive: index("idx_agent_learnings_active").on(t.isActive),
+  }),
+);
+
+/**
  * recommendation_factors — 추천 시점 팩터 스냅샷.
  * Phase C 팩터 분석용 (현재는 저장만).
  */
