@@ -56,6 +56,25 @@ export async function saveDebateSession(input: SaveSessionInput): Promise<void> 
   logger.info("SessionStore", `Session saved for ${debateDate}`);
 }
 
+/**
+ * Find a specific debate session by date.
+ * Used by causal analyzer to load original debate context.
+ */
+export async function findSessionByDate(
+  date: string,
+): Promise<{ round1Outputs: string; synthesisReport: string } | null> {
+  const rows = await db
+    .select({
+      round1Outputs: debateSessions.round1Outputs,
+      synthesisReport: debateSessions.synthesisReport,
+    })
+    .from(debateSessions)
+    .where(eq(debateSessions.date, date))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 interface SimilarSession {
   date: string;
   vix: number | null;

@@ -1,0 +1,1 @@
+ALTER TABLE "theses" ADD COLUMN "causal_analysis" text;

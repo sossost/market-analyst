@@ -101,6 +101,26 @@ export async function resolveThesis(
 }
 
 /**
+ * thesis에 원인 분석 결과를 저장.
+ */
+export async function saveCausalAnalysis(
+  thesisId: number,
+  analysis: {
+    causalChain: string;
+    keyFactors: string[];
+    reusablePattern: string;
+    lessonsLearned: string;
+  },
+): Promise<void> {
+  await db
+    .update(theses)
+    .set({ causalAnalysis: JSON.stringify(analysis) })
+    .where(eq(theses.id, thesisId));
+
+  logger.info("ThesisStore", `Causal analysis saved for thesis #${thesisId}`);
+}
+
+/**
  * Thesis 상태별 통계 조회.
  */
 export async function getThesisStats(): Promise<Record<string, number>> {
