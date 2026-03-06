@@ -108,12 +108,15 @@ ${thesesText}
   const judgments = parseJudgments(rawText, activeTheses.map((t) => t.id));
 
   // Apply judgments — resolve in DB
-  const resolved = judgments.filter((j) => j.verdict !== "HOLD");
+  type ResolvedJudgment = VerificationJudgment & { verdict: "CONFIRMED" | "INVALIDATED" };
+  const resolved = judgments.filter(
+    (j): j is ResolvedJudgment => j.verdict !== "HOLD",
+  );
 
   await Promise.all(
     resolved.map((j) =>
       resolveThesis(j.thesisId, {
-        status: j.verdict as "CONFIRMED" | "INVALIDATED",
+        status: j.verdict,
         verificationDate: debateDate,
         verificationResult: j.reason,
         closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
@@ -146,7 +149,7 @@ ${thesesText}
             verificationMetric: t.verificationMetric,
             targetCondition: t.targetCondition,
             invalidationCondition: t.invalidationCondition,
-            status: j.verdict as "CONFIRMED" | "INVALIDATED",
+            status: j.verdict,
             verificationResult: j.reason,
           };
         })

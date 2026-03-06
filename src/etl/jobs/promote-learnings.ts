@@ -237,11 +237,12 @@ async function promoteNewLearnings(
     const hitRate = candidate.hitCount / total;
     const allIds = [...candidate.confirmedIds, ...candidate.invalidatedIds];
 
-    // causal analysis에서 추출한 패턴이 있으면 그걸 사용, 없으면 기계적 문장
-    const bestPattern = candidate.reusablePatterns[0];
+    // causal analysis에서 추출한 패턴들을 조합, 없으면 기계적 문장
+    const uniquePatterns = [...new Set(candidate.reusablePatterns)];
     const sanitizedMetric = candidate.metric.replace(/[\n\r]/g, " ").slice(0, 100);
-    const principle = bestPattern != null
-      ? `[${candidate.persona}] ${bestPattern.replace(/[\n\r]/g, " ").slice(0, 200)}`
+    const MAX_PRINCIPLE_LENGTH = 300;
+    const principle = uniquePatterns.length > 0
+      ? `[${candidate.persona}] ${uniquePatterns.map((p) => p.replace(/[\n\r]/g, " ")).join(" / ").slice(0, MAX_PRINCIPLE_LENGTH)}`
       : `[${candidate.persona}] ${sanitizedMetric} 관련 전망이 ${candidate.hitCount}회 적중 (적중률 ${(hitRate * 100).toFixed(0)}%)`;
     const category = hitRate >= 0.7 ? "confirmed" : "caution";
 
