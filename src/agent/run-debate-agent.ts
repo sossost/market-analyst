@@ -3,6 +3,7 @@ import { pool } from "@/db/client";
 import { runDebate } from "./debate/debateEngine";
 import { buildMemoryContext } from "./debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
+import { collectNews, formatNewsForPersona } from "./debate/newsCollector";
 import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
 import { verifyTheses } from "./debate/thesisVerifier";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
@@ -81,23 +82,26 @@ function buildDebateQuestion(debateDate: string): string {
 
 우리의 목표는 **상승 초입(바닥을 돌파하여 본격 상승이 시작되는 구간)에 진입 중인 주도섹터와 주도주를 남들보다 먼저 포착**하는 것입니다.
 
-최신 뉴스와 데이터를 반드시 검색하세요. 검색 결과의 날짜를 확인하고 ${debateDate} 기준 최신 데이터만 사용하세요.
+## 분석 대상
+아래에 **실제 시장 데이터**가 제공됩니다:
+- 주요 지수 현재가 및 등락률
+- 섹터별 RS(상대강도) 순위 및 Phase 상태
+- 신규 상승 전환 진입 종목 (Phase 2 진입)
+- RS 상위 종목
+- 시장 브레드스 (Phase 분포)
+- 공포탐욕지수, VIX
 
-## 분석 관점
-1. 최근 시장의 구조적 변화 — 자금 흐름, 섹터 로테이션, 매크로 전환점
-2. 지금 부상하고 있는 섹터/산업은 무엇이고, 왜 지금인가
-3. 시장이 아직 충분히 반영하지 못한 구조적 테마
-4. 현재 과열 신호가 보이거나 모멘텀이 꺾이는 섹터
-5. 향후 1~3개월 내 검증 가능한 구체적 전망
+또한 당신의 전문 영역 관련 **최신 뉴스**가 별도로 제공됩니다.
 
-## 필수 요구사항
-- 아래에 **실제 시장 데이터**가 제공됩니다. 지수, 섹터 RS, Phase 2 종목 등은 이미 있으니 **같은 데이터를 검색하지 마세요.**
-- 검색은 **뉴스, 이벤트, 촉매, 정책 변화** 등 제공된 데이터에 없는 정보를 찾는 데 집중하세요.
-- 검색에서 확인된 데이터만 사용하세요. **확인되지 않은 가격/수치는 절대 추정하지 마세요.**
-- 종목/ETF 언급 시 **반드시 티커**를 사용하세요 (예: NVDA, XLK)
-- ETF 티커(QQQ)와 지수(Nasdaq)를 혼동하지 마세요
-- "변동성 확대" 같은 **누구나 하는 말은 하지 마세요**
-- 반드시 한국어로 작성하세요`;
+## 필수 규칙
+1. **제공된 데이터를 먼저 분석하라.** 데이터에 있는 종목, 섹터를 반드시 언급하라.
+2. **제공된 데이터에 없는 가격/수치를 절대 지어내지 마라.** 모르면 "확인 불가"로 적어라.
+3. **일반론 금지.** "유동성 확대는 위험자산에 유리" 같은 교과서적 문장은 가치 없다.
+4. **모멘텀 방향을 확인하라.** RS가 높아도 5일/20일 가격 변화가 마이너스면 고점 피로감이다. 단순히 "RS 높으니 좋다"로 끝내지 마라.
+5. **미래 변화를 전망하라.** 현재 상태 묘사에 그치지 말고, 향후 1~3개월 어떤 변화가 올지 분석하라.
+6. 종목/ETF 언급 시 **반드시 티커** 사용 (예: NVDA, XLK)
+7. 반드시 **한국어로** 작성하세요
+8. 시스템 프롬프트에 정의된 **출력 형식**을 반드시 따르세요`;
 }
 
 function validateEnvironment(): void {
@@ -119,11 +123,11 @@ async function main() {
 
   // 1. 환경변수 검증
   validateEnvironment();
-  logger.step("[1/7] Environment validated");
+  logger.step("[1/8] Environment validated");
 
   // 2. 장기 기억 + 시장 데이터 로드
   const debateDate = getDebateDate();
-  logger.step("[2/7] Loading memory context & market data...");
+  logger.step("[2/8] Loading memory context & market data...");
 
   const [memoryContext, marketSnapshot] = await Promise.all([
     buildMemoryContext(),
@@ -148,7 +152,7 @@ async function main() {
   logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
 
   // 3. 기존 thesis 검증 (시장 데이터 기반)
-  logger.step("[3/7] Verifying active theses...");
+  logger.step("[3/8] Verifying active theses...");
   try {
     const verifyResult = await verifyTheses(marketDataContext, debateDate);
     if (verifyResult.confirmed > 0 || verifyResult.invalidated > 0) {
@@ -160,14 +164,33 @@ async function main() {
     logger.warn("Verify", `Thesis verification failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 4. 토론 실행
-  logger.step(`[4/7] Running debate for ${debateDate}...`);
+  // 4. 뉴스 사전 수집
+  logger.step("[4/8] Collecting news...");
+  let newsContext: Record<string, string> = {};
+  try {
+    const news = await collectNews();
+    const personas = ["macro", "tech", "geopolitics", "sentiment"] as const;
+    for (const persona of personas) {
+      const formatted = formatNewsForPersona(persona, news);
+      if (formatted.length > 0) {
+        newsContext[persona] = formatted;
+      }
+    }
+    const totalItems = Object.values(newsContext).filter((v) => v.length > 0).length;
+    logger.info("News", `${totalItems}/4 personas have news context`);
+  } catch (err) {
+    logger.warn("News", `News collection failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 5. 토론 실행
+  logger.step(`[5/8] Running debate for ${debateDate}...`);
 
   const result = await runDebate({
     question: buildDebateQuestion(debateDate),
     debateDate,
     memoryContext,
     marketDataContext,
+    newsContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);
@@ -182,13 +205,13 @@ async function main() {
     }
   }
 
-  // 5. Thesis 저장
-  logger.step("[5/7] Saving theses...");
+  // 6. Thesis 저장
+  logger.step("[6/8] Saving theses...");
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
-  // 6. 조건부 Discord 발송
-  logger.step("[6/7] Checking alert conditions...");
+  // 7. 조건부 Discord 발송
+  logger.step("[7/8] Checking alert conditions...");
   const report = result.round3.report;
   const shouldAlert = checkAlertConditions(result);
 

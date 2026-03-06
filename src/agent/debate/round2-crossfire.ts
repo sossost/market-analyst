@@ -37,11 +37,19 @@ ${othersAnalysis}
 
 ---
 
-위 분석들을 검토한 후:
-1. **반박할 점**: 논리적 허점, 간과된 리스크, 과도한 낙관/비관
-2. **보완할 점**: 당신의 전문 영역에서 추가할 인사이트
-3. **동의하는 점**: 강력하게 동의하는 분석과 그 이유
-4. **수정된 전망**: 다른 분석을 반영한 당신의 최종 의견`;
+위 분석들을 검토하고 아래 형식으로 답하라:
+
+### 1. 반박 (최소 1가지 필수)
+다른 장관의 분석에서 **논리적 허점, 간과된 리스크, 과도한 낙관/비관**을 지적하라.
+구체적으로 누구의 어떤 주장이 왜 틀렸거나 약한지 밝혀라.
+동의만 하는 것은 가치 없다. 반드시 최소 1가지는 반박하라.
+
+### 2. 보완
+당신의 전문 영역에서 다른 장관들이 놓친 인사이트를 추가하라.
+
+### 3. 수정된 전망
+다른 분석을 반영하여 당신의 Round 1 판단을 수정하라.
+수정할 것이 없으면 왜 기존 판단을 유지하는지 근거를 밝혀라.`;
 }
 
 /**
@@ -75,7 +83,9 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
       batch.map(async (expert) => {
         const persona = expert.name as AgentPersona;
         const userMessage = buildCrossfirePrompt(persona, round1Outputs, question);
-        const result = await callAgent(client, expert.systemPrompt, userMessage);
+        const result = await callAgent(client, expert.systemPrompt, userMessage, {
+          disableTools: true,
+        });
         return { persona, result };
       }),
     );

@@ -12,6 +12,8 @@ interface Round3Input {
   round1Outputs: RoundOutput[];
   round2Outputs: RoundOutput[];
   question: string;
+  /** Original market data for cross-validation */
+  marketDataContext?: string;
 }
 
 interface Round3Result {
@@ -23,6 +25,7 @@ function buildSynthesisPrompt(
   round1Outputs: RoundOutput[],
   round2Outputs: RoundOutput[],
   question: string,
+  marketDataContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -32,10 +35,15 @@ function buildSynthesisPrompt(
     .map((o) => `### ${o.persona} (교차 검증)\n${o.content}`)
     .join("\n\n---\n\n");
 
+  const dataSection = marketDataContext != null && marketDataContext.length > 0
+    ? `\n---\n\n## 원본 시장 데이터 (ETL 수집)\n\n아래는 실제 시장 데이터입니다. 분석가들이 이 데이터를 제대로 반영했는지 검증하세요.\n특히 Phase 2 진입 종목과 섹터 RS 순위를 리포트에 반드시 포함하세요.\n\n${marketDataContext}`
+    : "";
+
   return `## 시장 분석 종합 요청
 
 ### 질문
 ${question}
+${dataSection}
 
 ---
 
@@ -78,9 +86,11 @@ ${round2Section}
 - 구조적 성장이 시작되거나 가속화되는 섹터/테마
 - **왜 지금 이 섹터인지** — 촉매, 자금 흐름, 펀더멘털 변화 근거
 - 관련 ETF 티커와 대표 종목 티커
+- 종목의 **현재 모멘텀 상태** 필수: 5일/20일 가격 변화율이 마이너스면 "고점 피로감 경계" 표기
 
-#### 주의해야 할 섹터
+#### 주의해야 할 섹터/종목
 - 모멘텀이 꺾이거나 과열 신호가 보이는 섹터
+- **RS는 높지만 가격이 하락 중인 종목** — 고점 피로감 가능성
 - 구조적 역풍을 맞고 있는 산업
 - 왜 지금 비중을 줄여야 하는지 근거
 
@@ -94,6 +104,16 @@ ${round2Section}
 ### 6. 향후 주목할 이벤트
 - 다음 1~2주 내 시장에 영향을 줄 수 있는 주요 이벤트 (FOMC, 실적 발표 등)
 - 각 이벤트가 위 분석에 어떤 영향을 미칠 수 있는지
+
+## 수치 정확성 (가장 중요한 규칙)
+- **위에 제공된 데이터(ETL 수집 데이터 + 분석가 라운드 1·2 인용)에 있는 수치만 사용하세요.**
+- 제공되지 않은 수치를 절대 지어내지 마세요. 위반 예시:
+  - "X년 만의 최대/최저" — 역사적 비교 수치가 제공되지 않았으면 쓰지 마세요
+  - "Capex $X억" — ETL 데이터에 없는 기업 재무 수치를 추정하지 마세요
+  - "PCE X%", "CPI X%" — 매크로 지표가 제공되지 않았으면 쓰지 마세요
+  - "YoY +X%" — 전년 대비 수치가 데이터에 없으면 쓰지 마세요
+- 뉴스에서 인용된 수치는 "뉴스 보도에 따르면"으로 출처를 표기하세요
+- **확신이 없으면 수치를 빼세요. 틀린 수치보다 수치 없는 문장이 낫습니다.**
 
 ## 품질 기준
 - **반드시 한국어로만 작성**하세요. 일본어, 영어 문장 혼재 금지.
@@ -109,7 +129,6 @@ ${round2Section}
 - "Phase 4" → **"하락 추세"**
 - "Phase 1→2 전환" → **"바닥 돌파"** 또는 **"상승 전환 진입"**
 - 내부 시스템 용어(Phase 1/2/3/4)를 리포트에 그대로 노출하지 마세요.
-- 이전 라운드 분석에서 제공된 데이터만 사용하세요. **제공되지 않은 수치를 추정하거나 지어내지 마세요.**
 - **출처/소스 URL을 리포트에 포함하지 마세요.** 깔끔한 분석 리포트를 작성하세요.
 - 최소 1,500자 이상 작성하세요
 
@@ -209,9 +228,9 @@ export function extractThesesFromText(text: string): ExtractionResult {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { client, moderator, round1Outputs, round2Outputs, question } = input;
+  const { client, moderator, round1Outputs, round2Outputs, question, marketDataContext } = input;
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question);
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext);
   const result = await callAgent(client, moderator.systemPrompt, userMessage, {
     maxTokens: MODERATOR_MAX_TOKENS,
     disableTools: true,
