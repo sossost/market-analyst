@@ -14,8 +14,6 @@
  */
 import "dotenv/config";
 import { pool, db } from "../src/db/client.js";
-import { stockPhases, sectorRsDaily } from "../src/db/schema/analyst.js";
-import { sql } from "drizzle-orm";
 import { runDebate } from "../src/agent/debate/debateEngine.js";
 import { buildMemoryContext } from "../src/agent/debate/memoryLoader.js";
 import { loadMarketSnapshot, formatMarketSnapshot } from "../src/agent/debate/marketDataLoader.js";
@@ -37,10 +35,12 @@ function parseArgs(): Args {
   let dryRun = false;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--from" && args[i + 1] != null) {
+    const nextArg = args[i + 1];
+    if (args[i] === "--from" && nextArg != null && !nextArg.startsWith("--")) {
       from = args[++i];
-    } else if (args[i] === "--limit" && args[i + 1] != null) {
-      limit = parseInt(args[++i], 10);
+    } else if (args[i] === "--limit" && nextArg != null && !nextArg.startsWith("--")) {
+      const num = parseInt(args[++i], 10);
+      if (!isNaN(num)) limit = num;
     } else if (args[i] === "--dry-run") {
       dryRun = true;
     }
@@ -50,20 +50,19 @@ function parseArgs(): Args {
 }
 
 async function getAvailableDates(from: string | null): Promise<string[]> {
-  const fromClause = from != null ? `AND sp.date >= '${from}'` : "";
-
-  const { rows } = await pool.query<{ date: string }>(`
-    SELECT DISTINCT sp.date::text AS date
-    FROM stock_phases sp
-    WHERE EXISTS (
-      SELECT 1 FROM sector_rs_daily srd WHERE srd.date = sp.date
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM debate_sessions ds WHERE ds.date = sp.date
-    )
-    ${fromClause}
-    ORDER BY sp.date ASC
-  `);
+  const { rows } = await pool.query<{ date: string }>(
+    `SELECT DISTINCT sp.date::text AS date
+     FROM stock_phases sp
+     WHERE EXISTS (
+       SELECT 1 FROM sector_rs_daily srd WHERE srd.date = sp.date
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM debate_sessions ds WHERE ds.date = sp.date
+     )
+     ${from != null ? "AND sp.date >= $1" : ""}
+     ORDER BY sp.date ASC`,
+    from != null ? [from] : [],
+  );
 
   return rows.map((r) => r.date);
 }

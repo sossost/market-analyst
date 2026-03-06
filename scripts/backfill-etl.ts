@@ -27,10 +27,12 @@ function parseArgs(): Args {
   let dryRun = false;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--from" && args[i + 1] != null) {
+    const nextArg = args[i + 1];
+    if (args[i] === "--from" && nextArg != null && !nextArg.startsWith("--")) {
       from = args[++i];
-    } else if (args[i] === "--limit" && args[i + 1] != null) {
-      limit = parseInt(args[++i], 10);
+    } else if (args[i] === "--limit" && nextArg != null && !nextArg.startsWith("--")) {
+      const num = parseInt(args[++i], 10);
+      if (!isNaN(num)) limit = num;
     } else if (args[i] === "--dry-run") {
       dryRun = true;
     }
@@ -41,18 +43,17 @@ function parseArgs(): Args {
 
 async function getMissingDates(from: string | null): Promise<string[]> {
   // daily_ma가 있는 날짜만 대상 (MA 없으면 Phase 계산 불가)
-  const fromClause = from != null ? `AND dp.date >= '${from}'` : "";
-
-  const { rows } = await pool.query<{ date: string }>(`
-    SELECT DISTINCT dp.date::text AS date
-    FROM daily_prices dp
-    INNER JOIN daily_ma dm ON dm.date = dp.date AND dm.symbol = dp.symbol
-    WHERE NOT EXISTS (
-      SELECT 1 FROM stock_phases sp WHERE sp.date = dp.date
-    )
-    ${fromClause}
-    ORDER BY dp.date ASC
-  `);
+  const { rows } = await pool.query<{ date: string }>(
+    `SELECT DISTINCT dp.date::text AS date
+     FROM daily_prices dp
+     INNER JOIN daily_ma dm ON dm.date = dp.date AND dm.symbol = dp.symbol
+     WHERE NOT EXISTS (
+       SELECT 1 FROM stock_phases sp WHERE sp.date = dp.date
+     )
+     ${from != null ? "AND dp.date >= $1" : ""}
+     ORDER BY dp.date ASC`,
+    from != null ? [from] : [],
+  );
 
   return rows.map((r) => r.date);
 }
