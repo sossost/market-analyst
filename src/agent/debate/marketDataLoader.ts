@@ -26,6 +26,10 @@ interface Phase2Stock {
   volumeConfirmed: boolean;
   pctFromHigh52w: number | null;
   marketCapB: number | null; // billions
+  /** 최근 가격 변화율 (5거래일) — 모멘텀 방향 판단용 */
+  priceChange5d: number | null;
+  /** 최근 가격 변화율 (20거래일) */
+  priceChange20d: number | null;
 }
 
 interface MarketBreadthSnapshot {
@@ -108,8 +112,7 @@ async function loadPhase2Stocks(date: string): Promise<{
   newEntries: Phase2Stock[];
   topRs: Phase2Stock[];
 }> {
-  // New Phase 2 entries (prev_phase != 2, i.e. just entered Phase 2)
-  const { rows: newRows } = await pool.query<{
+  type Phase2Row = {
     symbol: string;
     rs_score: number;
     prev_phase: number | null;
@@ -118,11 +121,38 @@ async function loadPhase2Stocks(date: string): Promise<{
     volume_confirmed: boolean | null;
     pct_from_high_52w: string | null;
     market_cap: string | null;
-  }>(
+    price_change_5d: string | null;
+    price_change_20d: string | null;
+  };
+
+  const MOMENTUM_JOIN = `
+    LEFT JOIN LATERAL (
+      SELECT
+        (dp_now.close - dp_5d.close) / NULLIF(dp_5d.close, 0) AS change_5d,
+        (dp_now.close - dp_20d.close) / NULLIF(dp_20d.close, 0) AS change_20d
+      FROM daily_prices dp_now
+      LEFT JOIN LATERAL (
+        SELECT close FROM daily_prices
+        WHERE symbol = sp.symbol AND date < $1
+        ORDER BY date DESC OFFSET 4 LIMIT 1
+      ) dp_5d ON true
+      LEFT JOIN LATERAL (
+        SELECT close FROM daily_prices
+        WHERE symbol = sp.symbol AND date < $1
+        ORDER BY date DESC OFFSET 19 LIMIT 1
+      ) dp_20d ON true
+      WHERE dp_now.symbol = sp.symbol AND dp_now.date = $1
+    ) momentum ON true`;
+
+  // New Phase 2 entries (prev_phase != 2, i.e. just entered Phase 2)
+  const { rows: newRows } = await pool.query<Phase2Row>(
     `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
-            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text
+            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text,
+            momentum.change_5d::text AS price_change_5d,
+            momentum.change_20d::text AS price_change_20d
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${MOMENTUM_JOIN}
      WHERE sp.date = $1
        AND sp.phase = 2
        AND sp.prev_phase IS NOT NULL
@@ -134,20 +164,14 @@ async function loadPhase2Stocks(date: string): Promise<{
   );
 
   // Top Phase 2 by RS (regardless of when they entered)
-  const { rows: topRows } = await pool.query<{
-    symbol: string;
-    rs_score: number;
-    prev_phase: number | null;
-    sector: string | null;
-    industry: string | null;
-    volume_confirmed: boolean | null;
-    pct_from_high_52w: string | null;
-    market_cap: string | null;
-  }>(
+  const { rows: topRows } = await pool.query<Phase2Row>(
     `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
-            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text
+            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text,
+            momentum.change_5d::text AS price_change_5d,
+            momentum.change_20d::text AS price_change_20d
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${MOMENTUM_JOIN}
      WHERE sp.date = $1
        AND sp.phase = 2
        AND sp.rs_score >= 80
@@ -157,7 +181,7 @@ async function loadPhase2Stocks(date: string): Promise<{
     [date, MIN_MARKET_CAP],
   );
 
-  const mapStock = (r: typeof newRows[number]): Phase2Stock => ({
+  const mapStock = (r: Phase2Row): Phase2Stock => ({
     symbol: r.symbol,
     rsScore: r.rs_score,
     prevPhase: r.prev_phase,
@@ -169,6 +193,12 @@ async function loadPhase2Stocks(date: string): Promise<{
       : null,
     marketCapB: r.market_cap != null
       ? Number((toNum(r.market_cap) / 1_000_000_000).toFixed(1))
+      : null,
+    priceChange5d: r.price_change_5d != null
+      ? Number((toNum(r.price_change_5d) * 100).toFixed(1))
+      : null,
+    priceChange20d: r.price_change_20d != null
+      ? Number((toNum(r.price_change_20d) * 100).toFixed(1))
       : null,
   });
 
@@ -362,7 +392,19 @@ function formatStockLine(s: Phase2Stock): string {
   const vol = s.volumeConfirmed ? " [거래량 확인]" : "";
   const high52w = s.pctFromHigh52w != null ? `, 고점 대비 ${s.pctFromHigh52w}%` : "";
   const cap = s.marketCapB != null ? `, 시총 $${s.marketCapB}B` : "";
-  return `- ${s.symbol} (RS ${s.rsScore}${high52w}${cap}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}`;
+
+  const momentumParts: string[] = [];
+  if (s.priceChange5d != null) {
+    const sign = s.priceChange5d >= 0 ? "+" : "";
+    momentumParts.push(`5일 ${sign}${s.priceChange5d}%`);
+  }
+  if (s.priceChange20d != null) {
+    const sign = s.priceChange20d >= 0 ? "+" : "";
+    momentumParts.push(`20일 ${sign}${s.priceChange20d}%`);
+  }
+  const momentum = momentumParts.length > 0 ? ` [${momentumParts.join(", ")}]` : "";
+
+  return `- ${s.symbol} (RS ${s.rsScore}${high52w}${cap}, ${s.sector ?? "?"} > ${s.industry ?? "?"})${vol}${momentum}`;
 }
 
 export function formatMarketSnapshot(snapshot: MarketSnapshot): string {

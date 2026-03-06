@@ -114,6 +114,8 @@ describe("formatMarketSnapshot", () => {
             volumeConfirmed: true,
             pctFromHigh52w: -5.2,
             marketCapB: 2800.5,
+            priceChange5d: 3.2,
+            priceChange20d: 8.5,
           },
           {
             symbol: "ACME",
@@ -124,6 +126,8 @@ describe("formatMarketSnapshot", () => {
             volumeConfirmed: false,
             pctFromHigh52w: -45.0,
             marketCapB: 1.2,
+            priceChange5d: -2.1,
+            priceChange20d: -5.3,
           },
         ],
       }),
@@ -138,11 +142,17 @@ describe("formatMarketSnapshot", () => {
     expect(result).toContain("신뢰도 높음");
     expect(result).toContain("NVDA (RS 95, 고점 대비 -5.2%, 시총 $2800.5B");
     expect(result).toContain("[거래량 확인]");
+    // Momentum data
+    expect(result).toContain("5일 +3.2%");
+    expect(result).toContain("20일 +8.5%");
 
     // Unconfirmed section
     expect(result).toContain("거래량 미확인 (1건)");
     expect(result).toContain("추가 확인 필요");
     expect(result).toContain("ACME (RS 88, 고점 대비 -45%");
+    // Negative momentum
+    expect(result).toContain("5일 -2.1%");
+    expect(result).toContain("20일 -5.3%");
     expect(result).toContain("바닥 반등일 수 있으니");
   });
 
@@ -159,6 +169,8 @@ describe("formatMarketSnapshot", () => {
             volumeConfirmed: true,
             pctFromHigh52w: -10,
             marketCapB: 3500,
+            priceChange5d: 1.5,
+            priceChange20d: 4.2,
           },
         ],
       }),
@@ -181,6 +193,8 @@ describe("formatMarketSnapshot", () => {
             volumeConfirmed: false,
             pctFromHigh52w: -8.1,
             marketCapB: 3100.0,
+            priceChange5d: 2.0,
+            priceChange20d: 6.3,
           },
         ],
       }),
