@@ -151,6 +151,38 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+  # ===== Phase 3.5: Signal Tracking =====
+
+  record-signals:
+    name: Record New Signals
+    needs: [build-stock-phases, build-sector-rs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/etl/jobs/record-new-signals.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  update-signal-returns:
+    name: Update Signal Returns
+    needs: build-stock-phases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npx tsx src/etl/jobs/update-signal-returns.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
   # ===== Phase 4: Validate & Agent =====
 
   validate:
