@@ -23,6 +23,8 @@
     "etl:validate": "tsx src/etl/jobs/validate-data.ts",
     "etl:update-recommendations": "tsx src/etl/jobs/update-recommendation-status.ts",
     "etl:verify-theses": "tsx src/etl/jobs/verify-theses.ts",
+    "signal:record": "tsx src/etl/jobs/record-new-signals.ts",
+    "signal:update": "tsx src/etl/jobs/update-signal-returns.ts",
     "etl:promote-learnings": "tsx src/etl/jobs/promote-learnings.ts",
     "agent:daily": "tsx src/agent/run-daily-agent.ts",
     "agent:weekly": "tsx src/agent/run-weekly-agent.ts",
@@ -35,7 +37,8 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "backfill:etl": "tsx scripts/backfill-etl.ts",
-    "backtest:debate": "tsx scripts/backtest-debate.ts"
+    "backtest:debate": "tsx scripts/backtest-debate.ts",
+    "report:ceo": "tsx src/etl/jobs/generate-ceo-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

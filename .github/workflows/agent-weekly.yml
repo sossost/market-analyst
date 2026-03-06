@@ -25,3 +25,8 @@ jobs:
           DISCORD_ERROR_WEBHOOK_URL: ${{ secrets.DISCORD_ERROR_WEBHOOK_URL }}
           BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
           GH_GIST_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+      - name: Generate CEO Weekly Report
+        run: npx tsx src/etl/jobs/generate-ceo-report.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DISCORD_SYSTEM_REPORT_WEBHOOK_URL: ${{ secrets.DISCORD_SYSTEM_REPORT_WEBHOOK_URL }}

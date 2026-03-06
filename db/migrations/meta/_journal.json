@@ -43,6 +43,13 @@
       "when": 1772770488385,
       "tag": "0005_eminent_freak",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772787608323,
+      "tag": "0006_loose_master_mold",
+      "breakpoints": true
     }
   ]
 }
