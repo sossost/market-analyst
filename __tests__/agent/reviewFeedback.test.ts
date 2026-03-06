@@ -6,6 +6,9 @@ import {
   saveReviewFeedback,
   loadRecentFeedback,
   buildFeedbackPromptSection,
+  detectRepeatedPatterns,
+  buildMandatoryRules,
+  buildAdvisoryFeedback,
   type ReviewFeedbackEntry,
 } from "@/agent/reviewFeedback";
 
@@ -252,5 +255,162 @@ describe("loadRecentFeedback (corrupt files)", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].date).toBe("2026-03-04");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectRepeatedPatterns
+// ---------------------------------------------------------------------------
+
+describe("detectRepeatedPatterns", () => {
+  it("returns empty array when entries have no issues", () => {
+    const entries = [makeFeedback({ issues: [] })];
+
+    const result = detectRepeatedPatterns(entries);
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array when no pattern reaches threshold", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["밸류에이션 리스크 경고 부족"] }),
+      makeFeedback({ date: "2026-03-02", issues: ["밸류에이션 리스크 경고 미흡"] }),
+    ];
+
+    const result = detectRepeatedPatterns(entries);
+
+    expect(result).toEqual([]);
+  });
+
+  it("detects pattern when same issue appears 3+ times", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["밸류에이션 리스크 경고 부족"] }),
+      makeFeedback({ date: "2026-03-02", issues: ["밸류에이션 리스크 경고 미흡"] }),
+      makeFeedback({ date: "2026-03-03", issues: ["밸류에이션 리스크 분석 부족"] }),
+    ];
+
+    const result = detectRepeatedPatterns(entries);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].count).toBeGreaterThanOrEqual(3);
+    expect(result[0].pattern).toContain("밸류에이션");
+    expect(result[0].rule).toContain("과거");
+  });
+
+  it("supports custom threshold", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["근거 부족한 주장"] }),
+      makeFeedback({ date: "2026-03-02", issues: ["근거 부족한 분석"] }),
+    ];
+
+    const result = detectRepeatedPatterns(entries, 2);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].count).toBe(2);
+  });
+
+  it("detects multiple distinct repeated patterns", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["밸류에이션 분석 미흡 평가", "카탈리스트 검색 누락 종목"] }),
+      makeFeedback({ date: "2026-03-02", issues: ["밸류에이션 분석 부족 평가", "카탈리스트 검색 미실행 종목"] }),
+      makeFeedback({ date: "2026-03-03", issues: ["밸류에이션 분석 경고 평가", "카탈리스트 검색 생략 종목"] }),
+    ];
+
+    const result = detectRepeatedPatterns(entries);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("returns empty array when entries are empty", () => {
+    const result = detectRepeatedPatterns([]);
+
+    expect(result).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildMandatoryRules
+// ---------------------------------------------------------------------------
+
+describe("buildMandatoryRules", () => {
+  it("returns empty string when no repeated patterns exist", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["일회성 이슈"] }),
+    ];
+
+    const result = buildMandatoryRules(entries);
+
+    expect(result).toBe("");
+  });
+
+  it("returns mandatory rules section for repeated patterns", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["밸류에이션 리스크 경고 부족"] }),
+      makeFeedback({ date: "2026-03-02", issues: ["밸류에이션 리스크 분석 부족"] }),
+      makeFeedback({ date: "2026-03-03", issues: ["밸류에이션 리스크 경고 미흡"] }),
+    ];
+
+    const result = buildMandatoryRules(entries);
+
+    expect(result).toContain("## 필수 규칙 (반복 지적 기반)");
+    expect(result).toContain("반드시 준수하세요");
+    expect(result).toContain("과거");
+    expect(result).toContain("회 지적");
+  });
+
+  it("returns empty string for empty entries", () => {
+    const result = buildMandatoryRules([]);
+
+    expect(result).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAdvisoryFeedback
+// ---------------------------------------------------------------------------
+
+describe("buildAdvisoryFeedback", () => {
+  it("returns only non-repeated issues", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", feedback: "피드백 내용 A", issues: ["밸류에이션 분석 경고 평가", "차트 포맷 개선 필요"] }),
+      makeFeedback({ date: "2026-03-02", feedback: "피드백 내용 B", issues: ["밸류에이션 분석 부족 평가", "마크다운 링크 오류"] }),
+      makeFeedback({ date: "2026-03-03", feedback: "피드백 내용 C", issues: ["밸류에이션 분석 미흡 평가", "타이틀 오타 수정"] }),
+    ];
+
+    const result = buildAdvisoryFeedback(entries);
+
+    // 반복 이슈는 제외되고 비반복 이슈만 포함
+    expect(result).toContain("차트 포맷");
+    expect(result).toContain("마크다운 링크");
+    expect(result).toContain("타이틀 오타");
+    expect(result).toContain("## 과거 리뷰 피드백 (참고사항)");
+  });
+
+  it("returns empty string when all issues are repeated patterns", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["밸류에이션 리스크 경고 부족"] }),
+      makeFeedback({ date: "2026-03-02", issues: ["밸류에이션 리스크 분석 부족"] }),
+      makeFeedback({ date: "2026-03-03", issues: ["밸류에이션 리스크 경고 미흡"] }),
+    ];
+
+    const result = buildAdvisoryFeedback(entries);
+
+    expect(result).toBe("");
+  });
+
+  it("returns empty string for empty entries", () => {
+    const result = buildAdvisoryFeedback([]);
+
+    expect(result).toBe("");
+  });
+
+  it("preserves date and verdict in advisory entries", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-04", verdict: "REVISE", issues: ["고유한 이슈 분석"] }),
+    ];
+
+    const result = buildAdvisoryFeedback(entries);
+
+    expect(result).toContain("### 2026-03-04 (REVISE)");
   });
 });

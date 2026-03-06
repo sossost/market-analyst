@@ -31,6 +31,7 @@ import {
   loadActiveTheses,
   formatThesesForPrompt,
 } from "./debate/thesisStore";
+import { loadSignalPerformanceSummary } from "./signalPerformance";
 
 const MODEL = "claude-opus-4-6";
 const MAX_TOKENS = 8192;
@@ -111,6 +112,12 @@ async function main() {
     logger.error("Theses", `로드 실패 (에이전트는 계속 진행): ${reason}`);
   }
 
+  // 3.6. 시그널 성과 로드
+  const signalPerformance = loadSignalPerformanceSummary();
+  if (signalPerformance !== "") {
+    logger.info("Signal", "백테스트 성과 요약 로드 완료");
+  }
+
   // 4. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
   logger.step("[4/7] Running agent loop...\n");
 
@@ -118,7 +125,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext }),
+    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext, signalPerformance }),
     tools: [
       getIndexReturns,
       getMarketBreadth,
