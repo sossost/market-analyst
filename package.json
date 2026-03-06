@@ -33,7 +33,9 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "backfill:etl": "tsx scripts/backfill-etl.ts",
+    "backtest:debate": "tsx scripts/backtest-debate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

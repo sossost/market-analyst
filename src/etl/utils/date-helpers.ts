@@ -23,8 +23,15 @@ export async function getLatestTradeDate(): Promise<string | null> {
 /**
  * Get the latest date that has price data (daily_prices only, no stock_phases join).
  * Used by screener ETL jobs that run before stock_phases is built.
+ *
+ * Can be overridden via TARGET_DATE env var for backfill runs.
  */
 export async function getLatestPriceDate(): Promise<string | null> {
+  const override = process.env.TARGET_DATE;
+  if (override != null && /^\d{4}-\d{2}-\d{2}$/.test(override)) {
+    return override;
+  }
+
   const result = await db.execute(sql`
     SELECT MAX(date)::text AS result_date
     FROM daily_prices
