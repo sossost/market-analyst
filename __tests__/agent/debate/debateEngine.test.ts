@@ -156,9 +156,9 @@ describe("debateEngine", () => {
       expect(content).not.toContain("실제 시장 데이터");
     }
 
-    // Round 3 (last call): base question only
+    // Round 3 (last call): has market data re-injected for cross-validation
     const round3Content = createMock.mock.calls[8][0].messages[0].content;
     expect(round3Content).toContain("Test question");
-    expect(round3Content).not.toContain("실제 시장 데이터");
+    expect(round3Content).toContain("실제 시장 데이터");
   });
 });

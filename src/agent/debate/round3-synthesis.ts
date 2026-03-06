@@ -12,6 +12,8 @@ interface Round3Input {
   round1Outputs: RoundOutput[];
   round2Outputs: RoundOutput[];
   question: string;
+  /** Original market data for cross-validation */
+  marketDataContext?: string;
 }
 
 interface Round3Result {
@@ -23,6 +25,7 @@ function buildSynthesisPrompt(
   round1Outputs: RoundOutput[],
   round2Outputs: RoundOutput[],
   question: string,
+  marketDataContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -32,10 +35,15 @@ function buildSynthesisPrompt(
     .map((o) => `### ${o.persona} (교차 검증)\n${o.content}`)
     .join("\n\n---\n\n");
 
+  const dataSection = marketDataContext != null && marketDataContext.length > 0
+    ? `\n---\n\n## 원본 시장 데이터 (ETL 수집)\n\n아래는 실제 시장 데이터입니다. 분석가들이 이 데이터를 제대로 반영했는지 검증하세요.\n특히 Phase 2 진입 종목과 섹터 RS 순위를 리포트에 반드시 포함하세요.\n\n${marketDataContext}`
+    : "";
+
   return `## 시장 분석 종합 요청
 
 ### 질문
 ${question}
+${dataSection}
 
 ---
 
@@ -209,9 +217,9 @@ export function extractThesesFromText(text: string): ExtractionResult {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { client, moderator, round1Outputs, round2Outputs, question } = input;
+  const { client, moderator, round1Outputs, round2Outputs, question, marketDataContext } = input;
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question);
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext);
   const result = await callAgent(client, moderator.systemPrompt, userMessage, {
     maxTokens: MODERATOR_MAX_TOKENS,
     disableTools: true,

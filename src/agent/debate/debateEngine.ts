@@ -6,11 +6,17 @@ import { runRound3 } from "./round3-synthesis.js";
 import { logger } from "../logger.js";
 import type { AgentPersona, DebateResult } from "../../types/debate.js";
 
+interface NewsContext {
+  [persona: string]: string;
+}
+
 interface DebateConfig {
   question: string;
   debateDate: string;
   memoryContext?: string;
   marketDataContext?: string;
+  /** Per-persona news context from pre-collection */
+  newsContext?: NewsContext;
 }
 
 /**
@@ -23,7 +29,7 @@ interface DebateConfig {
  * Individual agent failures are tolerated — debate continues with remaining agents.
  */
 export async function runDebate(config: DebateConfig): Promise<DebateResult> {
-  const { question, debateDate, memoryContext = "", marketDataContext = "" } = config;
+  const { question, debateDate, memoryContext = "", marketDataContext = "", newsContext = {} } = config;
   const startTime = Date.now();
 
   const client = new Anthropic();
@@ -49,6 +55,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     experts,
     question: fullQuestion,
     memoryContext,
+    newsContext,
   });
 
   const failedInRound1 = experts
@@ -83,6 +90,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     round1Outputs: round1Result.round.outputs,
     round2Outputs: round2Result.round.outputs,
     question,
+    marketDataContext,
   });
 
   const totalDurationMs = Date.now() - startTime;

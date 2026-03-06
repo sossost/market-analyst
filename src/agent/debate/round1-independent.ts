@@ -9,6 +9,8 @@ interface Round1Input {
   experts: PersonaDefinition[];
   question: string;
   memoryContext: string;
+  /** Per-persona news context, keyed by persona name */
+  newsContext?: Record<string, string>;
 }
 
 interface Round1Result {
@@ -21,7 +23,7 @@ interface Round1Result {
  * 4 experts answer the same question in parallel, unaware of each other's responses.
  */
 export async function runRound1(input: Round1Input): Promise<Round1Result> {
-  const { client, experts, question, memoryContext } = input;
+  const { client, experts, question, memoryContext, newsContext = {} } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -39,11 +41,20 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
 
     const results = await Promise.allSettled(
       batch.map(async (expert) => {
-        const systemPrompt = memoryContext.length > 0
-          ? `${expert.systemPrompt}\n\n## 장기 기억 (검증된 원칙)\n${memoryContext}`
-          : expert.systemPrompt;
+        let systemPrompt = expert.systemPrompt;
+        if (memoryContext.length > 0) {
+          systemPrompt += `\n\n## 장기 기억 (검증된 원칙)\n${memoryContext}`;
+        }
 
-        const result = await callAgent(client, systemPrompt, question);
+        // 장관별 뉴스 컨텍스트를 질문에 추가
+        const personaNews = newsContext[expert.name] ?? "";
+        const fullQuestion = personaNews.length > 0
+          ? `${question}\n\n---\n\n${personaNews}`
+          : question;
+
+        const result = await callAgent(client, systemPrompt, fullQuestion, {
+          disableTools: true,
+        });
         return { persona: expert.name as AgentPersona, result };
       }),
     );
