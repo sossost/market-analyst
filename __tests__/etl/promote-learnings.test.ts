@@ -163,5 +163,37 @@ describe("promote-learnings logic", () => {
       const result = buildPromotionCandidates([], [], new Set());
       expect(result).toHaveLength(0);
     });
+
+    it("extracts reusablePatterns from causalAnalysis", () => {
+      const causal = JSON.stringify({
+        causalChain: "CPI 둔화 → Fed 인하",
+        keyFactors: ["CPI 하락"],
+        reusablePattern: "CPI 3개월 연속 둔화 시 Fed 인하 확률 80%",
+        lessonsLearned: "물가 추세 확인",
+      });
+
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "Fed rate", causalAnalysis: causal }),
+        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "Fed rate", causalAnalysis: causal }),
+        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "Fed rate", causalAnalysis: null }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].reusablePatterns).toHaveLength(2);
+      expect(result[0].reusablePatterns[0]).toContain("CPI 3개월");
+    });
+
+    it("returns empty reusablePatterns when no causalAnalysis", () => {
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "GDP" }),
+        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "GDP" }),
+        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "GDP" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].reusablePatterns).toHaveLength(0);
+    });
   });
 });

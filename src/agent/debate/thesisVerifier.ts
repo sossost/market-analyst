@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { loadActiveTheses, resolveThesis } from "./thesisStore.js";
+import { loadActiveTheses, resolveThesis, saveCausalAnalysis } from "./thesisStore.js";
+import { analyzeCauses } from "./causalAnalyzer.js";
 import { logger } from "../logger.js";
 
 const MODEL = "claude-sonnet-4-20250514";
@@ -106,19 +107,21 @@ ${thesesText}
 
   const judgments = parseJudgments(rawText, activeTheses.map((t) => t.id));
 
-  // Apply judgments
-  // 병렬 DB 업데이트
+  // Apply judgments — resolve in DB
+  type ResolvedJudgment = VerificationJudgment & { verdict: "CONFIRMED" | "INVALIDATED" };
+  const resolved = judgments.filter(
+    (j): j is ResolvedJudgment => j.verdict !== "HOLD",
+  );
+
   await Promise.all(
-    judgments
-      .filter((j) => j.verdict !== "HOLD")
-      .map((j) =>
-        resolveThesis(j.thesisId, {
-          status: j.verdict,
-          verificationDate: debateDate,
-          verificationResult: j.reason,
-          closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
-        }),
-      ),
+    resolved.map((j) =>
+      resolveThesis(j.thesisId, {
+        status: j.verdict,
+        verificationDate: debateDate,
+        verificationResult: j.reason,
+        closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
+      }),
+    ),
   );
 
   const confirmed = judgments.filter((j) => j.verdict === "CONFIRMED").length;
@@ -129,6 +132,49 @@ ${thesesText}
     "ThesisVerifier",
     `Results: ${confirmed} confirmed, ${invalidated} invalidated, ${held} held`,
   );
+
+  // Causal analysis — resolve된 thesis의 원인 분석
+  if (resolved.length > 0) {
+    try {
+      const thesisMap = new Map(activeTheses.map((t) => [t.id, t]));
+      const resolvedTheses = resolved
+        .map((j) => {
+          const t = thesisMap.get(j.thesisId);
+          if (t == null) return null;
+          return {
+            id: t.id,
+            agentPersona: t.agentPersona,
+            thesis: t.thesis,
+            debateDate: t.debateDate,
+            verificationMetric: t.verificationMetric,
+            targetCondition: t.targetCondition,
+            invalidationCondition: t.invalidationCondition,
+            status: j.verdict,
+            verificationResult: j.reason,
+          };
+        })
+        .filter((t) => t != null);
+
+      const causalResults = await analyzeCauses({
+        resolvedTheses,
+        marketDataContext,
+        debateDate,
+      });
+
+      await Promise.all(
+        causalResults.map((r) => saveCausalAnalysis(r.thesisId, {
+          causalChain: r.causalChain,
+          keyFactors: r.keyFactors,
+          reusablePattern: r.reusablePattern,
+          lessonsLearned: r.lessonsLearned,
+        })),
+      );
+
+      logger.info("ThesisVerifier", `Causal analysis completed for ${causalResults.length} theses`);
+    } catch (err) {
+      logger.warn("ThesisVerifier", `Causal analysis failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   return {
     confirmed,

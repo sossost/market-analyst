@@ -213,6 +213,7 @@ export const theses = pgTable(
     status: text("status").notNull().default("ACTIVE"), // ACTIVE | CONFIRMED | INVALIDATED | EXPIRED
     verificationDate: text("verification_date"),
     verificationResult: text("verification_result"),
+    causalAnalysis: text("causal_analysis"), // JSON: { causalChain, keyFactors, reusablePattern, lessonsLearned }
     closeReason: text("close_reason"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
