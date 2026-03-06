@@ -1,14 +1,44 @@
 import {
-  buildFeedbackPromptSection,
+  buildAdvisoryFeedback,
+  buildMandatoryRules,
   loadRecentFeedback,
 } from "./reviewFeedback";
 
-function appendFeedbackSection(base: string): string {
+/**
+ * 피드백을 프롬프트에 계층적으로 주입한다.
+ * - 반복 패턴(3회+): 규칙 섹션 앞에 "필수 규칙"으로 삽입 (높은 우선순위)
+ * - 비반복 피드백: 프롬프트 끝에 참고사항으로 추가
+ */
+function injectFeedbackLayers(base: string): string {
   const entries = loadRecentFeedback();
   if (entries.length === 0) return base;
 
-  const section = buildFeedbackPromptSection(entries);
-  return `${base}\n\n${section}`;
+  const mandatory = buildMandatoryRules(entries);
+  const advisory = buildAdvisoryFeedback(entries);
+
+  let result = base;
+
+  // 반복 패턴은 "## 규칙" 섹션 바로 앞에 삽입 (높은 우선순위)
+  if (mandatory !== "") {
+    const rulesSectionIndex = result.indexOf("\n## 규칙");
+    if (rulesSectionIndex !== -1) {
+      result =
+        result.slice(0, rulesSectionIndex) +
+        "\n\n" +
+        mandatory +
+        result.slice(rulesSectionIndex);
+    } else {
+      // "## 규칙" 섹션이 없으면 프롬프트 끝에 추가
+      result = `${result}\n\n${mandatory}`;
+    }
+  }
+
+  // 비반복 피드백은 프롬프트 끝에 참고사항으로 추가
+  if (advisory !== "") {
+    result = `${result}\n\n${advisory}`;
+  }
+
+  return result;
 }
 
 /** XML/HTML 특수문자 이스케이프 — 프롬프트 인젝션 방지 */
@@ -164,7 +194,7 @@ ${sanitized}
 </debate-theses>`;
   }
 
-  return appendFeedbackSection(prompt);
+  return injectFeedbackLayers(prompt);
 }
 
 /**
@@ -174,8 +204,10 @@ ${sanitized}
 export function buildWeeklySystemPrompt(options?: {
   fundamentalSupplement?: string;
   thesesContext?: string;
+  signalPerformance?: string;
 }): string {
-  const { fundamentalSupplement, thesesContext } = options ?? {};
+  const { fundamentalSupplement, thesesContext, signalPerformance } =
+    options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 주간 단위로 Phase 2 초입 주도주를 발굴하고, 카탈리스트와 함께 심층 분석 리포트를 작성합니다.
 
@@ -214,7 +246,8 @@ ${ANALYSIS_FRAMEWORK}
    - 주도주 후보 각각에 대해 뉴스 검색
    - 펀더멘탈 이벤트, 산업 동향 파악
 
-8. **과거 추천 성과 확인** (read_recommendation_performance)
+8. **과거 추천 성과 확인** (read_recommendation_performance) — **필수 단계**
+   - 이 단계를 건너뛰지 마세요. 과거 성과를 확인하지 않으면 같은 실수를 반복합니다.
    - 활성 추천의 현재 상태 확인
    - 종료된 추천의 승률, 평균 수익률 확인
    - 반복 실패 패턴 있으면 이번 추천에 반영
@@ -371,5 +404,17 @@ ${sanitized}
 **활용법**: 전망과 일치하는 섹터/종목에 가산점, 전망과 충돌하는 종목에는 리스크로 언급하세요.`;
   }
 
-  return appendFeedbackSection(prompt);
+  if (signalPerformance != null && signalPerformance !== "") {
+    prompt += `
+
+## 시그널 성과 기준 (기계적 백테스트 결과)
+
+아래는 과거 데이터 기반 기계적 시그널 성과입니다. 종목 추천 시 이 기준을 반영하세요:
+- RS 임계값과 거래량 확인이 수익률에 미치는 영향을 인지
+- Phase 종료 시점 승률이 낮으므로, Phase 2 유지 여부를 반드시 확인
+
+${signalPerformance}`;
+  }
+
+  return injectFeedbackLayers(prompt);
 }

@@ -5,11 +5,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ---------------------------------------------------------------------------
 
 const mockLoadRecentFeedback = vi.fn();
-const mockBuildFeedbackPromptSection = vi.fn();
+const mockBuildMandatoryRules = vi.fn();
+const mockBuildAdvisoryFeedback = vi.fn();
 
 vi.mock("@/agent/reviewFeedback", () => ({
   loadRecentFeedback: mockLoadRecentFeedback,
-  buildFeedbackPromptSection: mockBuildFeedbackPromptSection,
+  buildMandatoryRules: mockBuildMandatoryRules,
+  buildAdvisoryFeedback: mockBuildAdvisoryFeedback,
 }));
 
 const { buildDailySystemPrompt, buildWeeklySystemPrompt } =
@@ -31,10 +33,11 @@ describe("buildDailySystemPrompt", () => {
 
     expect(result).toContain("미국 주식 시장 분석 전문가 Agent");
     expect(result).toContain("시장 온도");
-    expect(mockBuildFeedbackPromptSection).not.toHaveBeenCalled();
+    expect(mockBuildMandatoryRules).not.toHaveBeenCalled();
+    expect(mockBuildAdvisoryFeedback).not.toHaveBeenCalled();
   });
 
-  it("appends feedback section when feedback entries exist", () => {
+  it("injects mandatory rules before 규칙 section when repeated patterns exist", () => {
     const entries = [
       {
         date: "2026-03-04",
@@ -44,13 +47,36 @@ describe("buildDailySystemPrompt", () => {
       },
     ];
     mockLoadRecentFeedback.mockReturnValue(entries);
-    mockBuildFeedbackPromptSection.mockReturnValue("## 과거 리뷰 피드백\n- 밸류에이션 리스크 경고 부족");
+    mockBuildMandatoryRules.mockReturnValue("## 필수 규칙 (반복 지적 기반)\n\n- 밸류에이션 리스크 경고 부족 (과거 5회 지적)");
+    mockBuildAdvisoryFeedback.mockReturnValue("");
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("## 과거 리뷰 피드백");
+    expect(result).toContain("## 필수 규칙 (반복 지적 기반)");
     expect(result).toContain("밸류에이션 리스크 경고 부족");
-    expect(mockBuildFeedbackPromptSection).toHaveBeenCalledWith(entries);
+    // 필수 규칙이 규칙 섹션 앞에 있는지 확인
+    const mandatoryIdx = result.indexOf("## 필수 규칙");
+    const rulesIdx = result.indexOf("## 규칙");
+    expect(mandatoryIdx).toBeLessThan(rulesIdx);
+  });
+
+  it("appends advisory feedback at the end", () => {
+    const entries = [
+      {
+        date: "2026-03-04",
+        verdict: "REVISE",
+        feedback: "리스크 부족",
+        issues: ["단발성 이슈"],
+      },
+    ];
+    mockLoadRecentFeedback.mockReturnValue(entries);
+    mockBuildMandatoryRules.mockReturnValue("");
+    mockBuildAdvisoryFeedback.mockReturnValue("## 과거 리뷰 피드백 (참고사항)\n\n- 단발성 이슈");
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).toContain("## 과거 리뷰 피드백 (참고사항)");
+    expect(result).toContain("단발성 이슈");
   });
 
   it("calls loadRecentFeedback with default count", () => {
@@ -111,10 +137,11 @@ describe("buildWeeklySystemPrompt", () => {
 
     expect(result).toContain("미국 주식 시장 분석 전문가 Agent");
     expect(result).toContain("Phase 2 초입 주도주");
-    expect(mockBuildFeedbackPromptSection).not.toHaveBeenCalled();
+    expect(mockBuildMandatoryRules).not.toHaveBeenCalled();
+    expect(mockBuildAdvisoryFeedback).not.toHaveBeenCalled();
   });
 
-  it("appends feedback section when feedback entries exist", () => {
+  it("injects mandatory rules and advisory feedback when entries exist", () => {
     const entries = [
       {
         date: "2026-03-03",
@@ -124,11 +151,12 @@ describe("buildWeeklySystemPrompt", () => {
       },
     ];
     mockLoadRecentFeedback.mockReturnValue(entries);
-    mockBuildFeedbackPromptSection.mockReturnValue("## 과거 리뷰 피드백\n- No data backing claims");
+    mockBuildMandatoryRules.mockReturnValue("");
+    mockBuildAdvisoryFeedback.mockReturnValue("## 과거 리뷰 피드백 (참고사항)\n\n- No data backing claims");
 
     const result = buildWeeklySystemPrompt();
 
-    expect(result).toContain("## 과거 리뷰 피드백");
+    expect(result).toContain("## 과거 리뷰 피드백 (참고사항)");
     expect(result).toContain("No data backing claims");
   });
 
