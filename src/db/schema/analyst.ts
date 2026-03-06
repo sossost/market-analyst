@@ -254,6 +254,48 @@ export const agentLearnings = pgTable(
 );
 
 /**
+ * debate_sessions — 토론 세션 전체 기록.
+ * 학습 루프의 핵심: 시장 조건 → 분석 → 결과를 연결하는 3종 세트.
+ * few-shot 주입, 패턴 분석, 향후 파인튜닝 데이터로 활용.
+ */
+export const debateSessions = pgTable(
+  "debate_sessions",
+  {
+    id: serial("id").primaryKey(),
+    date: text("date").notNull(),
+
+    // 당시 시장 조건 스냅샷
+    marketSnapshot: text("market_snapshot").notNull(), // formatted market data text
+    newsContext: text("news_context"), // JSON: { macro: "...", tech: "...", ... }
+
+    // 핵심 시장 지표 (유사 세션 검색용)
+    vix: numeric("vix"),
+    fearGreedScore: numeric("fear_greed_score"),
+    phase2Ratio: numeric("phase2_ratio"),
+    topSectorRs: text("top_sector_rs"), // "Energy:73.3,Technology:41.5,..."
+
+    // 토론 라운드 출력
+    round1Outputs: text("round1_outputs").notNull(), // JSON: RoundOutput[]
+    round2Outputs: text("round2_outputs").notNull(), // JSON: RoundOutput[]
+    synthesisReport: text("synthesis_report").notNull(),
+
+    // 메타데이터
+    thesesCount: integer("theses_count").notNull().default(0),
+    tokensInput: integer("tokens_input"),
+    tokensOutput: integer("tokens_output"),
+    durationMs: integer("duration_ms"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqDate: unique("uq_debate_sessions_date").on(t.date),
+    idxDate: index("idx_debate_sessions_date").on(t.date),
+  }),
+);
+
+/**
  * recommendation_factors — 추천 시점 팩터 스냅샷.
  * Phase C 팩터 분석용 (현재는 저장만).
  */
