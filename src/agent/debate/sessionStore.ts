@@ -29,41 +29,28 @@ export async function saveDebateSession(input: SaveSessionInput): Promise<void> 
     .map((s) => `${s.sector}:${s.avgRs}`)
     .join(",");
 
+  const sessionData = {
+    marketSnapshot: marketDataContext,
+    newsContext: JSON.stringify(newsContext),
+    vix: vix != null ? String(vix) : null,
+    fearGreedScore: fearGreedScore != null ? String(fearGreedScore) : null,
+    phase2Ratio: phase2Ratio != null ? String(phase2Ratio) : null,
+    topSectorRs,
+    round1Outputs: JSON.stringify(result.round1.outputs),
+    round2Outputs: JSON.stringify(result.round2.outputs),
+    synthesisReport: result.round3.report,
+    thesesCount: result.round3.theses.length,
+    tokensInput: result.metadata.totalTokens.input,
+    tokensOutput: result.metadata.totalTokens.output,
+    durationMs: result.metadata.totalDurationMs,
+  };
+
   await db
     .insert(debateSessions)
-    .values({
-      date: debateDate,
-      marketSnapshot: marketDataContext,
-      newsContext: JSON.stringify(newsContext),
-      vix: vix != null ? String(vix) : null,
-      fearGreedScore: fearGreedScore != null ? String(fearGreedScore) : null,
-      phase2Ratio: phase2Ratio != null ? String(phase2Ratio) : null,
-      topSectorRs,
-      round1Outputs: JSON.stringify(result.round1.outputs),
-      round2Outputs: JSON.stringify(result.round2.outputs),
-      synthesisReport: result.round3.report,
-      thesesCount: result.round3.theses.length,
-      tokensInput: result.metadata.totalTokens.input,
-      tokensOutput: result.metadata.totalTokens.output,
-      durationMs: result.metadata.totalDurationMs,
-    })
+    .values({ date: debateDate, ...sessionData })
     .onConflictDoUpdate({
       target: debateSessions.date,
-      set: {
-        marketSnapshot: marketDataContext,
-        newsContext: JSON.stringify(newsContext),
-        vix: vix != null ? String(vix) : null,
-        fearGreedScore: fearGreedScore != null ? String(fearGreedScore) : null,
-        phase2Ratio: phase2Ratio != null ? String(phase2Ratio) : null,
-        topSectorRs,
-        round1Outputs: JSON.stringify(result.round1.outputs),
-        round2Outputs: JSON.stringify(result.round2.outputs),
-        synthesisReport: result.round3.report,
-        thesesCount: result.round3.theses.length,
-        tokensInput: result.metadata.totalTokens.input,
-        tokensOutput: result.metadata.totalTokens.output,
-        durationMs: result.metadata.totalDurationMs,
-      },
+      set: sessionData,
     });
 
   logger.info("SessionStore", `Session saved for ${debateDate}`);
@@ -97,23 +84,25 @@ export async function findSimilarSessions(
   if (currentVix == null && currentFg == null) return [];
 
   // Weighted distance: VIX matters most, then fear/greed, then phase2 ratio
-  const vixWeight = 3;
-  const fgWeight = 1;
-  const p2Weight = 2;
+  const VIX_WEIGHT = 3;
+  const FG_WEIGHT = 1;
+  const P2_WEIGHT = 2;
 
-  const distanceParts: string[] = [];
+  const distanceParts: ReturnType<typeof sql>[] = [];
 
   if (currentVix != null) {
-    distanceParts.push(`(${vixWeight} * ABS(COALESCE(vix::numeric, 0) - ${currentVix}))`);
+    distanceParts.push(sql`(${VIX_WEIGHT} * ABS(COALESCE(${debateSessions.vix}, '0')::numeric - ${currentVix}))`);
   }
   if (currentFg != null) {
-    distanceParts.push(`(${fgWeight} * ABS(COALESCE(fear_greed_score::numeric, 0) - ${currentFg}) / 10)`);
+    distanceParts.push(sql`(${FG_WEIGHT} * ABS(COALESCE(${debateSessions.fearGreedScore}, '0')::numeric - ${currentFg}) / 10)`);
   }
   if (currentP2 != null) {
-    distanceParts.push(`(${p2Weight} * ABS(COALESCE(phase2_ratio::numeric, 0) - ${currentP2}))`);
+    distanceParts.push(sql`(${P2_WEIGHT} * ABS(COALESCE(${debateSessions.phase2Ratio}, '0')::numeric - ${currentP2}))`);
   }
 
-  const distanceExpr = distanceParts.join(" + ");
+  const distanceExpr = distanceParts.length === 1
+    ? distanceParts[0]
+    : sql.join(distanceParts, sql` + `);
 
   const rows = await db
     .select({
@@ -127,7 +116,7 @@ export async function findSimilarSessions(
       thesesCount: debateSessions.thesesCount,
     })
     .from(debateSessions)
-    .orderBy(sql.raw(distanceExpr))
+    .orderBy(distanceExpr)
     .limit(limit);
 
   return rows.map((r) => ({
@@ -171,11 +160,13 @@ export async function buildFewShotContext(
       conditions.push(`상위 섹터: ${topSector}`);
     }
 
-    // Extract core insight from past report (first ~300 chars of synthesis)
-    const insight = session.synthesisReport.slice(0, 500).trim();
+    const MAX_INSIGHT_CHARS = 500;
+    const TRUNCATE_AT = 400;
+    const rawInsight = session.synthesisReport.slice(0, MAX_INSIGHT_CHARS).trim();
+    const insight = rawInsight.replace(/<\/past-sessions>/gi, "");
 
     lines.push(`### ${session.date} (${conditions.join(", ")})`);
-    lines.push(insight.length > 400 ? `${insight.slice(0, 400)}...` : insight);
+    lines.push(insight.length > TRUNCATE_AT ? `${insight.slice(0, TRUNCATE_AT)}...` : insight);
     lines.push("");
   }
 
