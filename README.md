@@ -1,26 +1,28 @@
 # Market Analyst Agent
 
-Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 펀더멘탈 검증 + 장관 토론을 거쳐 리포트를 Discord로 발송하는 시스템.
+Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 장관 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
 ## How It Works
 
 ```
-1. ETL 파이프라인이 매일 장 마감 후 실행
+1. ETL 파이프라인 (매일 장 마감 후)
    → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석
 
 2. 장관 토론 (매일 22:00 UTC)
    → 매크로/테크/지정학/심리 4명이 3라운드 토론
+   → 실시간 뉴스 주입 + 모멘텀 데이터 분석
    → 모더레이터가 thesis 구조화 → DB 저장
 
-3. Claude Agent가 도구를 사용해 자율적으로 시장 분석
-   → 주도섹터 발굴, 특이종목 스크리닝, 카탈리스트 검색
-   → 일간: 시장 온도 + 특이종목 브리핑
-   → 주간: Phase 2 주도주 심층 분석 + 펀더멘탈 검증
+3. 학습 루프 (자동)
+   → ACTIVE thesis를 시장 데이터로 검증 (CONFIRMED/INVALIDATED)
+   → 원인 분석: LLM이 "왜 맞았는지/틀렸는지" 인과 체인 추출
+   → 반복 적중 패턴 → 장기 기억(agent_learnings)으로 승격
+   → 유사 시장 조건의 과거 세션을 few-shot으로 주입
 
-4. 펀더멘탈 검증 (Minervini SEPA)
-   → Phase 2 종목의 실적 데이터 정량 스코어링 (S/A/B/C/F)
+4. 에이전트 리포트
+   → 일간: 시장 온도 + 특이종목 브리핑
+   → 주간: Phase 2 주도주 심층 분석 + 펀더멘탈 검증 (SEPA)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
-   → LLM 페르소나가 투자 내러티브 생성
 ```
 
 ## Quick Start
@@ -68,7 +70,7 @@ npm run agent:weekly        # 주간 종목 분석
 npm run agent:debate        # 장관 토론 (매크로/테크/지정학/심리)
 
 # 테스트
-npm test                    # 전체 테스트 (307 tests)
+npm test                    # 전체 테스트 (356 tests)
 npm run test:watch          # 워치 모드
 npm run typecheck           # 타입 체크
 
@@ -84,14 +86,25 @@ npm run db:push             # 스키마 적용
 │     ETL      │    │   Debate     │    │    Agent     │
 │              │    │              │    │              │
 │ Stock Phases │───▶│ 4 Ministers  │───▶│ Claude Opus  │
-│ Sector RS    │    │ 3-Round Talk │    │ + 12 Tools   │
+│ Sector RS    │    │ 3-Round Talk │    │ + 13 Tools   │
 │ Industry RS  │    │ + Moderator  │    │ + Fundamental│
 └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
        │                   │                   │
        │            ┌──────▼───────┐           │
-       └───────────▶│   Delivery   │◀──────────┘
-                    │  Discord     │
-                    │  + Gist      │
+       └───────────▶│  Learning    │◀──────────┘
+                    │    Loop      │
+                    └──────┬───────┘
+                           │
+               ┌───────────┼───────────┐
+               │           │           │
+        ┌──────▼──┐  ┌─────▼────┐  ┌──▼───────┐
+        │ Thesis  │  │ Causal   │  │ Few-shot  │
+        │ Verify  │  │ Analysis │  │ Injection │
+        └─────────┘  └──────────┘  └──────────┘
+                           │
+                    ┌──────▼───────┐
+                    │   Delivery   │
+                    │ Discord+Gist │
                     └──────┬───────┘
                            │
                     Supabase (PostgreSQL)
@@ -113,6 +126,28 @@ npm run db:push             # 스키마 적용
 | `saveReportLog` | O | O | 리포트 결과 저장 |
 | `saveRecommendations` | | O | 추천 종목 DB 저장 |
 | `readRecommendationPerformance` | | O | 추천 성과 트래킹 |
+
+### Learning Loop
+
+예측을 기록 → 검증 → 원인 분석 → 패턴 축적하는 자기 개선 시스템:
+
+```
+토론에서 thesis 추출
+  → ACTIVE 상태로 DB 저장
+  → 매일 시장 데이터로 자동 검증 (CONFIRMED/INVALIDATED/HOLD)
+  → 원인 분석: "왜 맞았는지/틀렸는지" LLM 분석 → causal_analysis 저장
+  → 3회+ 적중 패턴 → agent_learnings로 승격
+  → 유사 시장 조건 과거 세션 → few-shot 주입
+```
+
+| 구성 요소 | 파일 | 역할 |
+|-----------|------|------|
+| Thesis Store | `thesisStore.ts` | thesis 저장, 만료, 통계 |
+| Thesis Verifier | `thesisVerifier.ts` | LLM 기반 자동 검증 |
+| Causal Analyzer | `causalAnalyzer.ts` | 검증 결과 원인 분석, 패턴 추출 |
+| Session Store | `sessionStore.ts` | 토론 세션 저장, 유사 세션 검색 |
+| Memory Loader | `memoryLoader.ts` | 학습 + 검증 결과 프롬프트 주입 |
+| Promote Learnings | `promote-learnings.ts` | 반복 적중 패턴 → 장기 기억 승격 |
 
 ### Fundamental Validation (Minervini SEPA)
 
@@ -154,23 +189,34 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **F2** Agent Core — Claude agentic loop + 도구 + 일간/주간 분리
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지
 - [x] **F5** Report & Delivery — Discord 발송, Gist MD, 리뷰 파이프라인
-- [x] **F6** Debate & Evolution — 장관 4명 토론 + thesis 저장
+- [x] **F6** Debate & Evolution — 장관 4명 토론 + thesis 저장 + 학습 루프
 - [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + S등급 리포트
+- [x] **Phase A** Learning Loop — 세션 저장, few-shot 주입, 원인 분석, 패턴 승격
+- [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지
+- [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
 
-## Documentation
+자세한 로드맵: [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
-기능별 스펙과 결정 문서는 `docs/features/` 아래에 정리:
+## Key Directories
 
 ```
-docs/features/
-├── data-infra/              # F1 스펙, 결정, 플랜
-├── agent-core/              # F2 스펙, 결정, 플랜
-├── report-delivery/         # F5 리포트 분리 + 카탈리스트
-├── report-split-catalyst/   # 리포트 분리 스펙
-├── tracking/                # F4 추천 종목 트래킹
-├── debate-evolution/        # F6 장관 토론 시스템
-├── fundamental-validation/  # F7 펀더멘탈 검증 (SEPA)
-└── industry-intel/          # F3 산업 인텔리전스 (미착수)
+src/
+├── agent/
+│   ├── debate/              # 장관 토론 엔진 + 학습 루프
+│   │   ├── debateEngine.ts  # 3라운드 토론 오케스트레이터
+│   │   ├── causalAnalyzer.ts # 원인 분석 (왜 맞았는지/틀렸는지)
+│   │   ├── thesisVerifier.ts # thesis 자동 검증
+│   │   ├── sessionStore.ts  # 세션 저장 + 유사 세션 검색
+│   │   └── memoryLoader.ts  # 학습 → 프롬프트 주입
+│   ├── fundamental/         # SEPA 펀더멘탈 검증
+│   └── tools/               # 에이전트 도구 (13개)
+├── etl/                     # 데이터 파이프라인
+├── lib/                     # 유틸리티 (스코어링, 분석)
+└── db/schema/               # Drizzle ORM 스키마
+
+docs/
+├── ROADMAP.md               # 전체 로드맵
+└── features/                # 기능별 스펙/결정/플랜
 ```
 
 ## License
