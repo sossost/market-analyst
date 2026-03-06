@@ -43,7 +43,7 @@ async function migrate() {
       } catch (err) {
         const pgErr = err as { code?: string; message: string };
         // Skip "already exists" errors for idempotency
-        if (pgErr.code === "42P07" || pgErr.code === "42710") {
+        if (pgErr.code === "42P07" || pgErr.code === "42710" || pgErr.code === "42701") {
           console.log(`  Skipped (already exists): ${statement.slice(0, 60)}...`);
           continue;
         }

@@ -6,6 +6,7 @@ import { gte } from "drizzle-orm";
 import { calculateAgentPerformance } from "@/lib/agent-performance";
 import { calculateSignalStats } from "@/lib/signal-performance-stats";
 import { buildCeoWeeklyReport } from "@/agent/ceo-weekly-report";
+import { sendDiscordMessage } from "@/agent/discord";
 import type { ParamChangeRow } from "@/agent/ceo-weekly-report";
 
 /**
@@ -103,7 +104,15 @@ async function main() {
     weekEnd: todayStr,
   });
 
-  // 5. 콘솔 출력
+  // 5. Discord 발송 (CEO 채널)
+  const ceoWebhookUrl = process.env.DISCORD_CEO_WEBHOOK_URL;
+  if (ceoWebhookUrl != null && ceoWebhookUrl !== "") {
+    await sendDiscordMessage(report, "DISCORD_CEO_WEBHOOK_URL");
+    console.log("\nDiscord CEO 채널에 발송 완료.");
+  } else {
+    console.log("\nDISCORD_CEO_WEBHOOK_URL 미설정 — 콘솔 출력만 진행.");
+  }
+
   console.log("\n" + "=".repeat(60));
   console.log(report);
   console.log("=".repeat(60));
