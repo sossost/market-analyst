@@ -281,30 +281,42 @@ async function calculateSpyReturns(
     spyReturns[period] = [];
   }
 
+  if (signals.length === 0) return spyReturns as Record<number, number>;
+
+  // 전체 날짜 범위 산출 후 SPY 가격을 한 번에 로드
+  const entryDates = signals.map((s) => s.entryDate);
+  const minDate = entryDates.reduce((a, b) => (a < b ? a : b));
+  const maxDate = entryDates.reduce((a, b) => (a > b ? a : b));
+
+  const { rows: spyRows } = await pool.query<{ date: string; close: string }>(
+    `SELECT date::text, close FROM daily_prices
+     WHERE symbol = 'SPY' AND date >= $1 AND close IS NOT NULL
+     ORDER BY date ASC`,
+    [minDate],
+  );
+
+  const spyByDate = new Map<string, number>();
+  const spyDates: string[] = [];
+  for (const row of spyRows) {
+    const price = parseFloat(row.close);
+    spyByDate.set(row.date, price);
+    spyDates.push(row.date);
+  }
+
   for (const signal of signals) {
-    const { rows } = await pool.query<{ close: string; row_num: string }>(
-      `SELECT close, ROW_NUMBER() OVER (ORDER BY date) AS row_num
-       FROM daily_prices
-       WHERE symbol = 'SPY'
-         AND date > $1
-         AND close IS NOT NULL
-       ORDER BY date ASC
-       LIMIT $2`,
-      [signal.entryDate, Math.max(...HOLD_PERIODS)],
-    );
+    const entryPrice = spyByDate.get(signal.entryDate);
+    if (entryPrice == null) continue;
 
-    const entryRow = await pool.query<{ close: string }>(
-      `SELECT close FROM daily_prices WHERE symbol = 'SPY' AND date = $1`,
-      [signal.entryDate],
-    );
-    const spyEntry = entryRow.rows[0] != null ? parseFloat(entryRow.rows[0].close) : null;
-    if (spyEntry == null) continue;
+    // entryDate 이후의 거래일 인덱스 찾기
+    const startIdx = spyDates.indexOf(signal.entryDate);
+    if (startIdx === -1) continue;
 
-    for (const row of rows) {
-      const dayNum = parseInt(row.row_num, 10);
-      if (HOLD_PERIODS.includes(dayNum)) {
-        const ret = ((parseFloat(row.close) - spyEntry) / spyEntry) * 100;
-        spyReturns[dayNum].push(ret);
+    for (const period of HOLD_PERIODS) {
+      const targetIdx = startIdx + period;
+      if (targetIdx < spyDates.length) {
+        const futurePrice = spyByDate.get(spyDates[targetIdx])!;
+        const ret = ((futurePrice - entryPrice) / entryPrice) * 100;
+        spyReturns[period].push(ret);
       }
     }
   }
