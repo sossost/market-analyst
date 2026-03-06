@@ -1,0 +1,746 @@
+{
+  "runDate": "2026-03-06T08:19:54.533Z",
+  "dataRange": {
+    "from": "2025-09-25",
+    "to": "2026-03-05"
+  },
+  "totalSignals": 6905,
+  "spyBenchmark": {
+    "5": 0,
+    "10": 0,
+    "20": 0,
+    "60": 0
+  },
+  "paramResults": [
+    {
+      "rsThreshold": 50,
+      "volumeRequired": true,
+      "sectorFilter": true,
+      "totalSignals": 62,
+      "returns": {
+        "5": {
+          "avg": -1.1230678512225505,
+          "median": 1.212292077812235,
+          "winRate": 53.44827586206896,
+          "count": 58
+        },
+        "10": {
+          "avg": -3.094924520553201,
+          "median": -2.287822878228786,
+          "winRate": 29.82456140350877,
+          "count": 57
+        },
+        "20": {
+          "avg": -3.778608921363265,
+          "median": -0.6516757376109974,
+          "winRate": 44.18604651162791,
+          "count": 43
+        },
+        "60": {
+          "avg": 0,
+          "median": 0,
+          "winRate": 0,
+          "count": 0
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -5.497161347318788,
+        "medianReturn": -3.724928366762187,
+        "winRate": 11.904761904761903,
+        "avgDays": 5.761904761904762,
+        "count": 42
+      },
+      "avgMaxReturn": 10.354530298753337
+    },
+    {
+      "rsThreshold": 50,
+      "volumeRequired": true,
+      "sectorFilter": false,
+      "totalSignals": 605,
+      "returns": {
+        "5": {
+          "avg": 0.0772899082615631,
+          "median": -0.44247787610618533,
+          "winRate": 46.90721649484536,
+          "count": 582
+        },
+        "10": {
+          "avg": 2.3179465133545443,
+          "median": 0,
+          "winRate": 49.51456310679612,
+          "count": 515
+        },
+        "20": {
+          "avg": 9.265172922550427,
+          "median": 0.9836065573770574,
+          "winRate": 53.31858407079646,
+          "count": 452
+        },
+        "60": {
+          "avg": 0.5976362675378556,
+          "median": 2.0597014925373065,
+          "winRate": 54.976303317535546,
+          "count": 211
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -1.39697514132265,
+        "medianReturn": -4.56666666666667,
+        "winRate": 19.082125603864732,
+        "avgDays": 10.753623188405797,
+        "count": 414
+      },
+      "avgMaxReturn": 27.87728536393587
+    },
+    {
+      "rsThreshold": 50,
+      "volumeRequired": false,
+      "sectorFilter": true,
+      "totalSignals": 500,
+      "returns": {
+        "5": {
+          "avg": 0.5092055872809335,
+          "median": 0.8064516129032229,
+          "winRate": 57.55102040816327,
+          "count": 490
+        },
+        "10": {
+          "avg": 0.20511908395923095,
+          "median": -0.22558690831231623,
+          "winRate": 48.13278008298755,
+          "count": 482
+        },
+        "20": {
+          "avg": 1.4220363760520098,
+          "median": 0.2663115845539343,
+          "winRate": 52.72206303724928,
+          "count": 349
+        },
+        "60": {
+          "avg": 25.012344172209183,
+          "median": 22.29643765903308,
+          "winRate": 90.1639344262295,
+          "count": 61
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -4.572617195789665,
+        "medianReturn": -3.47890451517395,
+        "winRate": 14.328358208955224,
+        "avgDays": 7.647761194029851,
+        "count": 335
+      },
+      "avgMaxReturn": 15.440036944066675
+    },
+    {
+      "rsThreshold": 50,
+      "volumeRequired": false,
+      "sectorFilter": false,
+      "totalSignals": 6905,
+      "returns": {
+        "5": {
+          "avg": 0.0478836465857181,
+          "median": -0.21141649048627217,
+          "winRate": 47.82347643350345,
+          "count": 6662
+        },
+        "10": {
+          "avg": 1.3707632923663062,
+          "median": 0.6104328523862345,
+          "winRate": 53.22425409047161,
+          "count": 5195
+        },
+        "20": {
+          "avg": 3.5295882796946185,
+          "median": 1.6393442622950833,
+          "winRate": 56.53315824031516,
+          "count": 4569
+        },
+        "60": {
+          "avg": 7.200224658461593,
+          "median": 4.843918191603867,
+          "winRate": 60.419968304278925,
+          "count": 2524
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -3.268584992205808,
+        "medianReturn": -3.2028469750889625,
+        "winRate": 16.06610052788616,
+        "avgDays": 9.89625889373422,
+        "count": 4357
+      },
+      "avgMaxReturn": 18.579552387993534
+    },
+    {
+      "rsThreshold": 60,
+      "volumeRequired": true,
+      "sectorFilter": true,
+      "totalSignals": 53,
+      "returns": {
+        "5": {
+          "avg": -1.9369169494740446,
+          "median": -0.16542597187758123,
+          "winRate": 48.97959183673469,
+          "count": 49
+        },
+        "10": {
+          "avg": -4.2399991706013,
+          "median": -2.287822878228786,
+          "winRate": 29.166666666666668,
+          "count": 48
+        },
+        "20": {
+          "avg": -4.662890025940215,
+          "median": -0.6760563380281746,
+          "winRate": 42.857142857142854,
+          "count": 35
+        },
+        "60": {
+          "avg": 0,
+          "median": 0,
+          "winRate": 0,
+          "count": 0
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -6.010903003761478,
+        "medianReturn": -3.969816272965882,
+        "winRate": 10.81081081081081,
+        "avgDays": 5.135135135135135,
+        "count": 37
+      },
+      "avgMaxReturn": 8.370615737356436
+    },
+    {
+      "rsThreshold": 60,
+      "volumeRequired": true,
+      "sectorFilter": false,
+      "totalSignals": 481,
+      "returns": {
+        "5": {
+          "avg": -0.13418437969921343,
+          "median": -0.4559270516717363,
+          "winRate": 47.51619870410367,
+          "count": 463
+        },
+        "10": {
+          "avg": 2.70557704410318,
+          "median": 0.34602076124566733,
+          "winRate": 50,
+          "count": 404
+        },
+        "20": {
+          "avg": 11.109248263006307,
+          "median": 0.885826771653542,
+          "winRate": 52.38095238095239,
+          "count": 357
+        },
+        "60": {
+          "avg": 0.5292466517352147,
+          "median": 2.0597014925373065,
+          "winRate": 54.59770114942529,
+          "count": 174
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -1.3869636933615592,
+        "medianReturn": -5.772314270443623,
+        "winRate": 19.18238993710692,
+        "avgDays": 11.984276729559749,
+        "count": 318
+      },
+      "avgMaxReturn": 30.91786610124064
+    },
+    {
+      "rsThreshold": 60,
+      "volumeRequired": false,
+      "sectorFilter": true,
+      "totalSignals": 385,
+      "returns": {
+        "5": {
+          "avg": -0.13076514287193852,
+          "median": 0.23612750885477654,
+          "winRate": 52.53333333333333,
+          "count": 375
+        },
+        "10": {
+          "avg": -0.6927616329978433,
+          "median": -0.9160683337459763,
+          "winRate": 42.00542005420054,
+          "count": 369
+        },
+        "20": {
+          "avg": -0.48707311613311455,
+          "median": -0.8499065102838688,
+          "winRate": 46.12403100775194,
+          "count": 258
+        },
+        "60": {
+          "avg": 24.810013349201302,
+          "median": 22.29643765903308,
+          "winRate": 89.83050847457628,
+          "count": 59
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -5.407513567641837,
+        "medianReturn": -4.140610770445038,
+        "winRate": 10.384615384615385,
+        "avgDays": 8.073076923076924,
+        "count": 260
+      },
+      "avgMaxReturn": 15.293641014667013
+    },
+    {
+      "rsThreshold": 60,
+      "volumeRequired": false,
+      "sectorFilter": false,
+      "totalSignals": 4856,
+      "returns": {
+        "5": {
+          "avg": -0.07711265928562724,
+          "median": -0.462695199537295,
+          "winRate": 46.237942122186496,
+          "count": 4665
+        },
+        "10": {
+          "avg": 1.5140633632567932,
+          "median": 0.44444444444444625,
+          "winRate": 51.75154548130704,
+          "count": 3397
+        },
+        "20": {
+          "avg": 3.9447142969408158,
+          "median": 1.2372634643376996,
+          "winRate": 54.6875,
+          "count": 3008
+        },
+        "60": {
+          "avg": 7.8386165445943785,
+          "median": 4.7681770284510065,
+          "winRate": 59.57446808510638,
+          "count": 1833
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -3.891540678152392,
+        "medianReturn": -4.720744680851058,
+        "winRate": 12.960235640648014,
+        "avgDays": 12.219440353460971,
+        "count": 2716
+      },
+      "avgMaxReturn": 20.522038333385332
+    },
+    {
+      "rsThreshold": 70,
+      "volumeRequired": true,
+      "sectorFilter": true,
+      "totalSignals": 39,
+      "returns": {
+        "5": {
+          "avg": -2.6528984301328182,
+          "median": 0.5459890802184064,
+          "winRate": 50,
+          "count": 36
+        },
+        "10": {
+          "avg": -5.581202653929478,
+          "median": -2.659574468085097,
+          "winRate": 25,
+          "count": 36
+        },
+        "20": {
+          "avg": -6.364164888974999,
+          "median": -3.6474164133738594,
+          "winRate": 36,
+          "count": 25
+        },
+        "60": {
+          "avg": 0,
+          "median": 0,
+          "winRate": 0,
+          "count": 0
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -7.001317305962785,
+        "medianReturn": -4.487699378210337,
+        "winRate": 11.11111111111111,
+        "avgDays": 5.555555555555555,
+        "count": 27
+      },
+      "avgMaxReturn": 8.67755962589395
+    },
+    {
+      "rsThreshold": 70,
+      "volumeRequired": true,
+      "sectorFilter": false,
+      "totalSignals": 351,
+      "returns": {
+        "5": {
+          "avg": -0.30915370406671155,
+          "median": -0.5913272010512475,
+          "winRate": 46.865671641791046,
+          "count": 335
+        },
+        "10": {
+          "avg": 3.3369472049326236,
+          "median": -0.14705882352940342,
+          "winRate": 48.29931972789115,
+          "count": 294
+        },
+        "20": {
+          "avg": 14.909967040684636,
+          "median": 0.45146726862303527,
+          "winRate": 50.390625,
+          "count": 256
+        },
+        "60": {
+          "avg": -0.9640582149032777,
+          "median": -0.5333333333333339,
+          "winRate": 48.818897637795274,
+          "count": 127
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -0.7404541548575629,
+        "medianReturn": -7.53768844221105,
+        "winRate": 18.502202643171806,
+        "avgDays": 12.682819383259911,
+        "count": 227
+      },
+      "avgMaxReturn": 36.61619239908929
+    },
+    {
+      "rsThreshold": 70,
+      "volumeRequired": false,
+      "sectorFilter": true,
+      "totalSignals": 281,
+      "returns": {
+        "5": {
+          "avg": -0.4932586225946837,
+          "median": 0.19602352282273952,
+          "winRate": 51.10294117647059,
+          "count": 272
+        },
+        "10": {
+          "avg": -1.4726476620689892,
+          "median": -1.4565826330532299,
+          "winRate": 37.54646840148699,
+          "count": 269
+        },
+        "20": {
+          "avg": -1.4936856403945424,
+          "median": -1.4951627088830248,
+          "winRate": 42.5531914893617,
+          "count": 188
+        },
+        "60": {
+          "avg": 23.129275985314827,
+          "median": 21.35523613963039,
+          "winRate": 89.36170212765957,
+          "count": 47
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -6.1790133949793615,
+        "medianReturn": -5.448717948717946,
+        "winRate": 11.64021164021164,
+        "avgDays": 8.116402116402117,
+        "count": 189
+      },
+      "avgMaxReturn": 15.591388279238263
+    },
+    {
+      "rsThreshold": 70,
+      "volumeRequired": false,
+      "sectorFilter": false,
+      "totalSignals": 3468,
+      "returns": {
+        "5": {
+          "avg": -0.1472697622788568,
+          "median": -0.504329622228567,
+          "winRate": 46.36636636636637,
+          "count": 3330
+        },
+        "10": {
+          "avg": 1.397069621216045,
+          "median": 0.035958288385478474,
+          "winRate": 50.04226542688082,
+          "count": 2366
+        },
+        "20": {
+          "avg": 4.35747430459006,
+          "median": 0.7645855654037174,
+          "winRate": 52.659069325736,
+          "count": 2106
+        },
+        "60": {
+          "avg": 8.090544776702684,
+          "median": 4.223418857565199,
+          "winRate": 57.93357933579336,
+          "count": 1355
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -4.355632276607364,
+        "medianReturn": -6.009151675564134,
+        "winRate": 13.165112452002194,
+        "avgDays": 13.634668129456939,
+        "count": 1823
+      },
+      "avgMaxReturn": 22.538023428767925
+    },
+    {
+      "rsThreshold": 80,
+      "volumeRequired": true,
+      "sectorFilter": true,
+      "totalSignals": 19,
+      "returns": {
+        "5": {
+          "avg": -3.1416938739287894,
+          "median": -3.4602829162132824,
+          "winRate": 47.05882352941176,
+          "count": 17
+        },
+        "10": {
+          "avg": -8.967007293228917,
+          "median": -9.401709401709397,
+          "winRate": 17.647058823529413,
+          "count": 17
+        },
+        "20": {
+          "avg": -13.86035194524314,
+          "median": -15.716272600834502,
+          "winRate": 25,
+          "count": 12
+        },
+        "60": {
+          "avg": 0,
+          "median": 0,
+          "winRate": 0,
+          "count": 0
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -7.061436809401326,
+        "medianReturn": -4.255319148936162,
+        "winRate": 14.285714285714285,
+        "avgDays": 4.142857142857143,
+        "count": 14
+      },
+      "avgMaxReturn": 7.029657028642288
+    },
+    {
+      "rsThreshold": 80,
+      "volumeRequired": true,
+      "sectorFilter": false,
+      "totalSignals": 222,
+      "returns": {
+        "5": {
+          "avg": 0.09760367318726763,
+          "median": -1.4760147601476028,
+          "winRate": 45.794392523364486,
+          "count": 214
+        },
+        "10": {
+          "avg": 4.755217052817981,
+          "median": -0.3412969283276529,
+          "winRate": 48.205128205128204,
+          "count": 195
+        },
+        "20": {
+          "avg": 19.894643976377363,
+          "median": -1.204819277108435,
+          "winRate": 48,
+          "count": 175
+        },
+        "60": {
+          "avg": -3.970101075113655,
+          "median": -2.359108781127126,
+          "winRate": 44.44444444444444,
+          "count": 90
+        }
+      },
+      "phaseExit": {
+        "avgReturn": 0.9824544422819882,
+        "medianReturn": -8.18363273453094,
+        "winRate": 19.49685534591195,
+        "avgDays": 12.081761006289309,
+        "count": 159
+      },
+      "avgMaxReturn": 49.40437382400909
+    },
+    {
+      "rsThreshold": 80,
+      "volumeRequired": false,
+      "sectorFilter": true,
+      "totalSignals": 140,
+      "returns": {
+        "5": {
+          "avg": -1.0182983100533667,
+          "median": -0.3601656762110622,
+          "winRate": 47.01492537313433,
+          "count": 134
+        },
+        "10": {
+          "avg": -2.341471412148179,
+          "median": -2.659574468085097,
+          "winRate": 37.3134328358209,
+          "count": 134
+        },
+        "20": {
+          "avg": -3.676180498286659,
+          "median": -3.0208333333333246,
+          "winRate": 38.88888888888889,
+          "count": 90
+        },
+        "60": {
+          "avg": 24.00018115108342,
+          "median": 21.35523613963039,
+          "winRate": 85.71428571428571,
+          "count": 28
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -7.5483807756627685,
+        "medianReturn": -8.405172413793096,
+        "winRate": 14.285714285714285,
+        "avgDays": 7.040816326530612,
+        "count": 98
+      },
+      "avgMaxReturn": 18.82521131220878
+    },
+    {
+      "rsThreshold": 80,
+      "volumeRequired": false,
+      "sectorFilter": false,
+      "totalSignals": 2217,
+      "returns": {
+        "5": {
+          "avg": 0.22420103587175993,
+          "median": -0.504329622228567,
+          "winRate": 46.638457921955805,
+          "count": 2127
+        },
+        "10": {
+          "avg": 1.9139848969690654,
+          "median": 0,
+          "winRate": 49.935649935649934,
+          "count": 1554
+        },
+        "20": {
+          "avg": 4.3996367420857965,
+          "median": 0.683433570256971,
+          "winRate": 51.647564469914045,
+          "count": 1396
+        },
+        "60": {
+          "avg": 9.413517167097922,
+          "median": 3.922243247892644,
+          "winRate": 56.74518201284796,
+          "count": 934
+        }
+      },
+      "phaseExit": {
+        "avgReturn": -3.955758248455416,
+        "medianReturn": -7.037037037037032,
+        "winRate": 14.58863443596268,
+        "avgDays": 14.053435114503817,
+        "count": 1179
+      },
+      "avgMaxReturn": 27.5022551488804
+    }
+  ],
+  "sectorBreakdown": [
+    {
+      "sector": "Basic Materials",
+      "total": 416,
+      "exits": 242,
+      "avgReturn": -0.43607785892410594,
+      "winRate": 21.487603305785125,
+      "avg20dReturn": 4.266222285532946
+    },
+    {
+      "sector": "Technology",
+      "total": 918,
+      "exits": 651,
+      "avgReturn": -1.9838684272445513,
+      "winRate": 18.433179723502306,
+      "avg20dReturn": 5.829384754841577
+    },
+    {
+      "sector": "Financial Services",
+      "total": 1393,
+      "exits": 879,
+      "avgReturn": -3.0544885316361263,
+      "winRate": 14.334470989761092,
+      "avg20dReturn": 1.2318393187255725
+    },
+    {
+      "sector": "Utilities",
+      "total": 186,
+      "exits": 105,
+      "avgReturn": -3.1855607086893514,
+      "winRate": 13.333333333333334,
+      "avg20dReturn": 2.416317474722921
+    },
+    {
+      "sector": "Healthcare",
+      "total": 1353,
+      "exits": 927,
+      "avgReturn": -3.5234949747161544,
+      "winRate": 15.641855447680692,
+      "avg20dReturn": 6.150840445343656
+    },
+    {
+      "sector": "Real Estate",
+      "total": 309,
+      "exits": 187,
+      "avgReturn": -3.730366944064103,
+      "winRate": 13.903743315508022,
+      "avg20dReturn": -0.39887981807114176
+    },
+    {
+      "sector": "Consumer Defensive",
+      "total": 189,
+      "exits": 114,
+      "avgReturn": -3.8463096784054205,
+      "winRate": 19.298245614035086,
+      "avg20dReturn": 1.2315526984654042
+    },
+    {
+      "sector": "Energy",
+      "total": 460,
+      "exits": 225,
+      "avgReturn": -3.9643789939403504,
+      "winRate": 18.666666666666668,
+      "avg20dReturn": 6.804563514778345
+    },
+    {
+      "sector": "Industrials",
+      "total": 887,
+      "exits": 484,
+      "avgReturn": -4.305583207066995,
+      "winRate": 16.528925619834713,
+      "avg20dReturn": 5.233183292350175
+    },
+    {
+      "sector": "Communication Services",
+      "total": 227,
+      "exits": 156,
+      "avgReturn": -4.37397016392604,
+      "winRate": 11.538461538461538,
+      "avg20dReturn": -2.892582150177612
+    },
+    {
+      "sector": "Consumer Cyclical",
+      "total": 567,
+      "exits": 387,
+      "avgReturn": -4.558789856472285,
+      "winRate": 14.21188630490956,
+      "avg20dReturn": -0.802789426899966
+    }
+  ]
+}
