@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const createMock = vi.fn();
 
@@ -14,6 +14,7 @@ function makeResponse(text: string) {
   return {
     content: [{ type: "text", text }],
     usage: { input_tokens: 1000, output_tokens: 500 },
+    stop_reason: "end_turn",
   };
 }
 

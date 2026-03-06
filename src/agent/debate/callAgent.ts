@@ -4,11 +4,40 @@ import { DEBATE_TOOLS, executeDebateTool } from "./braveSearch.js";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 4096;
-const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 3;
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 15_000; // 429 시 15초부터 시작
 
 export interface AgentCallResult {
   content: string;
   tokensUsed: { input: number; output: number };
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Rate limit (429) 대응 exponential backoff 재시도.
+ * retry-after 헤더가 있으면 그 값을 사용.
+ */
+async function callWithRetry(
+  fn: () => Promise<Anthropic.Message>,
+): Promise<Anthropic.Message> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isRateLimit =
+        (err instanceof Error && err.message.includes("429")) ||
+        (err instanceof Error && "status" in err && (err as any).status === 429);
+
+      if (!isRateLimit || attempt === MAX_RETRIES - 1) throw err;
+
+      const delay = BASE_DELAY_MS * 2 ** attempt;
+      logger.warn("CallAgent", `Rate limited, retry ${attempt + 1}/${MAX_RETRIES} after ${(delay / 1000).toFixed(0)}s`);
+      await sleep(delay);
+    }
+  }
+  throw new Error("Unreachable");
 }
 
 /**
@@ -33,12 +62,14 @@ export async function callAgent(
 
   // 도구 없이 단일 호출
   if (!useTools) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages,
-    });
+    const response = await callWithRetry(() =>
+      client.messages.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages,
+      }),
+    );
     const textBlocks = response.content.filter(
       (block): block is Anthropic.TextBlock => block.type === "text",
     );
@@ -54,13 +85,15 @@ export async function callAgent(
   let lastTextContent = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      tools: DEBATE_TOOLS,
-      messages,
-    });
+    const response = await callWithRetry(() =>
+      client.messages.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        tools: DEBATE_TOOLS,
+        messages,
+      }),
+    );
 
     totalInput += response.usage.input_tokens;
     totalOutput += response.usage.output_tokens;
