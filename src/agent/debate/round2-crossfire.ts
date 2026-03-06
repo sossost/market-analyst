@@ -61,9 +61,14 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
     (e) => activePersonas.has(e.name as AgentPersona),
   );
 
-  // Rate limit 회피: 2명씩 배치로 순차 실행
+  // Rate limit 회피: 2명씩 배치, 배치 간 딜레이
   const BATCH_SIZE = 2;
+  const BATCH_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 10_000;
   for (let i = 0; i < activeExperts.length; i += BATCH_SIZE) {
+    if (i > 0 && BATCH_DELAY_MS > 0) {
+      logger.info("Round2", `Batch delay ${BATCH_DELAY_MS / 1000}s (rate limit mitigation)`);
+      await new Promise<void>((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
     const batch = activeExperts.slice(i, i + BATCH_SIZE);
 
     const results = await Promise.allSettled(

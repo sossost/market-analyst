@@ -27,9 +27,14 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
   let totalOutput = 0;
   const outputs: RoundOutput[] = [];
 
-  // Rate limit 회피: 2명씩 배치로 순차 실행
+  // Rate limit 회피: 2명씩 배치, 배치 간 딜레이
   const BATCH_SIZE = 2;
+  const BATCH_DELAY_MS = process.env.NODE_ENV === "test" ? 0 : 10_000;
   for (let i = 0; i < experts.length; i += BATCH_SIZE) {
+    if (i > 0 && BATCH_DELAY_MS > 0) {
+      logger.info("Round1", `Batch delay ${BATCH_DELAY_MS / 1000}s (rate limit mitigation)`);
+      await new Promise<void>((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
     const batch = experts.slice(i, i + BATCH_SIZE);
 
     const results = await Promise.allSettled(
