@@ -300,6 +300,80 @@ export const debateSessions = pgTable(
  * recommendation_factors — 추천 시점 팩터 스냅샷.
  * Phase C 팩터 분석용 (현재는 저장만).
  */
+/**
+ * signal_log — Phase 1→2 전환 시그널 자동 기록 + 수익률 추적.
+ * ETL이 매일 새 시그널 기록, 활성 시그널의 수익률 업데이트.
+ */
+export const signalLog = pgTable(
+  "signal_log",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    entryDate: text("entry_date").notNull(),
+    entryPrice: numeric("entry_price").notNull(),
+
+    // 진입 시점 팩터 스냅샷
+    rsScore: integer("rs_score"),
+    volumeConfirmed: boolean("volume_confirmed"),
+    sectorGroupPhase: smallint("sector_group_phase"),
+    sector: text("sector"),
+    industry: text("industry"),
+
+    // 파라미터 스냅샷 (당시 적용된 기준)
+    paramsSnapshot: text("params_snapshot"), // JSON: { rsThreshold, volumeRequired, sectorFilter }
+
+    // 고정 기간 수익률 (매일 업데이트)
+    return5d: numeric("return_5d"),
+    return10d: numeric("return_10d"),
+    return20d: numeric("return_20d"),
+    return60d: numeric("return_60d"),
+
+    // Phase 종료
+    phaseExitDate: text("phase_exit_date"),
+    phaseExitReturn: numeric("phase_exit_return"),
+
+    // 최대 수익
+    maxReturn: numeric("max_return"),
+
+    // 상태
+    status: text("status").notNull().default("ACTIVE"), // ACTIVE | CLOSED
+    daysHeld: integer("days_held").default(0),
+    lastUpdated: text("last_updated"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_signal_log_symbol_date").on(t.symbol, t.entryDate),
+    idxStatus: index("idx_signal_log_status").on(t.status),
+    idxDate: index("idx_signal_log_entry_date").on(t.entryDate),
+  }),
+);
+
+/**
+ * signal_params — 시그널 감지 파라미터 변경 이력.
+ * 자율 개선 루프에서 파라미터 튜닝 시 이전/이후 값과 성과를 기록.
+ */
+export const signalParams = pgTable(
+  "signal_params",
+  {
+    id: serial("id").primaryKey(),
+    paramName: text("param_name").notNull(), // rs_threshold, volume_required, sector_filter
+    currentValue: text("current_value").notNull(),
+    previousValue: text("previous_value"),
+    changeReason: text("change_reason"),
+    changedAt: timestamp("changed_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    performanceBefore: numeric("performance_before"),
+    performanceAfter: numeric("performance_after"),
+  },
+  (t) => ({
+    idxParam: index("idx_signal_params_name").on(t.paramName),
+  }),
+);
+
 export const recommendationFactors = pgTable(
   "recommendation_factors",
   {
