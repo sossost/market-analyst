@@ -29,4 +29,4 @@ jobs:
         run: npx tsx src/etl/jobs/generate-ceo-report.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DISCORD_CEO_WEBHOOK_URL: ${{ secrets.DISCORD_CEO_WEBHOOK_URL }}
+          DISCORD_SYSTEM_REPORT_WEBHOOK_URL: ${{ secrets.DISCORD_SYSTEM_REPORT_WEBHOOK_URL }}

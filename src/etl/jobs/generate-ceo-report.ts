@@ -105,12 +105,12 @@ async function main() {
   });
 
   // 5. Discord 발송 (CEO 채널)
-  const ceoWebhookUrl = process.env.DISCORD_CEO_WEBHOOK_URL;
+  const ceoWebhookUrl = process.env.DISCORD_SYSTEM_REPORT_WEBHOOK_URL;
   if (ceoWebhookUrl != null && ceoWebhookUrl !== "") {
-    await sendDiscordMessage(report, "DISCORD_CEO_WEBHOOK_URL");
+    await sendDiscordMessage(report, "DISCORD_SYSTEM_REPORT_WEBHOOK_URL");
     console.log("\nDiscord CEO 채널에 발송 완료.");
   } else {
-    console.log("\nDISCORD_CEO_WEBHOOK_URL 미설정 — 콘솔 출력만 진행.");
+    console.log("\nDISCORD_SYSTEM_REPORT_WEBHOOK_URL 미설정 — 콘솔 출력만 진행.");
   }
 
   console.log("\n" + "=".repeat(60));

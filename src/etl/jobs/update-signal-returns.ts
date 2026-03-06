@@ -74,10 +74,10 @@ async function main() {
     pool.query<{ entry_date: string; trading_days: string }>(
       `SELECT
          ed.entry_date,
-         COUNT(DISTINCT dp.date)::text AS trading_days
+         COALESCE(COUNT(DISTINCT dp.date), 0)::text AS trading_days
        FROM (SELECT unnest($1::text[]) AS entry_date) ed
-       CROSS JOIN daily_prices dp
-       WHERE dp.date > ed.entry_date
+       LEFT JOIN daily_prices dp
+         ON dp.date > ed.entry_date
          AND dp.date <= $2
          AND dp.symbol = (SELECT symbol FROM daily_prices WHERE date = $2 LIMIT 1)
        GROUP BY ed.entry_date`,
