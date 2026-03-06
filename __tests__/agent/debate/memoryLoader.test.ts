@@ -61,13 +61,14 @@ describe("memoryLoader", () => {
 
   it("includes confirmed principles in output", async () => {
     mockData.learnings = [
-      { principle: "RSI 다이버전스는 로테이션 선행 신호", category: "confirmed", hitRate: "0.85" },
+      { principle: "RSI 다이버전스는 로테이션 선행 신호", category: "confirmed", hitRate: "0.85", hitCount: 5 },
     ];
 
     const context = await buildMemoryContext();
-    expect(context).toContain("검증된 원칙");
+    expect(context).toContain("검증된 패턴");
     expect(context).toContain("RSI 다이버전스");
     expect(context).toContain("85%");
+    expect(context).toContain("5회 관측");
   });
 
   it("includes caution patterns in output", async () => {
@@ -82,7 +83,7 @@ describe("memoryLoader", () => {
 
   it("includes recent verified theses", async () => {
     mockData.confirmed = [
-      { agentPersona: "tech", thesis: "AI capex 20% 성장 지속", verificationResult: "Q1 실적에서 확인" },
+      { agentPersona: "tech", thesis: "AI capex 20% 성장 지속", verificationResult: "Q1 실적에서 확인", debateDate: "2026-02-15" },
     ];
 
     const context = await buildMemoryContext();
@@ -93,7 +94,7 @@ describe("memoryLoader", () => {
 
   it("includes recent invalidated theses", async () => {
     mockData.invalidated = [
-      { agentPersona: "macro", thesis: "금리 인하 6월", closeReason: "Fed 동결 결정" },
+      { agentPersona: "macro", thesis: "금리 인하 6월", closeReason: "Fed 동결 결정", debateDate: "2026-02-10" },
     ];
 
     const context = await buildMemoryContext();
@@ -104,24 +105,24 @@ describe("memoryLoader", () => {
 
   it("combines all sections when data exists", async () => {
     mockData.learnings = [
-      { principle: "원칙1", category: "confirmed", hitRate: "0.90" },
+      { principle: "원칙1", category: "confirmed", hitRate: "0.90", hitCount: 3 },
     ];
     mockData.confirmed = [
-      { agentPersona: "tech", thesis: "적중 예측", verificationResult: "확인" },
+      { agentPersona: "tech", thesis: "적중 예측", verificationResult: "확인", debateDate: "2026-02-20" },
     ];
     mockData.invalidated = [
-      { agentPersona: "macro", thesis: "빗나간 예측", closeReason: "무효" },
+      { agentPersona: "macro", thesis: "빗나간 예측", closeReason: "무효", debateDate: "2026-02-18" },
     ];
 
     const context = await buildMemoryContext();
-    expect(context).toContain("검증된 원칙");
+    expect(context).toContain("검증된 패턴");
     expect(context).toContain("최근 적중한 예측");
     expect(context).toContain("최근 빗나간 예측");
   });
 
   it("wraps output in XML security tags", async () => {
     mockData.learnings = [
-      { principle: "테스트 원칙", category: "confirmed", hitRate: "0.80" },
+      { principle: "테스트 원칙", category: "confirmed", hitRate: "0.80", hitCount: 4 },
     ];
 
     const context = await buildMemoryContext();

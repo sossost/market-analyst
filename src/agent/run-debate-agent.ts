@@ -6,6 +6,7 @@ import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoa
 import { collectNews, formatNewsForPersona } from "./debate/newsCollector";
 import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
 import { verifyTheses } from "./debate/thesisVerifier";
+import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
@@ -123,11 +124,11 @@ async function main() {
 
   // 1. 환경변수 검증
   validateEnvironment();
-  logger.step("[1/8] Environment validated");
+  logger.step("[1/9] Environment validated");
 
   // 2. 장기 기억 + 시장 데이터 로드
   const debateDate = getDebateDate();
-  logger.step("[2/8] Loading memory context & market data...");
+  logger.step("[2/9] Loading memory context & market data...");
 
   const [memoryContext, marketSnapshot] = await Promise.all([
     buildMemoryContext(),
@@ -152,7 +153,7 @@ async function main() {
   logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
 
   // 3. 기존 thesis 검증 (시장 데이터 기반)
-  logger.step("[3/8] Verifying active theses...");
+  logger.step("[3/9] Verifying active theses...");
   try {
     const verifyResult = await verifyTheses(marketDataContext, debateDate);
     if (verifyResult.confirmed > 0 || verifyResult.invalidated > 0) {
@@ -165,7 +166,7 @@ async function main() {
   }
 
   // 4. 뉴스 사전 수집
-  logger.step("[4/8] Collecting news...");
+  logger.step("[4/9] Collecting news...");
   let newsContext: Record<string, string> = {};
   try {
     const news = await collectNews();
@@ -182,13 +183,30 @@ async function main() {
     logger.warn("News", `News collection failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 5. 토론 실행
-  logger.step(`[5/8] Running debate for ${debateDate}...`);
+  // 5. 과거 유사 세션 로드 (few-shot)
+  logger.step("[5/9] Loading similar past sessions...");
+  let fewShotContext = "";
+  try {
+    fewShotContext = await buildFewShotContext(marketSnapshot);
+    if (fewShotContext.length > 0) {
+      logger.info("FewShot", `Loaded ${fewShotContext.length} chars of past session context`);
+    } else {
+      logger.info("FewShot", "No past sessions available yet");
+    }
+  } catch (err) {
+    logger.warn("FewShot", `Failed to load past sessions: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Combine memory + few-shot into enriched memory context
+  const enrichedMemory = [memoryContext, fewShotContext].filter((s) => s.length > 0).join("\n\n");
+
+  // 6. 토론 실행
+  logger.step(`[6/9] Running debate for ${debateDate}...`);
 
   const result = await runDebate({
     question: buildDebateQuestion(debateDate),
     debateDate,
-    memoryContext,
+    memoryContext: enrichedMemory,
     marketDataContext,
     newsContext,
   });
@@ -205,13 +223,25 @@ async function main() {
     }
   }
 
-  // 6. Thesis 저장
-  logger.step("[6/8] Saving theses...");
+  // 7. Thesis 저장 + 세션 저장
+  logger.step("[7/9] Saving theses & session...");
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
-  // 7. 조건부 Discord 발송
-  logger.step("[7/8] Checking alert conditions...");
+  try {
+    await saveDebateSession({
+      debateDate,
+      marketDataContext,
+      marketSnapshot,
+      newsContext,
+      result,
+    });
+  } catch (err) {
+    logger.warn("Session", `Failed to save session: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 8. 조건부 Discord 발송
+  logger.step("[8/9] Checking alert conditions...");
   const report = result.round3.report;
   const shouldAlert = checkAlertConditions(result);
 
