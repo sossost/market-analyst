@@ -37,7 +37,8 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "backfill:etl": "tsx scripts/backfill-etl.ts",
-    "backtest:debate": "tsx scripts/backtest-debate.ts"
+    "backtest:debate": "tsx scripts/backtest-debate.ts",
+    "report:ceo": "tsx src/etl/jobs/generate-ceo-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
