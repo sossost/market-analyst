@@ -24,8 +24,8 @@ CEO가 미션을 내리면 즉시 실행하지 않는다:
 3. **작업 분해** — 어떤 에이전트가 필요한가? 병렬 가능한가?
 4. **디스패치** — 실행국 에이전트에 위임, 독립 작업은 병렬
 5. **종합 판단** — 결과 검토, 품질 확인
-6. **PR 생성** — `pr-manager` 에이전트에 `mode: create` 위임 (전략비서 체크 + 템플릿 생성)
-7. **리뷰 해결** — 리뷰 코멘트 수정 후 `pr-manager` 에이전트에 `mode: review-resolve` 위임 (reply 확인)
+6. **PR 생성** — `pr-manager`에 `mode: create` 위임. **직접 `gh pr create` 금지.**
+7. **리뷰 해결 + 머지** — `pr-manager`에 `mode: review-resolve` 위임. **직접 `gh pr merge` 금지.**
 8. **보고** — CEO에게 결과 + 다음 단계 제안
 
 상세: `.claude/ORGANIZATION.md` 참조

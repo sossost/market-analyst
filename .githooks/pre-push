@@ -1,0 +1,12 @@
+#!/bin/sh
+# main 브랜치 직접 푸시 차단
+
+current_branch=$(git symbolic-ref HEAD 2>/dev/null | sed 's|refs/heads/||')
+
+if [ "$current_branch" = "main" ]; then
+  echo ""
+  echo "ERROR: main 브랜치에 직접 푸시할 수 없습니다."
+  echo "브랜치를 만들고 PR을 통해 머지하세요."
+  echo ""
+  exit 1
+fi
