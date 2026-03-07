@@ -186,7 +186,7 @@ async function executeThisWeek(): Promise<string> {
         .select()
         .from(recommendations)
         .where(
-          sql`${recommendations.status} = 'ACTIVE' AND ${recommendations.currentPhase} != ${recommendations.entryPhase}`,
+          sql`${recommendations.status} = 'ACTIVE' AND ${recommendations.currentPhase} != ${recommendations.entryPhase} AND ${recommendations.lastUpdated} >= ${weekStart}`,
         ),
     ),
   ]);
