@@ -29,6 +29,7 @@
     "agent:daily": "tsx src/agent/run-daily-agent.ts",
     "agent:weekly": "tsx src/agent/run-weekly-agent.ts",
     "agent:debate": "tsx src/agent/run-debate-agent.ts",
+    "agent:qa": "tsx src/agent/run-weekly-qa.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
