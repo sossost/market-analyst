@@ -376,6 +376,41 @@ export const signalParams = pgTable(
   }),
 );
 
+/**
+ * fundamental_scores — 펀더멘탈 SEPA 스코어링 결과.
+ * 전체 활성 종목 대상, scored_date별 등급/점수 저장.
+ */
+export const fundamentalScores = pgTable(
+  "fundamental_scores",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    scoredDate: text("scored_date").notNull(), // YYYY-MM-DD (stock_phases 최신일)
+
+    // 등급
+    grade: text("grade").notNull(), // 'S' | 'A' | 'B' | 'C' | 'F'
+    totalScore: integer("total_score").notNull(),
+    rankScore: numeric("rank_score").notNull(),
+    requiredMet: smallint("required_met").notNull(), // 0~2
+    bonusMet: smallint("bonus_met").notNull(), // 0~2
+
+    // SEPA 기준별 판정 (JSON)
+    criteria: text("criteria").notNull(), // JSON: SEPACriteria
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_fundamental_scores_symbol_date").on(t.symbol, t.scoredDate),
+    idx_date: index("idx_fundamental_scores_date").on(t.scoredDate),
+    idx_grade_date: index("idx_fundamental_scores_grade_date").on(
+      t.grade,
+      t.scoredDate,
+    ),
+  }),
+);
+
 export const recommendationFactors = pgTable(
   "recommendation_factors",
   {
