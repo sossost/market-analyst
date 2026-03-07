@@ -10,7 +10,7 @@ import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
-import type { DebateResult } from "../types/debate";
+import type { DebateResult, RoundOutput } from "../types/debate";
 
 interface AlertDecision {
   send: boolean;
@@ -66,6 +66,75 @@ function extractCoreInsight(report: string): string {
   // fallback: 첫 300자
   const firstChunk = report.slice(0, 300).trim();
   return firstChunk.endsWith(".") ? firstChunk : `${firstChunk}...`;
+}
+
+const PERSONA_LABELS: Record<string, string> = {
+  macro: "🏦 매크로",
+  tech: "📊 테크",
+  geopolitics: "🌍 지정학",
+  sentiment: "🧠 심리",
+};
+
+/**
+ * 각 장관의 Round 1 분석에서 핵심 인사이트(첫 의미 있는 문단)를 추출.
+ */
+function extractPersonaInsights(outputs: RoundOutput[]): string {
+  return outputs
+    .map((o) => {
+      const label = PERSONA_LABELS[o.persona] ?? o.persona;
+      const insight = extractFirstInsight(o.content);
+      return `${label}: ${insight}`;
+    })
+    .join("\n");
+}
+
+/**
+ * LLM 출력에서 첫 의미 있는 문단을 추출 (헤더/빈줄 건너뜀).
+ * 150자 제한으로 간결하게.
+ */
+function extractFirstInsight(content: string): string {
+  const MAX_LENGTH = 150;
+  const lines = content.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // 헤더, 빈줄, 구분선 건너뜀
+    if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith("---") || trimmed.startsWith("```")) {
+      continue;
+    }
+    // 목록 항목이면 마커 제거
+    const cleaned = trimmed.replace(/^[-*•]\s*/, "").replace(/^\d+\.\s*/, "");
+    if (cleaned.length < 10) continue;
+
+    if (cleaned.length <= MAX_LENGTH) return cleaned;
+    return `${cleaned.slice(0, MAX_LENGTH)}...`;
+  }
+
+  return content.slice(0, MAX_LENGTH).trim() + "...";
+}
+
+/**
+ * Round 2 교차 토론에서 장관 간 핵심 쟁점을 추출.
+ */
+function extractKeyDebatePoint(outputs: RoundOutput[]): string | null {
+  // Round 2에서 "반박", "동의하지 않", "다른 시각", "우려" 등 충돌 키워드가 있는 문장 추출
+  const CONFLICT_KEYWORDS = ["반박", "동의하지 않", "다른 시각", "우려", "과대평가", "간과", "위험", "리스크"];
+
+  for (const output of outputs) {
+    const lines = output.content.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim().replace(/^[-*•]\s*/, "");
+      if (trimmed.length < 20) continue;
+      const hasConflict = CONFLICT_KEYWORDS.some((kw) => trimmed.includes(kw));
+      if (hasConflict) {
+        const label = PERSONA_LABELS[output.persona] ?? output.persona;
+        const point = trimmed.length > 120 ? `${trimmed.slice(0, 120)}...` : trimmed;
+        return `${label}: ${point}`;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -251,6 +320,12 @@ async function main() {
     // 핵심 요약 추출 (리포트 첫 섹션)
     const coreInsight = extractCoreInsight(report);
 
+    // 장관별 핵심 인사이트 (Round 1)
+    const personaInsights = extractPersonaInsights(result.round1.outputs);
+
+    // 장관 간 쟁점 (Round 2)
+    const debatePoint = extractKeyDebatePoint(result.round2.outputs);
+
     const thesesSummary = result.round3.theses
       .map((t) => {
         const confidence = t.confidence === "high" ? "🔴" : t.confidence === "medium" ? "🟡" : "⚪";
@@ -259,16 +334,24 @@ async function main() {
       })
       .join("\n");
 
-    const summary = [
-      `📊 **시장 브리핑** (${debateDate})`,
+    const sections = [
+      `📊 **시황 브리핑** (${debateDate})`,
       "",
       coreInsight,
       "",
       "---",
       "",
-      "**검증 가능한 전망**",
-      thesesSummary,
-    ].join("\n");
+      "**장관 인사이트**",
+      personaInsights,
+    ];
+
+    if (debatePoint != null) {
+      sections.push("", "**핵심 쟁점**", debatePoint);
+    }
+
+    sections.push("", "---", "", "**검증 가능한 전망**", thesesSummary);
+
+    const summary = sections.join("\n");
 
     const webhookVar = "DISCORD_DEBATE_WEBHOOK_URL";
     const webhookFallback = process.env[webhookVar] ?? process.env.DISCORD_WEBHOOK_URL;

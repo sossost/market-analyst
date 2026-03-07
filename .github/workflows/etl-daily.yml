@@ -2,8 +2,8 @@ name: Daily ETL Pipeline
 
 on:
   schedule:
-    # Run at UTC 23:30 (KST 08:30) — weekdays only (report arrives ~09:00 KST)
-    - cron: "30 23 * * 0-4"
+    # Run at UTC 23:30 (KST 08:30) — Sun-Fri (covers Mon-Fri US market days)
+    - cron: "30 23 * * 0-5"
   workflow_dispatch: # Manual trigger
 
 jobs:
