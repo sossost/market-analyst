@@ -74,13 +74,13 @@ export async function runFundamentalValidation(
   for (const s of scores) gradeCount[s.grade]++;
   logger.info("Fundamental", `등급 분포: S=${gradeCount.S}, A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`);
 
-  // 4. S/A/B급 종목에 대해 LLM 분석
+  // 4. S급 종목에 대해 LLM 분석 (A/B는 narrative 미사용 → 스킵)
   const client = new Anthropic();
-  const aOrBScores = scores.filter((s) => s.grade === "S" || s.grade === "A" || s.grade === "B");
+  const sGradeScores = scores.filter((s) => s.grade === "S");
 
   const analyses = new Map<string, string>();
 
-  for (const score of aOrBScores) {
+  for (const score of sGradeScores) {
     const input = inputs.find((i) => i.symbol === score.symbol);
     if (input == null) continue;
 
@@ -95,11 +95,10 @@ export async function runFundamentalValidation(
     }
   }
 
-  // 5. S급 종목만 리포트 발행 (A급 top 3)
+  // 5. S급 종목만 리포트 발행
   if (options?.skipPublish !== true) {
-    const aGradeScores = scores.filter((s) => s.grade === "S");
 
-    for (const score of aGradeScores) {
+    for (const score of sGradeScores) {
       const input = inputs.find((i) => i.symbol === score.symbol);
       const narrative = analyses.get(score.symbol);
       if (input == null || narrative == null) continue;
