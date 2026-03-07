@@ -1,22 +1,21 @@
 /**
  * 펀더멘탈 검증 파이프라인.
  *
- * Phase 2 종목 리스트 → 스코어링 → A/B급 LLM 분석 → A급 리포트 발행.
+ * 전체 활성 종목 스코어링 → DB 저장 → S등급 LLM 분석 → 리포트 발행.
  * 주간 에이전트에서 호출하거나 독립 실행 가능.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { loadFundamentalData } from "../../lib/fundamental-data-loader.js";
-import { scoreFundamentals, promoteTopToS } from "../../lib/fundamental-scorer.js";
+import {
+  scoreFundamentals,
+  promoteTopToS,
+} from "../../lib/fundamental-scorer.js";
 import { analyzeFundamentals } from "./fundamentalAgent.js";
 import { generateStockReport, publishStockReport } from "./stockReport.js";
 import { logger } from "../logger.js";
-import type { FundamentalScore, FundamentalInput } from "../../types/fundamental.js";
-
-const CACHE_DIR = join(process.cwd(), "data", "fundamental-cache");
+import type { FundamentalInput, FundamentalScore } from "../../types/fundamental.js";
 
 export interface ValidationResult {
   scores: FundamentalScore[];
@@ -25,7 +24,7 @@ export interface ValidationResult {
 }
 
 /**
- * Phase 2 종목을 가져와 펀더멘탈 검증 수행.
+ * 전체 활성 종목 펀더멘탈 검증 수행.
  */
 export async function runFundamentalValidation(
   options?: {
@@ -33,33 +32,43 @@ export async function runFundamentalValidation(
     symbols?: string[];
     /** 리포트 발행 건너뛰기 */
     skipPublish?: boolean;
-    /** true면 캐시 무시하고 재실행 */
-    ignoreCache?: boolean;
+    /** true면 당일 스코어가 있어도 재실행 */
+    forceRescore?: boolean;
   },
 ): Promise<ValidationResult> {
   const totalTokens = { input: 0, output: 0 };
   const reportsPublished: string[] = [];
 
-  // 1. Phase 2 종목 리스트 가져오기
-  const symbols = options?.symbols ?? (await getPhase2Symbols());
+  // 1. 스코어링 기준일 결정
+  const scoredDate = await getScoredDate();
 
-  // 캐시 확인 (symbols 직접 지정 시 캐시 사용 안 함)
-  if (options?.symbols == null && options?.ignoreCache !== true) {
-    const cached = await loadCacheAsync();
-    if (cached != null) {
-      return cached;
+  // 당일 중복 방지 (symbols 직접 지정 시 스킵)
+  // NOTE: check-then-act 패턴. 동시 실행 시 중복 스코어링 가능하나
+  // saveFundamentalScoresToDB의 ON CONFLICT DO UPDATE로 데이터 안전.
+  // 단일 인스턴스 스케줄(launchd)에 의존.
+  if (options?.symbols == null && options?.forceRescore !== true) {
+    const alreadyScored = await hasTodayScores(scoredDate);
+    if (alreadyScored) {
+      logger.info(
+        "Fundamental",
+        `${scoredDate} 기준 스코어 이미 존재 — 재사용`,
+      );
+      return loadExistingScores(scoredDate);
     }
   }
+
+  // 2. 대상 종목 리스트
+  const symbols = options?.symbols ?? (await getAllScoringSymbols());
   logger.info("Fundamental", `${symbols.length}개 종목 검증 시작`);
 
   if (symbols.length === 0) {
-    logger.warn("Fundamental", "Phase 2 종목 없음 — 검증 생략");
+    logger.warn("Fundamental", "스코어링 대상 종목 없음 — 검증 생략");
     return { scores: [], reportsPublished, totalTokens };
   }
 
-  // 2. DB에서 분기 실적 로드 (500개씩 배치)
+  // 3. DB에서 분기 실적 로드 (500개씩 배치)
   const BATCH_SIZE = 500;
-  const inputs = [];
+  const inputs: FundamentalInput[] = [];
   for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
     const batch = symbols.slice(i, i + BATCH_SIZE);
     const batchInputs = await loadFundamentalData(batch);
@@ -67,14 +76,22 @@ export async function runFundamentalValidation(
   }
   logger.info("Fundamental", `${inputs.length}개 종목 실적 데이터 로드 완료`);
 
-  // 3. 정량 스코어링 + S등급 승격
+  // 4. 정량 스코어링 + S등급 승격
   const scores = promoteTopToS(inputs.map(scoreFundamentals));
 
   const gradeCount = { S: 0, A: 0, B: 0, C: 0, F: 0 };
   for (const s of scores) gradeCount[s.grade]++;
-  logger.info("Fundamental", `등급 분포: S=${gradeCount.S}, A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`);
+  logger.info(
+    "Fundamental",
+    `등급 분포: S=${gradeCount.S}, A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`,
+  );
 
-  // 4. S급 종목에 대해 LLM 분석 (A/B는 narrative 미사용 → 스킵)
+  // 5. DB 저장 (symbols 직접 지정 시 저장 안 함 — S등급 전체 기준 불일치 방지)
+  if (options?.symbols == null) {
+    await saveFundamentalScoresToDB(scores, scoredDate);
+  }
+
+  // 6. S급 종목에 대해 LLM 분석
   const client = new Anthropic();
   const sGradeScores = scores.filter((s) => s.grade === "S");
 
@@ -91,20 +108,27 @@ export async function runFundamentalValidation(
       totalTokens.output += analysis.tokensUsed.output;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      logger.error("Fundamental", `${score.symbol} LLM 분석 실패: ${reason}`);
+      logger.error(
+        "Fundamental",
+        `${score.symbol} LLM 분석 실패: ${reason}`,
+      );
     }
   }
 
-  // 5. S급 종목만 리포트 발행
+  // 7. S급 종목만 리포트 발행
   if (options?.skipPublish !== true) {
-
     for (const score of sGradeScores) {
       const input = inputs.find((i) => i.symbol === score.symbol);
       const narrative = analyses.get(score.symbol);
       if (input == null || narrative == null) continue;
 
       const technical = await loadTechnicalData(score.symbol);
-      const reportMd = generateStockReport({ score, input, narrative, technical });
+      const reportMd = generateStockReport({
+        score,
+        input,
+        narrative,
+        technical,
+      });
 
       try {
         await publishStockReport(score.symbol, reportMd);
@@ -112,19 +136,15 @@ export async function runFundamentalValidation(
         logger.info("Fundamental", `${score.symbol} 리포트 발행 완료`);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
-        logger.error("Fundamental", `${score.symbol} 리포트 발행 실패: ${reason}`);
+        logger.error(
+          "Fundamental",
+          `${score.symbol} 리포트 발행 실패: ${reason}`,
+        );
       }
     }
   }
 
-  const result: ValidationResult = { scores, reportsPublished, totalTokens };
-
-  // 캐시 저장 (symbols 직접 지정 시 저장 안 함)
-  if (options?.symbols == null) {
-    await saveCache(result);
-  }
-
-  return result;
+  return { scores, reportsPublished, totalTokens };
 }
 
 /**
@@ -138,19 +158,37 @@ export function formatFundamentalSupplement(
   if (scores.length === 0) return "";
 
   const includeHeader = options?.includeHeader !== false;
-  const lines: string[] = includeHeader ? ["## 펀더멘탈 검증 결과", ""] : [];
+  const lines: string[] = includeHeader
+    ? ["## 펀더멘탈 검증 결과", ""]
+    : [];
 
-  const sorted = [...scores].sort((a, b) => gradeOrder(a.grade) - gradeOrder(b.grade));
+  const sorted = [...scores].sort(
+    (a, b) => gradeOrder(a.grade) - gradeOrder(b.grade),
+  );
 
   for (const s of sorted) {
     const { criteria } = s;
-    const emoji = s.grade === "S" ? "⭐" : s.grade === "A" ? "🟢" : s.grade === "B" ? "🔵" : s.grade === "C" ? "🟡" : "🔴";
+    const emoji =
+      s.grade === "S"
+        ? "⭐"
+        : s.grade === "A"
+          ? "🟢"
+          : s.grade === "B"
+            ? "🔵"
+            : s.grade === "C"
+              ? "🟡"
+              : "🔴";
 
     if (s.grade === "S" || s.grade === "A" || s.grade === "B") {
-      const detail = criteria.epsGrowth.value != null ? `EPS YoY +${criteria.epsGrowth.value}%` : "";
+      const detail =
+        criteria.epsGrowth.value != null
+          ? `EPS YoY +${criteria.epsGrowth.value}%`
+          : "";
       lines.push(`${emoji} **${s.symbol}** [${s.grade}] — ${detail}`);
     } else if (s.grade === "C") {
-      lines.push(`${emoji} **${s.symbol}** [C] — 기술적으로만 Phase 2, 실적 주의`);
+      lines.push(
+        `${emoji} **${s.symbol}** [C] — 기술적으로만 Phase 2, 실적 주의`,
+      );
     } else {
       lines.push(`${emoji} **${s.symbol}** [F] — 펀더멘탈 미달`);
     }
@@ -159,82 +197,145 @@ export function formatFundamentalSupplement(
   return lines.join("\n");
 }
 
-// ─── Cache helpers ──────────────────────────────────────────────────
+// ─── DB helpers ─────────────────────────────────────────────────────
 
-async function getCacheDate(): Promise<string | null> {
-  const rows = await db.execute(sql`SELECT MAX(date)::text AS max_date FROM stock_phases`);
+/**
+ * stock_phases의 MAX(date)를 스코어링 기준일로 사용.
+ */
+async function getScoredDate(): Promise<string> {
+  const rows = await db.execute(
+    sql`SELECT MAX(date)::text AS max_date FROM stock_phases`,
+  );
   const row = (rows.rows as unknown as { max_date: string | null }[])[0];
-  return row?.max_date ?? null;
+  return row?.max_date ?? new Date().toISOString().slice(0, 10);
 }
 
-function getCachePath(dateStr: string): string {
-  return join(CACHE_DIR, `${dateStr}.json`);
-}
-
-async function loadCacheAsync(): Promise<ValidationResult | null> {
-  const dateStr = await getCacheDate();
-  if (dateStr == null) {
-    return null;
-  }
-  const cachePath = getCachePath(dateStr);
-
-  if (!existsSync(cachePath)) {
-    return null;
-  }
-
-  try {
-    const raw = readFileSync(cachePath, "utf-8");
-    const cached = JSON.parse(raw) as ValidationResult;
-    logger.info("Fundamental", `캐시 사용: data/fundamental-cache/${dateStr}.json`);
-    return cached;
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.warn("Fundamental", `캐시 파일(${cachePath}) 로드 실패, 검증을 재실행합니다: ${reason}`);
-    return null;
-  }
-}
-
-async function saveCache(result: ValidationResult): Promise<void> {
-  try {
-    const dateStr = await getCacheDate();
-    if (dateStr == null) {
-      return;
-    }
-    const cachePath = getCachePath(dateStr);
-
-    mkdirSync(CACHE_DIR, { recursive: true });
-    writeFileSync(cachePath, JSON.stringify(result, null, 2), "utf-8");
-    logger.info("Fundamental", `캐시 저장: data/fundamental-cache/${dateStr}.json`);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.error("Fundamental", `캐시 저장 실패: ${reason}`);
-  }
-}
-
-// ─── Internal helpers ───────────────────────────────────────────────
-
-async function getPhase2Symbols(): Promise<string[]> {
+/**
+ * 해당 scored_date에 이미 스코어가 저장되어 있는지 확인.
+ */
+async function hasTodayScores(scoredDate: string): Promise<boolean> {
   const rows = await db.execute(sql`
-    SELECT DISTINCT symbol
-    FROM stock_phases
-    WHERE phase = 2
-      AND date = (SELECT MAX(date) FROM stock_phases)
+    SELECT COUNT(*)::int AS cnt FROM fundamental_scores
+    WHERE scored_date = ${scoredDate}
+  `);
+  const cnt = (rows.rows as unknown as { cnt: number }[])[0]?.cnt ?? 0;
+  return cnt > 0;
+}
+
+/**
+ * 이미 DB에 저장된 스코어를 로드하여 ValidationResult로 반환.
+ */
+async function loadExistingScores(
+  scoredDate: string,
+): Promise<ValidationResult> {
+  const rows = await db.execute(sql`
+    SELECT symbol, grade, total_score, rank_score, required_met, bonus_met, criteria
+    FROM fundamental_scores
+    WHERE scored_date = ${scoredDate}
     ORDER BY symbol
+  `);
+
+  const scores: FundamentalScore[] = (
+    rows.rows as unknown as Array<{
+      symbol: string;
+      grade: string;
+      total_score: number;
+      rank_score: string;
+      required_met: number;
+      bonus_met: number;
+      criteria: string;
+    }>
+  ).map((r) => ({
+    symbol: r.symbol,
+    grade: r.grade as FundamentalScore["grade"],
+    totalScore: r.total_score,
+    rankScore: Number(r.rank_score),
+    requiredMet: r.required_met,
+    bonusMet: r.bonus_met,
+    criteria: JSON.parse(r.criteria),
+  }));
+
+  logger.info(
+    "Fundamental",
+    `DB에서 ${scores.length}개 기존 스코어 로드 (${scoredDate})`,
+  );
+
+  return { scores, reportsPublished: [], totalTokens: { input: 0, output: 0 } };
+}
+
+/**
+ * 전체 활성 종목 중 분기 실적 데이터가 있는 종목 조회.
+ */
+async function getAllScoringSymbols(): Promise<string[]> {
+  const rows = await db.execute(sql`
+    SELECT DISTINCT f.symbol
+    FROM quarterly_financials f
+    JOIN symbols s ON f.symbol = s.symbol
+    WHERE s.is_actively_trading = true
+    ORDER BY f.symbol
   `);
   return (rows.rows as unknown as { symbol: string }[]).map((r) => r.symbol);
 }
 
+/**
+ * 스코어를 DB에 배치 upsert.
+ */
+async function saveFundamentalScoresToDB(
+  scores: FundamentalScore[],
+  scoredDate: string,
+): Promise<void> {
+  if (scores.length === 0) return;
+
+  const UPSERT_BATCH = 500;
+  for (let i = 0; i < scores.length; i += UPSERT_BATCH) {
+    const batch = scores.slice(i, i + UPSERT_BATCH);
+    await db.execute(sql`
+      INSERT INTO fundamental_scores
+        (symbol, scored_date, grade, total_score, rank_score, required_met, bonus_met, criteria)
+      VALUES
+        ${sql.join(
+          batch.map(
+            (s) => sql`(
+              ${s.symbol}, ${scoredDate}, ${s.grade},
+              ${s.totalScore}, ${s.rankScore.toString()},
+              ${s.requiredMet}, ${s.bonusMet},
+              ${JSON.stringify(s.criteria)}
+            )`,
+          ),
+          sql`, `,
+        )}
+      ON CONFLICT (symbol, scored_date) DO UPDATE SET
+        grade = EXCLUDED.grade,
+        total_score = EXCLUDED.total_score,
+        rank_score = EXCLUDED.rank_score,
+        required_met = EXCLUDED.required_met,
+        bonus_met = EXCLUDED.bonus_met,
+        criteria = EXCLUDED.criteria
+    `);
+  }
+
+  logger.info(
+    "Fundamental",
+    `${scores.length}개 스코어 DB 저장 완료 (${scoredDate})`,
+  );
+}
+
+// ─── Internal helpers ───────────────────────────────────────────────
+
 async function loadTechnicalData(
   symbol: string,
-): Promise<{
-  phase: number;
-  rsScore: number;
-  volumeConfirmed: boolean;
-  pctFromHigh52w: number;
-  marketCapB: number;
-  sector: string;
-  industry: string;
-} | undefined> {
+): Promise<
+  | {
+      phase: number;
+      rsScore: number;
+      volumeConfirmed: boolean;
+      pctFromHigh52w: number;
+      marketCapB: number;
+      sector: string;
+      industry: string;
+    }
+  | undefined
+> {
   const rows = await db.execute(sql`
     SELECT
       sp.phase,
@@ -251,15 +352,17 @@ async function loadTechnicalData(
     LIMIT 1
   `);
 
-  const row = (rows.rows as unknown as Array<{
-    phase: number;
-    rs_score: number;
-    volume_confirmed: boolean;
-    pct_from_high_52w: string;
-    market_cap: string;
-    sector: string;
-    industry: string;
-  }>)[0];
+  const row = (
+    rows.rows as unknown as Array<{
+      phase: number;
+      rs_score: number;
+      volume_confirmed: boolean;
+      pct_from_high_52w: string;
+      market_cap: string;
+      sector: string;
+      industry: string;
+    }>
+  )[0];
 
   if (row == null) return undefined;
 
