@@ -120,6 +120,12 @@ async function main() {
       "Result",
       `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`,
     );
+    if (result.tokensUsed.cacheRead > 0 || result.tokensUsed.cacheCreation > 0) {
+      logger.info(
+        "Result",
+        `Cache: ${result.tokensUsed.cacheCreation} creation / ${result.tokensUsed.cacheRead} read`,
+      );
+    }
     logger.info("Result", `Tool calls: ${result.toolCalls}`);
     logger.info("Result", `Iterations: ${result.iterationCount}`);
     logger.info(
@@ -127,7 +133,12 @@ async function main() {
       `Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`,
     );
 
-    const inputCost = (result.tokensUsed.input / 1_000_000) * SONNET_INPUT_COST_PER_M;
+    const CACHE_WRITE_COST_PER_M = SONNET_INPUT_COST_PER_M * 1.25;
+    const CACHE_READ_COST_PER_M = SONNET_INPUT_COST_PER_M * 0.1;
+    const inputCost =
+      (result.tokensUsed.input / 1_000_000) * SONNET_INPUT_COST_PER_M +
+      (result.tokensUsed.cacheCreation / 1_000_000) * CACHE_WRITE_COST_PER_M +
+      (result.tokensUsed.cacheRead / 1_000_000) * CACHE_READ_COST_PER_M;
     const outputCost = (result.tokensUsed.output / 1_000_000) * SONNET_OUTPUT_COST_PER_M;
     logger.info("Result", `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`);
 

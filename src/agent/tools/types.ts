@@ -26,7 +26,12 @@ export interface AgentConfig {
 export interface AgentResult {
   success: boolean;
   error?: string;
-  tokensUsed: { input: number; output: number };
+  tokensUsed: {
+    input: number;
+    output: number;
+    cacheCreation: number;
+    cacheRead: number;
+  };
   toolCalls: number;
   executionTimeMs: number;
   iterationCount: number;
