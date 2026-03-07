@@ -193,52 +193,42 @@ export function tryQuantitativeVerification(
     return null;
   }
 
+  // Evaluate each condition once
+  const invalidationEval = invalidationParsed != null
+    ? evaluateQuantitativeCondition(invalidationParsed, snapshot)
+    : null;
+
   // Check invalidation first (safety-first)
-  if (invalidationParsed != null) {
-    const invalidationEval = evaluateQuantitativeCondition(
-      invalidationParsed,
-      snapshot,
-    );
-    if (invalidationEval != null && invalidationEval.result) {
-      return {
-        verdict: "INVALIDATED",
-        reason:
-          `무효화 조건 충족: ${thesis.invalidationCondition} ` +
-          `(실제값: ${invalidationEval.actualValue})`,
-        method: "quantitative",
-      };
-    }
+  if (invalidationEval?.result) {
+    return {
+      verdict: "INVALIDATED",
+      reason:
+        `무효화 조건 충족: ${thesis.invalidationCondition} ` +
+        `(실제값: ${invalidationEval.actualValue})`,
+      method: "quantitative",
+    };
   }
+
+  const targetEval = targetParsed != null
+    ? evaluateQuantitativeCondition(targetParsed, snapshot)
+    : null;
 
   // Check target condition
-  if (targetParsed != null) {
-    const targetEval = evaluateQuantitativeCondition(targetParsed, snapshot);
-    if (targetEval == null) {
-      // Metric not found in snapshot → LLM fallback
-      return null;
-    }
-    if (targetEval.result) {
-      return {
-        verdict: "CONFIRMED",
-        reason:
-          `목표 조건 충족: ${thesis.targetCondition} ` +
-          `(실제값: ${targetEval.actualValue})`,
-        method: "quantitative",
-      };
-    }
+  if (targetEval?.result) {
+    return {
+      verdict: "CONFIRMED",
+      reason:
+        `목표 조건 충족: ${thesis.targetCondition} ` +
+        `(실제값: ${targetEval.actualValue})`,
+      method: "quantitative",
+    };
   }
 
-  // If invalidation was parseable but metric not found, fallback
-  if (invalidationParsed != null) {
-    const invalidationEval = evaluateQuantitativeCondition(
-      invalidationParsed,
-      snapshot,
-    );
-    if (invalidationEval == null) {
-      return null;
-    }
+  // If any parseable condition couldn't be evaluated (metric not found) → LLM fallback
+  if ((targetParsed != null && targetEval == null) || (invalidationParsed != null && invalidationEval == null)) {
+    return null;
   }
 
-  // Both parseable, conditions evaluated, but neither met → null (no conclusion)
+  // Both parseable, conditions evaluated, but neither met → no conclusion
   return null;
 }

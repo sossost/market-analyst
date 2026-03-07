@@ -83,19 +83,20 @@ export async function verifyTheses(
   let tokensUsed = { input: 0, output: 0 };
 
   if (llmTheses.length > 0) {
+    const sanitize = (s: string) => s.replace(/<\/thesis>/gi, "");
     const thesesText = llmTheses
       .map((t) => {
         const lines = [
           `[ID: ${t.id}] (${t.agentPersona}, ${t.debateDate})`,
-          `  전망: ${t.thesis}`,
-          `  검증지표: ${t.verificationMetric}`,
-          `  달성조건: ${t.targetCondition}`,
+          `  전망: ${sanitize(t.thesis)}`,
+          `  검증지표: ${sanitize(t.verificationMetric)}`,
+          `  달성조건: ${sanitize(t.targetCondition)}`,
         ];
         if (t.invalidationCondition != null) {
-          lines.push(`  무효조건: ${t.invalidationCondition}`);
+          lines.push(`  무효조건: ${sanitize(t.invalidationCondition)}`);
         }
         lines.push(`  기한: ${t.timeframeDays}일 (만료: ~${calcExpiry(t.debateDate, t.timeframeDays)})`);
-        return lines.join("\n");
+        return `<thesis>\n${lines.join("\n")}\n</thesis>`;
       })
       .join("\n\n");
 
