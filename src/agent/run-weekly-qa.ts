@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "@/db/client";
 import { sendDiscordMessage, sendDiscordError } from "./discord";
@@ -200,6 +202,11 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 - 이번 주 리포트에 Phase 1 후기 종목이 포함되었는가?
 - RS 30~60 범위 종목이 추천에 포함되었는가?
 - 초입 포착이라는 골에 얼마나 부합하는가?
+- **정량 기준** (이슈 #58 검증 결과):
+  - Phase 1 후기 → Phase 2 전환율 기준: 41.9%
+  - RS 상승 초기 전환율 기준: 20.3% (섹터 동반 상승 시 24.2%)
+  - 펀더멘탈+Phase1 교집합 전환율 기준: 30.6%
+  - **핵심 필터**: 섹터 RS 동반 상승이 가장 유의미한 필터
 
 ## 5. 낭비 감지 & 권고
 - API 비용 대비 가치 평가
@@ -281,10 +288,10 @@ async function main() {
 
   // 1. 환경변수 검증
   validateEnvironment();
-  logger.step("[1/4] 환경변수 검증 완료");
+  logger.step("[1/5] 환경변수 검증 완료");
 
   // 2. 데이터 수집
-  logger.step("[2/4] 데이터 수집 중...");
+  logger.step("[2/5] 데이터 수집 중...");
   const today = getToday();
   const data = await collectData();
 
@@ -293,7 +300,7 @@ async function main() {
   logger.info("QA-Data", `${successCount}/${totalCount} 쿼리 성공`);
 
   // 3. Claude API 호출
-  logger.step("[3/4] Claude API 분석 요청...");
+  logger.step("[3/5] Claude API 분석 요청...");
   const client = new Anthropic();
   const userPrompt = buildUserPrompt(data, today);
 
@@ -314,8 +321,20 @@ async function main() {
     `토큰: ${response.usage.input_tokens} in / ${response.usage.output_tokens} out`,
   );
 
-  // 4. Discord 발송
-  logger.step("[4/4] Discord 발송...");
+  // 4. 리포트 파일 저장 (실패해도 Discord 발송은 계속)
+  logger.step("[4/5] 리포트 파일 저장...");
+  try {
+    const reportDir = join(process.cwd(), "data", "qa-reports");
+    mkdirSync(reportDir, { recursive: true });
+    const reportPath = join(reportDir, `${today}.md`);
+    writeFileSync(reportPath, report, "utf-8");
+    logger.info("QA-File", `저장: ${reportPath}`);
+  } catch (err) {
+    logger.warn("QA-File", `저장 실패 (Discord 발송은 계속): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 5. Discord 발송
+  logger.step("[5/5] Discord 발송...");
 
   const score = extractScore(report);
   const ceoSummary = extractCeoSummary(report);
