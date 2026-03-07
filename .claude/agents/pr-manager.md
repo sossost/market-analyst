@@ -56,8 +56,9 @@ git log main..HEAD --oneline
 - 테스트 — 체크리스트
 
 ### 5. PR 생성 실행
-```bash
-gh pr create --title "<제목>" --body "<완성된 body>"
+`mcp__github__create_pull_request` MCP 도구를 사용한다. `gh pr create`는 deny 규칙으로 차단되어 있다.
+```
+mcp__github__create_pull_request(owner, repo, title, body, head, base)
 ```
 
 ### 6. 결과 반환
@@ -94,8 +95,9 @@ gh pr view {pr_number} --json mergeStateStatus,reviews
 - mergeStateStatus가 CLEAN
 - 블로킹 리뷰 없음
 
-```bash
-gh pr merge {pr_number} --squash --delete-branch
+`mcp__github__merge_pull_request` MCP 도구를 사용한다. `gh pr merge`는 deny 규칙으로 차단되어 있다.
+```
+mcp__github__merge_pull_request(owner, repo, pullNumber, merge_method: "squash")
 ```
 
 ### 5. 결과 반환
@@ -116,6 +118,8 @@ PR: #{pr_number}
 - **review-resolve**: PR 번호, 리뷰 코멘트 수정이 이미 완료된 상태
 
 ## 도구
-- Bash: git, gh 명령어 실행
+- Bash: git, gh (읽기 전용: pr view, pr list, pr checks, api)
+- mcp__github__create_pull_request: PR 생성 (유일한 경로 — gh pr create는 deny로 차단됨)
+- mcp__github__merge_pull_request: PR 머지 (유일한 경로 — gh pr merge는 deny로 차단됨)
 - Read: 템플릿/에이전트 파일 읽기
 - Grep, Glob: 코드 검색 (전략비서 체크 시)
