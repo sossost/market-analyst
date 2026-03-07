@@ -15,10 +15,11 @@ load_env() {
     [[ "$key" =~ ^[[:space:]]*# ]] && continue
     [[ -z "$key" ]] && continue
     key=$(echo "$key" | xargs)
-    value="${value%\"}"
-    value="${value#\"}"
-    value="${value%\'}"
-    value="${value#\'}"
+    value=$(echo "$value" | xargs)
+    # 따옴표 쌍 매칭으로 제거 (앞뒤가 같은 따옴표일 때만)
+    if [[ "$value" =~ ^\"(.*)\"$ ]] || [[ "$value" =~ ^\'(.*)\'$ ]]; then
+      value="${BASH_REMATCH[1]}"
+    fi
     export "$key=$value"
   done < "$env_file"
 }
@@ -28,14 +29,18 @@ log() {
   echo "[$(date '+%H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Discord 에러 알림 (printf로 안전한 JSON 생성)
+# Discord 에러 알림 (jq로 안전한 JSON 생성)
 send_error() {
   local msg="$1"
   local source="${2:-스크립트}"
   local webhook="${DISCORD_ERROR_WEBHOOK_URL:-}"
   if [ -n "$webhook" ]; then
     local payload
-    payload=$(printf '{"content":"⚠️ %s 에러 (맥미니)\\n\\n%s\\n\\n로그: %s"}' "$source" "$msg" "$LOG_FILE")
+    payload=$(jq -n --arg content "⚠️ ${source} 에러 (맥미니)
+
+${msg}
+
+로그: ${LOG_FILE}" '{content: $content}')
     curl -s -X POST "$webhook" \
       -H "Content-Type: application/json" \
       --data-binary "$payload" \
