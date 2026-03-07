@@ -74,7 +74,7 @@ export function parseQuantitativeCondition(
 
   const metric = match[1].trim();
   const operator = match[2] as ComparisonOperator;
-  const rawValue = match[3].replace(/,/g, "");
+  const rawValue = match[3].replace(/[,_]/g, "");
   const value = Number(rawValue);
 
   if (Number.isNaN(value)) {
@@ -118,6 +118,22 @@ function resolveMetricValue(
   );
   if (index != null) {
     return index.close;
+  }
+
+  // Check Fear & Greed Index
+  const fearGreedAliases = ["fear & greed", "fear and greed", "fear&greed", "공포탐욕지수"];
+  if (fearGreedAliases.includes(normalized.toLowerCase()) && snapshot.fearGreed != null) {
+    return snapshot.fearGreed.score;
+  }
+
+  // Check VIX (via indices)
+  if (normalized.toLowerCase() === "vix") {
+    const vix = snapshot.indices.find(
+      (idx) => idx.name.toLowerCase() === "vix",
+    );
+    if (vix != null) {
+      return vix.close;
+    }
   }
 
   return null;
