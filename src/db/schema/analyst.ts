@@ -245,6 +245,7 @@ export const agentLearnings = pgTable(
     lastVerified: text("last_verified"),
     expiresAt: text("expires_at"),
     isActive: boolean("is_active").default(true),
+    verificationPath: text("verification_path"), // 'quantitative' | 'llm' | 'mixed' | null
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

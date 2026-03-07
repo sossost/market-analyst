@@ -49,6 +49,11 @@ interface VerificationMethodRow {
   cnt: number;
 }
 
+interface BiasMetricsRow {
+  verification_path: string | null;
+  cnt: number;
+}
+
 interface CollectedData {
   thesisWeekly: ThesisWeeklyRow[] | null;
   thesisOverall: ThesisOverallRow[] | null;
@@ -56,6 +61,7 @@ interface CollectedData {
   learnings: LearningRow[] | null;
   recentReports: ReportLogRow[] | null;
   verificationMethods: VerificationMethodRow[] | null;
+  biasMetrics: BiasMetricsRow[] | null;
 }
 
 async function queryOrNull<T>(label: string, sql: string): Promise<T[] | null> {
@@ -70,7 +76,7 @@ async function queryOrNull<T>(label: string, sql: string): Promise<T[] | null> {
 }
 
 async function collectData(): Promise<CollectedData> {
-  const [thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods] =
+  const [thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods, biasMetrics] =
     await Promise.all([
       queryOrNull<ThesisWeeklyRow>(
         "thesis_weekly",
@@ -124,9 +130,17 @@ async function collectData(): Promise<CollectedData> {
          GROUP BY verification_method, status
          ORDER BY verification_method, status`,
       ),
+      queryOrNull<BiasMetricsRow>(
+        "bias_metrics",
+        `SELECT verification_path, COUNT(*)::int as cnt
+         FROM agent_learnings
+         WHERE is_active = true
+         GROUP BY verification_path
+         ORDER BY verification_path`,
+      ),
     ]);
 
-  return { thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods };
+  return { thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods, biasMetrics };
 }
 
 // --- 프롬프트 구성 ---
@@ -153,6 +167,7 @@ function buildUserPrompt(data: CollectedData, today: string): string {
     formatDataSection("4. 학습 원칙 현황", data.learnings),
     formatDataSection("5. 최근 리포트 로그", data.recentReports),
     formatDataSection("6. 검증 방식별 통계 (정량/LLM)", data.verificationMethods),
+    formatDataSection("7. 학습 검증 경로 분포 (정량/LLM/혼합)", data.biasMetrics),
   ];
   return sections.join("\n");
 }
@@ -197,6 +212,8 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 - 학습 원칙: N개 활성 (카테고리별)
 - 데이터 파이프라인: [정상/이상] (최근 리포트 빈도 기반)
 - 검증 방식: 정량 자동 판정 N건 vs LLM 판정 N건 (일치율: 추후 추가)
+- 학습 검증 경로: quantitative N개, llm N개, mixed N개 (정량 비율: X%)
+- bull-bias 경고: 학습 원칙 중 상승 방향 편중 여부 체크
 
 ## 4. 골 달성 진척도
 - 이번 주 리포트에 Phase 1 후기 종목이 포함되었는가?
@@ -207,6 +224,7 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
   - RS 상승 초기 전환율 기준: 20.3% (섹터 동반 상승 시 24.2%)
   - 펀더멘탈+Phase1 교집합 전환율 기준: 30.6%
   - **핵심 필터**: 섹터 RS 동반 상승이 가장 유의미한 필터
+- **편향 모니터링**: 학습 원칙의 검증 경로(quantitative vs llm) 비율, bull-bias 여부
 
 ## 5. 낭비 감지 & 권고
 - API 비용 대비 가치 평가

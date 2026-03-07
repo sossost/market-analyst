@@ -50,6 +50,13 @@
       "when": 1772787608323,
       "tag": "0006_loose_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772884392460,
+      "tag": "0007_short_firebrand",
+      "breakpoints": true
     }
   ]
 }

@@ -145,6 +145,14 @@ ${round2Section}
 - confidence "high"는 3/4 이상 합의 + 명확한 데이터 근거가 있을 때만
 - ETF가 월간 20% 이상 등락하는 예측은 극단적 상황 아니면 지양
 
+**정량 조건 작성 규칙 (중요):**
+- targetCondition과 invalidationCondition은 **가능한 한 수치 비교 형식**으로 작성하세요
+- 형식: "[지표] [비교연산자] [숫자]" (예: "S&P 500 > 5800", "VIX < 20", "NVDA > 850")
+- 비교연산자: >, <, >=, <=
+- 정량 조건이 있으면 시스템이 **자동으로 시장 데이터와 비교 검증**합니다
+- 정량 조건이 없으면 LLM이 주관적으로 판정하게 되어 검증 신뢰도가 떨어집니다
+- "기술주 실적 호조 지속" 같은 정성적 조건은 **불가피한 경우에만** 사용하세요
+
 \`\`\`json
 [
   {
@@ -152,8 +160,8 @@ ${round2Section}
     "thesis": "현재 기준값 포함한 구체적 예측 문장",
     "timeframeDays": 30|60|90,
     "verificationMetric": "검증에 사용할 지표 (티커 또는 지수명)",
-    "targetCondition": "구체적 숫자 목표 (현재가 대비)",
-    "invalidationCondition": "무효화 조건",
+    "targetCondition": "S&P 500 > 5800",
+    "invalidationCondition": "S&P 500 < 5500",
     "confidence": "low|medium|high",
     "consensusLevel": "4/4|3/4|2/4|1/4"
   }

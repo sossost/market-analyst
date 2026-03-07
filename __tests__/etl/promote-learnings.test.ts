@@ -45,6 +45,8 @@ function makeThesis(overrides: Record<string, unknown>) {
     verificationDate: "2026-03-05",
     verificationResult: "confirmed",
     closeReason: "condition_met",
+    verificationMethod: "quantitative",
+    causalAnalysis: null,
     createdAt: new Date(),
     ...overrides,
   } as any;
@@ -126,19 +128,30 @@ describe("promote-learnings logic", () => {
       expect(result).toHaveLength(0);
     });
 
-    it("includes groups with exactly 70% hitRate", () => {
+    it("excludes groups with 71% hitRate but insufficient statistical significance (10/14)", () => {
       const confirmed = Array.from({ length: 10 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
       );
-      // 10 confirmed + 4 invalidated = 71.4% hitRate >= 70%
+      // 10 confirmed + 4 invalidated = 71.4% hitRate — 기존 기준은 통과하지만
+      // 이항분포 검정에서 p=0.09 > 0.05이므로 통계적으로 유의하지 않음
       const invalidated = Array.from({ length: 4 }, (_, i) =>
         makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
       );
 
       const result = buildPromotionCandidates(confirmed, invalidated, new Set());
+      expect(result).toHaveLength(0);
+    });
+
+    it("includes groups with high hitRate and statistical significance (10/0)", () => {
+      // 10 confirmed + 0 invalidated = 100% → p ≈ 0.001, Cohen's h ≈ 1.57
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
       expect(result).toHaveLength(1);
       expect(result[0].hitCount).toBe(10);
-      expect(result[0].missCount).toBe(4);
+      expect(result[0].missCount).toBe(0);
     });
 
     it("excludes thesis IDs already in existing learnings", () => {
@@ -183,6 +196,53 @@ describe("promote-learnings logic", () => {
     it("returns empty for no confirmed theses", () => {
       const result = buildPromotionCandidates([], [], new Set());
       expect(result).toHaveLength(0);
+    });
+
+    it("collects verificationMethods from source theses", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({
+          id: i + 1,
+          agentPersona: "macro",
+          verificationMetric: "GDP",
+          verificationMethod: i < 7 ? "quantitative" : "llm",
+        }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].verificationMethods).toContain("quantitative");
+      expect(result[0].verificationMethods).toContain("llm");
+      expect(result[0].verificationMethods).toHaveLength(2);
+    });
+
+    it("returns single verificationMethod when all theses use the same method", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({
+          id: i + 1,
+          agentPersona: "macro",
+          verificationMetric: "CPI",
+          verificationMethod: "quantitative",
+        }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].verificationMethods).toEqual(["quantitative"]);
+    });
+
+    it("returns empty verificationMethods when theses have no verificationMethod", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({
+          id: i + 1,
+          agentPersona: "macro",
+          verificationMetric: "VIX",
+          verificationMethod: null,
+        }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, [], new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].verificationMethods).toEqual([]);
     });
 
     it("does not include reusablePatterns in candidate", () => {
