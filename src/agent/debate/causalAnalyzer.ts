@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { findSessionByDate } from "./sessionStore.js";
+import { callWithRetry } from "./callAgent.js";
 import { logger } from "../logger.js";
 
 const MODEL = "claude-sonnet-4-20250514";
@@ -199,12 +200,14 @@ ${thesesText}
 
   logger.info("CausalAnalyzer", `Analyzing ${resolvedTheses.length} resolved theses`);
 
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
+  const response = await callWithRetry(() =>
+    client.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    }),
+  );
 
   const textBlocks = response.content.filter(
     (block): block is Anthropic.TextBlock => block.type === "text",

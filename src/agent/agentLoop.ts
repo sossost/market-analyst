@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { executeTool } from "./tools/index";
+import { callWithRetry } from "./debate/callAgent.js";
 import { logger } from "./logger";
 import type { AgentConfig, AgentResult } from "./tools/types";
 
@@ -35,13 +36,15 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
   ) {
     logger.info("Agent", `Iteration ${iteration + 1}/${config.maxIterations}`);
 
-    const response = await client.messages.create({
-      model: config.model,
-      max_tokens: config.maxTokens,
-      system: config.systemPrompt,
-      tools: toolDefinitions,
-      messages,
-    });
+    const response = await callWithRetry(() =>
+      client.messages.create({
+        model: config.model,
+        max_tokens: config.maxTokens,
+        system: config.systemPrompt,
+        tools: toolDefinitions,
+        messages,
+      }),
+    );
 
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;

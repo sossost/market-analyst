@@ -7,6 +7,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { callWithRetry } from "../debate/callAgent.js";
 import { logger } from "../logger.js";
 import type { FundamentalScore, FundamentalInput } from "../../types/fundamental.js";
 
@@ -56,7 +57,7 @@ function buildUserMessage(score: FundamentalScore, input: FundamentalInput): str
   lines.push("위 데이터를 바탕으로 이 종목의 펀더멘탈을 2-3문단으로 해석해주세요.");
 
   // DB 데이터를 XML 래핑하여 프롬프트 인젝션 방어
-  const content = lines.join("\n");
+  const content = lines.join("\n").replace(/<\/?financial-data[^>]*>/g, "");
   return `<financial-data source="db" trust="internal">\n${content}\n</financial-data>`;
 }
 
@@ -77,12 +78,14 @@ export async function analyzeFundamentals(
 
   logger.info("Fundamental", `Analyzing ${score.symbol} (grade: ${score.grade})`);
 
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
+  const response = await callWithRetry(() =>
+    client.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    }),
+  );
 
   const rawNarrative = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
