@@ -26,6 +26,7 @@ CEO가 미션을 내리면 즉시 실행하지 않는다:
 5. **PR 생성** — `pr-manager`에 `mode: create` 위임. **직접 `gh pr create` 금지.**
 6. **리뷰 해결 + 머지** — `pr-manager`에 `mode: review-resolve` 위임. **직접 `gh pr merge` 금지.**
 7. **보고** — PR이 공식 보고 채널. pr-manager가 PR body에 골 정렬·변경 요약·코드 리뷰·테스트 결과를 포함. 채팅에서는 PR URL과 간단한 상태만 전달.
+8. **머지 후 정리** — PR 머지 완료 시 `git checkout main && git pull && git branch -d <branch>` 자동 실행. 명령 기다리지 않는다.
 
 상세: `.claude/ORGANIZATION.md` 참조
 
