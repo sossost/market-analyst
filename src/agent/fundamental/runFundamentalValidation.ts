@@ -161,10 +161,10 @@ export function formatFundamentalSupplement(
 
 // ─── Cache helpers ──────────────────────────────────────────────────
 
-async function getCacheDate(): Promise<string> {
+async function getCacheDate(): Promise<string | null> {
   const rows = await db.execute(sql`SELECT MAX(date)::text AS max_date FROM stock_phases`);
-  const row = (rows.rows as unknown as { max_date: string }[])[0];
-  return row.max_date;
+  const row = (rows.rows as unknown as { max_date: string | null }[])[0];
+  return row?.max_date ?? null;
 }
 
 function getCachePath(dateStr: string): string {
@@ -173,6 +173,9 @@ function getCachePath(dateStr: string): string {
 
 async function loadCacheAsync(): Promise<ValidationResult | null> {
   const dateStr = await getCacheDate();
+  if (dateStr == null) {
+    return null;
+  }
   const cachePath = getCachePath(dateStr);
 
   if (!existsSync(cachePath)) {
@@ -184,18 +187,28 @@ async function loadCacheAsync(): Promise<ValidationResult | null> {
     const cached = JSON.parse(raw) as ValidationResult;
     logger.info("Fundamental", `캐시 사용: data/fundamental-cache/${dateStr}.json`);
     return cached;
-  } catch {
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("Fundamental", `캐시 파일(${cachePath}) 로드 실패, 검증을 재실행합니다: ${reason}`);
     return null;
   }
 }
 
 async function saveCache(result: ValidationResult): Promise<void> {
-  const dateStr = await getCacheDate();
-  const cachePath = getCachePath(dateStr);
+  try {
+    const dateStr = await getCacheDate();
+    if (dateStr == null) {
+      return;
+    }
+    const cachePath = getCachePath(dateStr);
 
-  mkdirSync(CACHE_DIR, { recursive: true });
-  writeFileSync(cachePath, JSON.stringify(result, null, 2), "utf-8");
-  logger.info("Fundamental", `캐시 저장: data/fundamental-cache/${dateStr}.json`);
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(cachePath, JSON.stringify(result, null, 2), "utf-8");
+    logger.info("Fundamental", `캐시 저장: data/fundamental-cache/${dateStr}.json`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error("Fundamental", `캐시 저장 실패: ${reason}`);
+  }
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────
