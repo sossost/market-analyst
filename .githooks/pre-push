@@ -1,0 +1,16 @@
+#!/bin/sh
+# main 브랜치 직접 푸시 차단
+# stdin으로 전달되는 ref 목록을 파싱하여 remote main 푸시도 차단
+
+while read local_ref local_sha remote_ref remote_sha
+do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo ""
+    echo "ERROR: main 브랜치에 직접 푸시할 수 없습니다."
+    echo "브랜치를 만들고 PR을 통해 머지하세요."
+    echo ""
+    exit 1
+  fi
+done
+
+exit 0
