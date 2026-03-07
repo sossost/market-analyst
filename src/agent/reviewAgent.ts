@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordFile, sendDiscordMessage } from "./discord";
+import { callWithRetry } from "./debate/callAgent.js";
 import { createGist } from "./gist";
 import { logger } from "./logger";
 import { saveReviewFeedback, type ReviewVerdict } from "./reviewFeedback";
@@ -265,17 +266,19 @@ export async function reviewReport(
 ): Promise<ReviewResult> {
   const draftText = buildDraftText(drafts);
 
-  const response = await client.messages.create({
-    model: REVIEW_MODEL,
-    max_tokens: REVIEW_MAX_TOKENS,
-    system: REVIEWER_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `아래 시장 분석 리포트를 리뷰해주세요.\n\n${draftText}`,
-      },
-    ],
-  });
+  const response = await callWithRetry(() =>
+    client.messages.create({
+      model: REVIEW_MODEL,
+      max_tokens: REVIEW_MAX_TOKENS,
+      system: REVIEWER_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `아래 시장 분석 리포트를 리뷰해주세요.\n\n${draftText}`,
+        },
+      ],
+    }),
+  );
 
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock?.type === "text" ? textBlock.text : "";
@@ -324,23 +327,25 @@ async function refineSingleDraft(
 ): Promise<ReportDraft> {
   const draftText = buildDraftText([draft]);
 
-  const response = await client.messages.create({
-    model: REVIEW_MODEL,
-    max_tokens: REFINE_MAX_TOKENS,
-    system: REFINE_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `아래 리포트를 리뷰어 피드백에 따라 수정해주세요.
+  const response = await callWithRetry(() =>
+    client.messages.create({
+      model: REVIEW_MODEL,
+      max_tokens: REFINE_MAX_TOKENS,
+      system: REFINE_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `아래 리포트를 리뷰어 피드백에 따라 수정해주세요.
 
 [원본 리포트]
 ${draftText}
 
 [리뷰어 피드백]
 ${feedback}`,
-      },
-    ],
-  });
+        },
+      ],
+    }),
+  );
 
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock?.type === "text" ? textBlock.text : "";
@@ -415,17 +420,19 @@ async function extractSingleDraftData(
 ): Promise<ReportDraft> {
   const draftText = buildDraftText([draft]);
 
-  const response = await client.messages.create({
-    model: REVIEW_MODEL,
-    max_tokens: REFINE_MAX_TOKENS,
-    system: DATA_ONLY_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `아래 리포트에서 팩트/데이터 섹션만 추출해주세요.\n\n${draftText}`,
-      },
-    ],
-  });
+  const response = await callWithRetry(() =>
+    client.messages.create({
+      model: REVIEW_MODEL,
+      max_tokens: REFINE_MAX_TOKENS,
+      system: DATA_ONLY_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `아래 리포트에서 팩트/데이터 섹션만 추출해주세요.\n\n${draftText}`,
+        },
+      ],
+    }),
+  );
 
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock?.type === "text" ? textBlock.text : "";

@@ -7,6 +7,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { callWithRetry } from "../debate/callAgent.js";
 import { logger } from "../logger.js";
 import type { FundamentalScore, FundamentalInput } from "../../types/fundamental.js";
 
@@ -77,12 +78,14 @@ export async function analyzeFundamentals(
 
   logger.info("Fundamental", `Analyzing ${score.symbol} (grade: ${score.grade})`);
 
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
+  const response = await callWithRetry(() =>
+    client.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    }),
+  );
 
   const rawNarrative = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === "text")

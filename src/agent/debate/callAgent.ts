@@ -19,7 +19,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * Rate limit (429) 대응 exponential backoff 재시도.
  * retry-after 헤더가 있으면 그 값을 사용.
  */
-async function callWithRetry(
+export async function callWithRetry(
   fn: () => Promise<Anthropic.Message>,
 ): Promise<Anthropic.Message> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
