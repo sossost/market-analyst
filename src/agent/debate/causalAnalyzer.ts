@@ -86,7 +86,7 @@ export function parseCausalAnalysis(
 /**
  * thesis가 CONFIRMED/INVALIDATED된 후 원인 분석.
  *
- * 1. 원본 토론 세션 로드 (당시 장관들이 뭐라 했는지)
+ * 1. 원본 토론 세션 로드 (당시 애널리스트들이 뭐라 했는지)
  * 2. LLM에게 "왜 맞았는지/틀렸는지" 분석 요청
  * 3. 재사용 가능한 패턴 + 교훈 추출
  */
@@ -116,7 +116,7 @@ export async function analyzeCauses(
         const reportSummary = session.synthesisReport.slice(0, MAX_CONTEXT);
         sessionContexts.set(
           date,
-          `### 당시 장관 분석 (${date})\n${round1Summary}\n\n### 당시 종합 리포트\n${reportSummary}`,
+          `### 당시 애널리스트 분석 (${date})\n${round1Summary}\n\n### 당시 종합 리포트\n${reportSummary}`,
         );
       }
     }),

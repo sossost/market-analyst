@@ -1,6 +1,6 @@
 ---
 name: qa-analyst
-description: QA 에이전트. 리포트 품질, 시그널 성과, 장관 적중률, 학습 루프 건강도를 정량 측정하고 구체적 처방을 내린다.
+description: QA 에이전트. 리포트 품질, 시그널 성과, 애널리스트 적중률, 학습 루프 건강도를 정량 측정하고 구체적 처방을 내린다.
 model: sonnet
 ---
 
@@ -32,8 +32,8 @@ model: sonnet
 - DB `recommendations` 테이블의 활성/종료 추천 성과
 - 파라미터별 성과 비교 (RS 임계값, 거래량 필터 등)
 
-### 3. 장관 성과
-- DB `theses` 테이블의 장관별 적중률
+### 3. 애널리스트 성과
+- DB `theses` 테이블의 애널리스트별 적중률
 - CONFIRMED / INVALIDATED / EXPIRED 비율
 - confidence 수준별 적중률 (high/medium/low)
 
@@ -59,8 +59,8 @@ model: sonnet
 - 종료 추천: N건, 승률 X%
 - 추세: [개선/악화/유지]
 
-## 장관 성과
-- 장관별 적중률 테이블
+## 애널리스트 성과
+- 애널리스트별 적중률 테이블
 - 최우수: X (Y%)
 - 최저: X (Y%)
 - 처방: [필요시]

@@ -1,6 +1,6 @@
 # Market Analyst Agent
 
-Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 장관 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
+Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
 ## How It Works
 
@@ -8,7 +8,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 1. ETL 파이프라인 (매일 장 마감 후)
    → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석
 
-2. 장관 토론 (매일 22:00 UTC)
+2. 애널리스트 토론 (매일 22:00 UTC)
    → 매크로/테크/지정학/심리 4명이 3라운드 토론
    → 실시간 뉴스 주입 + 모멘텀 데이터 분석
    → 모더레이터가 thesis 구조화 → DB 저장
@@ -67,10 +67,10 @@ npm run etl:validate        # 데이터 검증
 # Agent 실행
 npm run agent:daily         # 일간 시장 브리핑
 npm run agent:weekly        # 주간 종목 분석
-npm run agent:debate        # 장관 토론 (매크로/테크/지정학/심리)
+npm run agent:debate        # 애널리스트 토론 (매크로/테크/지정학/심리)
 
 # 테스트
-npm test                    # 전체 테스트 (356 tests)
+npm test                    # 전체 테스트 (555 tests)
 npm run test:watch          # 워치 모드
 npm run typecheck           # 타입 체크
 
@@ -85,8 +85,8 @@ npm run db:push             # 스키마 적용
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │     ETL      │    │   Debate     │    │    Agent     │
 │              │    │              │    │              │
-│ Stock Phases │───▶│ 4 Ministers  │───▶│ Claude Opus  │
-│ Sector RS    │    │ 3-Round Talk │    │ + 13 Tools   │
+│ Stock Phases │───▶│ 4 Ministers  │───▶│Claude Sonnet │
+│ Sector RS    │    │ 3-Round Talk │    │ + 17 Tools   │
 │ Industry RS  │    │ + Moderator  │    │ + Fundamental│
 └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
        │                   │                   │
@@ -114,18 +114,23 @@ npm run db:push             # 스키마 적용
 
 | 도구 | 일간 | 주간 | 설명 |
 |------|:----:|:----:|------|
-| `getIndexReturns` | O | O | 4대 지수 + VIX + 공포탐욕지수 |
-| `getMarketBreadth` | O | O | Phase 분포, Phase 2 비율, A/D ratio |
-| `getLeadingSectors` | O | O | RS 상위 섹터/업종 + 가속도 + 브레드스 |
-| `getPhase2Stocks` | | O | Phase 2 종목 리스트 (RS 60+) |
-| `getUnusualStocks` | O | | 복합 조건 특이종목 스크리닝 |
-| `getStockDetail` | O | O | 개별 종목 상세 분석 |
+| `getIndexReturns` | O | O | 4대 지수 + VIX + 공포탐욕지수 (주간: 누적 + 고저 위치) |
+| `getMarketBreadth` | O | O | Phase 분포, Phase 2 비율, A/D ratio (주간: 5일 추이 + Phase 1→2 전환) |
+| `getLeadingSectors` | O | O | RS 상위 섹터/업종 (주간: 전주 대비 순위 변동 + 신규 진입/이탈) |
+| `getPhase2Stocks` | | O | Phase 2 초입 종목 리스트 (RS 필터링) |
+| `getPhase1LateStocks` | O | O | Phase 1 후기 종목 — Phase 2 진입 1~3개월 선행 포착 |
+| `getRisingRS` | O | O | RS 30~60 상승 가속 종목 — 초기 모멘텀 포착 |
+| `getFundamentalAcceleration` | | O | EPS/매출 성장 가속 종목 (Phase 1~2 대상) |
+| `getUnusualStocks` | O | | 복합 조건 특이종목 스크리닝 (등락률·거래량·Phase 전환) |
+| `getStockDetail` | O | O | 개별 종목 상세 분석 (Phase, RS, MA, 섹터 컨텍스트) |
 | `searchCatalyst` | O | O | Brave Search 뉴스 기반 카탈리스트 |
-| `sendDiscordReport` | O | O | Discord + Gist 리포트 발송 |
 | `readReportHistory` | | O | 과거 리포트 이력 (중복 방지) |
+| `readRecommendationPerformance` | | O | 추천 성과 트래킹 (주간: 신규/종료/Phase 이탈 집계) |
+| `readActiveTheses` | O | O | 현재 ACTIVE thesis 목록 (토론 엔진 생성) |
+| `readLearnings` | O | O | 에이전트 장기 기억 (검증된 원칙 + 경계 패턴) |
+| `saveRecommendations` | | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
 | `saveReportLog` | O | O | 리포트 결과 저장 |
-| `saveRecommendations` | | O | 추천 종목 DB 저장 |
-| `readRecommendationPerformance` | | O | 추천 성과 트래킹 |
+| `sendDiscordReport` | | | Discord + Gist 리포트 발송 (리뷰 파이프라인 전용) |
 
 ### Learning Loop
 
@@ -148,6 +153,8 @@ npm run db:push             # 스키마 적용
 | Session Store | `sessionStore.ts` | 토론 세션 저장, 유사 세션 검색 |
 | Memory Loader | `memoryLoader.ts` | 학습 + 검증 결과 프롬프트 주입 |
 | Promote Learnings | `promote-learnings.ts` | 반복 적중 패턴 → 장기 기억 승격 |
+| Bias Detector | `biasDetector.ts` | bull-bias 80% 초과 경고 |
+| Statistical Tests | `statisticalTests.ts` | 이항 검정 + Cohen's h 유의성 필터 |
 
 ### Fundamental Validation (Minervini SEPA)
 
@@ -167,7 +174,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 |----------|----------|------|
 | `etl-daily.yml` | 월~금 UTC 00:00 (KST 09:00) | ETL 4단계 → 일간 에이전트 |
 | `agent-weekly.yml` | 토 UTC 01:00 (KST 10:00) | 주간 에이전트 |
-| `debate-daily.yml` | 월~금 UTC 22:00 (KST 07:00) | 장관 토론 → thesis 저장 |
+| `debate-daily.yml` | 월~금 UTC 22:00 (KST 07:00) | 애널리스트 토론 → thesis 저장 |
 | `agent-rerun.yml` | 수동 트리거 | 에이전트만 재실행 (ETL 생략) |
 
 ## Tech Stack
@@ -176,7 +183,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 |------|------|
 | Runtime | Node.js 20+ (ESM) |
 | Language | TypeScript (strict) |
-| AI | Claude Opus 4.6 + Sonnet (Anthropic SDK) |
+| AI | Claude Sonnet 4 (Anthropic SDK) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
 | Testing | Vitest |
 | CI/CD | GitHub Actions |
@@ -189,9 +196,11 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **F2** Agent Core — Claude agentic loop + 도구 + 일간/주간 분리
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지
 - [x] **F5** Report & Delivery — Discord 발송, Gist MD, 리뷰 파이프라인
-- [x] **F6** Debate & Evolution — 장관 4명 토론 + thesis 저장 + 학습 루프
-- [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + S등급 리포트
+- [x] **F6** Debate & Evolution — 애널리스트 4명 토론 + thesis 저장 + 학습 루프
+- [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + 전체 종목 확장
 - [x] **Phase A** Learning Loop — 세션 저장, few-shot 주입, 원인 분석, 패턴 승격
+- [x] **Phase A+** Signal Validation — 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화
+- [x] **Phase A++** Weekly Redesign — 주간 리포트 전면 재설계 (도구 주간 집계 + 프롬프트 차별화)
 - [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
 
@@ -202,7 +211,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 ```
 src/
 ├── agent/
-│   ├── debate/              # 장관 토론 엔진 + 학습 루프
+│   ├── debate/              # 애널리스트 토론 엔진 + 학습 루프
 │   │   ├── debateEngine.ts  # 3라운드 토론 오케스트레이터
 │   │   ├── causalAnalyzer.ts # 원인 분석 (왜 맞았는지/틀렸는지)
 │   │   ├── thesisVerifier.ts # thesis 자동 검증

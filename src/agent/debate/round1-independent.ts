@@ -46,7 +46,7 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
           systemPrompt += `\n\n## 장기 기억 (검증된 원칙)\n${memoryContext}`;
         }
 
-        // 장관별 뉴스 컨텍스트를 질문에 추가
+        // 애널리스트별 뉴스 컨텍스트를 질문에 추가
         const personaNews = newsContext[expert.name] ?? "";
         const fullQuestion = personaNews.length > 0
           ? `${question}\n\n---\n\n${personaNews}`

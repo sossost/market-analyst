@@ -47,7 +47,7 @@
 - Phase 2가 잘 작동한 뒤 추가 고려
 - 우선순위 낮음
 
-## Phase 3: 펀더멘탈 장관 페르소나
+## Phase 3: 펀더멘탈 애널리스트 페르소나
 
 ### Task 3.1 — 페르소나 정의
 - `.claude/agents/fundamental-analyst.md`

@@ -283,13 +283,13 @@ export async function getTopGradeScores(
 
 ## 작업 계획
 
-### Step 1 — DB 스키마 + 마이그레이션 [실행국/구현]
+### Step 1 — DB 스키마 + 마이그레이션 [실행팀/구현]
 완료 기준:
 - `src/db/schema/analyst.ts`에 `fundamentalScores` 테이블 추가
 - `npx drizzle-kit generate` + `npx drizzle-kit migrate` 실행
 - `src/db/schema/index.ts` 재export 추가
 
-### Step 2 — `runFundamentalValidation.ts` 리팩터 [실행국/구현]
+### Step 2 — `runFundamentalValidation.ts` 리팩터 [실행팀/구현]
 완료 기준:
 - `getPhase2Symbols()` → `getAllScoringSymbols()` 교체
 - 파일 캐시 코드(함수 4개 + 상수 + import) 전량 제거
@@ -298,13 +298,13 @@ export async function getTopGradeScores(
 - `ignoreCache` 옵션 → `forceRescore` 로 rename
 - `ValidationResult` 인터페이스 호환성 유지
 
-### Step 3 — `fundamental-db.ts` 헬퍼 [실행국/구현]
+### Step 3 — `fundamental-db.ts` 헬퍼 [실행팀/구현]
 완료 기준:
 - `getFundamentalGrades(symbols, scoredDate?)` 구현
 - `getTopGradeScores(minGrade, scoredDate?)` 구현
 - 타입 export 정비
 
-### Step 4 — 테스트 [검증국/QA]
+### Step 4 — 테스트 [검증팀/QA]
 완료 기준:
 - `fundamental-scorer.ts` 기존 유닛 테스트 통과 (변경 없음)
 - `runFundamentalValidation` 통합 테스트: DB 저장 검증 (mock DB)

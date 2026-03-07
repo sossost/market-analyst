@@ -162,7 +162,7 @@ function buildUserPrompt(data: CollectedData, today: string): string {
     "아래 데이터를 기반으로 주간 QA + 전략 점검 리포트를 작성하세요.",
     "",
     formatDataSection("1. Thesis 성과 (최근 7일)", data.thesisWeekly),
-    formatDataSection("2. Thesis 전체 적중률 (장관별)", data.thesisOverall),
+    formatDataSection("2. Thesis 전체 적중률 (애널리스트별)", data.thesisOverall),
     formatDataSection("3. 추천 성과", data.recommendations),
     formatDataSection("4. 학습 원칙 현황", data.learnings),
     formatDataSection("5. 최근 리포트 로그", data.recentReports),
@@ -196,8 +196,8 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 
 ## 종합 점수: X/10
 
-## 1. 장관 성과
-- 장관별 적중률 테이블 (confirmed / invalidated / expired / active / total)
+## 1. 애널리스트 성과
+- 애널리스트별 적중률 테이블 (confirmed / invalidated / expired / active / total)
 - 최우수: X (Y%)
 - 최저: X (Y%)
 - 이번 주 신규 thesis: N건

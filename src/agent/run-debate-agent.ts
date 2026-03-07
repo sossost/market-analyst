@@ -23,7 +23,7 @@ interface AlertDecision {
  *
  * 발송 조건:
  * 1. high confidence thesis가 1개 이상
- * 2. 장관 간 의견 크게 갈림 (consensus 2/4 이하가 과반)
+ * 2. 애널리스트 간 의견 크게 갈림 (consensus 2/4 이하가 과반)
  * 3. thesis가 3개 이상 (활발한 토론)
  */
 function checkAlertConditions(result: DebateResult): AlertDecision {
@@ -42,7 +42,7 @@ function checkAlertConditions(result: DebateResult): AlertDecision {
     (t) => t.consensusLevel === "1/4" || t.consensusLevel === "2/4",
   );
   if (lowConsensus.length > theses.length / 2) {
-    return { send: true, reason: `분석가 간 의견 분열 — 주의 필요` };
+    return { send: true, reason: `애널리스트 간 의견 분열 — 주의 필요` };
   }
 
   if (theses.length >= 3) {
@@ -76,7 +76,7 @@ const PERSONA_LABELS: Record<string, string> = {
 };
 
 /**
- * 각 장관의 Round 1 분석에서 핵심 인사이트(첫 의미 있는 문단)를 추출.
+ * 각 애널리스트의 Round 1 분석에서 핵심 인사이트(첫 의미 있는 문단)를 추출.
  */
 function extractPersonaInsights(outputs: RoundOutput[]): string {
   return outputs
@@ -114,7 +114,7 @@ function extractFirstInsight(content: string): string {
 }
 
 /**
- * Round 2 교차 토론에서 장관 간 핵심 쟁점을 추출.
+ * Round 2 교차 토론에서 애널리스트 간 핵심 쟁점을 추출.
  */
 function extractKeyDebatePoint(outputs: RoundOutput[]): string | null {
   // Round 2에서 "반박", "동의하지 않", "다른 시각", "우려" 등 충돌 키워드가 있는 문장 추출
@@ -320,10 +320,10 @@ async function main() {
     // 핵심 요약 추출 (리포트 첫 섹션)
     const coreInsight = extractCoreInsight(report);
 
-    // 장관별 핵심 인사이트 (Round 1)
+    // 애널리스트별 핵심 인사이트 (Round 1)
     const personaInsights = extractPersonaInsights(result.round1.outputs);
 
-    // 장관 간 쟁점 (Round 2)
+    // 애널리스트 간 쟁점 (Round 2)
     const debatePoint = extractKeyDebatePoint(result.round2.outputs);
 
     const thesesSummary = result.round3.theses
@@ -341,7 +341,7 @@ async function main() {
       "",
       "---",
       "",
-      "**장관 인사이트**",
+      "**애널리스트 인사이트**",
       personaInsights,
     ];
 

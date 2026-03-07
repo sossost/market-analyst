@@ -64,15 +64,15 @@ function buildSignalSection(stats: SignalStats): string {
 
 function buildAgentSection(agentStats: AgentStats[]): string {
   const lines: string[] = [];
-  lines.push("## 장관 성과");
+  lines.push("## 애널리스트 성과");
 
   if (agentStats.length === 0) {
     lines.push("- 집계 대상 thesis 없음");
     return lines.join("\n");
   }
 
-  lines.push("| 장관 | 전체 | 적중 | 실패 | 적중률 |");
-  lines.push("|------|------|------|------|--------|");
+  lines.push("| 애널리스트 | 전체 | 적중 | 실패 | 적중률 |");
+  lines.push("|------------|------|------|------|--------|");
 
   for (const stat of agentStats) {
     lines.push(
@@ -127,7 +127,7 @@ function buildChiefJudgmentSection(
   agentStats: AgentStats[],
 ): string {
   const lines: string[] = [];
-  lines.push("## 비서실장 판단");
+  lines.push("## 매니저 판단");
 
   // 시그널 품질 추세
   if (signalStats.total === 0) {
@@ -140,25 +140,25 @@ function buildChiefJudgmentSection(
     lines.push("- 시그널 품질 보통 — 지속 모니터링");
   }
 
-  // 장관 성과 추세
+  // 애널리스트 성과 추세
   const withResolved = agentStats.filter(
     (s) => s.confirmed + s.invalidated > 0,
   );
 
   if (withResolved.length === 0) {
-    lines.push("- 장관 성과 데이터 부족 — 검증 완료 thesis 누적 필요");
+    lines.push("- 애널리스트 성과 데이터 부족 — 검증 완료 thesis 누적 필요");
   } else {
     const avgHitRate =
       withResolved.reduce((sum, s) => sum + s.hitRate, 0) / withResolved.length;
 
     if (avgHitRate >= 0.6) {
-      lines.push(`- 장관 평균 적중률 ${formatRate(avgHitRate)} — 양호`);
+      lines.push(`- 애널리스트 평균 적중률 ${formatRate(avgHitRate)} — 양호`);
     } else if (avgHitRate < 0.4) {
       lines.push(
-        `- 장관 평균 적중률 ${formatRate(avgHitRate)} — 프롬프트 개선 검토 필요`,
+        `- 애널리스트 평균 적중률 ${formatRate(avgHitRate)} — 프롬프트 개선 검토 필요`,
       );
     } else {
-      lines.push(`- 장관 평균 적중률 ${formatRate(avgHitRate)} — 보통`);
+      lines.push(`- 애널리스트 평균 적중률 ${formatRate(avgHitRate)} — 보통`);
     }
   }
 

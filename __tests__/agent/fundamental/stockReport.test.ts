@@ -60,7 +60,7 @@ describe("generateStockReport", () => {
     expect(report).toContain("분기별 실적");
     expect(report).toContain("Q4 2025");
     expect(report).toContain("$35.1B");
-    expect(report).toContain("펀더멘탈 장관 분석");
+    expect(report).toContain("펀더멘탈 애널리스트 분석");
     expect(report).toContain("AI 인프라 capex");
     expect(report).toContain("종합 판단");
     expect(report).toContain("슈퍼퍼포머 후보");
