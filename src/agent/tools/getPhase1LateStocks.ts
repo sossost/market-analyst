@@ -69,6 +69,7 @@ export const getPhase1LateStocks: AgentTool = {
          LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
          WHERE sp.date = $1
            AND sp.phase = 1
+           AND (sp.prev_phase IS NULL OR sp.prev_phase = 1)
            AND sp.ma150_slope::numeric > -0.001
            AND sp.rs_score >= 20
            AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.2
