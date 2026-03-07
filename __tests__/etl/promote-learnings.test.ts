@@ -92,67 +92,88 @@ describe("promote-learnings logic", () => {
   });
 
   describe("buildPromotionCandidates", () => {
-    it("groups confirmed theses by persona + metric with 3+ hits", () => {
-      const confirmed = [
-        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
-        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
-        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
-      ];
+    it("promotes group with 10+ confirmed, 70%+ hitRate, 10+ observations", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+      );
 
       const result = buildPromotionCandidates(confirmed, [], new Set());
       expect(result).toHaveLength(1);
       expect(result[0].persona).toBe("macro");
       expect(result[0].metric).toBe("Fed funds rate");
-      expect(result[0].hitCount).toBe(3);
+      expect(result[0].hitCount).toBe(10);
     });
 
-    it("excludes groups with fewer than 3 confirmed", () => {
-      const confirmed = [
-        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "GDP" }),
-        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "GDP" }),
-      ];
+    it("excludes groups with fewer than 10 confirmed", () => {
+      const confirmed = Array.from({ length: 9 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
+      );
 
       const result = buildPromotionCandidates(confirmed, [], new Set());
       expect(result).toHaveLength(0);
     });
 
-    it("excludes thesis IDs already in existing learnings", () => {
-      const confirmed = [
-        makeThesis({ id: 1, agentPersona: "tech", verificationMetric: "capex" }),
-        makeThesis({ id: 2, agentPersona: "tech", verificationMetric: "capex" }),
-        makeThesis({ id: 3, agentPersona: "tech", verificationMetric: "capex" }),
-      ];
+    it("excludes groups with hitRate below 70%", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+      );
+      // 10 confirmed + 5 invalidated = 66.7% hitRate < 70%
+      const invalidated = Array.from({ length: 5 }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
+      );
 
-      const existingIds = new Set([1, 2, 3]);
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set());
+      expect(result).toHaveLength(0);
+    });
+
+    it("includes groups with exactly 70% hitRate", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+      );
+      // 10 confirmed + 4 invalidated = 71.4% hitRate >= 70%
+      const invalidated = Array.from({ length: 4 }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set());
+      expect(result).toHaveLength(1);
+      expect(result[0].hitCount).toBe(10);
+      expect(result[0].missCount).toBe(4);
+    });
+
+    it("excludes thesis IDs already in existing learnings", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "tech", verificationMetric: "capex" }),
+      );
+
+      const existingIds = new Set(Array.from({ length: 10 }, (_, i) => i + 1));
       const result = buildPromotionCandidates(confirmed, [], existingIds);
       expect(result).toHaveLength(0);
     });
 
     it("counts invalidated theses for the same group", () => {
-      const confirmed = [
-        makeThesis({ id: 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
-        makeThesis({ id: 2, agentPersona: "sentiment", verificationMetric: "VIX" }),
-        makeThesis({ id: 3, agentPersona: "sentiment", verificationMetric: "VIX" }),
-      ];
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
+      );
       const invalidated = [
-        makeThesis({ id: 4, agentPersona: "sentiment", verificationMetric: "VIX", status: "INVALIDATED" }),
+        makeThesis({ id: 100, agentPersona: "sentiment", verificationMetric: "VIX", status: "INVALIDATED" }),
       ];
 
       const result = buildPromotionCandidates(confirmed, invalidated, new Set());
       expect(result).toHaveLength(1);
-      expect(result[0].hitCount).toBe(3);
+      expect(result[0].hitCount).toBe(10);
       expect(result[0].missCount).toBe(1);
-      expect(result[0].invalidatedIds).toEqual([4]);
+      expect(result[0].invalidatedIds).toEqual([100]);
     });
 
     it("handles multiple groups from different personas", () => {
       const confirmed = [
-        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "CPI" }),
-        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "CPI" }),
-        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "CPI" }),
-        makeThesis({ id: 4, agentPersona: "tech", verificationMetric: "AI capex" }),
-        makeThesis({ id: 5, agentPersona: "tech", verificationMetric: "AI capex" }),
-        makeThesis({ id: 6, agentPersona: "tech", verificationMetric: "AI capex" }),
+        ...Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+        ),
+        ...Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: 100 + i, agentPersona: "tech", verificationMetric: "AI capex" }),
+        ),
       ];
 
       const result = buildPromotionCandidates(confirmed, [], new Set());
@@ -164,36 +185,14 @@ describe("promote-learnings logic", () => {
       expect(result).toHaveLength(0);
     });
 
-    it("extracts reusablePatterns from causalAnalysis", () => {
-      const causal = JSON.stringify({
-        causalChain: "CPI 둔화 → Fed 인하",
-        keyFactors: ["CPI 하락"],
-        reusablePattern: "CPI 3개월 연속 둔화 시 Fed 인하 확률 80%",
-        lessonsLearned: "물가 추세 확인",
-      });
-
-      const confirmed = [
-        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "Fed rate", causalAnalysis: causal }),
-        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "Fed rate", causalAnalysis: causal }),
-        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "Fed rate", causalAnalysis: null }),
-      ];
+    it("does not include reusablePatterns in candidate", () => {
+      const confirmed = Array.from({ length: 10 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
+      );
 
       const result = buildPromotionCandidates(confirmed, [], new Set());
       expect(result).toHaveLength(1);
-      expect(result[0].reusablePatterns).toHaveLength(2);
-      expect(result[0].reusablePatterns[0]).toContain("CPI 3개월");
-    });
-
-    it("returns empty reusablePatterns when no causalAnalysis", () => {
-      const confirmed = [
-        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "GDP" }),
-        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "GDP" }),
-        makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "GDP" }),
-      ];
-
-      const result = buildPromotionCandidates(confirmed, [], new Set());
-      expect(result).toHaveLength(1);
-      expect(result[0].reusablePatterns).toHaveLength(0);
+      expect(result[0]).not.toHaveProperty("reusablePatterns");
     });
   });
 });

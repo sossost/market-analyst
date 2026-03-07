@@ -2,7 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { loadActiveTheses, resolveThesis, saveCausalAnalysis } from "./thesisStore.js";
 import { analyzeCauses } from "./causalAnalyzer.js";
 import { callWithRetry } from "./callAgent.js";
+import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
 import { logger } from "../logger.js";
+import type { MarketSnapshot } from "./marketDataLoader.js";
+import type { Thesis } from "../../types/debate.js";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 4096;
@@ -17,6 +20,8 @@ interface VerificationResult {
   confirmed: number;
   invalidated: number;
   held: number;
+  quantitative: number;
+  llm: number;
   tokensUsed: { input: number; output: number };
 }
 
@@ -31,33 +36,70 @@ interface VerificationResult {
 export async function verifyTheses(
   marketDataContext: string,
   debateDate: string,
+  snapshot?: MarketSnapshot,
 ): Promise<VerificationResult> {
   const activeTheses = await loadActiveTheses();
 
   if (activeTheses.length === 0) {
     logger.info("ThesisVerifier", "No active theses to verify");
-    return { confirmed: 0, invalidated: 0, held: 0, tokensUsed: { input: 0, output: 0 } };
+    return { confirmed: 0, invalidated: 0, held: 0, quantitative: 0, llm: 0, tokensUsed: { input: 0, output: 0 } };
   }
 
   logger.info("ThesisVerifier", `Verifying ${activeTheses.length} active theses`);
 
-  const thesesText = activeTheses
-    .map((t) => {
-      const lines = [
-        `[ID: ${t.id}] (${t.agentPersona}, ${t.debateDate})`,
-        `  전망: ${t.thesis}`,
-        `  검증지표: ${t.verificationMetric}`,
-        `  달성조건: ${t.targetCondition}`,
-      ];
-      if (t.invalidationCondition != null) {
-        lines.push(`  무효조건: ${t.invalidationCondition}`);
-      }
-      lines.push(`  기한: ${t.timeframeDays}일 (만료: ~${calcExpiry(t.debateDate, t.timeframeDays)})`);
-      return lines.join("\n");
-    })
-    .join("\n\n");
+  // Split: quantitative vs LLM
+  const quantitativeResults: Array<{ thesisId: number; verdict: "CONFIRMED" | "INVALIDATED"; reason: string }> = [];
+  const llmTheses: typeof activeTheses = [];
 
-  const systemPrompt = `당신은 시장 분석 전문가입니다.
+  if (snapshot != null) {
+    for (const t of activeTheses) {
+      const qResult = tryQuantitativeVerification(t as unknown as Thesis, snapshot);
+      if (qResult != null) {
+        quantitativeResults.push({ thesisId: t.id, verdict: qResult.verdict, reason: qResult.reason });
+        logger.info("ThesisVerifier", `[QUANTITATIVE] Thesis #${t.id}: ${qResult.verdict} — ${qResult.reason}`);
+      } else {
+        llmTheses.push(t);
+      }
+    }
+  } else {
+    llmTheses.push(...activeTheses);
+  }
+
+  // Resolve quantitative results
+  await Promise.all(
+    quantitativeResults.map((j) =>
+      resolveThesis(j.thesisId, {
+        status: j.verdict,
+        verificationDate: debateDate,
+        verificationResult: j.reason,
+        closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
+        verificationMethod: "quantitative",
+      }),
+    ),
+  );
+
+  // LLM verification for remaining (only if llmTheses.length > 0)
+  let llmJudgments: VerificationJudgment[] = [];
+  let tokensUsed = { input: 0, output: 0 };
+
+  if (llmTheses.length > 0) {
+    const thesesText = llmTheses
+      .map((t) => {
+        const lines = [
+          `[ID: ${t.id}] (${t.agentPersona}, ${t.debateDate})`,
+          `  전망: ${t.thesis}`,
+          `  검증지표: ${t.verificationMetric}`,
+          `  달성조건: ${t.targetCondition}`,
+        ];
+        if (t.invalidationCondition != null) {
+          lines.push(`  무효조건: ${t.invalidationCondition}`);
+        }
+        lines.push(`  기한: ${t.timeframeDays}일 (만료: ~${calcExpiry(t.debateDate, t.timeframeDays)})`);
+        return lines.join("\n");
+      })
+      .join("\n\n");
+
+    const systemPrompt = `당신은 시장 분석 전문가입니다.
 아래 시장 데이터를 기반으로 각 thesis의 검증 상태를 판정합니다.
 
 ## 판정 기준
@@ -82,7 +124,7 @@ export async function verifyTheses(
 ]
 \`\`\``;
 
-  const userMessage = `오늘 날짜: ${debateDate}
+    const userMessage = `오늘 날짜: ${debateDate}
 
 ## 현재 시장 데이터
 ${marketDataContext}
@@ -92,55 +134,75 @@ ${thesesText}
 
 각 thesis를 검증하고 JSON 배열로 응답하세요.`;
 
-  const client = new Anthropic();
+    const client = new Anthropic();
 
-  const response = await callWithRetry(() =>
-    client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    }),
-  );
-
-  const textBlocks = response.content.filter(
-    (block): block is Anthropic.TextBlock => block.type === "text",
-  );
-  const rawText = textBlocks.map((b) => b.text).join("\n");
-
-  const judgments = parseJudgments(rawText, activeTheses.map((t) => t.id));
-
-  // Apply judgments — resolve in DB
-  type ResolvedJudgment = VerificationJudgment & { verdict: "CONFIRMED" | "INVALIDATED" };
-  const resolved = judgments.filter(
-    (j): j is ResolvedJudgment => j.verdict !== "HOLD",
-  );
-
-  await Promise.all(
-    resolved.map((j) =>
-      resolveThesis(j.thesisId, {
-        status: j.verdict,
-        verificationDate: debateDate,
-        verificationResult: j.reason,
-        closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
+    const response = await callWithRetry(() =>
+      client.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
       }),
-    ),
-  );
+    );
 
-  const confirmed = judgments.filter((j) => j.verdict === "CONFIRMED").length;
-  const invalidated = judgments.filter((j) => j.verdict === "INVALIDATED").length;
-  const held = judgments.filter((j) => j.verdict === "HOLD").length;
+    const textBlocks = response.content.filter(
+      (block): block is Anthropic.TextBlock => block.type === "text",
+    );
+    const rawText = textBlocks.map((b) => b.text).join("\n");
+
+    llmJudgments = parseJudgments(rawText, llmTheses.map((t) => t.id));
+
+    // Apply LLM judgments — resolve in DB
+    type ResolvedJudgment = VerificationJudgment & { verdict: "CONFIRMED" | "INVALIDATED" };
+    const llmResolved = llmJudgments.filter(
+      (j): j is ResolvedJudgment => j.verdict !== "HOLD",
+    );
+
+    await Promise.all(
+      llmResolved.map((j) =>
+        resolveThesis(j.thesisId, {
+          status: j.verdict,
+          verificationDate: debateDate,
+          verificationResult: j.reason,
+          closeReason: j.verdict === "CONFIRMED" ? "condition_met" : "condition_failed",
+          verificationMethod: "llm",
+        }),
+      ),
+    );
+
+    tokensUsed = {
+      input: response.usage.input_tokens,
+      output: response.usage.output_tokens,
+    };
+  }
+
+  // Combine all resolved for stats and causal analysis
+  const quantitativeConfirmed = quantitativeResults.filter((j) => j.verdict === "CONFIRMED").length;
+  const quantitativeInvalidated = quantitativeResults.filter((j) => j.verdict === "INVALIDATED").length;
+  const llmConfirmed = llmJudgments.filter((j) => j.verdict === "CONFIRMED").length;
+  const llmInvalidated = llmJudgments.filter((j) => j.verdict === "INVALIDATED").length;
+  const held = llmJudgments.filter((j) => j.verdict === "HOLD").length;
+
+  const confirmed = quantitativeConfirmed + llmConfirmed;
+  const invalidated = quantitativeInvalidated + llmInvalidated;
 
   logger.info(
     "ThesisVerifier",
-    `Results: ${confirmed} confirmed, ${invalidated} invalidated, ${held} held`,
+    `Results: ${confirmed} confirmed, ${invalidated} invalidated, ${held} held (quantitative: ${quantitativeResults.length}, llm: ${llmTheses.length})`,
   );
 
-  // Causal analysis — resolve된 thesis의 원인 분석
-  if (resolved.length > 0) {
+  // Causal analysis — all resolved theses (both quantitative and LLM)
+  const allResolved = [
+    ...quantitativeResults.map((j) => ({ thesisId: j.thesisId, verdict: j.verdict, reason: j.reason })),
+    ...llmJudgments
+      .filter((j): j is VerificationJudgment & { verdict: "CONFIRMED" | "INVALIDATED" } => j.verdict !== "HOLD")
+      .map((j) => ({ thesisId: j.thesisId, verdict: j.verdict, reason: j.reason })),
+  ];
+
+  if (allResolved.length > 0) {
     try {
       const thesisMap = new Map(activeTheses.map((t) => [t.id, t]));
-      const resolvedTheses = resolved
+      const resolvedTheses = allResolved
         .map((j) => {
           const t = thesisMap.get(j.thesisId);
           if (t == null) return null;
@@ -183,10 +245,9 @@ ${thesesText}
     confirmed,
     invalidated,
     held,
-    tokensUsed: {
-      input: response.usage.input_tokens,
-      output: response.usage.output_tokens,
-    },
+    quantitative: quantitativeResults.length,
+    llm: llmTheses.length,
+    tokensUsed,
   };
 }
 
