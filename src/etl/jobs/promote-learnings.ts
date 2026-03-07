@@ -4,7 +4,9 @@ import { theses, agentLearnings } from "@/db/schema/analyst";
 import { eq, sql } from "drizzle-orm";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 
-const MIN_HITS_FOR_PROMOTION = 3;
+const MIN_HITS_FOR_PROMOTION = 10;
+const MIN_HIT_RATE = 0.70;
+const MIN_TOTAL_OBSERVATIONS = 10;
 const LEARNING_EXPIRY_MONTHS = 6;
 const MAX_ACTIVE_LEARNINGS = 50;
 
@@ -15,7 +17,6 @@ interface PromotionCandidate {
   invalidatedIds: number[];
   hitCount: number;
   missCount: number;
-  reusablePatterns: string[];
 }
 
 /**
@@ -181,22 +182,17 @@ export function buildPromotionCandidates(
   }
 
   return Array.from(groups.entries())
-    .filter(([, g]) => g.confirmed.length >= MIN_HITS_FOR_PROMOTION)
+    .filter(([, g]) => {
+      const total = g.confirmed.length + g.invalidated.length;
+      const hitRate = total > 0 ? g.confirmed.length / total : 0;
+      return (
+        g.confirmed.length >= MIN_HITS_FOR_PROMOTION &&
+        hitRate >= MIN_HIT_RATE &&
+        total >= MIN_TOTAL_OBSERVATIONS
+      );
+    })
     .map(([key, g]) => {
       const [persona, metric] = key.split("::");
-
-      // Extract reusable patterns from causal analysis
-      const reusablePatterns = g.confirmed
-        .map((t) => {
-          if (t.causalAnalysis == null) return null;
-          try {
-            const analysis = JSON.parse(t.causalAnalysis) as { reusablePattern?: string };
-            return analysis.reusablePattern ?? null;
-          } catch {
-            return null;
-          }
-        })
-        .filter((p): p is string => p != null && p !== "N/A");
 
       return {
         persona,
@@ -205,7 +201,6 @@ export function buildPromotionCandidates(
         invalidatedIds: g.invalidated.map((t) => t.id),
         hitCount: g.confirmed.length,
         missCount: g.invalidated.length,
-        reusablePatterns,
       };
     });
 }
@@ -237,14 +232,9 @@ async function promoteNewLearnings(
     const hitRate = candidate.hitCount / total;
     const allIds = [...candidate.confirmedIds, ...candidate.invalidatedIds];
 
-    // causal analysis에서 추출한 패턴들을 조합, 없으면 기계적 문장
-    const uniquePatterns = [...new Set(candidate.reusablePatterns)];
     const sanitizedMetric = candidate.metric.replace(/[\n\r]/g, " ").slice(0, 100);
-    const MAX_PRINCIPLE_LENGTH = 300;
-    const principle = uniquePatterns.length > 0
-      ? `[${candidate.persona}] ${uniquePatterns.map((p) => p.replace(/[\n\r]/g, " ")).join(" / ").slice(0, MAX_PRINCIPLE_LENGTH)}`
-      : `[${candidate.persona}] ${sanitizedMetric} 관련 전망이 ${candidate.hitCount}회 적중 (적중률 ${(hitRate * 100).toFixed(0)}%)`;
-    const category = hitRate >= 0.7 ? "confirmed" : "caution";
+    const principle = `[${candidate.persona}] ${sanitizedMetric} 관련 전망이 ${candidate.hitCount}회 적중 (적중률 ${(hitRate * 100).toFixed(0)}%, ${total}회 관측)`;
+    const category = "confirmed";
 
     await db.insert(agentLearnings).values({
       principle,

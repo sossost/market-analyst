@@ -215,6 +215,7 @@ export const theses = pgTable(
     verificationResult: text("verification_result"),
     causalAnalysis: text("causal_analysis"), // JSON: { causalChain, keyFactors, reusablePattern, lessonsLearned }
     closeReason: text("close_reason"),
+    verificationMethod: text("verification_method"), // 'quantitative' | 'llm'
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

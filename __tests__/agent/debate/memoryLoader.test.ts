@@ -71,14 +71,14 @@ describe("memoryLoader", () => {
     expect(context).toContain("5회 관측");
   });
 
-  it("includes caution patterns in output", async () => {
+  it("ignores non-confirmed learnings", async () => {
     mockData.learnings = [
       { principle: "VIX 급등 시 반등 베팅은 위험", category: "caution", hitRate: null },
     ];
 
     const context = await buildMemoryContext();
-    expect(context).toContain("경계 패턴");
-    expect(context).toContain("VIX 급등");
+    expect(context).not.toContain("경계 패턴");
+    expect(context).toBe("");
   });
 
   it("includes recent verified theses", async () => {

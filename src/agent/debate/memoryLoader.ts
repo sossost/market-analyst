@@ -20,7 +20,6 @@ async function loadLearnings(): Promise<string> {
   if (rows.length === 0) return "";
 
   const confirmed = rows.filter((r) => r.category === "confirmed");
-  const caution = rows.filter((r) => r.category === "caution");
 
   const lines: string[] = [];
 
@@ -30,14 +29,6 @@ async function loadLearnings(): Promise<string> {
     for (const r of confirmed) {
       const rate = r.hitRate != null ? ` (적중률 ${(Number(r.hitRate) * 100).toFixed(0)}%, ${r.hitCount}회 관측)` : "";
       lines.push(`- ${r.principle}${rate}`);
-    }
-  }
-
-  if (caution.length > 0) {
-    lines.push("\n### 경계 패턴 (과거에 틀린 판단)");
-    lines.push("아래 패턴에 해당하면 주의하세요:");
-    for (const r of caution) {
-      lines.push(`- ${r.principle}`);
     }
   }
 

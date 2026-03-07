@@ -85,6 +85,7 @@ export async function resolveThesis(
     verificationDate: string;
     verificationResult: string;
     closeReason: string;
+    verificationMethod?: "quantitative" | "llm";
   },
 ): Promise<void> {
   await db

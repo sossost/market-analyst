@@ -41,12 +41,19 @@ interface ReportLogRow {
   report_type: string;
 }
 
+interface VerificationMethodRow {
+  verification_method: string | null;
+  status: string;
+  cnt: number;
+}
+
 interface CollectedData {
   thesisWeekly: ThesisWeeklyRow[] | null;
   thesisOverall: ThesisOverallRow[] | null;
   recommendations: RecommendationRow[] | null;
   learnings: LearningRow[] | null;
   recentReports: ReportLogRow[] | null;
+  verificationMethods: VerificationMethodRow[] | null;
 }
 
 async function queryOrNull<T>(label: string, sql: string): Promise<T[] | null> {
@@ -61,7 +68,7 @@ async function queryOrNull<T>(label: string, sql: string): Promise<T[] | null> {
 }
 
 async function collectData(): Promise<CollectedData> {
-  const [thesisWeekly, thesisOverall, recommendations, learnings, recentReports] =
+  const [thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods] =
     await Promise.all([
       queryOrNull<ThesisWeeklyRow>(
         "thesis_weekly",
@@ -107,9 +114,17 @@ async function collectData(): Promise<CollectedData> {
          WHERE date > NOW() - INTERVAL '7 days'
          ORDER BY date DESC`,
       ),
+      queryOrNull<VerificationMethodRow>(
+        "verification_methods",
+        `SELECT verification_method, status, COUNT(*)::int as cnt
+         FROM theses
+         WHERE status IN ('CONFIRMED', 'INVALIDATED')
+         GROUP BY verification_method, status
+         ORDER BY verification_method, status`,
+      ),
     ]);
 
-  return { thesisWeekly, thesisOverall, recommendations, learnings, recentReports };
+  return { thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods };
 }
 
 // --- 프롬프트 구성 ---
@@ -135,6 +150,7 @@ function buildUserPrompt(data: CollectedData, today: string): string {
     formatDataSection("3. 추천 성과", data.recommendations),
     formatDataSection("4. 학습 원칙 현황", data.learnings),
     formatDataSection("5. 최근 리포트 로그", data.recentReports),
+    formatDataSection("6. 검증 방식별 통계 (정량/LLM)", data.verificationMethods),
   ];
   return sections.join("\n");
 }
@@ -178,6 +194,7 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 ## 3. 시스템 건강도
 - 학습 원칙: N개 활성 (카테고리별)
 - 데이터 파이프라인: [정상/이상] (최근 리포트 빈도 기반)
+- 검증 방식: 정량 자동 판정 N건 vs LLM 판정 N건 (일치율: 추후 추가)
 
 ## 4. 골 달성 진척도
 - 이번 주 리포트에 Phase 1 후기 종목이 포함되었는가?

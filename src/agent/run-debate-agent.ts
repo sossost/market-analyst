@@ -224,7 +224,7 @@ async function main() {
   // 3. 기존 thesis 검증 (시장 데이터 기반)
   logger.step("[3/9] Verifying active theses...");
   try {
-    const verifyResult = await verifyTheses(marketDataContext, debateDate);
+    const verifyResult = await verifyTheses(marketDataContext, debateDate, marketSnapshot);
     if (verifyResult.confirmed > 0 || verifyResult.invalidated > 0) {
       logger.info("Verify", `${verifyResult.confirmed} confirmed, ${verifyResult.invalidated} invalidated, ${verifyResult.held} held`);
     } else {
