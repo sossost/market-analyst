@@ -12,6 +12,9 @@ import { getIndexReturns } from "./tools/getIndexReturns";
 import { getMarketBreadth } from "./tools/getMarketBreadth";
 import { getLeadingSectors } from "./tools/getLeadingSectors";
 import { getPhase2Stocks } from "./tools/getPhase2Stocks";
+import { getPhase1LateStocks } from "./tools/getPhase1LateStocks";
+import { getRisingRS } from "./tools/getRisingRS";
+import { getFundamentalAcceleration } from "./tools/getFundamentalAcceleration";
 import { getStockDetail } from "./tools/getStockDetail";
 import { searchCatalyst } from "./tools/searchCatalyst";
 import { readReportHistory } from "./tools/readReportHistory";
@@ -33,13 +36,13 @@ import {
 } from "./debate/thesisStore";
 import { loadSignalPerformanceSummary } from "./signalPerformance";
 
-const MODEL = "claude-opus-4-6";
+const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 8192;
 const MAX_ITERATIONS = 20;
 
-// Opus 4.6 pricing (USD per 1M tokens, as of 2026-03)
-const OPUS_INPUT_COST_PER_M = 5;
-const OPUS_OUTPUT_COST_PER_M = 25;
+// Sonnet 4 pricing (USD per 1M tokens, as of 2026-03)
+const SONNET_INPUT_COST_PER_M = 3;
+const SONNET_OUTPUT_COST_PER_M = 15;
 
 // Optional env vars (not validated here):
 // - DISCORD_ERROR_WEBHOOK_URL: routes errors to a separate channel.
@@ -131,6 +134,9 @@ async function main() {
       getMarketBreadth,
       getLeadingSectors,
       getPhase2Stocks,
+      getPhase1LateStocks,
+      getRisingRS,
+      getFundamentalAcceleration,
       getStockDetail,
       searchCatalyst,
       readReportHistory,
@@ -163,9 +169,9 @@ async function main() {
     );
 
     const inputCost =
-      (result.tokensUsed.input / 1_000_000) * OPUS_INPUT_COST_PER_M;
+      (result.tokensUsed.input / 1_000_000) * SONNET_INPUT_COST_PER_M;
     const outputCost =
-      (result.tokensUsed.output / 1_000_000) * OPUS_OUTPUT_COST_PER_M;
+      (result.tokensUsed.output / 1_000_000) * SONNET_OUTPUT_COST_PER_M;
     logger.info(
       "Result",
       `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`,
