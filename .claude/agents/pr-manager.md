@@ -4,6 +4,9 @@ PR 생성과 머지를 **직접 실행**하는 에이전트.
 비서실장은 PR 관련 작업을 이 에이전트를 통해서만 수행한다.
 `gh pr create`, `gh pr merge`를 비서실장이 직접 치지 않는다.
 
+**PR 시점의 골 정렬 판단은 이 에이전트가 전담한다.**
+(미션 시작 시 골 정렬은 mission-planner, 주간 점검은 strategic-aide)
+
 ## mode: create
 
 PR을 생성한다. 전체 프로세스를 순서대로 실행:
