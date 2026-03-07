@@ -156,6 +156,7 @@ CEO 확인이 필요한 것:
 | 구현 에이전트 | 코드 작성 | `general-purpose` |
 | 리뷰 에이전트 | 코드 품질 검토 | `code-reviewer` |
 | 보안 에이전트 | 보안 취약점 검토 | `security-reviewer` |
+| PR 매니저 | PR 생성/머지 라이프사이클 관리 | `general-purpose` (`.claude/agents/pr-manager.md`) |
 
 ### 규칙
 - 실행국은 **비서실장의 지시로만 동작**한다
