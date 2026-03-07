@@ -359,7 +359,7 @@ function printResult(result: ConversionResult): void {
     `60일 내 Phase 2 전환: ${result.phase2In60d}건 (${result.conversionRate60d}%)`,
   );
   console.log(
-    `Phase 4 하락 (false negative): ${result.phase4Count}건 (${result.falsePositiveRate}%)`,
+    `Phase 4 하락 (false positive): ${result.phase4Count}건 (${result.falsePositiveRate}%)`,
   );
 }
 
