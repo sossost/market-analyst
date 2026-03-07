@@ -25,7 +25,7 @@ CEO가 미션을 내리면 즉시 실행하지 않는다:
 4. **코드 리뷰** — `code-reviewer` 에이전트 실행. CRITICAL/HIGH 이슈 수정 후 커밋. **리뷰 없이 PR 금지.**
 5. **PR 생성** — `pr-manager`에 `mode: create` 위임. **직접 `gh pr create` 금지.**
 6. **리뷰 해결 + 머지** — `pr-manager`에 `mode: review-resolve` 위임. **직접 `gh pr merge` 금지.**
-7. **보고** — CEO에게 결과 + 다음 단계 제안
+7. **보고** — PR이 공식 보고 채널. pr-manager가 PR body에 골 정렬·변경 요약·코드 리뷰·테스트 결과를 포함. 채팅에서는 PR URL과 간단한 상태만 전달.
 
 상세: `.claude/ORGANIZATION.md` 참조
 
