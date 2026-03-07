@@ -4,6 +4,8 @@
  * Phase 2 종목 리스트 → 스코어링 → A/B급 LLM 분석 → A급 리포트 발행.
  * 주간 에이전트에서 호출하거나 독립 실행 가능.
  */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
@@ -13,6 +15,8 @@ import { analyzeFundamentals } from "./fundamentalAgent.js";
 import { generateStockReport, publishStockReport } from "./stockReport.js";
 import { logger } from "../logger.js";
 import type { FundamentalScore, FundamentalInput } from "../../types/fundamental.js";
+
+const CACHE_DIR = join(process.cwd(), "data", "fundamental-cache");
 
 export interface ValidationResult {
   scores: FundamentalScore[];
@@ -29,6 +33,8 @@ export async function runFundamentalValidation(
     symbols?: string[];
     /** 리포트 발행 건너뛰기 */
     skipPublish?: boolean;
+    /** true면 캐시 무시하고 재실행 */
+    ignoreCache?: boolean;
   },
 ): Promise<ValidationResult> {
   const totalTokens = { input: 0, output: 0 };
@@ -36,6 +42,14 @@ export async function runFundamentalValidation(
 
   // 1. Phase 2 종목 리스트 가져오기
   const symbols = options?.symbols ?? (await getPhase2Symbols());
+
+  // 캐시 확인 (symbols 직접 지정 시 캐시 사용 안 함)
+  if (options?.symbols == null && options?.ignoreCache !== true) {
+    const cached = await loadCacheAsync();
+    if (cached != null) {
+      return cached;
+    }
+  }
   logger.info("Fundamental", `${symbols.length}개 종목 검증 시작`);
 
   if (symbols.length === 0) {
@@ -60,13 +74,13 @@ export async function runFundamentalValidation(
   for (const s of scores) gradeCount[s.grade]++;
   logger.info("Fundamental", `등급 분포: S=${gradeCount.S}, A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`);
 
-  // 4. S/A/B급 종목에 대해 LLM 분석
+  // 4. S급 종목에 대해 LLM 분석 (A/B는 narrative 미사용 → 스킵)
   const client = new Anthropic();
-  const aOrBScores = scores.filter((s) => s.grade === "S" || s.grade === "A" || s.grade === "B");
+  const sGradeScores = scores.filter((s) => s.grade === "S");
 
   const analyses = new Map<string, string>();
 
-  for (const score of aOrBScores) {
+  for (const score of sGradeScores) {
     const input = inputs.find((i) => i.symbol === score.symbol);
     if (input == null) continue;
 
@@ -81,11 +95,10 @@ export async function runFundamentalValidation(
     }
   }
 
-  // 5. S급 종목만 리포트 발행 (A급 top 3)
+  // 5. S급 종목만 리포트 발행
   if (options?.skipPublish !== true) {
-    const aGradeScores = scores.filter((s) => s.grade === "S");
 
-    for (const score of aGradeScores) {
+    for (const score of sGradeScores) {
       const input = inputs.find((i) => i.symbol === score.symbol);
       const narrative = analyses.get(score.symbol);
       if (input == null || narrative == null) continue;
@@ -104,7 +117,14 @@ export async function runFundamentalValidation(
     }
   }
 
-  return { scores, reportsPublished, totalTokens };
+  const result: ValidationResult = { scores, reportsPublished, totalTokens };
+
+  // 캐시 저장 (symbols 직접 지정 시 저장 안 함)
+  if (options?.symbols == null) {
+    await saveCache(result);
+  }
+
+  return result;
 }
 
 /**
@@ -137,6 +157,58 @@ export function formatFundamentalSupplement(
   }
 
   return lines.join("\n");
+}
+
+// ─── Cache helpers ──────────────────────────────────────────────────
+
+async function getCacheDate(): Promise<string | null> {
+  const rows = await db.execute(sql`SELECT MAX(date)::text AS max_date FROM stock_phases`);
+  const row = (rows.rows as unknown as { max_date: string | null }[])[0];
+  return row?.max_date ?? null;
+}
+
+function getCachePath(dateStr: string): string {
+  return join(CACHE_DIR, `${dateStr}.json`);
+}
+
+async function loadCacheAsync(): Promise<ValidationResult | null> {
+  const dateStr = await getCacheDate();
+  if (dateStr == null) {
+    return null;
+  }
+  const cachePath = getCachePath(dateStr);
+
+  if (!existsSync(cachePath)) {
+    return null;
+  }
+
+  try {
+    const raw = readFileSync(cachePath, "utf-8");
+    const cached = JSON.parse(raw) as ValidationResult;
+    logger.info("Fundamental", `캐시 사용: data/fundamental-cache/${dateStr}.json`);
+    return cached;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("Fundamental", `캐시 파일(${cachePath}) 로드 실패, 검증을 재실행합니다: ${reason}`);
+    return null;
+  }
+}
+
+async function saveCache(result: ValidationResult): Promise<void> {
+  try {
+    const dateStr = await getCacheDate();
+    if (dateStr == null) {
+      return;
+    }
+    const cachePath = getCachePath(dateStr);
+
+    mkdirSync(CACHE_DIR, { recursive: true });
+    writeFileSync(cachePath, JSON.stringify(result, null, 2), "utf-8");
+    logger.info("Fundamental", `캐시 저장: data/fundamental-cache/${dateStr}.json`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error("Fundamental", `캐시 저장 실패: ${reason}`);
+  }
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────
