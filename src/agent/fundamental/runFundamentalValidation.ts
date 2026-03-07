@@ -160,32 +160,31 @@ export function formatFundamentalSupplement(
     (a, b) => gradeOrder(a.grade) - gradeOrder(b.grade),
   );
 
+  let cCount = 0;
+  let fCount = 0;
+
   for (const s of sorted) {
     const { criteria } = s;
-    const emoji =
-      s.grade === "S"
-        ? "⭐"
-        : s.grade === "A"
-          ? "🟢"
-          : s.grade === "B"
-            ? "🔵"
-            : s.grade === "C"
-              ? "🟡"
-              : "🔴";
 
     if (s.grade === "S" || s.grade === "A" || s.grade === "B") {
+      const emoji = s.grade === "S" ? "⭐" : s.grade === "A" ? "🟢" : "🔵";
       const detail =
         criteria.epsGrowth.value != null
           ? `EPS YoY +${criteria.epsGrowth.value}%`
           : "";
       lines.push(`${emoji} **${s.symbol}** [${s.grade}] — ${detail}`);
     } else if (s.grade === "C") {
-      lines.push(
-        `${emoji} **${s.symbol}** [C] — 기술적으로만 Phase 2, 실적 주의`,
-      );
+      cCount++;
     } else {
-      lines.push(`${emoji} **${s.symbol}** [F] — 펀더멘탈 미달`);
+      fCount++;
     }
+  }
+
+  if (cCount > 0 || fCount > 0) {
+    lines.push("");
+    lines.push(
+      `🟡 C등급 ${cCount}개, 🔴 F등급 ${fCount}개 — 기술적 Phase 2이나 실적 미달`,
+    );
   }
 
   return lines.join("\n");

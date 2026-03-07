@@ -37,17 +37,19 @@ describe("formatFundamentalSupplement", () => {
     expect(result).toContain("🔵 **AAPL** [B]");
   });
 
-  it("shows C grade with warning", () => {
+  it("summarizes C/F grades as counts instead of individual lines", () => {
     const result = formatFundamentalSupplement([makeScore("MEH", "C")]);
-    expect(result).toContain("🟡 **MEH** [C] — 기술적으로만 Phase 2");
+    expect(result).toContain("C등급 1개");
+    expect(result).not.toContain("**MEH**");
   });
 
-  it("shows F grade with red emoji", () => {
+  it("summarizes F grades as counts", () => {
     const result = formatFundamentalSupplement([makeScore("BAD", "F")]);
-    expect(result).toContain("🔴 **BAD** [F] — 펀더멘탈 미달");
+    expect(result).toContain("F등급 1개");
+    expect(result).not.toContain("**BAD**");
   });
 
-  it("sorts by grade A > B > C > F", () => {
+  it("sorts S/A/B individually then C/F as summary", () => {
     const result = formatFundamentalSupplement([
       makeScore("BAD", "F"),
       makeScore("NVDA", "A", 142),
@@ -55,11 +57,14 @@ describe("formatFundamentalSupplement", () => {
       makeScore("GOOD", "B", 30),
     ]);
 
-    const lines = result.split("\n").filter((l) => l.startsWith("🟢") || l.startsWith("🔵") || l.startsWith("🟡") || l.startsWith("🔴"));
-    expect(lines[0]).toContain("NVDA");
-    expect(lines[1]).toContain("GOOD");
-    expect(lines[2]).toContain("MEH");
-    expect(lines[3]).toContain("BAD");
+    const lines = result.split("\n").filter((l) => l.trim() !== "");
+    const detailLines = lines.filter((l) => l.startsWith("🟢") || l.startsWith("🔵"));
+    expect(detailLines[0]).toContain("NVDA");
+    expect(detailLines[1]).toContain("GOOD");
+    expect(result).toContain("C등급 1개");
+    expect(result).toContain("F등급 1개");
+    expect(result).not.toContain("**MEH**");
+    expect(result).not.toContain("**BAD**");
   });
 
   it("includes header by default", () => {

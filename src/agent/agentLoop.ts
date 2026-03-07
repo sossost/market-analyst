@@ -11,6 +11,9 @@ import type { AgentConfig, AgentResult } from "./tools/types";
  * 2. If Claude responds with tool_use → execute tools → feed results back
  * 3. Repeat until Claude says end_turn or max iterations reached
  * 4. Track token usage across all iterations
+ *
+ * Prompt Caching: system prompt + tool definitions are cached to reduce
+ * input token costs by ~90% on iterations 2+.
  */
 export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
   const client = new Anthropic();
@@ -23,10 +26,27 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
     },
   ];
 
+  // Prompt Caching: system prompt as ContentBlock with cache_control
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: config.systemPrompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
+  // Prompt Caching: cache_control on last tool definition
   const toolDefinitions = config.tools.map((t) => t.definition);
+  const cachedTools: Anthropic.Tool[] = toolDefinitions.map((t, i) =>
+    i === toolDefinitions.length - 1
+      ? { ...t, cache_control: { type: "ephemeral" as const } }
+      : t,
+  );
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let cacheCreationTokens = 0;
+  let cacheReadTokens = 0;
   let toolCallCount = 0;
 
   for (
@@ -40,21 +60,24 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
       client.messages.create({
         model: config.model,
         max_tokens: config.maxTokens,
-        system: config.systemPrompt,
-        tools: toolDefinitions,
+        system: systemBlocks,
+        tools: cachedTools,
         messages,
       }),
     );
 
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
+    const usage = response.usage as unknown as Record<string, number>;
+    cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+    cacheReadTokens += usage.cache_read_input_tokens ?? 0;
 
     // Done — Claude finished naturally
     if (response.stop_reason === "end_turn") {
       logger.info("Agent", `Completed in ${iteration + 1} iterations`);
       return {
         success: true,
-        tokensUsed: { input: totalInputTokens, output: totalOutputTokens },
+        tokensUsed: { input: totalInputTokens, output: totalOutputTokens, cacheCreation: cacheCreationTokens, cacheRead: cacheReadTokens },
         toolCalls: toolCallCount,
         executionTimeMs: Date.now() - startTime,
         iterationCount: iteration + 1,
@@ -71,7 +94,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
       logger.warn("Agent", `Unexpected stop_reason: ${response.stop_reason}`);
       return {
         success: true,
-        tokensUsed: { input: totalInputTokens, output: totalOutputTokens },
+        tokensUsed: { input: totalInputTokens, output: totalOutputTokens, cacheCreation: cacheCreationTokens, cacheRead: cacheReadTokens },
         toolCalls: toolCallCount,
         executionTimeMs: Date.now() - startTime,
         iterationCount: iteration + 1,
@@ -109,7 +132,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
   return {
     success: false,
     error: `Max iterations (${config.maxIterations}) reached`,
-    tokensUsed: { input: totalInputTokens, output: totalOutputTokens },
+    tokensUsed: { input: totalInputTokens, output: totalOutputTokens, cacheCreation: cacheCreationTokens, cacheRead: cacheReadTokens },
     toolCalls: toolCallCount,
     executionTimeMs: Date.now() - startTime,
     iterationCount: config.maxIterations,

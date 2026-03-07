@@ -38,7 +38,7 @@ import { loadSignalPerformanceSummary } from "./signalPerformance";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 8192;
-const MAX_ITERATIONS = 20;
+const MAX_ITERATIONS = 15;
 
 // Sonnet 4 pricing (USD per 1M tokens, as of 2026-03)
 const SONNET_INPUT_COST_PER_M = 3;
@@ -161,6 +161,12 @@ async function main() {
       "Result",
       `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`,
     );
+    if (result.tokensUsed.cacheRead > 0 || result.tokensUsed.cacheCreation > 0) {
+      logger.info(
+        "Result",
+        `Cache: ${result.tokensUsed.cacheCreation} creation / ${result.tokensUsed.cacheRead} read`,
+      );
+    }
     logger.info("Result", `Tool calls: ${result.toolCalls}`);
     logger.info("Result", `Iterations: ${result.iterationCount}`);
     logger.info(
@@ -168,8 +174,13 @@ async function main() {
       `Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`,
     );
 
+    // 비용 계산: 캐시 읽기는 90% 할인, 캐시 쓰기는 25% 할증
+    const CACHE_WRITE_COST_PER_M = SONNET_INPUT_COST_PER_M * 1.25;
+    const CACHE_READ_COST_PER_M = SONNET_INPUT_COST_PER_M * 0.1;
     const inputCost =
-      (result.tokensUsed.input / 1_000_000) * SONNET_INPUT_COST_PER_M;
+      (result.tokensUsed.input / 1_000_000) * SONNET_INPUT_COST_PER_M +
+      (result.tokensUsed.cacheCreation / 1_000_000) * CACHE_WRITE_COST_PER_M +
+      (result.tokensUsed.cacheRead / 1_000_000) * CACHE_READ_COST_PER_M;
     const outputCost =
       (result.tokensUsed.output / 1_000_000) * SONNET_OUTPUT_COST_PER_M;
     logger.info(
