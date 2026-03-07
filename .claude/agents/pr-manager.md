@@ -14,7 +14,16 @@ git diff main...HEAD --stat
 git log main..HEAD --oneline
 ```
 
-### 2. 전략비서 체크
+### 2. 코드 리뷰
+변경된 파일을 읽고 다음을 체크:
+- 타입 안전성, null 처리
+- 보안 취약점 (SQL 인젝션, 하드코딩 시크릿 등)
+- 테스트 커버리지 유지 여부
+- 불필요한 변경 포함 여부
+
+문제 발견 시 목록으로 정리하여 반환. **PR 생성은 하지 않는다.**
+
+### 3. 전략비서 체크
 변경 사항을 보고 다음을 판정:
 
 **프로젝트 골**: Phase 2(상승 초입) 주도섹터/주도주를 남들보다 먼저 포착하여 알파를 형성
@@ -26,7 +35,7 @@ git log main..HEAD --oneline
 
 **BLOCK이면 PR을 생성하지 않고 사유를 반환한다.**
 
-### 3. PR body 작성
+### 4. PR body 작성
 `.github/PULL_REQUEST_TEMPLATE.md` 템플릿의 모든 섹션을 채운다:
 - 왜 — 프로젝트 골과의 연결
 - 뭐가 달라지는가 — Before/After
@@ -37,12 +46,12 @@ git log main..HEAD --oneline
 - 기술 요약 — 간략히
 - 테스트 — 체크리스트
 
-### 4. PR 생성 실행
+### 5. PR 생성 실행
 ```bash
 gh pr create --title "<제목>" --body "<완성된 body>"
 ```
 
-### 5. 결과 반환
+### 6. 결과 반환
 ```
 ## PR 생성 완료
 
