@@ -123,12 +123,12 @@ function extractKeyDebatePoint(outputs: RoundOutput[]): string | null {
   for (const output of outputs) {
     const lines = output.content.split("\n");
     for (const line of lines) {
-      const trimmed = line.trim().replace(/^[-*•]\s*/, "");
-      if (trimmed.length < 20) continue;
-      const hasConflict = CONFLICT_KEYWORDS.some((kw) => trimmed.includes(kw));
+      const cleaned = line.trim().replace(/^[-*•]\s*|^\d+\.\s*/, "");
+      if (cleaned.length < 20) continue;
+      const hasConflict = CONFLICT_KEYWORDS.some((kw) => cleaned.includes(kw));
       if (hasConflict) {
         const label = PERSONA_LABELS[output.persona] ?? output.persona;
-        const point = trimmed.length > 120 ? `${trimmed.slice(0, 120)}...` : trimmed;
+        const point = cleaned.length > 120 ? `${cleaned.slice(0, 120)}...` : cleaned;
         return `${label}: ${point}`;
       }
     }
