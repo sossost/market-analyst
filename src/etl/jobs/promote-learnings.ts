@@ -3,6 +3,8 @@ import { db, pool } from "@/db/client";
 import { theses, agentLearnings } from "@/db/schema/analyst";
 import { eq, sql } from "drizzle-orm";
 import { assertValidEnvironment } from "@/etl/utils/validation";
+import { binomialTest } from "@/lib/statisticalTests";
+import { detectBullBias } from "@/lib/biasDetector";
 
 const MIN_HITS_FOR_PROMOTION = 10;
 const MIN_HIT_RATE = 0.70;
@@ -17,6 +19,7 @@ interface PromotionCandidate {
   invalidatedIds: number[];
   hitCount: number;
   missCount: number;
+  verificationMethods: string[];
 }
 
 /**
@@ -78,6 +81,16 @@ async function main() {
   const activeCount = activeLearnings.length - demotedCount;
   const promotedCount = await promoteNewLearnings(candidates, activeCount, today);
 
+  // 편향 체크
+  const activePrinciples = activeLearnings
+    .filter((l) => l.isActive)
+    .map((l) => l.principle);
+  const bias = detectBullBias(activePrinciples);
+  console.log(`Bull-bias: ${(bias.bullRatio * 100).toFixed(0)}% (${bias.bullCount}B/${bias.bearCount}b of ${bias.totalLearnings})`);
+  if (bias.isSkewed) {
+    console.warn(`BIAS WARNING: Bull-bias ${(bias.bullRatio * 100).toFixed(0)}% > 80% 임계값`);
+  }
+
   console.log(`\nResults: ${demotedCount} demoted, ${updatedCount} updated, ${promotedCount} promoted`);
   console.log(`Active learnings: ${activeCount + promotedCount}`);
 
@@ -127,7 +140,12 @@ async function updateLearningStats(
   let count = 0;
 
   for (const learning of learnings) {
-    const sourceIds: number[] = JSON.parse(learning.sourceThesisIds ?? "[]");
+    let sourceIds: number[];
+    try {
+      sourceIds = JSON.parse(learning.sourceThesisIds ?? "[]") as number[];
+    } catch {
+      sourceIds = [];
+    }
     const hits = sourceIds.filter((id) => confirmedIds.has(id)).length;
     const misses = sourceIds.filter((id) => invalidatedIds.has(id)).length;
 
@@ -185,14 +203,31 @@ export function buildPromotionCandidates(
     .filter(([, g]) => {
       const total = g.confirmed.length + g.invalidated.length;
       const hitRate = total > 0 ? g.confirmed.length / total : 0;
-      return (
-        g.confirmed.length >= MIN_HITS_FOR_PROMOTION &&
-        hitRate >= MIN_HIT_RATE &&
-        total >= MIN_TOTAL_OBSERVATIONS
-      );
+
+      // 기존 기준: 최소 적중 수 + 적중률 + 최소 관측 수
+      if (g.confirmed.length < MIN_HITS_FOR_PROMOTION) return false;
+      if (hitRate < MIN_HIT_RATE) return false;
+      if (total < MIN_TOTAL_OBSERVATIONS) return false;
+
+      // 통계적 유의성 검증 (자기확증편향 방지)
+      const test = binomialTest(g.confirmed.length, total);
+      if (!test.isSignificant) {
+        console.log(`  SKIP (not significant): p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
+        return false;
+      }
+
+      return true;
     })
     .map(([key, g]) => {
       const [persona, metric] = key.split("::");
+      const allTheses = [...g.confirmed, ...g.invalidated];
+      const verificationMethods = [
+        ...new Set(
+          allTheses
+            .map((t) => t.verificationMethod)
+            .filter((m): m is string => m != null),
+        ),
+      ];
 
       return {
         persona,
@@ -201,6 +236,7 @@ export function buildPromotionCandidates(
         invalidatedIds: g.invalidated.map((t) => t.id),
         hitCount: g.confirmed.length,
         missCount: g.invalidated.length,
+        verificationMethods,
       };
     });
 }
@@ -236,6 +272,16 @@ async function promoteNewLearnings(
     const principle = `[${candidate.persona}] ${sanitizedMetric} 관련 전망이 ${candidate.hitCount}회 적중 (적중률 ${(hitRate * 100).toFixed(0)}%, ${total}회 관측)`;
     const category = "confirmed";
 
+    const methods = new Set(candidate.verificationMethods);
+    const verificationPath =
+      methods.size === 0
+        ? null
+        : methods.size === 1
+          ? methods.has("quantitative")
+            ? "quantitative"
+            : "llm"
+          : "mixed";
+
     await db.insert(agentLearnings).values({
       principle,
       category,
@@ -247,6 +293,7 @@ async function promoteNewLearnings(
       lastVerified: today,
       expiresAt: expiresAtStr,
       isActive: true,
+      verificationPath,
     });
 
     console.log(`  PROMOTED: ${principle}`);

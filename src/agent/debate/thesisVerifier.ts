@@ -22,6 +22,7 @@ interface VerificationResult {
   held: number;
   quantitative: number;
   llm: number;
+  quantitativeRate: number;
   tokensUsed: { input: number; output: number };
 }
 
@@ -42,7 +43,7 @@ export async function verifyTheses(
 
   if (activeTheses.length === 0) {
     logger.info("ThesisVerifier", "No active theses to verify");
-    return { confirmed: 0, invalidated: 0, held: 0, quantitative: 0, llm: 0, tokensUsed: { input: 0, output: 0 } };
+    return { confirmed: 0, invalidated: 0, held: 0, quantitative: 0, llm: 0, quantitativeRate: 0, tokensUsed: { input: 0, output: 0 } };
   }
 
   logger.info("ThesisVerifier", `Verifying ${activeTheses.length} active theses`);
@@ -242,12 +243,22 @@ ${thesesText}
     }
   }
 
+  const totalVerified = quantitativeResults.length + llmTheses.length;
+  const quantitativeRate = totalVerified > 0 ? quantitativeResults.length / totalVerified : 0;
+
+  if (quantitativeRate < 0.3) {
+    logger.warn("ThesisVerifier", `정량 커버리지 경고: ${(quantitativeRate * 100).toFixed(0)}% (임계값 30%)`);
+  }
+
+  logger.info("ThesisVerifier", `정량 커버리지: ${(quantitativeRate * 100).toFixed(0)}% (${quantitativeResults.length}/${totalVerified})`);
+
   return {
     confirmed,
     invalidated,
     held,
     quantitative: quantitativeResults.length,
     llm: llmTheses.length,
+    quantitativeRate,
     tokensUsed,
   };
 }
