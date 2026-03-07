@@ -95,7 +95,7 @@ export const getFundamentalAcceleration: AgentTool = {
 
     for (const [symbol, data] of bySymbol) {
       const quarters = data.quarters; // 최신순
-      if (quarters.length < MIN_QUARTERS * 2) continue; // YoY 비교에 최소 6분기 필요
+      if (quarters.length < MIN_QUARTERS + 4) continue; // YoY 비교 및 가속 판단에 최소 7분기 필요
 
       const epsGrowths = computeYoYGrowths(quarters, "eps_diluted");
       const revenueGrowths = computeYoYGrowths(quarters, "revenue");
