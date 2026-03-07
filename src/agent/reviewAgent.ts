@@ -240,15 +240,20 @@ export function createDraftCaptureTool(drafts: ReportDraft[]): AgentTool {
 // Review
 // ---------------------------------------------------------------------------
 
+function escapeXmlTags(text: string): string {
+  return text.replace(/<\/?(draft|message|detail)[^>]*>/g, "");
+}
+
 function buildDraftText(drafts: ReportDraft[]): string {
   return drafts
     .map((d, i) => {
+      const msg = escapeXmlTags(d.message);
       const parts = [
         `<draft index="${i + 1}">`,
-        `<message>\n${d.message}\n</message>`,
+        `<message>\n${msg}\n</message>`,
       ];
       if (d.markdownContent != null) {
-        parts.push(`<detail>\n${d.markdownContent}\n</detail>`);
+        parts.push(`<detail>\n${escapeXmlTags(d.markdownContent)}\n</detail>`);
       }
       parts.push("</draft>");
       return parts.join("\n");

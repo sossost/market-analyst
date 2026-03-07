@@ -17,7 +17,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * Rate limit (429) 대응 exponential backoff 재시도.
- * retry-after 헤더가 있으면 그 값을 사용.
+ * 15s → 30s → 60s 간격으로 최대 3회 재시도.
  */
 export async function callWithRetry(
   fn: () => Promise<Anthropic.Message>,
