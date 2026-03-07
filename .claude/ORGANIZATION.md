@@ -19,6 +19,8 @@ CEO (사용자)
 
 비서실장 (메인 Claude Code 세션)
   │
+  ├── 비서관 (strategic-aide) — 골 정렬 감시 + 전략 체크
+  │
   ├── 분석국 — 시장 분석 + 전망
   │   ├── 매크로 이코노미스트 (macro-economist)
   │   ├── 테크/산업 애널리스트 (tech-analyst)
