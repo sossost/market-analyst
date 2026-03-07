@@ -42,17 +42,11 @@ export async function runFundamentalValidation(
   // 1. 스코어링 기준일 결정
   const scoredDate = await getScoredDate();
 
-  // 당일 중복 방지 (symbols 직접 지정 시 스킵)
-  // NOTE: check-then-act 패턴. 동시 실행 시 중복 스코어링 가능하나
-  // saveFundamentalScoresToDB의 ON CONFLICT DO UPDATE로 데이터 안전.
-  // 단일 인스턴스 스케줄(launchd)에 의존.
+  // 실적 미변경 시 기존 스코어 재사용
+  // 분기 실적은 3개월에 1번 변경 → 새 실적이 없으면 재계산 불필요
   if (options?.symbols == null && options?.forceRescore !== true) {
-    const alreadyScored = await hasTodayScores(scoredDate);
-    if (alreadyScored) {
-      logger.info(
-        "Fundamental",
-        `${scoredDate} 기준 스코어 이미 존재 — 재사용`,
-      );
+    const shouldSkip = await canSkipScoring(scoredDate);
+    if (shouldSkip) {
       return loadExistingScores(scoredDate);
     }
   }
@@ -211,15 +205,46 @@ async function getScoredDate(): Promise<string> {
 }
 
 /**
- * 해당 scored_date에 이미 스코어가 저장되어 있는지 확인.
+ * 재스코어링을 건너뛸 수 있는지 판단.
+ *
+ * 조건: 기존 스코어가 있고, 그 이후로 새 분기 실적이 들어오지 않았으면 스킵.
+ * quarterly_financials.created_at > fundamental_scores.created_at 이면 새 실적 존재.
  */
-async function hasTodayScores(scoredDate: string): Promise<boolean> {
-  const rows = await db.execute(sql`
-    SELECT COUNT(*)::int AS cnt FROM fundamental_scores
+async function canSkipScoring(scoredDate: string): Promise<boolean> {
+  // 1. 기존 스코어의 마지막 저장 시점
+  const scoreRows = await db.execute(sql`
+    SELECT MAX(created_at) AS last_scored_at
+    FROM fundamental_scores
     WHERE scored_date = ${scoredDate}
   `);
-  const cnt = (rows.rows as unknown as { cnt: number }[])[0]?.cnt ?? 0;
-  return cnt > 0;
+  const lastScoredAt = (
+    scoreRows.rows as unknown as { last_scored_at: string | null }[]
+  )[0]?.last_scored_at;
+
+  if (lastScoredAt == null) return false; // 스코어 없음 → 실행 필요
+
+  // 2. 마지막 스코어링 이후 새 실적이 들어왔는지
+  const finRows = await db.execute(sql`
+    SELECT COUNT(*)::int AS cnt
+    FROM quarterly_financials
+    WHERE created_at > ${lastScoredAt}::timestamptz
+  `);
+  const newFinancials =
+    (finRows.rows as unknown as { cnt: number }[])[0]?.cnt ?? 0;
+
+  if (newFinancials > 0) {
+    logger.info(
+      "Fundamental",
+      `새 실적 ${newFinancials}건 감지 — 재스코어링 실행`,
+    );
+    return false;
+  }
+
+  logger.info(
+    "Fundamental",
+    `${scoredDate} 기준 스코어 존재 + 새 실적 없음 — 재사용`,
+  );
+  return true;
 }
 
 /**
