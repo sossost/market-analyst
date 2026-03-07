@@ -6,6 +6,7 @@
 #   ETL Daily:    평일 UTC 23:30 (KST 08:30)
 #   Debate Daily: 평일 UTC 22:00 (KST 07:00)
 #   Agent Weekly: 토 UTC 01:00 (KST 10:00)
+#   QA Weekly:    토 UTC 03:00 (KST 12:00)
 #
 # Usage:
 #   ./scripts/cron/setup-cron.sh          # 크론 등록
@@ -62,6 +63,8 @@ install_cron() {
 0 22 * * 0-4 $SCRIPT_DIR/debate-daily.sh >> $PROJECT_DIR/logs/cron.log 2>&1
 # Agent Weekly: 토 UTC 01:00 (KST 10:00)
 0 1 * * 6 $SCRIPT_DIR/agent-weekly.sh >> $PROJECT_DIR/logs/cron.log 2>&1
+# QA Weekly: 토 UTC 03:00 (KST 12:00) — Agent Weekly(01:00) 이후
+0 3 * * 6 $SCRIPT_DIR/qa-weekly.sh >> $PROJECT_DIR/logs/cron.log 2>&1
 # Log cleanup: 매주 일 — 30일 이상 로그 삭제
 0 0 * * 0 find $PROJECT_DIR/logs -name '*.log' -mtime +30 -delete 2>/dev/null
 $MARKER_END"
@@ -78,6 +81,7 @@ ${entries}" | crontab -
   echo "  ETL Daily:    평일 UTC 23:30 (KST 08:30)"
   echo "  Debate Daily: 평일 UTC 22:00 Sun-Thu (KST 07:00 Mon-Fri)"
   echo "  Agent Weekly: 토 UTC 01:00 (KST 10:00)"
+  echo "  QA Weekly:    토 UTC 03:00 (KST 12:00)"
   echo "  Log Cleanup:  일 UTC 00:00 (30일 이상 삭제)"
   echo ""
   echo "로그 경로: $PROJECT_DIR/logs/"
