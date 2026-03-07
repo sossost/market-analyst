@@ -310,9 +310,11 @@ async function main() {
     ceoSummary,
   ].join("\n");
 
-  const webhookVar = "DISCORD_DEBATE_WEBHOOK_URL";
-  const webhookUrl =
-    process.env[webhookVar] ?? process.env.DISCORD_WEBHOOK_URL;
+  const webhookVar =
+    process.env.DISCORD_DEBATE_WEBHOOK_URL
+      ? "DISCORD_DEBATE_WEBHOOK_URL"
+      : "DISCORD_WEBHOOK_URL";
+  const webhookUrl = process.env[webhookVar];
 
   if (webhookUrl != null && webhookUrl !== "") {
     try {
@@ -327,8 +329,9 @@ async function main() {
         sanitizeDiscordMentions(`${discordSummary}${reportLink}`),
         webhookVar,
       );
-    } catch {
-      // Gist 실패 시 요약만 발송
+    } catch (err) {
+      // Gist 링크 포함 메시지 발송 실패 시 요약만 재시도
+      logger.warn("Discord", `Gist 포함 발송 실패: ${err instanceof Error ? err.message : String(err)}`);
       await sendDiscordMessage(
         sanitizeDiscordMentions(discordSummary),
         webhookVar,
