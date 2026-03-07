@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.market-analyst.log-cleanup</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/find</string>
+		<string>__PROJECT_DIR__/logs</string>
+		<string>-name</string>
+		<string>*.log</string>
+		<string>-mtime</string>
+		<string>+30</string>
+		<string>-delete</string>
+	</array>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<!-- KST 09:00 Sun (= UTC 00:00 Sun) -->
+		<key>Weekday</key><integer>0</integer>
+		<key>Hour</key><integer>9</integer>
+		<key>Minute</key><integer>0</integer>
+	</dict>
+</dict>
+</plist>
