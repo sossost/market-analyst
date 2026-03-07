@@ -13,13 +13,13 @@
 
 **ALIGNED** — 재귀 개선 루프가 실제로 시스템을 개선하는지 보장하는 인프라. 골 달성의 신뢰성 기반.
 
-신뢰할 수 없는 학습이 쌓이면 장관들의 분석 품질이 서서히 저하된다. 편향이 없어야 알파가 형성된다.
+신뢰할 수 없는 학습이 쌓이면 애널리스트들의 분석 품질이 서서히 저하된다. 편향이 없어야 알파가 형성된다.
 
 ## 문제
 
 현재 재귀 개선 루프:
 ```
-장관 토론(Claude) → thesis 생성 → thesis 검증(Claude) → 3회+ 적중 → agent_learnings 승격 → 프롬프트 주입
+애널리스트 토론(Claude) → thesis 생성 → thesis 검증(Claude) → 3회+ 적중 → agent_learnings 승격 → 프롬프트 주입
 ```
 
 **구조적 결함 3가지:**
@@ -50,7 +50,7 @@
 
 **A1. thesis 생성 프롬프트 강화** (`round3-synthesis.ts`)
 - 현재: `verificationMetric`, `targetCondition`, `invalidationCondition` 필드 요청
-- 변경: 장관들에게 "가능한 한 수치 기반 조건(`>`, `<`, `>=`, `<=`)으로 작성하라"는 명시적 지시 추가
+- 변경: 애널리스트들에게 "가능한 한 수치 기반 조건(`>`, `<`, `>=`, `<=`)으로 작성하라"는 명시적 지시 추가
 - 예시 추가: `"S&P 500 > 5800"`, `"Tech RS > 60"`, `"VIX < 20"`
 - 목표: 정량 파싱 가능한 thesis 비율 증가 → LLM 검증 폴백 감소
 
@@ -105,39 +105,39 @@
 ## 작업 계획
 
 ### 단계 1: statisticalTests 라이브러리 구현
-- **담당**: 실행국 (구현 에이전트)
+- **담당**: 실행팀 (구현 에이전트)
 - **파일**: `src/lib/statisticalTests.ts`
 - **내용**: `binomialTest(hits, total, p0)` — p-value + Cohen's h 반환
 - **테스트**: `src/lib/__tests__/statisticalTests.test.ts` — 경계값 포함
 - **완료 기준**: binomialTest가 scipy.stats.binomtest 결과와 동일한 p-value 반환
 
 ### 단계 2: promote-learnings.ts에 통계 검증 통합
-- **담당**: 실행국
+- **담당**: 실행팀
 - **파일**: `src/etl/jobs/promote-learnings.ts`
 - **내용**: `buildPromotionCandidates`에서 기준 통과한 후보에 `binomialTest` 적용. p-value >= 0.05이면 승격 거부 + 로그.
 - **선행**: 단계 1
 - **완료 기준**: 기존 테스트 통과 + 신규 통계 검증 테스트 추가
 
 ### 단계 3: agentLearnings 스키마에 verificationPath 컬럼 추가
-- **담당**: 실행국
+- **담당**: 실행팀
 - **파일**: `src/db/schema/analyst.ts` + 마이그레이션
 - **내용**: `verificationPath text` 컬럼 추가 (nullable, 기존 데이터 호환)
 - **완료 기준**: 마이그레이션 실행 성공, 스키마 반영
 
 ### 단계 4: thesis 생성 프롬프트 강화
-- **담당**: 실행국
+- **담당**: 실행팀
 - **파일**: `src/agent/debate/round3-synthesis.ts`
 - **내용**: thesis 작성 지시에 정량 조건 권장 문구 + 예시 추가
 - **완료 기준**: 프롬프트에 정량 조건 예시가 명시적으로 포함됨
 
 ### 단계 5: 정량 커버리지 + bull-bias 메트릭 추적
-- **담당**: 실행국
+- **담당**: 실행팀
 - **파일**: `src/agent/debate/thesisVerifier.ts` (커버리지), `src/etl/jobs/promote-learnings.ts` (bias)
 - **내용**: 커버리지 비율 계산 + bull-bias 키워드 스캔 + 경고 로그
 - **완료 기준**: 두 메트릭이 로그에 출력됨
 
 ### 단계 6: QA 리포트 연동
-- **담당**: 실행국
+- **담당**: 실행팀
 - **파일**: QA 에이전트 관련 파일 (이슈 #59 결과물 기반)
 - **내용**: 편향 메트릭을 QA 리포트에 포함
 - **완료 기준**: QA 리포트에 verificationMethod 비율 + bull-bias 포함

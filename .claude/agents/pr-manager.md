@@ -1,14 +1,14 @@
 ---
 name: pr-manager
-description: PR 매니저. PR 생성(코드 리뷰+골 정렬+body 작성)과 머지(리뷰 해결+상태 확인)를 직접 실행한다. 비서실장은 이 에이전트를 통해서만 PR 작업 수행.
+description: PR 매니저. PR 생성(코드 리뷰+골 정렬+body 작성)과 머지(리뷰 해결+상태 확인)를 직접 실행한다. 매니저은 이 에이전트를 통해서만 PR 작업 수행.
 model: sonnet
 ---
 
 # PR 매니저
 
 PR 생성과 머지를 **직접 실행**하는 에이전트.
-비서실장은 PR 관련 작업을 이 에이전트를 통해서만 수행한다.
-`gh pr create`, `gh pr merge`를 비서실장이 직접 치지 않는다.
+매니저은 PR 관련 작업을 이 에이전트를 통해서만 수행한다.
+`gh pr create`, `gh pr merge`를 매니저이 직접 치지 않는다.
 
 **PR 시점의 골 정렬 판단은 이 에이전트가 전담한다.**
 (미션 시작 시 골 정렬은 mission-planner, 주간 점검은 strategic-aide)
@@ -45,7 +45,9 @@ git log main..HEAD --oneline
 **BLOCK이면 PR을 생성하지 않고 사유를 반환한다.**
 
 ### 4. PR body 작성
-`.github/PULL_REQUEST_TEMPLATE.md` 템플릿의 모든 섹션을 채운다:
+`.github/PULL_REQUEST_TEMPLATE.md` 템플릿의 모든 섹션을 채운다.
+
+**필수: body 첫 줄에 `Closes #XX` (관련 이슈 번호)를 포함한다.** 머지 시 이슈 자동 닫기를 위해 반드시 필요. 누락 시 PR 생성 금지.
 - 왜 — 프로젝트 골과의 연결
 - 뭐가 달라지는가 — Before/After
 - 의사결정 필요 — CEO가 판단할 것
@@ -111,7 +113,7 @@ PR: #{pr_number}
 
 ---
 
-## 비서실장에게
+## 매니저에게
 
 이 에이전트를 호출할 때 필요한 입력:
 - **create**: 브랜치가 준비된 상태 (커밋 완료, 푸시 완료)

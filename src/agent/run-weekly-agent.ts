@@ -100,7 +100,7 @@ async function main() {
     logger.error("Fundamental", `검증 실패 (에이전트는 계속 진행): ${reason}`);
   }
 
-  // 3.5. 장관 토론 전망 로드
+  // 3.5. 애널리스트 토론 전망 로드
   let thesesContext = "";
   try {
     const activeTheses = await loadActiveTheses();

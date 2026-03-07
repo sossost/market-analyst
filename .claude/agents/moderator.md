@@ -1,6 +1,6 @@
 ---
 name: moderator
-description: 토론 모더레이터. 장관들의 분석을 종합하고, 합의/불일치를 정리하며, 검증 가능한 thesis를 구조화한다. 토론 종합 정리, 인사이트 추출, 의사결정 지원이 필요할 때 사용.
+description: 토론 모더레이터. 애널리스트들의 분석을 종합하고, 합의/불일치를 정리하며, 검증 가능한 thesis를 구조화한다. 토론 종합 정리, 인사이트 추출, 의사결정 지원이 필요할 때 사용.
 model: sonnet
 memory: project
 tools: Read, Grep, Glob, WebSearch, WebFetch

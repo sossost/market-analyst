@@ -125,7 +125,7 @@ const caution = rows.filter((r) => r.category === "caution");
 
 - **Thesis 검증 방식 비율**: 정량 자동 판정 vs LLM 판정 건수
 - **LLM 판정 일치율**: (선택) 정량 판정 가능했던 thesis를 LLM에도 보내서 일치율 측정 — 비용 이슈로 Phase 2에서는 로그 기반 사후 분석만
-- **CONFIRMED/INVALIDATED 비율**: 장관별 + 전체
+- **CONFIRMED/INVALIDATED 비율**: 애널리스트별 + 전체
 
 구현:
 - `theses` 테이블에 `verification_method` 컬럼 추가: `'quantitative' | 'llm'`
@@ -137,10 +137,10 @@ const caution = rows.filter((r) => r.category === "caution");
 
 | # | 작업 | 에이전트 | 완료 기준 | 병렬 |
 |---|------|---------|----------|------|
-| 1-1 | `parseQuantitativeCondition()` 함수 TDD | 실행국 (TDD) | 20+ 테스트 케이스 통과 (다양한 조건 포맷 커버) | - |
-| 1-2 | `evaluateQuantitativeCondition()` 함수 TDD | 실행국 (TDD) | 지표 매핑 + 비교 로직 테스트 통과 | 1-1 후 |
-| 1-3 | `verifyTheses()` 분기 로직 수정 | 실행국 | 정량 가능 → 자동, 불가 → LLM, 로그 태그 구분 | 1-2 후 |
-| 1-4 | DB 마이그레이션: `verification_method` 컬럼 | 실행국 | 마이그레이션 실행, 스키마 반영 | 1-1과 병렬 |
+| 1-1 | `parseQuantitativeCondition()` 함수 TDD | 실행팀 (TDD) | 20+ 테스트 케이스 통과 (다양한 조건 포맷 커버) | - |
+| 1-2 | `evaluateQuantitativeCondition()` 함수 TDD | 실행팀 (TDD) | 지표 매핑 + 비교 로직 테스트 통과 | 1-1 후 |
+| 1-3 | `verifyTheses()` 분기 로직 수정 | 실행팀 | 정량 가능 → 자동, 불가 → LLM, 로그 태그 구분 | 1-2 후 |
+| 1-4 | DB 마이그레이션: `verification_method` 컬럼 | 실행팀 | 마이그레이션 실행, 스키마 반영 | 1-1과 병렬 |
 
 **예상 테스트**:
 - `parseQuantitativeCondition`: "S&P 500 > 5800" → `{ metric: "S&P 500", operator: ">", value: 5800 }`
@@ -153,9 +153,9 @@ const caution = rows.filter((r) => r.category === "caution");
 
 | # | 작업 | 에이전트 | 완료 기준 | 병렬 |
 |---|------|---------|----------|------|
-| 2-1 | 승격 기준 상향 (`promote-learnings.ts`) | 실행국 | 상수 변경 + 필터 조건 추가 + 기존 테스트 수정 | - |
-| 2-2 | reusablePattern 승격 분리 | 실행국 | `buildPromotionCandidates`에서 패턴 추출 제거, 통계 문장만 | 2-1과 병렬 |
-| 2-3 | memoryLoader caution 제거 | 실행국 | caution 섹션 출력 코드 제거 + 테스트 수정 | 2-1과 병렬 |
+| 2-1 | 승격 기준 상향 (`promote-learnings.ts`) | 실행팀 | 상수 변경 + 필터 조건 추가 + 기존 테스트 수정 | - |
+| 2-2 | reusablePattern 승격 분리 | 실행팀 | `buildPromotionCandidates`에서 패턴 추출 제거, 통계 문장만 | 2-1과 병렬 |
+| 2-3 | memoryLoader caution 제거 | 실행팀 | caution 섹션 출력 코드 제거 + 테스트 수정 | 2-1과 병렬 |
 
 **예상 테스트**:
 - `buildPromotionCandidates`: 9회 적중 → 승격 안 됨
@@ -167,12 +167,12 @@ const caution = rows.filter((r) => r.category === "caution");
 
 | # | 작업 | 에이전트 | 완료 기준 | 병렬 |
 |---|------|---------|----------|------|
-| 3-1 | 주간 QA 쿼리 추가 | 실행국 | verification_method별 통계 쿼리 + 프롬프트 반영 | - |
-| 3-2 | 코드 리뷰 + 통합 테스트 | 검증국 | 전체 테스트 통과, 커버리지 80%+ | 3-1 후 |
+| 3-1 | 주간 QA 쿼리 추가 | 실행팀 | verification_method별 통계 쿼리 + 프롬프트 반영 | - |
+| 3-2 | 코드 리뷰 + 통합 테스트 | 검증팀 | 전체 테스트 통과, 커버리지 80%+ | 3-1 후 |
 
 ## 리스크
 
-1. **targetCondition 파싱 범위**: 장관들이 만드는 조건 포맷이 다양함. "S&P 500 > 5800"은 파싱 가능하지만 "에너지 섹터 RS가 상위 3위 유지"는 어려움. 초기에는 단순 비교 (`>`, `<`, `>=`, `<=`)만 지원하고, 파싱 실패 시 LLM 폴백으로 안전하게 처리.
+1. **targetCondition 파싱 범위**: 애널리스트들이 만드는 조건 포맷이 다양함. "S&P 500 > 5800"은 파싱 가능하지만 "에너지 섹터 RS가 상위 3위 유지"는 어려움. 초기에는 단순 비교 (`>`, `<`, `>=`, `<=`)만 지원하고, 파싱 실패 시 LLM 폴백으로 안전하게 처리.
 
 2. **승격 기준 상향의 데이터 부족**: 현재 축적된 thesis가 적으면 10회 적중 기준을 충족하는 패턴이 당분간 없을 수 있음. 이는 의도된 것 — 충분한 관측 없이 승격하지 않는 것이 목적.
 

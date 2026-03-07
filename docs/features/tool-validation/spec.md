@@ -243,8 +243,8 @@ interface ToolValidationResult {
 
 | # | 작업 | 에이전트 | 완료 기준 | 병렬 |
 |---|------|---------|----------|------|
-| 1-1 | `getPhase1LateStocks.ts` prev_phase 필터 추가 | 실행국 | SQL 수정 + 단위 테스트 추가 (Phase 3→1, Phase 4→1 false positive 제거 확인) | - |
-| 1-2 | `phase-detection.ts` Phase 1 판정 기준 검토 | 실행국 | 코드 분석 후 추가 수정 필요 여부 판단 — 검증 결과 보고 후 결정 | 1-1과 병렬 |
+| 1-1 | `getPhase1LateStocks.ts` prev_phase 필터 추가 | 실행팀 | SQL 수정 + 단위 테스트 추가 (Phase 3→1, Phase 4→1 false positive 제거 확인) | - |
+| 1-2 | `phase-detection.ts` Phase 1 판정 기준 검토 | 실행팀 | 코드 분석 후 추가 수정 필요 여부 판단 — 검증 결과 보고 후 결정 | 1-1과 병렬 |
 
 **테스트 케이스**:
 - Phase 3 → Phase 1 전환 종목: 필터에서 제외됨을 확인
@@ -256,22 +256,22 @@ interface ToolValidationResult {
 
 | # | 작업 | 에이전트 | 완료 기준 | 병렬 |
 |---|------|---------|----------|------|
-| 2-A | `scripts/validate-phase1-late.ts` | 실행국 | 스크립트 실행 → JSON 결과 출력, 전환율 계산 정확성 확인 | Phase 1 완료 후 |
-| 2-B | `scripts/validate-rising-rs.ts` | 실행국 | 스크립트 실행 → JSON 결과 출력, RS 변화 집계 정확성 확인 | 2-A와 병렬 |
-| 2-C | `scripts/validate-fundamental-accel.ts` | 실행국 | 스크립트 실행 → JSON 결과 출력 | 2-A와 병렬 |
+| 2-A | `scripts/validate-phase1-late.ts` | 실행팀 | 스크립트 실행 → JSON 결과 출력, 전환율 계산 정확성 확인 | Phase 1 완료 후 |
+| 2-B | `scripts/validate-rising-rs.ts` | 실행팀 | 스크립트 실행 → JSON 결과 출력, RS 변화 집계 정확성 확인 | 2-A와 병렬 |
+| 2-C | `scripts/validate-fundamental-accel.ts` | 실행팀 | 스크립트 실행 → JSON 결과 출력 | 2-A와 병렬 |
 
 ### Phase 3: 결과 해석 + threshold 조정 판단
 
 | # | 작업 | 에이전트 | 완료 기준 | 병렬 |
 |---|------|---------|----------|------|
-| 3-1 | 검증 결과 CEO 보고 + threshold 조정 여부 판단 | 비서실장 | 데이터 기반 권고사항 정리, CEO 승인 후 조정 작업 착수 | - |
-| 3-2 | threshold 조정 (CEO 승인 후) | 실행국 | 조정된 기준값으로 재검증 스크립트 실행 확인 | 3-1 후 |
+| 3-1 | 검증 결과 CEO 보고 + threshold 조정 여부 판단 | 매니저 | 데이터 기반 권고사항 정리, CEO 승인 후 조정 작업 착수 | - |
+| 3-2 | threshold 조정 (CEO 승인 후) | 실행팀 | 조정된 기준값으로 재검증 스크립트 실행 확인 | 3-1 후 |
 
 ### Phase 4: QA 통합
 
 | # | 작업 | 에이전트 | 완료 기준 | 병렬 |
 |---|------|---------|----------|------|
-| 4-1 | 코드 리뷰 (버그 수정 + 스크립트 전체) | 검증국 (code-reviewer) | CRITICAL/HIGH 이슈 없음 | - |
+| 4-1 | 코드 리뷰 (버그 수정 + 스크립트 전체) | 검증팀 (code-reviewer) | CRITICAL/HIGH 이슈 없음 | - |
 | 4-2 | PR 생성 | pr-manager | PR #58 연결, 검증 결과 첨부 | 4-1 후 |
 
 ## 리스크

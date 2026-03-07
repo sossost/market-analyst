@@ -19,8 +19,8 @@ interface NewsCollection {
 }
 
 /**
- * 장관별 검색 쿼리.
- * 각 장관의 분석 영역에 맞는 뉴스를 사전에 수집.
+ * 애널리스트별 검색 쿼리.
+ * 각 애널리스트의 분석 영역에 맞는 뉴스를 사전에 수집.
  */
 const SEARCH_QUERIES: Record<keyof NewsCollection, string[]> = {
   macro: [
@@ -76,7 +76,7 @@ async function searchBraveNews(query: string): Promise<NewsItem[]> {
 
 /**
  * 토론 전 뉴스 사전 수집.
- * 장관별 2개 쿼리 × 5건 = 최대 40건 수집.
+ * 애널리스트별 2개 쿼리 × 5건 = 최대 40건 수집.
  * 순차 실행 (rate limit 방지).
  */
 export async function collectNews(): Promise<NewsCollection> {
@@ -117,7 +117,7 @@ export async function collectNews(): Promise<NewsCollection> {
 }
 
 /**
- * 수집된 뉴스를 장관별 텍스트로 포맷.
+ * 수집된 뉴스를 애널리스트별 텍스트로 포맷.
  */
 export function formatNewsForPersona(
   persona: keyof NewsCollection,

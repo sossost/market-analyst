@@ -89,7 +89,7 @@ export function generateStockReport(ctx: StockReportContext): string {
   const narrativeNum = sectionNum + 1;
   lines.push(
     "",
-    `## ${narrativeNum}. 펀더멘탈 장관 분석`,
+    `## ${narrativeNum}. 펀더멘탈 애널리스트 분석`,
     "",
     narrative,
     "",

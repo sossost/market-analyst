@@ -64,7 +64,7 @@ describe("buildCeoWeeklyReport", () => {
     expect(report).toContain("Phase 종료 승률: 55%");
 
     // Agent section
-    expect(report).toContain("장관 성과");
+    expect(report).toContain("애널리스트 성과");
     expect(report).toContain("macro");
     expect(report).toContain("tech");
     expect(report).toContain("geopolitics");
@@ -77,7 +77,7 @@ describe("buildCeoWeeklyReport", () => {
     expect(report).toContain("이번 주 자동 조정 없음");
 
     // Judgment section
-    expect(report).toContain("비서실장 판단");
+    expect(report).toContain("매니저 판단");
   });
 
   it("includes parameter changes when present", () => {

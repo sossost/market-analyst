@@ -1,5 +1,5 @@
 /**
- * 장관(에이전트)별 thesis 적중률 집계.
+ * 애널리스트(에이전트)별 thesis 적중률 집계.
  * 순수 로직 — DB 의존 없이 테스트 가능.
  */
 
@@ -32,7 +32,7 @@ export interface AgentStats {
 // ── Pure Functions ──
 
 /**
- * theses 배열을 받아서 장관별 통계 생성.
+ * theses 배열을 받아서 애널리스트별 통계 생성.
  */
 export function calculateAgentPerformance(
   theses: ThesisRow[],
@@ -111,7 +111,7 @@ export function calculateAgentPerformance(
 
 /**
  * 전체 성과 요약 (한 줄).
- * resolved (confirmed + invalidated)가 있는 장관만 비교.
+ * resolved (confirmed + invalidated)가 있는 애널리스트만 비교.
  */
 export function summarizePerformance(stats: AgentStats[]): string {
   if (stats.length === 0) return "집계 대상 thesis 없음";
@@ -134,7 +134,7 @@ export function summarizePerformance(stats: AgentStats[]): string {
   const formatRate = (rate: number) => `${(rate * 100).toFixed(0)}%`;
 
   if (best.persona === worst.persona) {
-    return `장관 ${withResolved.length}명 중 검증 완료: ${best.persona} (${formatRate(best.hitRate)})`;
+    return `애널리스트 ${withResolved.length}명 중 검증 완료: ${best.persona} (${formatRate(best.hitRate)})`;
   }
 
   return `최우수: ${best.persona} (${formatRate(best.hitRate)}), 최저: ${worst.persona} (${formatRate(worst.hitRate)})`;

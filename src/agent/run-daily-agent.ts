@@ -69,7 +69,7 @@ async function main() {
   }
   logger.step(`[2/6] Target date: ${targetDate}`);
 
-  // 3. 장관 토론 전망 로드
+  // 3. 애널리스트 토론 전망 로드
   let thesesContext = "";
   try {
     const activeTheses = await loadActiveTheses();
