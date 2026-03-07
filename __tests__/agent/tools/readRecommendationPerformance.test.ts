@@ -184,4 +184,146 @@ describe("readRecommendationPerformance", () => {
 
     expect(mockLimit).toHaveBeenCalledWith(10);
   });
+
+  describe("period: this_week", () => {
+    /**
+     * this_week 모드는 .limit()을 사용하지 않으므로
+     * mockOrderBy가 직접 Promise로 resolve되어야 한다.
+     */
+    function setupWeeklyMocks(
+      newRecs: ReturnType<typeof makeRec>[] = [],
+      closedRecs: ReturnType<typeof makeRec>[] = [],
+      phaseExitRecs: ReturnType<typeof makeRec>[] = [],
+    ) {
+      // this_week 모드: 3개 쿼리 모두 from → where → orderBy (limit 없음)
+      // phaseExits 쿼리는 orderBy 없이 from → where만 사용
+      let callCount = 0;
+      mockOrderBy.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) return Promise.resolve(newRecs);
+        return Promise.resolve(closedRecs);
+      });
+      // phaseExits 쿼리는 where에서 바로 resolve (orderBy 없음)
+      let whereCallCount = 0;
+      mockWhere.mockImplementation(() => {
+        whereCallCount++;
+        if (whereCallCount === 3) {
+          // 3번째 where 호출 = phaseExits (orderBy 없이 직접 resolve)
+          return Promise.resolve(phaseExitRecs);
+        }
+        return { orderBy: mockOrderBy };
+      });
+    }
+
+    it("period 미지정 시 기존 동작 동일", async () => {
+      mockLimit.mockResolvedValue([]);
+
+      const result = await readRecommendationPerformance.execute({});
+      const parsed = JSON.parse(result);
+
+      expect(parsed.summary).toBeDefined();
+      expect(parsed.active).toBeDefined();
+      expect(parsed.recentClosed).toBeDefined();
+      expect(parsed.period).toBeUndefined();
+    });
+
+    it("period: this_week 시 주간 집계 반환", async () => {
+      const newRec = makeRec({
+        recommendationDate: "2026-03-06",
+        symbol: "NVDA",
+      });
+      setupWeeklyMocks([newRec], [], []);
+
+      const result = await readRecommendationPerformance.execute({
+        period: "this_week",
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.period).toBe("this_week");
+      expect(parsed.weekStart).toBeDefined();
+      expect(parsed.weeklySummary).toBeDefined();
+      expect(parsed.weeklySummary.newCount).toBe(1);
+      expect(parsed.weeklySummary.closedCount).toBe(0);
+      expect(parsed.newThisWeek).toHaveLength(1);
+      expect(parsed.newThisWeek[0].symbol).toBe("NVDA");
+      expect(parsed.closedThisWeek).toEqual([]);
+    });
+
+    it("주간 승률 계산 정확성 (이번 주 종료 건 기준)", async () => {
+      const winner = makeRec({
+        symbol: "AAPL",
+        status: "CLOSED_PHASE_EXIT",
+        pnlPercent: "12",
+        closeDate: "2026-03-06",
+        closeReason: "phase_exit",
+      });
+      const loser = makeRec({
+        symbol: "MSFT",
+        status: "CLOSED_PHASE_EXIT",
+        pnlPercent: "-5",
+        closeDate: "2026-03-07",
+        closeReason: "phase_exit",
+      });
+      const winner2 = makeRec({
+        symbol: "GOOG",
+        status: "CLOSED_PHASE_EXIT",
+        pnlPercent: "8",
+        closeDate: "2026-03-07",
+        closeReason: "phase_exit",
+      });
+      setupWeeklyMocks([], [winner, loser, winner2], []);
+
+      const result = await readRecommendationPerformance.execute({
+        period: "this_week",
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.weeklySummary.closedCount).toBe(3);
+      // 2 winners / 3 total = 66.67% → 67%
+      expect(parsed.weeklySummary.weekWinRate).toBe(67);
+      // avg: (12 + -5 + 8) / 3 = 5
+      expect(parsed.weeklySummary.weekAvgPnl).toBe(5);
+    });
+
+    it("phaseExits에 Phase 변경 종목만 포함", async () => {
+      const phaseChanged = makeRec({
+        symbol: "TSLA",
+        status: "ACTIVE",
+        entryPhase: 2,
+        currentPhase: 3,
+        pnlPercent: "20",
+        daysHeld: 14,
+      });
+      setupWeeklyMocks([], [], [phaseChanged]);
+
+      const result = await readRecommendationPerformance.execute({
+        period: "this_week",
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.phaseExits).toHaveLength(1);
+      expect(parsed.phaseExits[0].symbol).toBe("TSLA");
+      expect(parsed.phaseExits[0].entryPhase).toBe(2);
+      expect(parsed.phaseExits[0].currentPhase).toBe(3);
+      expect(parsed.phaseExits[0].pnlPercent).toBe(20);
+      expect(parsed.phaseExits[0].daysHeld).toBe(14);
+    });
+
+    it("이번 주 데이터 없을 때 빈 배열 반환", async () => {
+      setupWeeklyMocks([], [], []);
+
+      const result = await readRecommendationPerformance.execute({
+        period: "this_week",
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.weeklySummary.newCount).toBe(0);
+      expect(parsed.weeklySummary.closedCount).toBe(0);
+      expect(parsed.weeklySummary.weekWinRate).toBe(0);
+      expect(parsed.weeklySummary.weekAvgPnl).toBe(0);
+      expect(parsed.newThisWeek).toEqual([]);
+      expect(parsed.closedThisWeek).toEqual([]);
+      expect(parsed.phaseExits).toEqual([]);
+    });
+  });
 });
