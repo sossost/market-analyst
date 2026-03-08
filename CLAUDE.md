@@ -24,8 +24,8 @@ CEO가 미션을 내리면 즉시 실행하지 않는다:
 3. **디스패치** — 기획서 기반으로 실행팀 에이전트에 위임. 독립 작업은 병렬.
 4. **코드 리뷰** — `code-reviewer` 에이전트 실행. CRITICAL/HIGH 이슈 수정 후 커밋. **리뷰 없이 PR 금지.**
 5. **PR 생성** — `pr-manager`에 `mode: create` 위임. **직접 `gh pr create` 금지.**
-6. **리뷰 해결 + 머지** — `pr-manager`에 `mode: review-resolve` 위임. **직접 `gh pr merge` 금지.**
-7. **보고** — PR이 공식 보고 채널. pr-manager가 PR body에 골 정렬·변경 요약·코드 리뷰·테스트 결과를 포함. 채팅에서는 PR URL과 간단한 상태만 전달.
+6. **PR 보고 + 대기** — PR URL과 간단한 상태를 CEO에게 전달. **여기서 멈춘다. 머지하지 않는다.**
+7. **머지는 CEO 지시 시에만** — CEO가 "머지해"라고 명시적으로 말한 경우에만 `pr-manager`에 `mode: review-resolve` 위임. **CEO 지시 없는 머지 절대 금지. 리뷰 통과·테스트 통과 여부와 무관하게 머지 권한은 CEO에게만 있다.**
 8. **머지 후 정리** — PR 머지 완료 시 `git checkout main && git pull && git branch -d <branch>` 자동 실행. 명령 기다리지 않는다.
 
 상세: `.claude/ORGANIZATION.md` 참조
