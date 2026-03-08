@@ -4,6 +4,7 @@ import { runDebate } from "./debate/debateEngine";
 import { buildMemoryContext } from "./debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
 import { collectNews, formatNewsForPersona } from "./debate/newsCollector";
+import { loadNewsForPersona } from "./debate/newsLoader";
 import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
 import { verifyTheses } from "./debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
@@ -234,22 +235,38 @@ async function main() {
     logger.warn("Verify", `Thesis verification failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 4. 뉴스 사전 수집
-  logger.step("[4/9] Collecting news...");
+  // 4. 뉴스 로드 (DB 우선, 폴백으로 실시간 수집)
+  logger.step("[4/9] Loading news...");
   let newsContext: Record<string, string> = {};
   try {
-    const news = await collectNews();
     const personas = ["macro", "tech", "geopolitics", "sentiment"] as const;
+
+    // DB에서 최근 뉴스 로드 시도
     for (const persona of personas) {
-      const formatted = formatNewsForPersona(persona, news);
-      if (formatted.length > 0) {
-        newsContext[persona] = formatted;
+      const loaded = await loadNewsForPersona(persona);
+      if (loaded.length > 0) {
+        newsContext[persona] = loaded;
       }
     }
+
+    const dbCount = Object.values(newsContext).filter((v) => v.length > 0).length;
+
+    // DB에서 뉴스가 0건이면 기존 실시간 수집으로 폴백
+    if (dbCount === 0) {
+      logger.info("News", "DB 뉴스 0건 — 실시간 수집으로 폴백");
+      const news = await collectNews();
+      for (const persona of personas) {
+        const formatted = formatNewsForPersona(persona, news);
+        if (formatted.length > 0) {
+          newsContext[persona] = formatted;
+        }
+      }
+    }
+
     const totalItems = Object.values(newsContext).filter((v) => v.length > 0).length;
     logger.info("News", `${totalItems}/4 personas have news context`);
   } catch (err) {
-    logger.warn("News", `News collection failed: ${err instanceof Error ? err.message : String(err)}`);
+    logger.warn("News", `News loading failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // 5. 과거 유사 세션 로드 (few-shot)

@@ -486,3 +486,46 @@ export const failurePatterns = pgTable("failure_patterns", {
     .defaultNow()
     .notNull(),
 });
+
+/**
+ * news_archive — 뉴스 상시 수집 아카이브.
+ * 6시간마다 Brave Search로 수집, 키워드 기반 분류/감성 판정 후 DB 축적.
+ * 토론 에이전트 뉴스 소스 + 후속 이슈(정책 감지, 공급 과잉, 섹터 시차) 데이터 기반.
+ */
+export const newsArchive = pgTable(
+  "news_archive",
+  {
+    id: serial("id").primaryKey(),
+
+    // 원본 데이터
+    url: text("url").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    source: text("source"), // hostname (예: reuters.com)
+    publishedAt: text("published_at"), // Brave age 문자열 → ISO datetime 변환, 실패 시 null
+    collectedAt: timestamp("collected_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+
+    // 분류 (키워드 룰 기반)
+    category: text("category").notNull(), // 'POLICY' | 'TECHNOLOGY' | 'MARKET' | 'GEOPOLITICAL' | 'CAPEX' | 'OTHER'
+
+    // 감성 (키워드 룰 기반)
+    sentiment: text("sentiment").notNull(), // 'POS' | 'NEU' | 'NEG'
+
+    // 연관 쿼리 카테고리
+    queryPersona: text("query_persona"), // 'macro' | 'tech' | 'geopolitics' | 'sentiment'
+    queryText: text("query_text"), // 원본 검색 쿼리
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqUrl: unique("uq_news_archive_url").on(t.url),
+    idxCollectedAt: index("idx_news_archive_collected_at").on(t.collectedAt),
+    idxCategory: index("idx_news_archive_category").on(t.category),
+    idxSentiment: index("idx_news_archive_sentiment").on(t.sentiment),
+    idxPersona: index("idx_news_archive_persona").on(t.queryPersona),
+  }),
+);
