@@ -589,3 +589,94 @@ export const narrativeChains = pgTable(
     idxMegatrend: index("idx_narrative_chains_megatrend").on(t.megatrend),
   }),
 );
+
+/**
+ * sector_phase_events — Phase 전이 이벤트 로그.
+ * 섹터/산업이 Phase를 전환한 시점을 이벤트로 기록하여 시차 패턴 분석의 기반 데이터를 축적한다.
+ */
+export const sectorPhaseEvents = pgTable(
+  "sector_phase_events",
+  {
+    id: serial("id").primaryKey(),
+    date: text("date").notNull(), // YYYY-MM-DD
+    entityType: text("entity_type").notNull(), // 'sector' | 'industry'
+    entityName: text("entity_name").notNull(),
+    fromPhase: smallint("from_phase").notNull(),
+    toPhase: smallint("to_phase").notNull(),
+    avgRs: numeric("avg_rs"),
+    phase2Ratio: numeric("phase2_ratio"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_sector_phase_events").on(
+      t.date,
+      t.entityType,
+      t.entityName,
+      t.fromPhase,
+      t.toPhase,
+    ),
+    idxEntityPhase: index("idx_sector_phase_events_entity_phase").on(
+      t.entityType,
+      t.entityName,
+      t.toPhase,
+      t.date,
+    ),
+    idxDateType: index("idx_sector_phase_events_date_type").on(
+      t.date,
+      t.entityType,
+      t.toPhase,
+    ),
+  }),
+);
+
+/**
+ * sector_lag_patterns — 섹터/산업 쌍별 Phase 전이 시차 통계.
+ * 선행 섹터(리더)가 Phase 전이 후, 후행 섹터(팔로워)가 동일 전이까지 걸리는
+ * 평균 시차를 누적 계산하여 조기 경보의 정량적 근거를 제공한다.
+ */
+export const sectorLagPatterns = pgTable(
+  "sector_lag_patterns",
+  {
+    id: serial("id").primaryKey(),
+    entityType: text("entity_type").notNull(), // 'sector' | 'industry'
+    leaderEntity: text("leader_entity").notNull(),
+    followerEntity: text("follower_entity").notNull(),
+    transition: text("transition").notNull(), // '1to2' | '3to4'
+
+    // 관측 통계
+    sampleCount: integer("sample_count").notNull().default(0),
+    avgLagDays: numeric("avg_lag_days"),
+    medianLagDays: numeric("median_lag_days"),
+    stddevLagDays: numeric("stddev_lag_days"),
+    minLagDays: integer("min_lag_days"),
+    maxLagDays: integer("max_lag_days"),
+
+    // 신뢰도
+    pValue: numeric("p_value"),
+    isReliable: boolean("is_reliable").default(false), // sample_count >= 5
+
+    // 최근 관측
+    lastObservedAt: text("last_observed_at"),
+    lastLagDays: integer("last_lag_days"),
+
+    lastUpdated: text("last_updated"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_sector_lag_patterns").on(
+      t.entityType,
+      t.leaderEntity,
+      t.followerEntity,
+      t.transition,
+    ),
+    idxLeader: index("idx_sector_lag_patterns_leader").on(
+      t.entityType,
+      t.leaderEntity,
+      t.transition,
+    ),
+  }),
+);

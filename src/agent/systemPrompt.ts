@@ -229,8 +229,9 @@ export function buildWeeklySystemPrompt(options?: {
   thesesContext?: string;
   signalPerformance?: string;
   narrativeChainsSummary?: string;
+  sectorLagContext?: string;
 }): string {
-  const { fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary } =
+  const { fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext } =
     options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 주간 단위로 "이번 주 시장 구조가 어떻게 바뀌었는가"를 분석하고, Phase 2 초입 주도주를 발굴합니다.
@@ -506,6 +507,18 @@ ${sanitized}
 - 경과일이 긴 ACTIVE 체인은 해소 임박 가능성 인지 → 수혜 섹터 이탈 준비 신호로 활용
 - RESOLVING 상태 체인의 수혜 섹터 비중 축소 검토
 - 참고 해소 기간이 제공될 경우 이탈 타이밍 판단의 보조 근거로 사용`;
+  }
+
+  if (sectorLagContext != null && sectorLagContext !== "") {
+    const sanitized = sanitizeXml(sectorLagContext);
+    prompt += `
+
+${sanitized}
+
+**활용법**:
+- 예상 진입 윈도우 내에 팔로워 섹터 RS 상승 조짐이 보이면 해당 섹터 종목을 적극 주시
+- 시차 패턴과 서사 레이어(narrative_chains) 병목 해소가 동시에 가리키는 섹터는 강한 신호
+- 과거 관측 횟수와 표준편차를 감안하여 신뢰도를 자체 판단`;
   }
 
   if (signalPerformance != null && signalPerformance !== "") {
