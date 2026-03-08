@@ -58,7 +58,9 @@
 ```
 ETL 일간:   일~금 UTC 23:30 (KST 08:30)
   build-stock-phases → build-sector-rs ──┐
-                    └→ build-industry-rs ─┤→ validate → run-daily-agent
+                    └→ build-industry-rs ─┤→ detect-sector-phase-events
+                                          → update-sector-lag-patterns
+                                          → validate → run-daily-agent
 
 토론:       월~금 UTC 22:00 (KST 07:00)
   애널리스트 토론 → thesis 저장
@@ -89,6 +91,8 @@ ETL 주간:   일 UTC 07:00 (KST 16:00)
 | Phase A+ | Signal Validation | **완료** | 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화 |
 | Phase A++ | Weekly Redesign | **완료** | 주간 리포트 전면 재설계 (도구 주간 집계 + 프롬프트 차별화) |
 | Phase N-1 | Narrative Layer | **완료** | 수요-공급-병목 서사 프레임 + 실패 패턴 + 합의도 추적 |
+| Wave 2a/2b | 서사 확장 | **완료** | N+1 병목 예측 + 공급 과잉 전환 + narrative_chains 병목 추적 |
+| Sector Lag | 섹터 시차 패턴 | **완료** | Phase 전이 시차 축적 + 선행 경보 → 주간 에이전트 연동 |
 | Phase N-2 | 검증 인프라 | **대기 중** | 데이터 축적 중 (N-1 머지 후 2주) |
 | F3 | Industry Intelligence | 미착수 | FMP 뉴스, 테마 연결/예측 |
 
@@ -155,6 +159,12 @@ Layer 8: 주간 리포트 재설계 (Phase A++) — Done
 Phase N-1: 서사 레이어 확립 — Done (PR #82~#86)
   수요-공급-병목 프레임 + thesis 카테고리 분리 +
   N+1 병목 예측 + 합의도 추적 + 실패 패턴 + 위양성 축적
+
+Wave 2a/2b: 서사 확장 — Done (PR #98, #101)
+  N+1 병목 예측 + 공급 과잉 전환 + narrative_chains 병목 추적
+
+섹터 시차 패턴 — Done (PR #102)
+  sector_phase_events + sector_lag_patterns + 주간 에이전트 선행 경보
 
 Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
   홀드아웃 테스트 + 위양성 비용 리포트
@@ -223,7 +233,10 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── debate_sessions        → 토론 세션 저장
 ├── agent_learnings        → 장기 기억 (검증된 원칙 + 경계 패턴)
 ├── fundamental_scores     → SEPA 펀더멘탈 점수
-└── failure_patterns       → Phase 2 신호 후 실패 케이스
+├── failure_patterns       → Phase 2 신호 후 실패 케이스
+├── narrative_chains       → 병목 생애주기 추적 (식별/해소/상태)
+├── sector_phase_events    → 섹터/산업 Phase 전이 이벤트 로그
+└── sector_lag_patterns    → 섹터 쌍별 시차 통계 (평균/분산/신뢰도)
 ```
 
 ---
@@ -248,7 +261,8 @@ market-analyst/
 │   │   │   ├── thesisVerifier.ts   # LLM 기반 자동 검증
 │   │   │   ├── causalAnalyzer.ts   # 원인 분석
 │   │   │   ├── sessionStore.ts     # 세션 저장 + 유사 세션 검색
-│   │   │   └── memoryLoader.ts     # 학습 → 프롬프트 주입
+│   │   │   ├── memoryLoader.ts     # 학습 → 프롬프트 주입
+│   │   │   └── narrativeChainService.ts  # 병목 체인 추적
 │   │   ├── fundamental/        # F7: SEPA 펀더멘탈 검증
 │   │   └── tools/              # 에이전트 도구 (16개 + 내부 유틸 1개)
 │   ├── etl/                # F1: ETL Pipeline
@@ -257,7 +271,9 @@ market-analyst/
 │   ├── lib/                # 유틸리티
 │   │   ├── fundamental-scorer.ts    # SEPA 스코어링
 │   │   ├── statisticalTests.ts      # 이항 검정 + Cohen's h
-│   │   └── biasDetector.ts          # bull-bias 편향 감지
+│   │   ├── biasDetector.ts          # bull-bias 편향 감지
+│   │   ├── narrativeChainStats.ts   # 병목 체인 통계
+│   │   └── sectorLagStats.ts        # 섹터 시차 통계 + 선행 경보
 │   ├── db/                 # Drizzle ORM 스키마
 │   └── types/              # 공유 타입 정의
 ├── __tests__/              # Vitest 테스트

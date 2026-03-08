@@ -12,6 +12,8 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 매크로/테크/지정학/심리 4명이 3라운드 토론
    → 수요-공급-병목 프레임으로 구조적 서사 도출
    → N+1 병목 예측: "현재 병목 해소 후 다음 제약은?"
+   → 공급 과잉 전환 감지: 병목 해소 → 과잉 전환 조기 포착
+   → 병목 체인 추적: narrative_chains 테이블에 병목 생애주기 기록
    → 모더레이터가 thesis 구조화 + 합의도(consensus_score) 기록
 
 3. 학습 루프 (자동)
@@ -21,7 +23,13 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 실패 패턴 자동 축적: Phase 2 신호 후 실패 조건 기록 → 70%+ 실패율 패턴은 필터링 규칙으로 승격
    → 유사 시장 조건의 과거 세션을 few-shot으로 주입
 
-4. 에이전트 리포트
+4. 섹터 시차 패턴 (자동)
+   → 섹터/산업 Phase 전이 이벤트 매일 감지 + 기록
+   → 섹터 쌍별 시차 통계 축적 (평균, 표준편차, 신뢰 구간)
+   → "A 섹터 Phase 2 진입 → N주 후 B 섹터 주시" 선행 경보
+   → 신뢰 가능 패턴(5회+ 관측)만 주간 에이전트에 주입
+
+5. 에이전트 리포트
    → 일간: 시장 온도 + 특이종목 브리핑
    → 주간: Phase 2 주도주 심층 분석 + 펀더멘탈 검증 (SEPA)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
@@ -72,7 +80,7 @@ npm run agent:weekly        # 주간 종목 분석
 npm run agent:debate        # 애널리스트 토론 (매크로/테크/지정학/심리)
 
 # 테스트
-npm test                    # 전체 테스트 (678 tests)
+npm test                    # 전체 테스트 (815+ tests)
 npm run test:watch          # 워치 모드
 npm run typecheck           # 타입 체크
 
@@ -156,6 +164,8 @@ npm run db:push             # 스키마 적용
 | Memory Loader | `memoryLoader.ts` | 학습 + 검증 결과 프롬프트 주입 |
 | Promote Learnings | `promote-learnings.ts` | 반복 적중 패턴 → 장기 기억 승격 |
 | Failure Tracker | `collect-failure-patterns.ts` | Phase 2 실패 조건 자동 기록 + 패턴 축적 |
+| Narrative Chain | `narrativeChainService.ts` | 병목 생애주기 추적 (식별→해소→다음 병목) |
+| Sector Lag Stats | `sectorLagStats.ts` | 섹터 쌍별 Phase 전이 시차 통계 + 선행 경보 |
 | Bias Detector | `biasDetector.ts` | bull-bias 80% 초과 경고 |
 | Statistical Tests | `statisticalTests.ts` | 이항 검정 + Cohen's h 유의성 필터 |
 
@@ -236,7 +246,8 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **Phase A** Learning Loop — 세션 저장, few-shot 주입, 원인 분석, 패턴 승격
 - [x] **Phase A+** Signal Validation — 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화
 - [x] **Phase A++** Weekly Redesign — 주간 리포트 전면 재설계 (도구 주간 집계 + 프롬프트 차별화)
-- [x] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + thesis 카테고리 분리 + N+1 병목 예측 + 합의도 추적 + 실패 패턴 축적 (N-1 완료, N-2 대기 중)
+- [x] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + thesis 카테고리 분리 + N+1 병목 예측 + 합의도 추적 + 실패 패턴 축적 + 병목 체인 추적 (N-1, Wave 2a/2b 완료, N-2 대기 중)
+- [x] **Sector Lag Pattern** — 섹터 간 Phase 전이 시차 축적 + 선행 경보 → 주간 에이전트 연동
 - [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지 (Phase N과 병렬 가능)
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
 
@@ -252,11 +263,12 @@ src/
 │   │   ├── causalAnalyzer.ts # 원인 분석 (왜 맞았는지/틀렸는지)
 │   │   ├── thesisVerifier.ts # thesis 자동 검증
 │   │   ├── sessionStore.ts  # 세션 저장 + 유사 세션 검색
-│   │   └── memoryLoader.ts  # 학습 → 프롬프트 주입
+│   │   ├── memoryLoader.ts  # 학습 → 프롬프트 주입
+│   │   └── narrativeChainService.ts  # 병목 체인 추적
 │   ├── fundamental/         # SEPA 펀더멘탈 검증
 │   └── tools/               # 에이전트 도구 (16개 + 내부 유틸 1개)
 ├── etl/                     # 데이터 파이프라인
-├── lib/                     # 유틸리티 (스코어링, 분석)
+├── lib/                     # 유틸리티 (스코어링, 분석, 시차 통계)
 └── db/schema/               # Drizzle ORM 스키마
 
 docs/
