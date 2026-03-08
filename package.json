@@ -25,6 +25,8 @@
     "etl:verify-theses": "tsx src/etl/jobs/verify-theses.ts",
     "signal:record": "tsx src/etl/jobs/record-new-signals.ts",
     "signal:update": "tsx src/etl/jobs/update-signal-returns.ts",
+    "signal:track-exits": "tsx src/etl/jobs/track-phase-exits.ts",
+    "etl:failure-patterns": "tsx src/etl/jobs/collect-failure-patterns.ts",
     "etl:promote-learnings": "tsx src/etl/jobs/promote-learnings.ts",
     "agent:daily": "tsx src/agent/run-daily-agent.ts",
     "agent:weekly": "tsx src/agent/run-weekly-agent.ts",

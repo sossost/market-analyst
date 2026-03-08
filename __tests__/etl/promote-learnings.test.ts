@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPromotionCandidates } from "@/etl/jobs/promote-learnings";
+import { buildPromotionCandidates, buildCautionPrinciple } from "@/etl/jobs/promote-learnings";
 
 /**
  * 장기 기억 승격/강등 로직의 핵심: 만료 판정 + 적중률 계산 + 승격 후보 생성.
@@ -11,7 +11,11 @@ function isLearningExpired(
   lastVerified: string | null,
   today: string,
   expiryMonths: number = 6,
+  category: string = "confirmed",
 ): boolean {
+  // caution 카테고리는 demoteExpiredLearnings에서 제외됨
+  if (category === "caution") return false;
+
   if (expiresAt != null && expiresAt <= today) return true;
 
   if (lastVerified != null) {
@@ -72,6 +76,12 @@ describe("promote-learnings logic", () => {
 
     it("not expired with no dates", () => {
       expect(isLearningExpired(null, null, "2026-03-05")).toBe(false);
+    });
+
+    it("never expired for caution category (separate demotion path)", () => {
+      // caution 카테고리는 promoteFailurePatterns에서 별도 강등하므로
+      // demoteExpiredLearnings의 6개월 만료 규칙이 적용되지 않아야 한다.
+      expect(isLearningExpired("2025-01-01", "2025-01-01", "2026-03-05", 6, "caution")).toBe(false);
     });
   });
 
@@ -253,6 +263,41 @@ describe("promote-learnings logic", () => {
       const result = buildPromotionCandidates(confirmed, [], new Set());
       expect(result).toHaveLength(1);
       expect(result[0]).not.toHaveProperty("reusablePatterns");
+    });
+  });
+
+  describe("buildCautionPrinciple", () => {
+    it("generates principle with [경계] prefix", () => {
+      const principle = buildCautionPrinciple("브레드스 악화 + 섹터 고립 상승", 0.85, 20);
+      expect(principle).toBe(
+        "[경계] 브레드스 악화 + 섹터 고립 상승 조건에서 Phase 2 신호 실패율 85% (20회 관측)",
+      );
+    });
+
+    it("formats failure rate as integer percentage", () => {
+      const principle = buildCautionPrinciple("거래량 미확인", 0.7142, 14);
+      expect(principle).toContain("실패율 71%");
+    });
+
+    it("includes observation count", () => {
+      const principle = buildCautionPrinciple("펀더멘탈 부실", 0.80, 100);
+      expect(principle).toContain("100회 관측");
+    });
+
+    it("includes pattern name in principle", () => {
+      const principle = buildCautionPrinciple("브레드스 악화", 0.75, 8);
+      expect(principle).toContain("브레드스 악화");
+    });
+
+    it("contains BEAR_KEYWORDS for bias detection ('경계')", () => {
+      const principle = buildCautionPrinciple("test", 0.70, 10);
+      // '경계'는 biasDetector의 BEAR_KEYWORDS에 포함됨
+      expect(principle).toContain("경계");
+    });
+
+    it("contains '실패' keyword for semantic clarity", () => {
+      const principle = buildCautionPrinciple("test", 0.70, 10);
+      expect(principle).toContain("실패율");
     });
   });
 });
