@@ -15,6 +15,7 @@ const mockSet = vi.fn();
 const mockUpdateWhere = vi.fn();
 const mockUpdateReturning = vi.fn();
 const mockGroupBy = vi.fn();
+const mockOrderBy = vi.fn();
 
 vi.mock("../../../src/db/client.js", () => ({
   db: {
@@ -41,7 +42,26 @@ vi.mock("../../../src/db/client.js", () => ({
         from: (...fArgs: unknown[]) => {
           mockFrom(...fArgs);
           return {
-            where: (...wArgs: unknown[]) => mockWhere(...wArgs),
+            // loadActiveTheses: .select().from().where() → Promise<rows>
+            // getConsensusByHitRate: .select().from().where().groupBy().orderBy() → Promise<rows>
+            // mockWhere가 Promise를 반환하면 loadActiveTheses용,
+            // 그렇지 않으면 groupBy 체인이 이어짐
+            where: (...wArgs: unknown[]) => {
+              const result = mockWhere(...wArgs);
+              // result가 thenable이면 loadActiveTheses 용 (바로 반환)
+              // 아니면 groupBy 체인을 반환
+              if (result != null && typeof (result as Promise<unknown>).then === "function") {
+                return result;
+              }
+              return {
+                groupBy: (...gArgs: unknown[]) => {
+                  mockGroupBy(...gArgs);
+                  return {
+                    orderBy: (...oArgs: unknown[]) => mockOrderBy(...oArgs),
+                  };
+                },
+              };
+            },
             groupBy: (...gArgs: unknown[]) => mockGroupBy(...gArgs),
           };
         },
@@ -74,6 +94,7 @@ import {
   resolveThesis,
   getThesisStats,
   getThesisStatsByCategory,
+  getConsensusByHitRate,
 } from "../../../src/agent/debate/thesisStore.js";
 
 describe("thesisStore", () => {
@@ -427,6 +448,203 @@ describe("thesisStore", () => {
       const stats = await getThesisStatsByCategory();
 
       expect(stats).toEqual({});
+    });
+  });
+
+  // N-1c/N-1d: parseConsensusScore (saveTheses를 통한 간접 검증)
+  describe("parseConsensusScore (saveTheses consensusScore 컬럼 검증)", () => {
+    it('"3/4" → consensusScore 3으로 저장된다', async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "macro",
+          thesis: "Fed cuts 25bp",
+          timeframeDays: 90,
+          verificationMetric: "Fed funds rate",
+          targetCondition: "Rate cut >= 25bp",
+          confidence: "medium",
+          consensusLevel: "3/4",
+          category: "short_term_outlook",
+        },
+      ];
+      mockReturning.mockResolvedValueOnce([{ id: 1 }]);
+      await saveTheses("2026-03-08", theses);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ consensusScore: 3 }),
+      ]);
+    });
+
+    it('"4/4" → consensusScore 4으로 저장된다', async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "tech",
+          thesis: "AI capex surge",
+          timeframeDays: 60,
+          verificationMetric: "Hyperscaler capex",
+          targetCondition: "Capex growth > 20%",
+          confidence: "high",
+          consensusLevel: "4/4",
+          category: "structural_narrative",
+        },
+      ];
+      mockReturning.mockResolvedValueOnce([{ id: 2 }]);
+      await saveTheses("2026-03-08", theses);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ consensusScore: 4 }),
+      ]);
+    });
+
+    it('"2/4" → consensusScore 2로 저장된다', async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "geopolitics",
+          thesis: "반도체 수출 규제 확대",
+          timeframeDays: 30,
+          verificationMetric: "Export control regulations",
+          targetCondition: "New controls announced",
+          confidence: "medium",
+          consensusLevel: "2/4",
+          category: "short_term_outlook",
+        },
+      ];
+      mockReturning.mockResolvedValueOnce([{ id: 3 }]);
+      await saveTheses("2026-03-08", theses);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ consensusScore: 2 }),
+      ]);
+    });
+
+    it('"1/4" → consensusScore 1로 저장된다', async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "sentiment",
+          thesis: "소매 투자자 리스크 온",
+          timeframeDays: 30,
+          verificationMetric: "AAII bull ratio",
+          targetCondition: "Bull ratio > 50%",
+          confidence: "low",
+          consensusLevel: "1/4",
+          category: "short_term_outlook",
+        },
+      ];
+      mockReturning.mockResolvedValueOnce([{ id: 4 }]);
+      await saveTheses("2026-03-08", theses);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ consensusScore: 1 }),
+      ]);
+    });
+  });
+
+  // N-1d: saveTheses에서 nextBottleneck / dissentReason 저장 검증
+  describe("saveTheses — nextBottleneck / dissentReason 저장", () => {
+    it("nextBottleneck과 dissentReason이 있으면 그대로 저장한다", async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "tech",
+          thesis: "AI 인프라 수요 구조적 성장",
+          timeframeDays: 60,
+          verificationMetric: "Hyperscaler capex YoY",
+          targetCondition: "Capex growth > 20%",
+          confidence: "high",
+          consensusLevel: "3/4",
+          category: "structural_narrative",
+          nextBottleneck: "광트랜시버 대역폭 제한",
+          dissentReason: "지정학 분석가: 공급망 재편 속도 과대평가",
+        },
+      ];
+      mockReturning.mockResolvedValueOnce([{ id: 5 }]);
+      await saveTheses("2026-03-08", theses);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({
+          nextBottleneck: "광트랜시버 대역폭 제한",
+          dissentReason: "지정학 분석가: 공급망 재편 속도 과대평가",
+        }),
+      ]);
+    });
+
+    it("nextBottleneck이 없으면 null로 저장한다", async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "macro",
+          thesis: "금리 인하 가속화",
+          timeframeDays: 90,
+          verificationMetric: "Fed funds rate",
+          targetCondition: "Rate < 4%",
+          confidence: "medium",
+          consensusLevel: "3/4",
+          category: "sector_rotation",
+          // nextBottleneck 없음
+        },
+      ];
+      mockReturning.mockResolvedValueOnce([{ id: 6 }]);
+      await saveTheses("2026-03-08", theses);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ nextBottleneck: null }),
+      ]);
+    });
+
+    it("dissentReason이 없으면 null로 저장한다 (만장일치)", async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "macro",
+          thesis: "달러 강세 전환",
+          timeframeDays: 30,
+          verificationMetric: "DXY",
+          targetCondition: "DXY > 105",
+          confidence: "high",
+          consensusLevel: "4/4",
+          category: "short_term_outlook",
+          // dissentReason 없음
+        },
+      ];
+      mockReturning.mockResolvedValueOnce([{ id: 7 }]);
+      await saveTheses("2026-03-08", theses);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ dissentReason: null }),
+      ]);
+    });
+  });
+
+  // N-1d: getConsensusByHitRate 테스트
+  describe("getConsensusByHitRate", () => {
+    it("consensusScore별 적중률 집계를 반환한다", async () => {
+      mockOrderBy.mockResolvedValueOnce([
+        { consensusScore: 1, confirmed: 1, invalidated: 2, expired: 1, total: 4 },
+        { consensusScore: 3, confirmed: 5, invalidated: 1, expired: 2, total: 8 },
+        { consensusScore: 4, confirmed: 3, invalidated: 0, expired: 1, total: 4 },
+      ]);
+
+      const rows = await getConsensusByHitRate();
+
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual({
+        consensusScore: 1,
+        confirmed: 1,
+        invalidated: 2,
+        expired: 1,
+        total: 4,
+      });
+      expect(rows[2].consensusScore).toBe(4);
+      expect(rows[2].confirmed).toBe(3);
+    });
+
+    it("데이터가 없으면 빈 배열을 반환한다", async () => {
+      mockOrderBy.mockResolvedValueOnce([]);
+
+      const rows = await getConsensusByHitRate();
+
+      expect(rows).toEqual([]);
+    });
+
+    it("select + from + where + groupBy + orderBy 체인을 호출한다", async () => {
+      mockOrderBy.mockResolvedValueOnce([]);
+
+      await getConsensusByHitRate();
+
+      expect(mockSelect).toHaveBeenCalled();
+      expect(mockFrom).toHaveBeenCalled();
+      expect(mockWhere).toHaveBeenCalled();
+      expect(mockGroupBy).toHaveBeenCalled();
+      expect(mockOrderBy).toHaveBeenCalled();
     });
   });
 });

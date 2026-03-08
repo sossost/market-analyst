@@ -169,10 +169,19 @@ ${round2Section}
     "targetCondition": "S&P 500 > 5800",
     "invalidationCondition": "S&P 500 < 5500",
     "confidence": "low|medium|high",
-    "consensusLevel": "4/4|3/4|2/4|1/4"
+    "consensusLevel": "4/4|3/4|2/4|1/4",
+    "nextBottleneck": "광트랜시버 대역폭 제한",
+    "dissentReason": "지정학 분석가: 공급 체인 재편 속도 과대평가 우려"
   }
 ]
-\`\`\``;
+\`\`\`
+
+**nextBottleneck 작성 규칙:**
+- nextBottleneck: 현재 병목이 해소된다면 공급 체인에서 다음으로 제약이 될 노드는?
+- structural_narrative 카테고리에만 작성. 해당 없거나 다른 카테고리면 null.
+
+**dissentReason 작성 규칙:**
+- 합의되지 않은 의견이 있을 경우 \`dissentReason\`에 반대 입장 1~2줄 요약. 만장일치면 null.`;
 }
 
 const VALID_PERSONAS = new Set<string>(["macro", "tech", "geopolitics", "sentiment"]);
@@ -186,13 +195,23 @@ const VALID_CATEGORIES = new Set<string>([
 ]);
 
 /**
- * category가 없거나 유효하지 않으면 기본값으로 정규화.
- * isValidThesis와 분리하여 부수효과를 명시적으로 관리.
+ * thesis 객체의 optional/category 필드를 정규화.
+ * 순수 함수 — 원본을 변경하지 않고 새 객체를 반환.
  */
-function normalizeThesisCategory(obj: Record<string, unknown>): void {
-  if (obj.category == null || !VALID_CATEGORIES.has(obj.category as string)) {
-    obj.category = "short_term_outlook" satisfies ThesisCategory;
-  }
+function normalizeThesisFields(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
+  const category =
+    obj.category == null || !VALID_CATEGORIES.has(obj.category as string)
+      ? ("short_term_outlook" satisfies ThesisCategory)
+      : obj.category;
+
+  return {
+    ...obj,
+    category,
+    nextBottleneck: obj.nextBottleneck ?? null,
+    dissentReason: obj.dissentReason ?? null,
+  };
 }
 
 function isValidThesis(t: unknown): t is Thesis {
@@ -242,12 +261,13 @@ export function extractThesesFromText(text: string): ExtractionResult {
       logger.warn("Round3", "Parsed JSON is not an array");
       return { theses: [], cleanReport };
     }
-    parsed.forEach((t: unknown) => {
+    const normalized = parsed.map((t: unknown) => {
       if (t != null && typeof t === "object") {
-        normalizeThesisCategory(t as Record<string, unknown>);
+        return normalizeThesisFields(t as Record<string, unknown>);
       }
+      return t;
     });
-    const validated = parsed.filter((t: unknown) => isValidThesis(t));
+    const validated = normalized.filter((t: unknown) => isValidThesis(t));
     if (validated.length < parsed.length) {
       logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
     }
