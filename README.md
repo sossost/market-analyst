@@ -10,13 +10,15 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 
 2. 애널리스트 토론 (매일 22:00 UTC)
    → 매크로/테크/지정학/심리 4명이 3라운드 토론
-   → 실시간 뉴스 주입 + 모멘텀 데이터 분석
-   → 모더레이터가 thesis 구조화 → DB 저장
+   → 수요-공급-병목 프레임으로 구조적 서사 도출
+   → N+1 병목 예측: "현재 병목 해소 후 다음 제약은?"
+   → 모더레이터가 thesis 구조화 + 합의도(consensus_score) 기록
 
 3. 학습 루프 (자동)
    → ACTIVE thesis를 시장 데이터로 검증 (CONFIRMED/INVALIDATED)
    → 원인 분석: LLM이 "왜 맞았는지/틀렸는지" 인과 체인 추출
    → 반복 적중 패턴 → 장기 기억(agent_learnings)으로 승격
+   → 실패 패턴 자동 축적: Phase 2 신호 후 실패 조건 기록 → 70%+ 실패율 패턴은 필터링 규칙으로 승격
    → 유사 시장 조건의 과거 세션을 few-shot으로 주입
 
 4. 에이전트 리포트
@@ -70,7 +72,7 @@ npm run agent:weekly        # 주간 종목 분석
 npm run agent:debate        # 애널리스트 토론 (매크로/테크/지정학/심리)
 
 # 테스트
-npm test                    # 전체 테스트 (555 tests)
+npm test                    # 전체 테스트 (678 tests)
 npm run test:watch          # 워치 모드
 npm run typecheck           # 타입 체크
 
@@ -86,8 +88,8 @@ npm run db:push             # 스키마 적용
 │     ETL      │    │   Debate     │    │    Agent     │
 │              │    │              │    │              │
 │ Stock Phases │───▶│ 4 Ministers  │───▶│Claude Sonnet │
-│ Sector RS    │    │ 3-Round Talk │    │ + 17 Tools   │
-│ Industry RS  │    │ + Moderator  │    │ + Fundamental│
+│ Sector RS    │    │ 3-Round Talk │    │ + 16 Tools   │
+│ Industry RS  │    │ + 서사 프레임 │    │ + Fundamental│
 └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
        │                   │                   │
        │            ┌──────▼───────┐           │
@@ -130,7 +132,7 @@ npm run db:push             # 스키마 적용
 | `readLearnings` | O | O | 에이전트 장기 기억 (검증된 원칙 + 경계 패턴) |
 | `saveRecommendations` | | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
 | `saveReportLog` | O | O | 리포트 결과 저장 |
-| `sendDiscordReport` | | | Discord + Gist 리포트 발송 (리뷰 파이프라인 전용) |
+| `sendDiscordReport` | — | — | Discord + Gist 리포트 발송 (리뷰 파이프라인 내부 전용) |
 
 ### Learning Loop
 
@@ -147,14 +149,44 @@ npm run db:push             # 스키마 적용
 
 | 구성 요소 | 파일 | 역할 |
 |-----------|------|------|
-| Thesis Store | `thesisStore.ts` | thesis 저장, 만료, 통계 |
+| Thesis Store | `thesisStore.ts` | thesis 저장, 만료, 통계, 카테고리별 관리 |
 | Thesis Verifier | `thesisVerifier.ts` | LLM 기반 자동 검증 |
 | Causal Analyzer | `causalAnalyzer.ts` | 검증 결과 원인 분석, 패턴 추출 |
 | Session Store | `sessionStore.ts` | 토론 세션 저장, 유사 세션 검색 |
 | Memory Loader | `memoryLoader.ts` | 학습 + 검증 결과 프롬프트 주입 |
 | Promote Learnings | `promote-learnings.ts` | 반복 적중 패턴 → 장기 기억 승격 |
+| Failure Tracker | `collect-failure-patterns.ts` | Phase 2 실패 조건 자동 기록 + 패턴 축적 |
 | Bias Detector | `biasDetector.ts` | bull-bias 80% 초과 경고 |
 | Statistical Tests | `statisticalTests.ts` | 이항 검정 + Cohen's h 유의성 필터 |
+
+### Thesis 카테고리
+
+| 카테고리 | 설명 | 기본 검증 주기 |
+|----------|------|---------------|
+| `structural_narrative` | 수요-공급-병목 구조적 서사 | 8~12주 |
+| `sector_rotation` | 섹터 로테이션 전망 | 2~4주 |
+| `short_term_outlook` | 단기 시장 전망 | 1~2주 |
+
+### 합의도 추적 & 실패 패턴
+
+- **합의도(consensus_score)**: 4명 애널리스트 중 동의한 수. 만장일치(4/4) vs 다수(3/4) 적중률 분리 추적 — "아직 컨센서스가 안 된 thesis가 더 높은 알파를 갖는가?" 검증
+- **실패 패턴**: Phase 2 신호 후 실패한 케이스의 시장 조건(브레드스, 섹터 RS, 거래량 등)을 자동 기록. 실패율 70%+ 패턴은 필터링 규칙으로 승격되어 위양성을 사전 차단
+
+### 운영 지표 (2026-03-08 기준)
+
+시스템 운영 초기 단계. 서사 프레임(N-1) 적용 직후이며 데이터 축적 중.
+
+| 지표 | 현재 | 목표 (6개월) | 비고 |
+|------|------|-------------|------|
+| 토론 세션 | 2회 | — | 평일 매일 자동 실행 |
+| Thesis 총 건수 | 28건 | 200건+ | Active 21 / Confirmed 4 / Expired 3 |
+| Thesis 적중률 | 100% (4/4) | 50%+ | 표본 부족으로 통계적 무의미 |
+| 추천 종목 | 7건 (Active) | — | Phase 이탈 시 자동 종료 |
+| 학습 승격 | 0건 | 10건+ | 3회+ 적중 패턴 필요 |
+| 실패 패턴 | 0건 | 5건+ | N-1e 방금 배포, 축적 시작 |
+| 서사 카테고리 분포 | 전부 short_term | structural 30%+ | 서사 프레임 적용 전 데이터 |
+
+**핵심 추적 질문:** 서사-기술적 교집합이 기술적 단독 대비 적중률을 높이는가? → N-2 홀드아웃 테스트(3/22 이후)에서 검증 예정.
 
 ### Fundamental Validation (Minervini SEPA)
 
@@ -172,9 +204,11 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 | Workflow | Schedule | 내용 |
 |----------|----------|------|
-| `etl-daily.yml` | 월~금 UTC 00:00 (KST 09:00) | ETL 4단계 → 일간 에이전트 |
-| `agent-weekly.yml` | 토 UTC 01:00 (KST 10:00) | 주간 에이전트 |
+| `etl-daily.yml` | 일~금 UTC 23:30 (KST 08:30) | ETL 4단계 → 일간 에이전트 |
 | `debate-daily.yml` | 월~금 UTC 22:00 (KST 07:00) | 애널리스트 토론 → thesis 저장 |
+| `agent-weekly.yml` | 토 UTC 01:00 (KST 10:00) | 주간 에이전트 |
+| `qa-weekly.yml` | 토 UTC 03:00 (KST 12:00) | 주간 QA 분석 |
+| `etl-weekly.yml` | 일 UTC 07:00 (KST 16:00) | 주간 ETL (심볼/펀더멘탈) |
 | `agent-rerun.yml` | 수동 트리거 | 에이전트만 재실행 (ETL 생략) |
 
 ## Tech Stack
@@ -201,7 +235,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **Phase A** Learning Loop — 세션 저장, few-shot 주입, 원인 분석, 패턴 승격
 - [x] **Phase A+** Signal Validation — 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화
 - [x] **Phase A++** Weekly Redesign — 주간 리포트 전면 재설계 (도구 주간 집계 + 프롬프트 차별화)
-- [ ] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + 실패 패턴 축적 + 검증 강화
+- [x] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + thesis 카테고리 분리 + N+1 병목 예측 + 합의도 추적 + 실패 패턴 축적 (N-1 완료, N-2 대기 중)
 - [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지 (Phase N과 병렬 가능)
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
 
@@ -219,7 +253,7 @@ src/
 │   │   ├── sessionStore.ts  # 세션 저장 + 유사 세션 검색
 │   │   └── memoryLoader.ts  # 학습 → 프롬프트 주입
 │   ├── fundamental/         # SEPA 펀더멘탈 검증
-│   └── tools/               # 에이전트 도구 (13개)
+│   └── tools/               # 에이전트 도구 (16개 + 내부 유틸 1개)
 ├── etl/                     # 데이터 파이프라인
 ├── lib/                     # 유틸리티 (스코어링, 분석)
 └── db/schema/               # Drizzle ORM 스키마

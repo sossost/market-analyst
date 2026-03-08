@@ -1,64 +1,76 @@
 # Market Analyst Agent — Project Overview
 
-**Status:** Active (MVP 운영 중)
+**Status:** Active (운영 중)
 **Created:** 2026-03-04
-**Last Updated:** 2026-03-04
+**Last Updated:** 2026-03-08
 
 ---
 
 ## Vision
 
-매일 아침 Claude Agent가 자율적으로 시장을 탐색하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 카탈리스트 분석까지 포함한 리포트를 Discord로 발송하는 시스템.
+매일 아침 Claude Agent가 자율적으로 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 시간이 지날수록 똑똑해지면서 시장을 탐색하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 카탈리스트 분석까지 포함한 리포트를 Discord로 발송하는 시스템.
 
 ### 과거 사례로 보는 목표
 
 | 연도 | 주도섹터 | 주도주 | 배경 |
 |------|----------|--------|------|
-| 2024 | AI 소프트웨어 | PLTR, NOW | AI 엔터프라이즈 도입 가속 |
-| 2025 | 메모리 반도체 | SK하이닉스, MU | HBM 수요 폭발 |
-| 2026 | 광통신 | CIEN, LITE | AI 데이터센터 인프라 확장 |
+| 2023~24 | AI/국방 플랫폼 | PLTR | 정부·국방 AI 계약 급증 → 실적 흑자 전환 |
+| 2024 | AI 반도체 | NVDA | 데이터센터 GPU 수요 폭발 |
+| 2025 | 메모리 반도체 | MU, SK하이닉스 | HBM 수요 폭발 (AI 훈련/추론) |
+| 2025~26 | 광통신 | CIEN, LITE | AI 데이터센터 인프라 확장 → 광트랜시버 병목 |
 
-**이런 흐름을 Agent가 데이터 + 산업 동향을 종합해서 포착하는 것이 목표.**
+**이런 흐름을 Agent가 데이터 + 토론 + 학습 루프를 통해 포착하는 것이 목표.**
 
 ---
 
 ## System Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    market-analyst                          │
-│                                                            │
-│  ┌────────────┐    ┌─────────────┐    ┌───────────────┐  │
-│  │    ETL     │    │    Agent    │    │   Delivery    │  │
-│  │            │    │    Core     │    │               │  │
-│  │ Stock Phase│    │             │    │ Discord 발송  │  │
-│  │ Sector RS  │───▶│ Claude API  │───▶│ Gist 첨부     │  │
-│  │ Industry RS│    │ + Tool Use  │    │ 일간/주간 분리 │  │
-│  │ Validation │    │             │    │               │  │
-│  └────────────┘    │      ▲      │    └───────────────┘  │
-│                    │      │      │                         │
-│  ┌────────────┐    │    도구들    │    ┌───────────────┐  │
-│  │  Catalyst  │    │             │    │  Report Log   │  │
-│  │  Search    │───▶│             │◀──│               │  │
-│  │            │    └─────────────┘    │ JSON 파일 기반 │  │
-│  │ Brave API  │                       │ 이력 관리      │  │
-│  └────────────┘                       └───────────────┘  │
-│                                                            │
-│  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │
-│                   Shared DB (Supabase)                      │
-│             screener 기존 테이블 + 신규 테이블               │
-└──────────────────────────────────────────────────────────┘
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│     ETL      │    │   Debate     │    │    Agent     │
+│              │    │              │    │              │
+│ Stock Phases │───▶│ 4 Ministers  │───▶│Claude Sonnet │
+│ Sector RS    │    │ 3-Round Talk │    │ + 17 Tools   │
+│ Industry RS  │    │ + Moderator  │    │ + Fundamental│
+└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+       │                   │                   │
+       │            ┌──────▼───────┐           │
+       └───────────▶│  Learning    │◀──────────┘
+                    │    Loop      │
+                    └──────┬───────┘
+                           │
+               ┌───────────┼───────────┐
+               │           │           │
+        ┌──────▼──┐  ┌─────▼────┐  ┌──▼───────┐
+        │ Thesis  │  │ Causal   │  │ Few-shot  │
+        │ Verify  │  │ Analysis │  │ Injection │
+        └─────────┘  └──────────┘  └──────────┘
+                           │
+                    ┌──────▼───────┐
+                    │   Delivery   │
+                    │ Discord+Gist │
+                    └──────────────┘
+                    Supabase (PostgreSQL)
 ```
 
-### CI/CD Pipeline (GitHub Actions)
+### CI/CD Pipeline (GitHub Actions + 맥미니 launchd)
 
 ```
-일간 (월~금, UTC 00:00 = KST 09:00):
+ETL 일간:   일~금 UTC 23:30 (KST 08:30)
   build-stock-phases → build-sector-rs ──┐
                     └→ build-industry-rs ─┤→ validate → run-daily-agent
-                                          │
-주간 (토, UTC 01:00 = KST 10:00):
+
+토론:       월~금 UTC 22:00 (KST 07:00)
+  애널리스트 토론 → thesis 저장
+
+주간 에이전트: 토 UTC 01:00 (KST 10:00)
   run-weekly-agent (금요일 데이터 기반)
+
+QA:         토 UTC 03:00 (KST 12:00)
+  주간 QA 분석 → data/qa-reports/ 저장
+
+ETL 주간:   일 UTC 07:00 (KST 16:00)
+  심볼/펀더멘탈 데이터 갱신
 ```
 
 ---
@@ -67,45 +79,89 @@
 
 | # | Feature | 상태 | 핵심 |
 |---|---------|------|------|
-| F1 | Data Infrastructure | **완료** | 섹터/산업 RS, Weinstein Phase 판별, 브레드스 |
-| F2 | Agent Core | **완료** | Claude agentic loop, 10개 도구, 일간/주간 분리 |
-| F3 | Industry Intelligence | 미착수 | FMP 뉴스, 웹 검색, 테마 연결/예측 |
-| F4 | Tracking System | 미착수 | Agent 전용 워치리스트, Phase 전환 감지 |
-| F5 | Report & Delivery | **완료** | Discord 발송, Gist MD 첨부, 일간/주간 스케줄 |
+| F1 | Data Infrastructure | **완료** | Weinstein Phase, 섹터/산업 RS, 브레드스 |
+| F2 | Agent Core | **완료** | Claude agentic loop, 16개 + 내부 유틸 1개 도구, 일간/주간 분리 |
+| F4 | Tracking System | **완료** | 추천 성과 트래킹, Phase 이탈 감지 |
+| F5 | Report & Delivery | **완료** | Discord 발송, Gist MD 첨부, 리뷰 파이프라인 |
+| F6 | Debate & Evolution | **완료 — 운영 중** | 4명 애널리스트 3라운드 토론 + thesis + 학습 루프 |
+| F7 | Fundamental Validation | **완료** | Minervini SEPA 스코어링 + 전체 종목 확장 |
+| Phase A | Learning Loop | **완료** | 세션 저장, few-shot 주입, 원인 분석, 패턴 승격 |
+| Phase A+ | Signal Validation | **완료** | 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화 |
+| Phase A++ | Weekly Redesign | **완료** | 주간 리포트 전면 재설계 (도구 주간 집계 + 프롬프트 차별화) |
+| Phase N-1 | Narrative Layer | **완료** | 수요-공급-병목 서사 프레임 + 실패 패턴 + 합의도 추적 |
+| Phase N-2 | 검증 인프라 | **대기 중** | 데이터 축적 중 (N-1 머지 후 2주) |
+| F3 | Industry Intelligence | 미착수 | FMP 뉴스, 테마 연결/예측 |
 
 ---
 
-## Agent Tools (10개)
+## Agent Tools (16개 + 내부 유틸 1개)
 
 | 도구 | 일간 | 주간 | 설명 |
 |------|:----:|:----:|------|
-| `getIndexReturns` | O | O | S&P, NASDAQ, DOW, Russell, VIX + 공포탐욕지수 |
-| `getMarketBreadth` | O | O | Phase 분포, Phase 2 비율, A/D ratio |
-| `getLeadingSectors` | O | O | RS 상위 섹터/업종, 가속도, 브레드스 |
-| `getPhase2Stocks` | | O | Phase 2 종목 (RS 60+), 1→2 전환 우선 |
-| `getUnusualStocks` | O | | 복합 조건 특이종목 (등락률+거래량+Phase) |
-| `getStockDetail` | O | O | 개별 종목 상세 (Phase, RS, MA, 52주) |
-| `searchCatalyst` | O | O | Brave Search 뉴스 검색 + 카탈리스트 |
-| `sendDiscordReport` | O | O | Discord 메시지 + Gist MD 첨부 |
-| `readReportHistory` | | O | 과거 리포트 이력 조회 (중복 방지) |
-| `saveReportLog` | O | O | 리포트 결과 JSON 저장 |
+| `getIndexReturns` | O | O | 4대 지수 + VIX + 공포탐욕지수 (주간: 누적 + 고저 위치) |
+| `getMarketBreadth` | O | O | Phase 분포, Phase 2 비율, A/D ratio (주간: 5일 추이 + 전환) |
+| `getLeadingSectors` | O | O | RS 상위 섹터/업종 (주간: 전주 대비 순위 변동 + 신규 진입/이탈) |
+| `getPhase2Stocks` | | O | Phase 2 초입 종목 리스트 (RS 필터링) |
+| `getPhase1LateStocks` | O | O | Phase 1 후기 종목 — Phase 2 진입 1~3개월 선행 포착 |
+| `getRisingRS` | O | O | RS 30~60 상승 가속 종목 — 초기 모멘텀 포착 |
+| `getFundamentalAcceleration` | | O | EPS/매출 성장 가속 종목 (Phase 1~2 대상) |
+| `getUnusualStocks` | O | | 복합 조건 특이종목 스크리닝 (등락률·거래량·Phase 전환) |
+| `getStockDetail` | O | O | 개별 종목 상세 분석 (Phase, RS, MA, 섹터 컨텍스트) |
+| `searchCatalyst` | O | O | Brave Search 뉴스 기반 카탈리스트 |
+| `readReportHistory` | | O | 과거 리포트 이력 (중복 방지) |
+| `readRecommendationPerformance` | | O | 추천 성과 트래킹 (주간: 신규/종료/Phase 이탈 집계) |
+| `readActiveTheses` | O | O | 현재 ACTIVE thesis 목록 (토론 엔진 생성) |
+| `readLearnings` | O | O | 에이전트 장기 기억 (검증된 원칙 + 경계 패턴) |
+| `saveRecommendations` | | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
+| `saveReportLog` | O | O | 리포트 결과 저장 |
+| `sendDiscordReport` | | | Discord + Gist 리포트 발송 (리뷰 파이프라인 전용) |
 
 ---
 
 ## Implementation Progress
 
 ```
-Phase 1 — MVP ✅ 완료
-  F1 (데이터 인프라) → F2 (Agent 코어) → F5 (리포트 발송)
-  결과: 일간/주간 시장 분석 리포트가 매일 Discord로 발송됨
+Layer 1: 데이터 인프라 (F1) — Done
+  Weinstein Phase + 섹터/산업 RS + 브레드스
 
-Phase 2 — 추적 (예정)
-  F4 (워치리스트 + 이력)
-  결과: 발견 종목을 지속 추적, Phase 전환 감지
+Layer 2: 에이전트 코어 (F2 + F5) — Done
+  Claude agentic loop + 16개 + 내부 유틸 1개 도구 + Discord/Gist 딜리버리
 
-Phase 3 — 산업 인텔리전스 (예정)
-  F3 (뉴스 + 웹 검색 + 테마 예측)
-  결과: "왜 오르는가?" + "다음 수혜 섹터" 분석 추가
+Layer 3: 추적 시스템 (F4) — Done
+  추천 종목 성과 트래킹 + Phase 이탈 감지
+
+Layer 4: 애널리스트 토론 시스템 (F6) — Done
+  4명 × 3라운드 + thesis 저장 + 조건부 Discord 알림
+
+Layer 5: Thesis 추적 + 학습 루프 (F6 확장) — Done
+  LLM 자동 검증 + 원인 분석 + 패턴 승격 + 기억 주입
+
+  학습 승격 흐름:
+    적중 패턴: thesis 3회+ CONFIRMED → 이항 검정 통과 → agent_learnings (category: "principle")
+    실패 패턴: collect-failure-patterns.ts → failure_patterns (70%+ 실패율 + 통계 유의성)
+              → promote-learnings.ts → agent_learnings (category: "caution")
+              → memoryLoader.ts → 토론 프롬프트에 "경계 패턴" 주입 → 신뢰도 낮춤
+    강등: 실패율 70% 미만 하락 시 → failure_patterns.isActive=false + agentLearnings 비활성화
+
+Layer 6: 펀더멘탈 검증 (F7) — Done
+  Minervini SEPA 스코어링 (S→F 등급) + S등급 개별 리포트
+
+Layer 7: 시그널 검증 + 품질 관리 (Phase A+) — Done
+  초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화
+
+Layer 8: 주간 리포트 재설계 (Phase A++) — Done
+  도구 주간 모드 + 방향·속도 해석 중심 프롬프트
+
+Phase N-1: 서사 레이어 확립 — Done (PR #82~#86)
+  수요-공급-병목 프레임 + thesis 카테고리 분리 +
+  N+1 병목 예측 + 합의도 추적 + 실패 패턴 + 위양성 축적
+
+Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
+  홀드아웃 테스트 + 위양성 비용 리포트
+  착수 기준: 아래 3개 중 2개 이상 충족 시
+    ① N-1 머지 후 2주 경과 (2026-03-22~)
+    ② structural_narrative 카테고리 thesis 10건+
+    ③ failure_patterns 테이블에 활성 패턴 3건+
 ```
 
 ---
@@ -116,15 +172,19 @@ Phase 3 — 산업 인텔리전스 (예정)
 |------|------|------|
 | 프로젝트 구조 | 별도 레포 (`market-analyst`) | 관심사 완전 분리, 독립 CI/CD |
 | DB 공유 | screener와 같은 Supabase | 기존 가격/재무 데이터 재활용, 중복 없음 |
-| 실행 환경 | Claude API + Tool Use (Node.js) | 완전한 제어권, 도구 설계 자유 |
-| 모델 | Claude Opus 4.6 | 시장 분석 품질 최우선 |
+| 실행 환경 | Claude API + Tool Use (Node.js ESM) | 완전한 제어권, 도구 설계 자유 |
+| 모델 | Claude Sonnet 4 (Anthropic SDK) | 비용-품질 균형, 일간 다중 호출에 적합 |
 | Phase 기준 | Weinstein Stage Analysis (8개 조건) | 체계적 프레임워크, 정량 판별 가능 |
 | 섹터 시그널 | RS 가속도 + 브레드스 | 다수 종목 동반 상승 확인 |
 | 카탈리스트 | Brave Search API | 뉴스 검색 비용 합리적, 빠른 결과 |
 | 리포트 분리 | 일간(시장 온도) / 주간(종목 발굴) | 목적별 최적화 |
 | 딜리버리 | Discord Webhook + Gist | 모바일 즉시 확인, MD 파일 완전 렌더링 |
 | 리포트 이력 | JSON 파일 (`data/reports/`) | DB 불필요, 간단하고 충분 |
-| 스케줄링 | GitHub Actions cron | 무료 티어, 인프라 관리 불필요 |
+| 스케줄링 | GitHub Actions cron + 맥미니 launchd | GitHub Actions: 기본 파이프라인 / launchd: 맥미니 로컬 보조 |
+| 토론 시스템 | 4명 애널리스트 × 3라운드 | 매크로/테크/지정학/심리 교차 검증 |
+| 학습 루프 | thesis 검증 + 패턴 승격 | 이항 검정(p < 0.05 + Cohen's h ≥ 0.3) 유의성 필터 |
+| 펀더멘탈 | Minervini SEPA 기준 | EPS/매출 YoY >25%, 가속, 마진확대 |
+| 비용 | ~$15/월 (전체 API 비용, 프롬프트 캐싱 적용 후) | 약 34회/월 실행 × ~$0.45/회. 캐시 읽기 90% 할인($0.30/M). N-1 프롬프트 확장 후 미측정 — 재측정 필요 |
 
 ---
 
@@ -133,10 +193,10 @@ Phase 3 — 산업 인텔리전스 (예정)
 | 의존성 | 용도 | 비용 |
 |--------|------|------|
 | Supabase (PostgreSQL) | 공유 DB — screener 기존 테이블 + 신규 테이블 | 기존 플랜 |
-| Claude API (Anthropic) | Agent 추론 엔진 (Opus 4.6) | ~$0.3-0.5/일 |
+| Claude API (Anthropic) | Agent 추론 엔진 (Sonnet 4) | ~$15/월 (전체) |
 | Discord Webhook | 리포트 발송 (일간/주간/에러 채널) | 무료 |
 | Brave Search API | 카탈리스트 뉴스 검색 | 무료 티어 (월 2,000건) |
-| GitHub Actions | 스케줄링 (일간 ETL+Agent, 주간 Agent) | 무료 티어 |
+| GitHub Actions | 스케줄링 (ETL, 토론, 에이전트, QA) | 무료 티어 |
 | GitHub Gist | MD 리포트 첨부 | 무료 |
 
 ---
@@ -150,16 +210,20 @@ screener DB (기존 테이블 — 읽기 전용)
 ├── daily_ma               → 이동평균 + 거래량 MA
 ├── daily_ratios           → 일별 밸류에이션
 ├── quarterly_financials   → 분기 재무
+├── quarterly_ratios       → 분기 비율
 ├── daily_breakout_signals → 돌파 시그널
 └── daily_noise_signals    → 노이즈 필터
 
 market-analyst DB (신규 테이블 — 읽기/쓰기)
-├── stock_phases       → 종목별 Weinstein Phase 판별 결과 ✅
-├── sector_rs_daily    → 섹터별 RS 점수/가속도/브레드스 ✅
-├── industry_rs_daily  → 산업별 RS 점수/가속도/브레드스 ✅
-├── agent_watchlist         → Agent 전용 워치리스트 (F4 예정)
-├── agent_watchlist_history → 워치리스트 변동 이력 (F4 예정)
-└── sector_themes           → 섹터 테마/내러티브 추적 (F3 예정)
+├── stock_phases           → Weinstein Phase 판별 결과
+├── sector_rs_daily        → 섹터별 RS 점수/가속도/브레드스
+├── industry_rs_daily      → 산업별 RS 점수/가속도/브레드스
+├── recommendations        → 추천 종목 기록 + 성과 트래킹
+├── theses                 → 토론 thesis (카테고리 분리)
+├── debate_sessions        → 토론 세션 저장
+├── agent_learnings        → 장기 기억 (검증된 원칙 + 경계 패턴)
+├── fundamental_scores     → SEPA 펀더멘탈 점수
+└── failure_patterns       → Phase 2 신호 후 실패 케이스
 ```
 
 ---
@@ -174,19 +238,34 @@ market-analyst/
 │   │   ├── systemPrompt.ts     # 일간/주간 시스템 프롬프트
 │   │   ├── run-daily-agent.ts  # 일간 에이전트 엔트리포인트
 │   │   ├── run-weekly-agent.ts # 주간 에이전트 엔트리포인트
+│   │   ├── reviewAgent.ts      # 리뷰 파이프라인
 │   │   ├── discord.ts          # Discord Webhook 발송
 │   │   ├── gist.ts             # GitHub Gist 업로드
 │   │   ├── reportLog.ts        # 리포트 이력 JSON I/O
 │   │   ├── logger.ts           # 구조화된 로깅
-│   │   └── tools/              # 에이전트 도구 (10개)
+│   │   ├── debate/             # F6: 애널리스트 토론 + 학습 루프
+│   │   │   ├── debateEngine.ts     # 3라운드 토론 오케스트레이터
+│   │   │   ├── thesisVerifier.ts   # LLM 기반 자동 검증
+│   │   │   ├── causalAnalyzer.ts   # 원인 분석
+│   │   │   ├── sessionStore.ts     # 세션 저장 + 유사 세션 검색
+│   │   │   └── memoryLoader.ts     # 학습 → 프롬프트 주입
+│   │   ├── fundamental/        # F7: SEPA 펀더멘탈 검증
+│   │   └── tools/              # 에이전트 도구 (16개 + 내부 유틸 1개)
 │   ├── etl/                # F1: ETL Pipeline
-│   │   ├── jobs/               # ETL 실행 파일 (4개)
+│   │   ├── jobs/               # ETL 실행 파일
 │   │   └── utils/              # Phase 판별, RS 계산, 유틸리티
+│   ├── lib/                # 유틸리티
+│   │   ├── fundamental-scorer.ts    # SEPA 스코어링
+│   │   ├── statisticalTests.ts      # 이항 검정 + Cohen's h
+│   │   └── biasDetector.ts          # bull-bias 편향 감지
 │   ├── db/                 # Drizzle ORM 스키마
 │   └── types/              # 공유 타입 정의
 ├── __tests__/              # Vitest 테스트
-├── data/reports/           # 리포트 이력 JSON
+├── data/
+│   ├── reports/            # 리포트 이력 JSON
+│   ├── qa-reports/         # QA 분석 결과 MD
+│   └── review-feedback/    # 도구 유효성 검증 JSON
 ├── docs/features/          # 기능별 스펙/결정/플랜
-├── .github/workflows/      # CI/CD (일간 ETL, 주간 Agent)
-└── prompts/                # (reserved)
+├── .github/workflows/      # CI/CD (ETL, 토론, 에이전트, QA)
+└── scripts/launchd/        # 맥미니 launchd 스케줄 설정
 ```
