@@ -193,7 +193,7 @@ export function formatThesesForPrompt(
   for (const t of rows) {
     const persona = PERSONA_LABEL[t.agentPersona] ?? t.agentPersona;
     const conf = t.confidence === "high" ? "HIGH" : t.confidence === "medium" ? "MED" : "LOW";
-    const catLabel = CATEGORY_LABEL[t.category ?? "short_term_outlook"] ?? "SHORT";
+    const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "SHORT";
     lines.push(
       `- [${catLabel}][${conf}/${t.consensusLevel}] ${persona}: ${t.thesis} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`,
     );

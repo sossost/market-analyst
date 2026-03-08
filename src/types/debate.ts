@@ -38,7 +38,7 @@ export interface Thesis {
   invalidationCondition?: string;
   confidence: Confidence;
   consensusLevel: ConsensusLevel;
-  category?: ThesisCategory;
+  category: ThesisCategory;
 }
 
 /**
