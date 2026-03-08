@@ -118,13 +118,6 @@ export function parseAge(age: string | undefined): string | null {
 }
 
 /**
- * 뉴스 수집 메인 함수.
- * 1. 각 페르소나별 쿼리로 Brave News Search 호출
- * 2. URL 기반 중복 제거 (DB UNIQUE constraint 활용)
- * 3. 키워드 기반 카테고리/감성 분류
- * 4. DB upsert (ON CONFLICT DO NOTHING)
- */
-/**
  * URL에서 hostname을 안전하게 추출한다.
  * 파싱 실패 시 null 반환.
  */

@@ -5,6 +5,14 @@ import { logger } from "../logger.js";
 
 type Persona = "macro" | "tech" | "geopolitics" | "sentiment";
 
+/**
+ * 외부 뉴스 텍스트에서 XML-like 태그를 제거하여 프롬프트 인젝션을 방지한다.
+ * closing/opening tag 패턴을 strip.
+ */
+function sanitizeForPrompt(text: string): string {
+  return text.replace(/<\/?[a-zA-Z][a-zA-Z0-9-]*[^>]*>/g, "");
+}
+
 const MAX_NEWS_PER_PERSONA = 15;
 const DEFAULT_HOURS_BACK = 24;
 
@@ -82,8 +90,9 @@ export async function loadNewsForPersona(
 
   const lines = rows.map((row) => {
     const source = row.source ?? "unknown";
-    const description = row.description ?? "";
-    return `- ${row.title}\n  ${description}\n  (source: ${source}, category: ${row.category})`;
+    const title = sanitizeForPrompt(row.title);
+    const description = sanitizeForPrompt(row.description ?? "");
+    return `- ${title}\n  ${description}\n  (source: ${source}, category: ${row.category})`;
   });
 
   return [
