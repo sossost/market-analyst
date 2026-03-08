@@ -26,6 +26,7 @@ const SEARCH_QUERIES: Record<keyof NewsCollection, string[]> = {
   macro: [
     "Federal Reserve interest rate policy today",
     "US economy GDP employment inflation latest",
+    "fiscal policy federal budget executive order economic structural impact",
   ],
   tech: [
     "AI semiconductor technology stocks earnings latest",
@@ -34,6 +35,7 @@ const SEARCH_QUERIES: Record<keyof NewsCollection, string[]> = {
   geopolitics: [
     "US China trade tariff sanctions latest",
     "geopolitical risk oil supply chain disruption",
+    "US legislation bill regulation tariff subsidy sector impact latest",
   ],
   sentiment: [
     "stock market sentiment VIX fear greed index",
@@ -76,7 +78,7 @@ async function searchBraveNews(query: string): Promise<NewsItem[]> {
 
 /**
  * 토론 전 뉴스 사전 수집.
- * 애널리스트별 2개 쿼리 × 5건 = 최대 40건 수집.
+ * 애널리스트별 2~3개 쿼리 × 5건 = 최대 50건 수집.
  * 순차 실행 (rate limit 방지).
  */
 export async function collectNews(): Promise<NewsCollection> {

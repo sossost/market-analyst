@@ -2,7 +2,7 @@ import { db } from "../../db/client.js";
 import { theses } from "../../db/schema/analyst.js";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
-import type { Thesis } from "../../types/debate.js";
+import type { Thesis, ThesisCategory } from "../../types/debate.js";
 
 /**
  * Save extracted theses to DB as ACTIVE.
@@ -30,6 +30,7 @@ export async function saveTheses(
     invalidationCondition: t.invalidationCondition ?? null,
     confidence: t.confidence,
     consensusLevel: t.consensusLevel,
+    category: t.category ?? "short_term_outlook",
     status: "ACTIVE" as const,
   }));
 
@@ -137,6 +138,48 @@ export async function getThesisStats(): Promise<Record<string, number>> {
 }
 
 /**
+ * 카테고리별 status 집계 쿼리.
+ * 반환 예: { structural_narrative: { ACTIVE: 3, CONFIRMED: 1 }, ... }
+ */
+export async function getThesisStatsByCategory(): Promise<
+  Partial<Record<ThesisCategory, Record<string, number>>>
+> {
+  const rows = await db
+    .select({
+      category: theses.category,
+      status: theses.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(theses)
+    .groupBy(theses.category, theses.status);
+
+  const result: Partial<Record<ThesisCategory, Record<string, number>>> = {};
+
+  for (const r of rows) {
+    const cat = (r.category ?? "short_term_outlook") as ThesisCategory;
+    if (result[cat] == null) {
+      result[cat] = {};
+    }
+    result[cat]![r.status] = r.count;
+  }
+
+  return result;
+}
+
+const PERSONA_LABEL: Record<string, string> = {
+  macro: "매크로 이코노미스트",
+  tech: "테크 애널리스트",
+  geopolitics: "지정학 전략가",
+  sentiment: "시장 심리 분석가",
+};
+
+const CATEGORY_LABEL: Record<ThesisCategory, string> = {
+  structural_narrative: "STRUCTURAL",
+  sector_rotation: "ROTATION",
+  short_term_outlook: "SHORT",
+};
+
+/**
  * ACTIVE theses를 주간 에이전트 프롬프트용 텍스트로 변환.
  * 빈 배열이면 빈 문자열 반환.
  */
@@ -145,20 +188,14 @@ export function formatThesesForPrompt(
 ): string {
   if (rows.length === 0) return "";
 
-  const PERSONA_LABEL: Record<string, string> = {
-    macro: "매크로 이코노미스트",
-    tech: "테크 애널리스트",
-    geopolitics: "지정학 전략가",
-    sentiment: "시장 심리 분석가",
-  };
-
   const lines: string[] = [];
 
   for (const t of rows) {
     const persona = PERSONA_LABEL[t.agentPersona] ?? t.agentPersona;
     const conf = t.confidence === "high" ? "HIGH" : t.confidence === "medium" ? "MED" : "LOW";
+    const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "SHORT";
     lines.push(
-      `- [${conf}/${t.consensusLevel}] ${persona}: ${t.thesis} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`,
+      `- [${catLabel}][${conf}/${t.consensusLevel}] ${persona}: ${t.thesis} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`,
     );
   }
 

@@ -210,6 +210,8 @@ export const theses = pgTable(
     confidence: text("confidence").notNull(), // 'low' | 'medium' | 'high'
     consensusLevel: text("consensus_level").notNull(), // '4/4' | '3/4' | '2/4' | '1/4'
 
+    category: text("category").$type<import("../../types/debate.js").ThesisCategory>().notNull(), // 'structural_narrative' | 'sector_rotation' | 'short_term_outlook'
+
     status: text("status").notNull().default("ACTIVE"), // ACTIVE | CONFIRMED | INVALIDATED | EXPIRED
     verificationDate: text("verification_date"),
     verificationResult: text("verification_result"),
