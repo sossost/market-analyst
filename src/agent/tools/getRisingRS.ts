@@ -94,7 +94,11 @@ export const getRisingRS: AgentTool = {
       ),
     );
 
-    const stocks = rows.map((r) => ({
+    const stocks = rows.map((r) => {
+      const pctFromLowRaw =
+        r.pct_from_low_52w != null ? toNum(r.pct_from_low_52w) * 100 : null;
+
+      return {
       symbol: r.symbol,
       phase: r.phase,
       rsScore: r.rs_score,
@@ -102,16 +106,16 @@ export const getRisingRS: AgentTool = {
       rsChange: r.rs_change,
       ma150Slope: r.ma150_slope != null ? toNum(r.ma150_slope) : null,
       pctFromLow52w:
-        r.pct_from_low_52w != null
-          ? Number((toNum(r.pct_from_low_52w) * 100).toFixed(1))
-          : null,
+        pctFromLowRaw != null ? Number(pctFromLowRaw.toFixed(1)) : null,
+      isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
       volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
       sector: r.sector,
       industry: r.industry,
       sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
       sectorChange4w: r.sector_change_4w != null ? toNum(r.sector_change_4w) : null,
       sectorGroupPhase: r.sector_group_phase,
-    }));
+    };
+    });
 
     return JSON.stringify({
       date,

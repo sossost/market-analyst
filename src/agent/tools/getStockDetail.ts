@@ -150,6 +150,9 @@ export const getStockDetail: AgentTool = {
       }
     }
 
+    const pctFromLowRaw =
+      sp.pct_from_low_52w != null ? toNum(sp.pct_from_low_52w) * 100 : null;
+
     return JSON.stringify({
       symbol,
       date,
@@ -167,9 +170,8 @@ export const getStockDetail: AgentTool = {
           ? Number((toNum(sp.pct_from_high_52w) * 100).toFixed(1))
           : null,
       pctFromLow52w:
-        sp.pct_from_low_52w != null
-          ? Number((toNum(sp.pct_from_low_52w) * 100).toFixed(1))
-          : null,
+        pctFromLowRaw != null ? Number(pctFromLowRaw.toFixed(1)) : null,
+      isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
       conditionsMet:
         sp.conditions_met != null ? JSON.parse(sp.conditions_met) : [],
       marketCap: meta?.market_cap != null ? toNum(meta.market_cap) : null,

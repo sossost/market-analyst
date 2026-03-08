@@ -79,7 +79,11 @@ export const getPhase1LateStocks: AgentTool = {
       ),
     );
 
-    const stocks = rows.map((r) => ({
+    const stocks = rows.map((r) => {
+      const pctFromLowRaw =
+        r.pct_from_low_52w != null ? toNum(r.pct_from_low_52w) * 100 : null;
+
+      return {
       symbol: r.symbol,
       phase: r.phase,
       prevPhase: r.prev_phase,
@@ -90,16 +94,16 @@ export const getPhase1LateStocks: AgentTool = {
           ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
           : null,
       pctFromLow52w:
-        r.pct_from_low_52w != null
-          ? Number((toNum(r.pct_from_low_52w) * 100).toFixed(1))
-          : null,
+        pctFromLowRaw != null ? Number(pctFromLowRaw.toFixed(1)) : null,
+      isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
       conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
       volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
       sector: r.sector,
       industry: r.industry,
       sectorGroupPhase: r.sector_group_phase,
       sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
-    }));
+    };
+    });
 
     return JSON.stringify({
       date,
