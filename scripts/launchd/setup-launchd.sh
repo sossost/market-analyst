@@ -24,6 +24,7 @@ PLISTS=(
   "com.market-analyst.agent-weekly"
   "com.market-analyst.qa-weekly"
   "com.market-analyst.log-cleanup"
+  "com.market-analyst.news-collect"
 )
 
 unload_agents() {
@@ -65,6 +66,7 @@ install_agents() {
   echo "  Agent Weekly: KST 10:00 토"
   echo "  QA Weekly:    KST 12:00 토"
   echo "  Log Cleanup:  KST 09:00 일"
+  echo "  News Collect: KST 00/06/12/18:00 매일"
   echo ""
   echo "로그: $PROJECT_DIR/logs/"
 }

@@ -85,6 +85,13 @@
       "when": 1772939710979,
       "tag": "0011_nostalgic_baron_strucker",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1772955246985,
+      "tag": "0012_fixed_sandman",
+      "breakpoints": true
     }
   ]
 }
