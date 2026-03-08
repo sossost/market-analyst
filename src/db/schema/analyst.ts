@@ -11,6 +11,7 @@ import {
   smallint,
   boolean,
   timestamp,
+  jsonb,
   unique,
   index,
 } from "drizzle-orm/pg-core";
@@ -527,5 +528,64 @@ export const newsArchive = pgTable(
     idxCategory: index("idx_news_archive_category").on(t.category),
     idxSentiment: index("idx_news_archive_sentiment").on(t.sentiment),
     idxPersona: index("idx_news_archive_persona").on(t.queryPersona),
+  }),
+);
+
+/**
+ * narrative_chains — 병목 체인 독립 엔티티.
+ * 메가트렌드별 병목 노드의 생애주기(식별일 → 해소일)를 추적하여
+ * "이 유형의 병목은 평균 N일 후 해소된다"는 패턴 도출의 기반 데이터를 축적한다.
+ */
+export type NarrativeChainStatus =
+  | "ACTIVE"
+  | "RESOLVING"
+  | "RESOLVED"
+  | "OVERSUPPLY"
+  | "INVALIDATED";
+
+export const narrativeChains = pgTable(
+  "narrative_chains",
+  {
+    id: serial("id").primaryKey(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+
+    // 서사 구조
+    megatrend: text("megatrend").notNull(), // "AI 인프라 확장"
+    demandDriver: text("demand_driver").notNull(), // "데이터센터 GPU 수요 급증"
+    supplyChain: text("supply_chain").notNull(), // "GPU → HBM → 광트랜시버 → 전력"
+    bottleneck: text("bottleneck").notNull(), // "광트랜시버 공급 부족" (현재 병목 노드)
+
+    // 병목 생애주기 날짜
+    bottleneckIdentifiedAt: timestamp("bottleneck_identified_at", {
+      withTimezone: true,
+    }).notNull(),
+    bottleneckResolvedAt: timestamp("bottleneck_resolved_at", {
+      withTimezone: true,
+    }),
+
+    // N+1 병목 예측
+    nextBottleneck: text("next_bottleneck"),
+
+    // 상태
+    status: text("status")
+      .$type<NarrativeChainStatus>()
+      .notNull()
+      .default("ACTIVE"),
+
+    // 수혜 섹터/종목
+    beneficiarySectors: jsonb("beneficiary_sectors").$type<string[]>(),
+    beneficiaryTickers: jsonb("beneficiary_tickers").$type<string[]>(),
+
+    // 연결된 thesis IDs
+    linkedThesisIds: jsonb("linked_thesis_ids").$type<number[]>(),
+
+    // 해소까지 소요 일수 (해소 시 자동 계산)
+    resolutionDays: integer("resolution_days"),
+  },
+  (t) => ({
+    idxStatus: index("idx_narrative_chains_status").on(t.status),
+    idxMegatrend: index("idx_narrative_chains_megatrend").on(t.megatrend),
   }),
 );
