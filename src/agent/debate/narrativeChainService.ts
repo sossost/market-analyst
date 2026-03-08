@@ -80,11 +80,17 @@ export function parseBottleneckFromThesis(thesis: Thesis): BottleneckInfo | null
   };
 }
 
-function extractField(text: string, keyword: string): string | null {
-  // Match patterns like "메가트렌드: AI 인프라" or "bottleneck: 광트랜시버"
-  const patterns = [
-    new RegExp(`${keyword}[:\\s]+([^\\n.]+)`, "i"),
-  ];
+type FieldKeyword = "megatrend" | "demand" | "supply" | "bottleneck";
+
+const FIELD_PATTERNS: Record<FieldKeyword, RegExp[]> = {
+  megatrend: [/메가트렌드[:\s]+([^\n.]+)/i, /megatrend[:\s]+([^\n.]+)/i],
+  demand: [/수요[:\s]+([^\n.]+)/i, /demand[:\s]+([^\n.]+)/i],
+  supply: [/공급망[:\s]+([^\n.]+)/i, /supply[:\s]+([^\n.]+)/i],
+  bottleneck: [/병목[:\s]+([^\n.]+)/i, /bottleneck[:\s]+([^\n.]+)/i],
+};
+
+function extractField(text: string, keyword: FieldKeyword): string | null {
+  const patterns = FIELD_PATTERNS[keyword];
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match?.[1] != null) {
@@ -169,44 +175,41 @@ export async function recordNarrativeChain(
     if (existing != null) {
       // Update existing chain
       const updatedThesisIds = [...new Set([...existing.linkedThesisIds, thesisId])];
-      const updateData: Record<string, unknown> = {
-        linkedThesisIds: updatedThesisIds,
-      };
 
-      // Status transition
-      if (info.status !== "ACTIVE") {
-        updateData.status = info.status;
-      }
-
-      // Record resolution date for terminal states
       const isResolved = info.status === "RESOLVED" || info.status === "OVERSUPPLY";
+
       if (isResolved) {
         const now = new Date();
-        updateData.bottleneckResolvedAt = now;
-
-        // Fetch identified_at to calculate resolution_days
         const chain = await db
           .select({ bottleneckIdentifiedAt: narrativeChains.bottleneckIdentifiedAt })
           .from(narrativeChains)
           .where(eq(narrativeChains.id, existing.id))
           .limit(1);
 
-        if (chain[0] != null) {
-          updateData.resolutionDays = calculateResolutionDays(
-            chain[0].bottleneckIdentifiedAt,
-            now,
-          );
-        }
-      }
+        const resolutionDays = chain[0] != null
+          ? calculateResolutionDays(chain[0].bottleneckIdentifiedAt, now)
+          : undefined;
 
-      if (info.nextBottleneck != null) {
-        updateData.nextBottleneck = info.nextBottleneck;
+        await db
+          .update(narrativeChains)
+          .set({
+            linkedThesisIds: updatedThesisIds,
+            status: info.status,
+            bottleneckResolvedAt: now,
+            ...(resolutionDays != null && { resolutionDays }),
+            ...(info.nextBottleneck != null && { nextBottleneck: info.nextBottleneck }),
+          })
+          .where(eq(narrativeChains.id, existing.id));
+      } else {
+        await db
+          .update(narrativeChains)
+          .set({
+            linkedThesisIds: updatedThesisIds,
+            ...(info.status !== "ACTIVE" && { status: info.status }),
+            ...(info.nextBottleneck != null && { nextBottleneck: info.nextBottleneck }),
+          })
+          .where(eq(narrativeChains.id, existing.id));
       }
-
-      await db
-        .update(narrativeChains)
-        .set(updateData)
-        .where(eq(narrativeChains.id, existing.id));
 
       logger.info(
         "NarrativeChain",

@@ -38,9 +38,13 @@ export async function getChainStats(): Promise<ChainStats> {
     .from(narrativeChains);
 
   const resolvedStatuses: NarrativeChainStatus[] = ["RESOLVED", "OVERSUPPLY"];
-  const resolvedChains = allChains.filter(
-    (c) => resolvedStatuses.includes(c.status as NarrativeChainStatus) && c.resolutionDays != null,
-  );
+  const resolvedDays = allChains
+    .filter(
+      (c) =>
+        resolvedStatuses.includes(c.status as NarrativeChainStatus) &&
+        c.resolutionDays != null,
+    )
+    .map((c) => c.resolutionDays as number);
 
   const chainsByMegatrend: Record<string, number> = {};
   for (const chain of allChains) {
@@ -50,19 +54,16 @@ export async function getChainStats(): Promise<ChainStats> {
   let avgResolutionDays: number | null = null;
   let medianResolutionDays: number | null = null;
 
-  if (resolvedChains.length >= MIN_RESOLVED_FOR_STATS) {
-    const days = resolvedChains
-      .map((c) => c.resolutionDays!)
-      .sort((a, b) => a - b);
-
-    const sum = days.reduce((acc, d) => acc + d, 0);
-    avgResolutionDays = Math.round(sum / days.length);
-    medianResolutionDays = calculateMedian(days);
+  if (resolvedDays.length >= MIN_RESOLVED_FOR_STATS) {
+    const sorted = [...resolvedDays].sort((a, b) => a - b);
+    const sum = sorted.reduce((acc, d) => acc + d, 0);
+    avgResolutionDays = Math.round(sum / sorted.length);
+    medianResolutionDays = calculateMedian(sorted);
   }
 
   return {
     totalChains: allChains.length,
-    resolvedChains: resolvedChains.length,
+    resolvedChains: resolvedDays.length,
     avgResolutionDays,
     medianResolutionDays,
     chainsByMegatrend,

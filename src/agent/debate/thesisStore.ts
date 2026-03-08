@@ -50,9 +50,12 @@ export async function saveTheses(
   logger.info("ThesisStore", `Saved ${result.length} theses for ${debateDate}`);
 
   // Record narrative chains for structural_narrative theses (error-isolated)
-  for (let i = 0; i < extractedTheses.length; i++) {
-    const thesis = extractedTheses[i];
-    const savedId = result[i]?.id;
+  const pairs = extractedTheses.map((thesis, i) => ({
+    thesis,
+    savedId: result[i]?.id,
+  }));
+
+  for (const { thesis, savedId } of pairs) {
     if (thesis.category === "structural_narrative" && savedId != null) {
       await recordNarrativeChain(thesis, savedId);
     }
