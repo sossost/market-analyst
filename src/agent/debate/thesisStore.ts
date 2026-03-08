@@ -3,6 +3,7 @@ import { theses } from "../../db/schema/analyst.js";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
 import type { Thesis, ThesisCategory, ConsensusLevel, ConsensusHitRateRow } from "../../types/debate.js";
+import { recordNarrativeChain } from "./narrativeChainService.js";
 
 function parseConsensusScore(level: ConsensusLevel): number {
   const score = parseInt(level.split("/")[0], 10);
@@ -47,6 +48,16 @@ export async function saveTheses(
 
   const result = await db.insert(theses).values(rows).returning({ id: theses.id });
   logger.info("ThesisStore", `Saved ${result.length} theses for ${debateDate}`);
+
+  // Record narrative chains for structural_narrative theses (error-isolated)
+  for (let i = 0; i < extractedTheses.length; i++) {
+    const thesis = extractedTheses[i];
+    const savedId = result[i]?.id;
+    if (thesis.category === "structural_narrative" && savedId != null) {
+      await recordNarrativeChain(thesis, savedId);
+    }
+  }
+
   return result.length;
 }
 
