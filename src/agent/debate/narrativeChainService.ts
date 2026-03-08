@@ -108,16 +108,23 @@ function extractFirstSentence(text: string): string {
 /**
  * Find an existing active chain with the same megatrend and similar bottleneck.
  */
+interface MatchingChain {
+  id: number;
+  linkedThesisIds: number[];
+  bottleneckIdentifiedAt: Date;
+}
+
 export async function findMatchingChain(
   megatrend: string,
   bottleneck: string,
-): Promise<{ id: number; linkedThesisIds: number[] } | null> {
+): Promise<MatchingChain | null> {
   const activeStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
   const candidates = await db
     .select({
       id: narrativeChains.id,
       bottleneck: narrativeChains.bottleneck,
       linkedThesisIds: narrativeChains.linkedThesisIds,
+      bottleneckIdentifiedAt: narrativeChains.bottleneckIdentifiedAt,
     })
     .from(narrativeChains)
     .where(
@@ -133,6 +140,7 @@ export async function findMatchingChain(
       return {
         id: candidate.id,
         linkedThesisIds: (candidate.linkedThesisIds as number[]) ?? [],
+        bottleneckIdentifiedAt: candidate.bottleneckIdentifiedAt,
       };
     }
   }
@@ -180,15 +188,10 @@ export async function recordNarrativeChain(
 
       if (isResolved) {
         const now = new Date();
-        const chain = await db
-          .select({ bottleneckIdentifiedAt: narrativeChains.bottleneckIdentifiedAt })
-          .from(narrativeChains)
-          .where(eq(narrativeChains.id, existing.id))
-          .limit(1);
-
-        const resolutionDays = chain[0] != null
-          ? calculateResolutionDays(chain[0].bottleneckIdentifiedAt, now)
-          : undefined;
+        const resolutionDays = calculateResolutionDays(
+          existing.bottleneckIdentifiedAt,
+          now,
+        );
 
         await db
           .update(narrativeChains)
@@ -196,7 +199,7 @@ export async function recordNarrativeChain(
             linkedThesisIds: updatedThesisIds,
             status: info.status,
             bottleneckResolvedAt: now,
-            ...(resolutionDays != null && { resolutionDays }),
+            resolutionDays,
             ...(info.nextBottleneck != null && { nextBottleneck: info.nextBottleneck }),
           })
           .where(eq(narrativeChains.id, existing.id));

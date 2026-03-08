@@ -233,17 +233,19 @@ describe("narrativeChainService", () => {
     });
 
     it("returns matching chain when similarity >= 0.7", async () => {
+      const identifiedAt = new Date("2026-01-01");
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
           bottleneck: "GPU supply shortage",
           linkedThesisIds: [10, 20],
+          bottleneckIdentifiedAt: identifiedAt,
         },
       ]);
 
       // "GPU supply shortage" vs "GPU supply shortage"
       const result = await findMatchingChain("AI 인프라", "GPU supply shortage");
-      expect(result).toEqual({ id: 1, linkedThesisIds: [10, 20] });
+      expect(result).toEqual({ id: 1, linkedThesisIds: [10, 20], bottleneckIdentifiedAt: identifiedAt });
     });
 
     it("returns null when similarity < 0.7", async () => {
@@ -252,6 +254,7 @@ describe("narrativeChainService", () => {
           id: 1,
           bottleneck: "completely different bottleneck text here",
           linkedThesisIds: [10],
+          bottleneckIdentifiedAt: new Date("2026-01-01"),
         },
       ]);
 
@@ -260,16 +263,18 @@ describe("narrativeChainService", () => {
     });
 
     it("handles null linkedThesisIds gracefully", async () => {
+      const identifiedAt = new Date("2026-01-01");
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
           bottleneck: "same text",
           linkedThesisIds: null,
+          bottleneckIdentifiedAt: identifiedAt,
         },
       ]);
 
       const result = await findMatchingChain("trend", "same text");
-      expect(result).toEqual({ id: 1, linkedThesisIds: [] });
+      expect(result).toEqual({ id: 1, linkedThesisIds: [], bottleneckIdentifiedAt: identifiedAt });
     });
   });
 
@@ -341,6 +346,7 @@ describe("narrativeChainService", () => {
           id: 5,
           bottleneck: "AI 인프라 GPU supply shortage 지속",
           linkedThesisIds: [10],
+          bottleneckIdentifiedAt: new Date("2026-01-01"),
         },
       ]);
       mockUpdateWhere.mockResolvedValueOnce(undefined);
@@ -386,18 +392,17 @@ describe("narrativeChainService", () => {
         category: "structural_narrative",
       };
 
-      // findMatchingChain returns existing chain
+      // findMatchingChain returns existing chain with bottleneckIdentifiedAt
+      const identifiedAt = new Date("2026-01-01");
       mockWhere.mockResolvedValueOnce([
         {
           id: 5,
           bottleneck: "GPU 공급 부족이 RESOLVED 완료",
           linkedThesisIds: [10],
+          bottleneckIdentifiedAt: identifiedAt,
         },
       ]);
 
-      // Fetch identified_at for resolution_days calc
-      const identifiedAt = new Date("2026-01-01");
-      mockLimit.mockResolvedValueOnce([{ bottleneckIdentifiedAt: identifiedAt }]);
       mockUpdateWhere.mockResolvedValueOnce(undefined);
 
       await recordNarrativeChain(thesis, 30);
