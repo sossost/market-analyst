@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { callAgent } from "./callAgent.js";
 import { logger } from "../logger.js";
-import type { RoundOutput, SynthesisResult, Thesis } from "../../types/debate.js";
+import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory } from "../../types/debate.js";
 import type { PersonaDefinition } from "../../types/debate.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
@@ -145,6 +145,11 @@ ${round2Section}
 - confidence "high"는 3/4 이상 합의 + 명확한 데이터 근거가 있을 때만
 - ETF가 월간 20% 이상 등락하는 예측은 극단적 상황 아니면 지양
 
+**카테고리 분류 기준:**
+- \`structural_narrative\`: 수요-공급-병목 서사 기반 전망. 기본 timeframe 60~90일.
+- \`sector_rotation\`: 섹터 로테이션 전망. 기본 timeframe 30~60일.
+- \`short_term_outlook\`: 단기 시장/지수 전망. 기본 timeframe 30일.
+
 **정량 조건 작성 규칙 (중요):**
 - targetCondition과 invalidationCondition은 **가능한 한 수치 비교 형식**으로 작성하세요
 - 형식: "[지표] [비교연산자] [숫자]" (예: "S&P 500 > 5800", "VIX < 20", "NVDA > 850")
@@ -158,6 +163,7 @@ ${round2Section}
   {
     "agentPersona": "macro|tech|geopolitics|sentiment",
     "thesis": "현재 기준값 포함한 구체적 예측 문장",
+    "category": "structural_narrative|sector_rotation|short_term_outlook",
     "timeframeDays": 30|60|90,
     "verificationMetric": "검증에 사용할 지표 (티커 또는 지수명)",
     "targetCondition": "S&P 500 > 5800",
@@ -173,15 +179,32 @@ const VALID_PERSONAS = new Set<string>(["macro", "tech", "geopolitics", "sentime
 const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
 const VALID_CONSENSUS = new Set<string>(["1/4", "2/4", "3/4", "4/4"]);
 const VALID_TIMEFRAMES = new Set<number>([30, 60, 90]);
+const VALID_CATEGORIES = new Set<string>([
+  "structural_narrative",
+  "sector_rotation",
+  "short_term_outlook",
+]);
+
+/**
+ * category가 없거나 유효하지 않으면 기본값으로 정규화.
+ * isValidThesis와 분리하여 부수효과를 명시적으로 관리.
+ */
+function normalizeThesisCategory(obj: Record<string, unknown>): void {
+  if (obj.category == null || !VALID_CATEGORIES.has(obj.category as string)) {
+    obj.category = "short_term_outlook" satisfies ThesisCategory;
+  }
+}
 
 function isValidThesis(t: unknown): t is Thesis {
   if (t == null || typeof t !== "object") return false;
   const obj = t as Record<string, unknown>;
+
   return (
     VALID_PERSONAS.has(obj.agentPersona as string) &&
     VALID_CONFIDENCE.has(obj.confidence as string) &&
     VALID_CONSENSUS.has(obj.consensusLevel as string) &&
     VALID_TIMEFRAMES.has(obj.timeframeDays as number) &&
+    VALID_CATEGORIES.has(obj.category as string) &&
     typeof obj.thesis === "string" &&
     obj.thesis.length > 0 &&
     typeof obj.verificationMetric === "string" &&
@@ -219,6 +242,11 @@ export function extractThesesFromText(text: string): ExtractionResult {
       logger.warn("Round3", "Parsed JSON is not an array");
       return { theses: [], cleanReport };
     }
+    parsed.forEach((t: unknown) => {
+      if (t != null && typeof t === "object") {
+        normalizeThesisCategory(t as Record<string, unknown>);
+      }
+    });
     const validated = parsed.filter((t: unknown) => isValidThesis(t));
     if (validated.length < parsed.length) {
       logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);

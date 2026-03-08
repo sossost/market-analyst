@@ -73,6 +73,7 @@ import {
   expireStaleTheses,
   resolveThesis,
   getThesisStats,
+  getThesisStatsByCategory,
 } from "../../../src/agent/debate/thesisStore.js";
 
 describe("thesisStore", () => {
@@ -115,6 +116,55 @@ describe("thesisStore", () => {
       const count = await saveTheses("2026-03-05", []);
       expect(count).toBe(0);
       expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it("saves thesis with category field", async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "macro",
+          thesis: "구조적 금리 전환",
+          timeframeDays: 90,
+          verificationMetric: "Fed funds rate",
+          targetCondition: "Rate cut >= 25bp",
+          confidence: "high",
+          consensusLevel: "4/4",
+          category: "structural_narrative",
+        },
+      ];
+
+      mockReturning.mockResolvedValueOnce([{ id: 1 }]);
+
+      await saveTheses("2026-03-08", theses);
+
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({
+          category: "structural_narrative",
+        }),
+      ]);
+    });
+
+    it("defaults category to short_term_outlook when not provided", async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "tech",
+          thesis: "AI capex surge",
+          timeframeDays: 30,
+          verificationMetric: "Capex",
+          targetCondition: "> 20%",
+          confidence: "medium",
+          consensusLevel: "3/4",
+        },
+      ];
+
+      mockReturning.mockResolvedValueOnce([{ id: 1 }]);
+
+      await saveTheses("2026-03-08", theses);
+
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({
+          category: "short_term_outlook",
+        }),
+      ]);
     });
 
     it("handles thesis without invalidation condition", async () => {
@@ -185,7 +235,7 @@ describe("thesisStore", () => {
 
       const result = formatThesesForPrompt(rows as any);
 
-      expect(result).toContain("[HIGH/3/4]");
+      expect(result).toContain("[SHORT][HIGH/3/4]");
       expect(result).toContain("매크로 이코노미스트");
       expect(result).toContain("금리 인하 가속화");
       expect(result).toContain("30일");
@@ -221,6 +271,32 @@ describe("thesisStore", () => {
       }
     });
 
+    it("includes category label in output", () => {
+      const makeRowWithCategory = (category: string | null) => ({
+        id: 1,
+        debateDate: "2026-03-08",
+        agentPersona: "macro",
+        thesis: "test thesis",
+        timeframeDays: 30,
+        verificationMetric: "m",
+        targetCondition: "c",
+        invalidationCondition: null,
+        confidence: "high",
+        consensusLevel: "4/4",
+        category,
+        status: "ACTIVE",
+        verificationDate: null,
+        verificationResult: null,
+        closeReason: null,
+        createdAt: new Date(),
+      });
+
+      expect(formatThesesForPrompt([makeRowWithCategory("structural_narrative")] as any)).toContain("[STRUCTURAL]");
+      expect(formatThesesForPrompt([makeRowWithCategory("sector_rotation")] as any)).toContain("[ROTATION]");
+      expect(formatThesesForPrompt([makeRowWithCategory("short_term_outlook")] as any)).toContain("[SHORT]");
+      expect(formatThesesForPrompt([makeRowWithCategory(null)] as any)).toContain("[SHORT]");
+    });
+
     it("maps confidence levels correctly", () => {
       const makeRow = (confidence: string) => ({
         id: 1,
@@ -240,9 +316,9 @@ describe("thesisStore", () => {
         createdAt: new Date(),
       });
 
-      expect(formatThesesForPrompt([makeRow("high")] as any)).toContain("[HIGH/4/4]");
-      expect(formatThesesForPrompt([makeRow("medium")] as any)).toContain("[MED/4/4]");
-      expect(formatThesesForPrompt([makeRow("low")] as any)).toContain("[LOW/4/4]");
+      expect(formatThesesForPrompt([makeRow("high")] as any)).toContain("[SHORT][HIGH/4/4]");
+      expect(formatThesesForPrompt([makeRow("medium")] as any)).toContain("[SHORT][MED/4/4]");
+      expect(formatThesesForPrompt([makeRow("low")] as any)).toContain("[SHORT][LOW/4/4]");
     });
   });
 
@@ -310,6 +386,45 @@ describe("thesisStore", () => {
       mockGroupBy.mockResolvedValueOnce([]);
 
       const stats = await getThesisStats();
+
+      expect(stats).toEqual({});
+    });
+  });
+
+  describe("getThesisStatsByCategory", () => {
+    it("returns category-status counts grouped correctly", async () => {
+      mockGroupBy.mockResolvedValueOnce([
+        { category: "structural_narrative", status: "ACTIVE", count: 3 },
+        { category: "structural_narrative", status: "CONFIRMED", count: 1 },
+        { category: "sector_rotation", status: "ACTIVE", count: 2 },
+        { category: "short_term_outlook", status: "EXPIRED", count: 5 },
+      ]);
+
+      const stats = await getThesisStatsByCategory();
+
+      expect(stats).toEqual({
+        structural_narrative: { ACTIVE: 3, CONFIRMED: 1 },
+        sector_rotation: { ACTIVE: 2 },
+        short_term_outlook: { EXPIRED: 5 },
+      });
+    });
+
+    it("defaults null category to short_term_outlook", async () => {
+      mockGroupBy.mockResolvedValueOnce([
+        { category: null, status: "ACTIVE", count: 4 },
+      ]);
+
+      const stats = await getThesisStatsByCategory();
+
+      expect(stats).toEqual({
+        short_term_outlook: { ACTIVE: 4 },
+      });
+    });
+
+    it("returns empty object when no theses exist", async () => {
+      mockGroupBy.mockResolvedValueOnce([]);
+
+      const stats = await getThesisStatsByCategory();
 
       expect(stats).toEqual({});
     });
