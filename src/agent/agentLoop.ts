@@ -60,6 +60,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
       client.messages.create({
         model: config.model,
         max_tokens: config.maxTokens,
+        temperature: 0,
         system: systemBlocks,
         tools: cachedTools,
         messages,
