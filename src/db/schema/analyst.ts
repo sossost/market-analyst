@@ -219,6 +219,11 @@ export const theses = pgTable(
     closeReason: text("close_reason"),
     verificationMethod: text("verification_method"), // 'quantitative' | 'llm'
 
+    // Wave 1 N-1c/N-1d: 서사 레이어
+    nextBottleneck: text("next_bottleneck"), // N+1 병목 예측 (structural_narrative만)
+    consensusScore: integer("consensus_score"), // consensusLevel 파생 정수 (4/3/2/1)
+    dissentReason: text("dissent_reason"), // 반대 의견 요약
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

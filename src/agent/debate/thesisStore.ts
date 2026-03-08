@@ -2,7 +2,15 @@ import { db } from "../../db/client.js";
 import { theses } from "../../db/schema/analyst.js";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
-import type { Thesis, ThesisCategory } from "../../types/debate.js";
+import type { Thesis, ThesisCategory, ConsensusLevel, ConsensusHitRateRow } from "../../types/debate.js";
+
+function parseConsensusScore(level: ConsensusLevel): number {
+  const score = parseInt(level.split("/")[0], 10);
+  if (Number.isNaN(score)) {
+    throw new Error(`Invalid consensusLevel: ${level}`);
+  }
+  return score;
+}
 
 /**
  * Save extracted theses to DB as ACTIVE.
@@ -30,7 +38,10 @@ export async function saveTheses(
     invalidationCondition: t.invalidationCondition ?? null,
     confidence: t.confidence,
     consensusLevel: t.consensusLevel,
+    consensusScore: parseConsensusScore(t.consensusLevel),
     category: t.category ?? "short_term_outlook",
+    nextBottleneck: t.nextBottleneck ?? null,
+    dissentReason: t.dissentReason ?? null,
     status: "ACTIVE" as const,
   }));
 
@@ -164,6 +175,33 @@ export async function getThesisStatsByCategory(): Promise<
   }
 
   return result;
+}
+
+/**
+ * consensus_score별 CONFIRMED/INVALIDATED/EXPIRED 수 집계.
+ * consensus_score IS NOT NULL 조건으로 기존 rows 제외.
+ */
+export async function getConsensusByHitRate(): Promise<ConsensusHitRateRow[]> {
+  const rows = await db
+    .select({
+      consensusScore: theses.consensusScore,
+      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
+      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
+      total: sql<number>`count(*)::int`,
+    })
+    .from(theses)
+    .where(sql`${theses.consensusScore} is not null`)
+    .groupBy(theses.consensusScore)
+    .orderBy(theses.consensusScore);
+
+  return rows.map((r) => ({
+    consensusScore: r.consensusScore!,
+    confirmed: r.confirmed,
+    invalidated: r.invalidated,
+    expired: r.expired,
+    total: r.total,
+  }));
 }
 
 const PERSONA_LABEL: Record<string, string> = {

@@ -1,6 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { extractThesesFromText } from "../../../src/agent/debate/round3-synthesis.js";
 
+// helper: nextBottleneck/dissentReason를 포함한 유효한 thesis JSON 생성
+function makeThesisJson(overrides: Record<string, unknown> = {}): string {
+  const base = {
+    agentPersona: "macro",
+    thesis: "AI 인프라 수요 구조적 성장",
+    category: "structural_narrative",
+    timeframeDays: 60,
+    verificationMetric: "Hyperscaler capex YoY",
+    targetCondition: "Capex growth > 20%",
+    invalidationCondition: "Capex growth < 5%",
+    confidence: "high",
+    consensusLevel: "3/4",
+    nextBottleneck: "광트랜시버 대역폭 제한",
+    dissentReason: "지정학 분석가: 공급망 재편 속도 과대평가",
+    ...overrides,
+  };
+  return `\`\`\`json\n[${JSON.stringify(base)}]\n\`\`\``;
+}
+
 describe("extractThesesFromText", () => {
   it("extracts valid thesis JSON from markdown code block", () => {
     const text = `## 종합 분석
@@ -160,6 +179,120 @@ describe("extractThesesFromText", () => {
     const { theses } = extractThesesFromText(text);
     expect(theses).toHaveLength(1);
     expect(theses[0].agentPersona).toBe("macro");
+  });
+
+  // N-1c: nextBottleneck / dissentReason 필드 파싱 테스트
+  describe("nextBottleneck 필드", () => {
+    it("nextBottleneck이 있는 JSON을 파싱한다", () => {
+      const text = makeThesisJson({ nextBottleneck: "광트랜시버 대역폭 제한" });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].nextBottleneck).toBe("광트랜시버 대역폭 제한");
+    });
+
+    it("nextBottleneck이 null인 thesis도 valid로 통과한다", () => {
+      const text = makeThesisJson({ nextBottleneck: null });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].nextBottleneck).toBeNull();
+    });
+
+    it("nextBottleneck이 없으면(undefined) null로 정규화된다", () => {
+      // JSON에 키가 아예 없는 경우 → normalizeOptionalFields가 null로 설정
+      const base = {
+        agentPersona: "tech",
+        thesis: "AI 반도체 수요 확대",
+        category: "structural_narrative",
+        timeframeDays: 60,
+        verificationMetric: "NVDA revenue YoY",
+        targetCondition: "Revenue growth > 30%",
+        confidence: "high",
+        consensusLevel: "4/4",
+        // nextBottleneck 키 없음
+      };
+      const text = `\`\`\`json\n[${JSON.stringify(base)}]\n\`\`\``;
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].nextBottleneck).toBeNull();
+    });
+
+    it("sector_rotation 카테고리에서 nextBottleneck이 null이어도 valid다", () => {
+      const text = makeThesisJson({
+        category: "sector_rotation",
+        nextBottleneck: null,
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].category).toBe("sector_rotation");
+      expect(theses[0].nextBottleneck).toBeNull();
+    });
+  });
+
+  describe("dissentReason 필드", () => {
+    it("dissentReason이 있는 JSON을 파싱한다", () => {
+      const text = makeThesisJson({
+        dissentReason: "지정학 분석가: 공급망 재편 속도 과대평가",
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].dissentReason).toBe("지정학 분석가: 공급망 재편 속도 과대평가");
+    });
+
+    it("dissentReason이 null인 thesis도 valid로 통과한다 (만장일치)", () => {
+      const text = makeThesisJson({ dissentReason: null });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].dissentReason).toBeNull();
+    });
+
+    it("dissentReason이 없으면(undefined) null로 정규화된다", () => {
+      const base = {
+        agentPersona: "geopolitics",
+        thesis: "반도체 수출 규제 확대",
+        category: "short_term_outlook",
+        timeframeDays: 30,
+        verificationMetric: "Export control regulations",
+        targetCondition: "New controls announced",
+        confidence: "medium",
+        consensusLevel: "2/4",
+        // dissentReason 키 없음
+      };
+      const text = `\`\`\`json\n[${JSON.stringify(base)}]\n\`\`\``;
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].dissentReason).toBeNull();
+    });
+  });
+
+  describe("normalizeOptionalFields 동작 (extractThesesFromText를 통해 검증)", () => {
+    it("nextBottleneck과 dissentReason이 모두 없어도 thesis가 valid로 통과한다", () => {
+      const base = {
+        agentPersona: "sentiment",
+        thesis: "소매 투자자 리스크 온 전환",
+        category: "short_term_outlook",
+        timeframeDays: 30,
+        verificationMetric: "AAII bull/bear ratio",
+        targetCondition: "Bull ratio > 50%",
+        confidence: "low",
+        consensusLevel: "1/4",
+      };
+      const text = `\`\`\`json\n[${JSON.stringify(base)}]\n\`\`\``;
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].nextBottleneck).toBeNull();
+      expect(theses[0].dissentReason).toBeNull();
+    });
+
+    it("nextBottleneck과 dissentReason이 모두 있으면 그대로 보존된다", () => {
+      const text = makeThesisJson({
+        nextBottleneck: "HBM 공급 부족",
+        dissentReason: "매크로: 수요 둔화 가능성",
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].nextBottleneck).toBe("HBM 공급 부족");
+      expect(theses[0].dissentReason).toBe("매크로: 수요 둔화 가능성");
+    });
   });
 
   it("preserves normal section titles containing '전망'", () => {

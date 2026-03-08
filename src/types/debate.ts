@@ -38,7 +38,9 @@ export interface Thesis {
   invalidationCondition?: string;
   confidence: Confidence;
   consensusLevel: ConsensusLevel;
-  category: ThesisCategory;
+  category?: ThesisCategory;
+  nextBottleneck?: string | null;
+  dissentReason?: string | null;
 }
 
 /**
@@ -80,6 +82,17 @@ export interface DebateRound {
 export interface SynthesisResult {
   report: string;
   theses: Thesis[];
+}
+
+/**
+ * Consensus score별 적중률 집계 row.
+ */
+export interface ConsensusHitRateRow {
+  consensusScore: number;
+  confirmed: number;
+  invalidated: number;
+  expired: number;
+  total: number;
 }
 
 /**
