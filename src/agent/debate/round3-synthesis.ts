@@ -195,24 +195,20 @@ const VALID_CATEGORIES = new Set<string>([
 ]);
 
 /**
- * category가 없거나 유효하지 않으면 기본값으로 정규화.
- * isValidThesis와 분리하여 부수효과를 명시적으로 관리.
+ * thesis 객체의 optional/category 필드를 정규화.
+ * 순수 함수 — 원본을 변경하지 않고 새 객체를 반환.
  */
-function normalizeThesisCategory(obj: Record<string, unknown>): void {
-  if (obj.category == null || !VALID_CATEGORIES.has(obj.category as string)) {
-    obj.category = "short_term_outlook" satisfies ThesisCategory;
-  }
-}
-
-/**
- * optional 필드를 명시적 null로 정규화.
- * undefined → null 변환으로 DB 저장 시 일관성 보장.
- */
-function normalizeOptionalFields(
+function normalizeThesisFields(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
+  const category =
+    obj.category == null || !VALID_CATEGORIES.has(obj.category as string)
+      ? ("short_term_outlook" satisfies ThesisCategory)
+      : obj.category;
+
   return {
     ...obj,
+    category,
     nextBottleneck: obj.nextBottleneck ?? null,
     dissentReason: obj.dissentReason ?? null,
   };
@@ -267,9 +263,7 @@ export function extractThesesFromText(text: string): ExtractionResult {
     }
     const normalized = parsed.map((t: unknown) => {
       if (t != null && typeof t === "object") {
-        const obj = t as Record<string, unknown>;
-        normalizeThesisCategory(obj);
-        return normalizeOptionalFields(obj);
+        return normalizeThesisFields(t as Record<string, unknown>);
       }
       return t;
     });
