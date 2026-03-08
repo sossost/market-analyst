@@ -178,6 +178,11 @@ export const recommendations = pgTable(
     closePrice: numeric("close_price"),
     closeReason: text("close_reason"),
 
+    // 위양성 지표 (Phase 2 회귀 추적)
+    failureConditions: text("failure_conditions"), // JSON: FailureConditions
+    phase2RevertDate: text("phase2_revert_date"),
+    maxAdverseMove: numeric("max_adverse_move"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -349,6 +354,12 @@ export const signalLog = pgTable(
     daysHeld: integer("days_held").default(0),
     lastUpdated: text("last_updated"),
 
+    // 위양성 지표 (Phase 2 회귀 추적)
+    phase2Reverted: boolean("phase2_reverted"),
+    timeToRevert: integer("time_to_revert"),
+    maxAdverseMove: numeric("max_adverse_move"),
+    failureConditions: text("failure_conditions"), // JSON: FailureConditions
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -455,3 +466,23 @@ export const recommendationFactors = pgTable(
     ),
   }),
 );
+
+/**
+ * failure_patterns — 조건 조합별 Phase 2 위양성 실패율.
+ * ETL이 주기적으로 signal_log에서 실패 사례를 수집, 조건 조합별 실패율 + 통계 유의성을 산출.
+ */
+export const failurePatterns = pgTable("failure_patterns", {
+  id: serial("id").primaryKey(),
+  patternName: text("pattern_name").notNull(),
+  conditions: text("conditions").notNull(), // JSON: FailureConditions
+  failureCount: integer("failure_count").notNull().default(0),
+  totalCount: integer("total_count").notNull().default(0),
+  failureRate: numeric("failure_rate"),
+  significance: numeric("significance"), // p-value (이항 검정)
+  cohenH: numeric("cohen_h"),
+  isActive: boolean("is_active").default(true),
+  lastUpdated: text("last_updated"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});

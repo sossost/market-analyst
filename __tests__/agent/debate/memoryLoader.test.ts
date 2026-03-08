@@ -71,13 +71,47 @@ describe("memoryLoader", () => {
     expect(context).toContain("5회 관측");
   });
 
-  it("ignores non-confirmed learnings", async () => {
+  it("includes caution learnings in 경계 패턴 section", async () => {
     mockData.learnings = [
-      { principle: "VIX 급등 시 반등 베팅은 위험", category: "caution", hitRate: null },
+      { principle: "브레드스 악화 + 섹터 고립 조건에서 Phase 2 신호 실패", category: "caution", hitRate: "0.73", hitCount: 15 },
+    ];
+
+    const context = await buildMemoryContext();
+    expect(context).toContain("경계 패턴");
+    expect(context).toContain("추천 전 추가 검증 필요");
+    expect(context).toContain("[경계]");
+    expect(context).toContain("브레드스 악화");
+    expect(context).toContain("실패율 73%");
+    expect(context).toContain("15회 관측");
+  });
+
+  it("omits 경계 패턴 section when no caution learnings exist", async () => {
+    mockData.learnings = [
+      { principle: "RSI 다이버전스는 로테이션 선행 신호", category: "confirmed", hitRate: "0.85", hitCount: 5 },
     ];
 
     const context = await buildMemoryContext();
     expect(context).not.toContain("경계 패턴");
+    expect(context).toContain("검증된 패턴");
+  });
+
+  it("shows caution learnings without rate when hitRate is null", async () => {
+    mockData.learnings = [
+      { principle: "VIX 급등 시 반등 베팅은 위험", category: "caution", hitRate: null, hitCount: 0 },
+    ];
+
+    const context = await buildMemoryContext();
+    expect(context).toContain("경계 패턴");
+    expect(context).toContain("[경계] VIX 급등 시 반등 베팅은 위험");
+    expect(context).not.toContain("실패율");
+  });
+
+  it("ignores unknown category learnings", async () => {
+    mockData.learnings = [
+      { principle: "알 수 없는 카테고리", category: "unknown", hitRate: null, hitCount: 0 },
+    ];
+
+    const context = await buildMemoryContext();
     expect(context).toBe("");
   });
 
@@ -106,6 +140,7 @@ describe("memoryLoader", () => {
   it("combines all sections when data exists", async () => {
     mockData.learnings = [
       { principle: "원칙1", category: "confirmed", hitRate: "0.90", hitCount: 3 },
+      { principle: "위험 패턴1", category: "caution", hitRate: "0.65", hitCount: 8 },
     ];
     mockData.confirmed = [
       { agentPersona: "tech", thesis: "적중 예측", verificationResult: "확인", debateDate: "2026-02-20" },
@@ -116,6 +151,7 @@ describe("memoryLoader", () => {
 
     const context = await buildMemoryContext();
     expect(context).toContain("검증된 패턴");
+    expect(context).toContain("경계 패턴");
     expect(context).toContain("최근 적중한 예측");
     expect(context).toContain("최근 빗나간 예측");
   });
