@@ -60,8 +60,8 @@ install_agents() {
 
   echo ""
   echo "launchd 스케줄 등록 완료:"
-  echo "  ETL Daily:    KST 08:30 월-토"
-  echo "  Debate Daily: KST 07:00 월-금"
+  echo "  ETL Daily:    KST 08:30 화-토"
+  echo "  Debate Daily: KST 07:00 화-금"
   echo "  Agent Weekly: KST 10:00 토"
   echo "  QA Weekly:    KST 12:00 토"
   echo "  Log Cleanup:  KST 09:00 일"
