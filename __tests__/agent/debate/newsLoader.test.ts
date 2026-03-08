@@ -116,6 +116,56 @@ describe("newsLoader", () => {
     expect(newsSection).toContain("\n\n");
   });
 
+  it("adds CAPEX note tag to CAPEX category news", async () => {
+    mockRows.push({
+      title: "Samsung to invest $10B in new chip factory",
+      description: "New fab construction announced",
+      source: "reuters.com",
+      category: "CAPEX",
+    });
+
+    const result = await loadNewsForPersona("tech");
+    expect(result).toContain("[CAPEX/설비투자 뉴스 — 병목 해소 신호 가능성 검토]");
+    expect(result).toContain("Samsung to invest $10B in new chip factory [CAPEX/설비투자 뉴스");
+  });
+
+  it("does not add CAPEX note tag to non-CAPEX category news", async () => {
+    mockRows.push({
+      title: "NVIDIA earnings beat expectations",
+      description: "Revenue grew 120% YoY",
+      source: "bloomberg.com",
+      category: "TECHNOLOGY",
+    });
+
+    const result = await loadNewsForPersona("tech");
+    expect(result).not.toContain("[CAPEX/설비투자 뉴스");
+  });
+
+  it("adds CAPEX note only to CAPEX items when mixed categories", async () => {
+    mockRows.push(
+      {
+        title: "TSMC $20B Arizona fab",
+        description: "New factory",
+        source: "reuters.com",
+        category: "CAPEX",
+      },
+      {
+        title: "AI chip demand surges",
+        description: "Demand increases",
+        source: "bloomberg.com",
+        category: "TECHNOLOGY",
+      },
+    );
+
+    const result = await loadNewsForPersona("tech");
+    // CAPEX 뉴스에만 태그가 붙어야 함
+    const lines = result.split("\n");
+    const capexLine = lines.find((l) => l.includes("TSMC $20B Arizona fab"));
+    const techLine = lines.find((l) => l.includes("AI chip demand surges"));
+    expect(capexLine).toContain("[CAPEX/설비투자 뉴스");
+    expect(techLine).not.toContain("[CAPEX/설비투자 뉴스");
+  });
+
   it("includes DB archive header instead of pre-collected header", async () => {
     mockRows.push({
       title: "Test news",

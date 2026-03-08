@@ -92,7 +92,8 @@ export async function loadNewsForPersona(
     const source = row.source ?? "unknown";
     const title = sanitizeForPrompt(row.title);
     const description = sanitizeForPrompt(row.description ?? "");
-    return `- ${title}\n  ${description}\n  (source: ${source}, category: ${row.category})`;
+    const capexNote = row.category === "CAPEX" ? " [CAPEX/설비투자 뉴스 — 병목 해소 신호 가능성 검토]" : "";
+    return `- ${title}${capexNote}\n  ${description}\n  (source: ${source}, category: ${row.category})`;
   });
 
   return [
