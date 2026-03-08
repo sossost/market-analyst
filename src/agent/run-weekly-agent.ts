@@ -35,6 +35,7 @@ import {
   formatThesesForPrompt,
 } from "./debate/thesisStore";
 import { loadSignalPerformanceSummary } from "./signalPerformance";
+import { formatChainsSummaryForPrompt } from "../lib/narrativeChainStats";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 8192;
@@ -115,7 +116,19 @@ async function main() {
     logger.error("Theses", `로드 실패 (에이전트는 계속 진행): ${reason}`);
   }
 
-  // 3.6. 시그널 성과 로드
+  // 3.6. 활성 병목 체인 로드
+  let narrativeChainsSummary = "";
+  try {
+    narrativeChainsSummary = await formatChainsSummaryForPrompt();
+    if (narrativeChainsSummary !== "") {
+      logger.info("NarrativeChain", "활성 병목 체인 요약 로드 완료");
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error("NarrativeChain", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+  }
+
+  // 3.7. 시그널 성과 로드
   const signalPerformance = loadSignalPerformanceSummary();
   if (signalPerformance !== "") {
     logger.info("Signal", "백테스트 성과 요약 로드 완료");
@@ -128,7 +141,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext, signalPerformance }),
+    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary }),
     tools: [
       getIndexReturns,
       getMarketBreadth,

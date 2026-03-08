@@ -17,6 +17,11 @@ const mockUpdateReturning = vi.fn();
 const mockGroupBy = vi.fn();
 const mockOrderBy = vi.fn();
 
+// Mock narrativeChainService — error-isolated, no-op in thesis tests
+vi.mock("../../../src/agent/debate/narrativeChainService.js", () => ({
+  recordNarrativeChain: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../../src/db/client.js", () => ({
   db: {
     insert: (...args: unknown[]) => {

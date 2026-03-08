@@ -92,6 +92,13 @@
       "when": 1772955246985,
       "tag": "0012_fixed_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1772970871277,
+      "tag": "0013_premium_lifeguard",
+      "breakpoints": true
     }
   ]
 }
