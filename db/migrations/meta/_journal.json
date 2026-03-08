@@ -99,6 +99,13 @@
       "when": 1772970871277,
       "tag": "0013_premium_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1772973382493,
+      "tag": "0014_narrow_havok",
+      "breakpoints": true
     }
   ]
 }
