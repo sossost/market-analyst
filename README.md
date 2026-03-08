@@ -228,6 +228,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 - [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스)
 - [x] **F2** Agent Core — Claude agentic loop + 도구 + 일간/주간 분리
+- [ ] ~~**F3** Industry Intelligence~~ — 폐기. F6 토론 엔진이 시장 분석 역할을 대체
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지
 - [x] **F5** Report & Delivery — Discord 발송, Gist MD, 리뷰 파이프라인
 - [x] **F6** Debate & Evolution — 애널리스트 4명 토론 + thesis 저장 + 학습 루프
