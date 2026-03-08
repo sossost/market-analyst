@@ -52,6 +52,10 @@ run_parallel \
   "Record Signals" "src/etl/jobs/record-new-signals.ts" \
   "Update Signal Returns" "src/etl/jobs/update-signal-returns.ts"
 
+# Phase 3.7 (signal_log 업데이트 후 — 위양성 추적)
+run_step "Track Phase Exits" "src/etl/jobs/track-phase-exits.ts"
+run_step "Collect Failure Patterns" "src/etl/jobs/collect-failure-patterns.ts"
+
 # Phase 4
 run_step "Validate Data" "src/etl/jobs/validate-data.ts"
 

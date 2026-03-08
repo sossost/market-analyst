@@ -13,8 +13,7 @@
 	<string>__PROJECT_DIR__</string>
 	<key>StartCalendarInterval</key>
 	<array>
-		<!-- KST 07:00 Mon-Fri (= UTC 22:00 Sun-Thu) -->
-		<dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+		<!-- KST 07:00 Tue-Fri (= UTC 22:00 Mon-Thu) -->
 		<dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
 		<dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
 		<dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
