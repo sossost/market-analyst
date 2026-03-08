@@ -201,7 +201,8 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **Phase A** Learning Loop — 세션 저장, few-shot 주입, 원인 분석, 패턴 승격
 - [x] **Phase A+** Signal Validation — 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화
 - [x] **Phase A++** Weekly Redesign — 주간 리포트 전면 재설계 (도구 주간 집계 + 프롬프트 차별화)
-- [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지
+- [ ] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + 실패 패턴 축적 + 검증 강화
+- [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지 (Phase N과 병렬 가능)
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
 
 자세한 로드맵: [`docs/ROADMAP.md`](docs/ROADMAP.md)
