@@ -7,6 +7,7 @@
 #   Phase 2: build-daily-ma, build-rs, calculate-daily-ratios (병렬)
 #   Phase 3: build-breakout-signals, build-noise-signals, build-stock-phases (병렬)
 #   Phase 3.5: build-sector-rs, build-industry-rs, record-signals, update-signal-returns
+#   Phase 3.6: detect-sector-phase-events, update-sector-lag-patterns
 #   Phase 4: validate-data → run-daily-agent
 #
 # Usage:
@@ -51,6 +52,10 @@ run_parallel \
   "Build Industry RS" "src/etl/jobs/build-industry-rs.ts" \
   "Record Signals" "src/etl/jobs/record-new-signals.ts" \
   "Update Signal Returns" "src/etl/jobs/update-signal-returns.ts"
+
+# Phase 3.6 (sector-rs, industry-rs 완료 후 — 섹터 시차 패턴)
+run_step "Detect Sector Phase Events" "src/etl/jobs/detect-sector-phase-events.ts"
+run_step "Update Sector Lag Patterns" "src/etl/jobs/update-sector-lag-patterns.ts"
 
 # Phase 3.7 (signal_log 업데이트 후 — 위양성 추적)
 run_step "Track Phase Exits" "src/etl/jobs/track-phase-exits.ts"
