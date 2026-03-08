@@ -15,7 +15,7 @@ export interface LagObservation {
   lagDays: number;
 }
 
-export interface LagStats {
+export interface ComputedLagStats {
   avgLagDays: number;
   medianLagDays: number;
   stddevLagDays: number;
@@ -23,8 +23,6 @@ export interface LagStats {
   maxLagDays: number;
   sampleCount: number;
   isReliable: boolean;
-  lastObservedAt: string;
-  lastLagDays: number;
 }
 
 export interface ActiveLeadingAlert {
@@ -114,7 +112,7 @@ export function calculateLagObservations(
  * lag_days 배열에서 통계를 계산한다.
  * 샘플이 MIN_SAMPLE 미만이면 null을 반환한다.
  */
-export function calculateLagStats(lagDays: number[]): LagStats | null {
+export function calculateLagStats(lagDays: number[]): ComputedLagStats | null {
   if (lagDays.length === 0) return null;
 
   const sorted = [...lagDays].sort((a, b) => a - b);
@@ -141,8 +139,6 @@ export function calculateLagStats(lagDays: number[]): LagStats | null {
     maxLagDays: sorted[sorted.length - 1],
     sampleCount: sorted.length,
     isReliable,
-    lastObservedAt: "", // caller fills this
-    lastLagDays: 0, // caller fills this
   };
 }
 
