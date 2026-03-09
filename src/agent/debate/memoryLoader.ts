@@ -38,9 +38,9 @@ async function loadLearnings(): Promise<string> {
     lines.push("아래 조건이 감지되면 추천 전 추가 검증 필요:");
     for (const r of caution) {
       // caution 카테고리: hitCount=실패 횟수, hitRate=실패율 (역방향 저장)
-      // principle 필드에 이미 [경계] 접두사 포함 (buildCautionPrinciple 참조)
       const rate = r.hitRate != null ? ` (실패율 ${(Number(r.hitRate) * 100).toFixed(0)}%, ${r.hitCount}회 관측)` : "";
-      lines.push(`- ${r.principle}${rate}`);
+      const prefix = r.principle.startsWith("[경계]") ? "" : "[경계] ";
+      lines.push(`- ${prefix}${r.principle}${rate}`);
     }
   }
 
