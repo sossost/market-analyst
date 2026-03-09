@@ -1,5 +1,6 @@
 /**
- * market-analyst가 소유하고 ETL을 관리하는 테이블.
+ * market-analyst 프로젝트의 시장 데이터 및 사용자 관련 테이블 스키마.
+ * ETL 작업과 애플리케이션 로직에서 사용됩니다.
  */
 import {
   pgTable,
