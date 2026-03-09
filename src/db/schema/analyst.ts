@@ -716,3 +716,65 @@ export const marketRegimes = pgTable(
     idxDate: index("idx_market_regimes_date").on(t.regimeDate),
   }),
 );
+
+/**
+ * daily_reports — 일간/주간 리포트 아카이빙.
+ * 기존 data/reports/ JSON 파일을 DB로 이관.
+ * report_date별 UNIQUE — 같은 날짜에 같은 타입의 리포트는 하나만 존재.
+ */
+export const dailyReports = pgTable(
+  "daily_reports",
+  {
+    id: serial("id").primaryKey(),
+    reportDate: text("report_date").notNull(), // YYYY-MM-DD
+    type: text("type").notNull().default("daily"), // 'daily' | 'weekly'
+
+    // 추천 종목 목록
+    reportedSymbols: jsonb("reported_symbols")
+      .$type<
+        {
+          symbol: string;
+          phase: number;
+          prevPhase: number | null;
+          rsScore: number;
+          sector: string;
+          industry: string;
+          reason: string;
+          firstReportedDate: string;
+        }[]
+      >()
+      .notNull(),
+
+    // 시장 요약
+    marketSummary: jsonb("market_summary")
+      .$type<{
+        phase2Ratio: number;
+        leadingSectors: string[];
+        totalAnalyzed: number;
+      }>()
+      .notNull(),
+
+    // 렌더링용 전체 리포트 텍스트 (있을 경우)
+    fullContent: text("full_content"),
+
+    // 실행 메타데이터
+    metadata: jsonb("metadata").$type<{
+      model: string;
+      tokensUsed: { input: number; output: number };
+      toolCalls: number;
+      executionTime: number;
+    }>(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqReportDate: unique("uq_daily_reports_date_type").on(
+      t.reportDate,
+      t.type,
+    ),
+    idxDate: index("idx_daily_reports_date").on(t.reportDate),
+    idxType: index("idx_daily_reports_type").on(t.type),
+  }),
+);
