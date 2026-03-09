@@ -128,7 +128,7 @@ async function main() {
   try {
     const result = await runAgentLoop(config);
 
-    logger.step("\n[5/6] Agent result:");
+    logger.step("\n[6/7] Agent result:");
     logger.info("Result", `Success: ${result.success}`);
     logger.info(
       "Result",
