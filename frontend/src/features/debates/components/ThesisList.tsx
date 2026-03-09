@@ -6,15 +6,9 @@ import {
 } from '@/shared/components/ui/card'
 import { Badge } from '@/shared/components/ui/badge'
 
+import { PERSONA_LABELS } from '../constants'
 import type { DebateThesis } from '../types'
 import { ThesisBadge } from './ThesisBadge'
-
-const PERSONA_LABELS: Record<string, string> = {
-  macro: '거시경제',
-  tech: '기술분석',
-  geopolitics: '지정학',
-  sentiment: '심리분석',
-}
 
 interface ThesisListProps {
   theses: DebateThesis[]

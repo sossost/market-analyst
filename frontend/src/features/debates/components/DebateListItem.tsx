@@ -7,15 +7,12 @@ import {
   CardTitle,
 } from '@/shared/components/ui/card'
 
+import { formatDate } from '@/shared/lib/formatDate'
+
 import type { DebateSessionSummary } from '../types'
 
 interface DebateListItemProps {
   session: DebateSessionSummary
-}
-
-function formatDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-')
-  return `${year}년 ${Number(month)}월 ${Number(day)}일`
 }
 
 export function DebateListItem({ session }: DebateListItemProps) {
