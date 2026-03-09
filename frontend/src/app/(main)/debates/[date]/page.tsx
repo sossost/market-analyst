@@ -8,14 +8,10 @@ import {
   fetchRegimeByDate,
 } from '@/features/debates/lib/supabase-queries'
 import { parseRoundOutputs } from '@/features/debates/lib/parse-round-outputs'
+import { formatDate } from '@/shared/lib/formatDate'
 
 interface Props {
   params: Promise<{ date: string }>
-}
-
-function formatDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-')
-  return `${year}년 ${Number(month)}월 ${Number(day)}일`
 }
 
 export default async function DebateDetailPage({ params }: Props) {

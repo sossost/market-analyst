@@ -52,6 +52,27 @@ export function readReportLogs(daysBack: number): DailyReportLog[] {
   return logs;
 }
 
+const DEFAULT_METADATA = {
+  model: "unknown",
+  tokensUsed: { input: 0, output: 0 },
+  toolCalls: 0,
+  executionTime: 0,
+} as const;
+
+/**
+ * Map a DB row to a DailyReportLog domain object.
+ */
+function dbRowToDailyReportLog(
+  row: typeof dailyReports.$inferSelect,
+): DailyReportLog {
+  return {
+    date: row.reportDate,
+    reportedSymbols: row.reportedSymbols,
+    marketSummary: row.marketSummary,
+    metadata: row.metadata ?? DEFAULT_METADATA,
+  };
+}
+
 /**
  * Read report logs from DB for the last N entries.
  * Returns an array of logs, most recent first.
@@ -65,17 +86,7 @@ export async function readReportLogsFromDb(
     .orderBy(desc(dailyReports.reportDate))
     .limit(daysBack);
 
-  return rows.map((row) => ({
-    date: row.reportDate,
-    reportedSymbols: row.reportedSymbols,
-    marketSummary: row.marketSummary,
-    metadata: row.metadata ?? {
-      model: "unknown",
-      tokensUsed: { input: 0, output: 0 },
-      toolCalls: 0,
-      executionTime: 0,
-    },
-  }));
+  return rows.map(dbRowToDailyReportLog);
 }
 
 /**
@@ -96,17 +107,7 @@ export async function readReportByDate(
     return null;
   }
 
-  return {
-    date: row.reportDate,
-    reportedSymbols: row.reportedSymbols,
-    marketSummary: row.marketSummary,
-    metadata: row.metadata ?? {
-      model: "unknown",
-      tokensUsed: { input: 0, output: 0 },
-      toolCalls: 0,
-      executionTime: 0,
-    },
-  };
+  return dbRowToDailyReportLog(row);
 }
 
 /**
