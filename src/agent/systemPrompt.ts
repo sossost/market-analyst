@@ -64,8 +64,9 @@ const ANALYSIS_FRAMEWORK = `## 분석 프레임워크
 export function buildDailySystemPrompt(options?: {
   targetDate?: string;
   thesesContext?: string;
+  narrativeChainsContext?: string;
 }): string {
-  const { targetDate, thesesContext } = options ?? {};
+  const { targetDate, thesesContext, narrativeChainsContext } = options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 매일 시장 온도를 체크하고, 특이종목이 있으면 카탈리스트(원인)를 분석하여 간결한 브리핑을 전달합니다.
 
@@ -222,6 +223,26 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 <debate-theses trust="internal">
 ${sanitized}
 </debate-theses>`;
+  }
+
+  if (narrativeChainsContext != null && narrativeChainsContext !== "") {
+    const sanitizedChains = sanitizeXml(narrativeChainsContext);
+    prompt += `
+
+## 서사 체인 태그 (종목 분류 참조)
+
+아래는 현재 추적 중인 구조적 서사 체인입니다.
+리포트에서 관련 종목/섹터를 언급할 때, 해당 서사 체인과 연결되면
+[체인명 / 상태] 태그를 종목 뒤에 추가하세요.
+
+예: NVDA RS 89 | Phase 2 | [AI인프라-HBM / ACTIVE]
+예: ANET RS 78 | Phase 2 | [AI인프라-광트랜시버 / RESOLVING] — 이탈 준비 검토
+
+RESOLVING 상태 체인에 연결된 종목은 반드시 "이탈 준비 검토" 경고를 함께 표시하세요.
+
+<narrative-chains trust="internal">
+${sanitizedChains}
+</narrative-chains>`;
   }
 
   const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

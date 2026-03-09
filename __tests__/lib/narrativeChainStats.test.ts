@@ -32,6 +32,7 @@ vi.mock("../../src/db/client.js", () => ({
 import {
   getChainStats,
   getActiveChainsSummary,
+  formatChainsForDailyPrompt,
   formatChainsSummaryForPrompt,
 } from "../../src/lib/narrativeChainStats.js";
 
@@ -164,6 +165,89 @@ describe("narrativeChainStats", () => {
 
       const summary = await getActiveChainsSummary();
       expect(summary[0].linkedThesisCount).toBe(0);
+    });
+  });
+
+  describe("formatChainsForDailyPrompt", () => {
+    it("returns empty string when no active chains", async () => {
+      mockWhere.mockResolvedValueOnce([]);
+
+      const result = await formatChainsForDailyPrompt();
+      expect(result).toBe("");
+    });
+
+    it("formats single ACTIVE chain into concise table", async () => {
+      const identifiedAt = new Date("2026-01-20");
+
+      mockWhere.mockResolvedValueOnce([
+        {
+          id: 1,
+          megatrend: "AI인프라",
+          bottleneck: "HBM 공급 부족",
+          bottleneckIdentifiedAt: identifiedAt,
+          status: "ACTIVE",
+          nextBottleneck: null,
+          linkedThesisIds: [10],
+        },
+      ]);
+
+      const result = await formatChainsForDailyPrompt();
+
+      expect(result).toContain("## 현재 추적 중인 서사 체인 (종목 태그 참조용)");
+      expect(result).toContain("HBM 공급 부족");
+      expect(result).toContain("AI인프라");
+      expect(result).toContain("ACTIVE");
+      expect(result).toContain("[체인명 / 상태] 태그를 추가하세요");
+    });
+
+    it("formats multiple ACTIVE and RESOLVING chains", async () => {
+      mockWhere.mockResolvedValueOnce([
+        {
+          id: 1,
+          megatrend: "AI인프라",
+          bottleneck: "HBM 공급 부족",
+          bottleneckIdentifiedAt: new Date("2026-01-20"),
+          status: "ACTIVE",
+          nextBottleneck: null,
+          linkedThesisIds: [10],
+        },
+        {
+          id: 2,
+          megatrend: "AI인프라",
+          bottleneck: "광트랜시버 부족",
+          bottleneckIdentifiedAt: new Date("2026-02-01"),
+          status: "RESOLVING",
+          nextBottleneck: null,
+          linkedThesisIds: [20, 30],
+        },
+      ]);
+
+      const result = await formatChainsForDailyPrompt();
+
+      expect(result).toContain("HBM 공급 부족");
+      expect(result).toContain("광트랜시버 부족");
+      expect(result).toContain("ACTIVE");
+      expect(result).toContain("RESOLVING");
+    });
+
+    it("excludes RESOLVED chains (only ACTIVE/RESOLVING returned by getActiveChainsSummary)", async () => {
+      // getActiveChainsSummary already filters to ACTIVE/RESOLVING only
+      mockWhere.mockResolvedValueOnce([
+        {
+          id: 1,
+          megatrend: "AI인프라",
+          bottleneck: "HBM 공급 부족",
+          bottleneckIdentifiedAt: new Date("2026-01-20"),
+          status: "ACTIVE",
+          nextBottleneck: null,
+          linkedThesisIds: [],
+        },
+      ]);
+
+      const result = await formatChainsForDailyPrompt();
+
+      expect(result).toContain("ACTIVE");
+      expect(result).not.toContain("RESOLVED");
     });
   });
 

@@ -26,6 +26,7 @@ import {
   loadActiveTheses,
   formatThesesForPrompt,
 } from "./debate/thesisStore";
+import { formatChainsForDailyPrompt } from "../lib/narrativeChainStats";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 8192;
@@ -84,6 +85,18 @@ async function main() {
   }
   logger.step("[3/6] Theses loaded");
 
+  // 3.5. 활성 서사 체인 로드
+  let narrativeChainsContext = "";
+  try {
+    narrativeChainsContext = await formatChainsForDailyPrompt();
+    if (narrativeChainsContext !== "") {
+      logger.info("NarrativeChain", "활성 서사 체인 컨텍스트 로드 완료");
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("NarrativeChain", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+  }
+
   // 4. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
   logger.step("[4/6] Running agent loop...\n");
 
@@ -91,7 +104,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext }),
+    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext }),
     tools: [
       getIndexReturns,
       getMarketBreadth,

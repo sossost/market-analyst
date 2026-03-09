@@ -108,6 +108,34 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
 }
 
 /**
+ * Format active chains for daily agent prompt — concise table for tag reference.
+ * Returns empty string if no active chains exist.
+ */
+export async function formatChainsForDailyPrompt(): Promise<string> {
+  const chains = await getActiveChainsSummary();
+  if (chains.length === 0) return "";
+
+  const lines: string[] = [
+    "## 현재 추적 중인 서사 체인 (종목 태그 참조용)\n",
+    "| 체인명 | 메가트렌드 | 상태 | 경과일 |",
+    "|--------|----------|------|--------|",
+  ];
+
+  for (const chain of chains) {
+    lines.push(
+      `| ${chain.bottleneck} | ${chain.megatrend} | ${chain.status} | ${chain.daysSinceIdentified}일 |`,
+    );
+  }
+
+  lines.push(
+    "",
+    "리포트 작성 시 위 체인과 관련된 섹터/종목에 [체인명 / 상태] 태그를 추가하세요.",
+  );
+
+  return lines.join("\n");
+}
+
+/**
  * Format active chains summary for weekly agent prompt injection.
  * Returns empty string if no active chains exist.
  */
