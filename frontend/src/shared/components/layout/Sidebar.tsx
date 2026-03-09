@@ -3,19 +3,23 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+import { LogoutButton } from '@/features/auth/components/LogoutButton'
+import { useUser } from '@/features/auth/hooks/useUser'
+import { Separator } from '@/shared/components/ui/separator'
 import { cn } from '@/shared/lib/utils'
 
 import { NAV_ITEMS } from './nav-items'
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { user, isLoading } = useUser()
 
   return (
-    <aside className="bg-background hidden h-screen w-60 shrink-0 border-r md:block">
+    <aside className="bg-background hidden h-screen w-60 shrink-0 border-r md:flex md:flex-col">
       <div className="p-4">
         <h2 className="text-lg font-bold">Market Analyst</h2>
       </div>
-      <nav className="flex flex-col gap-1 px-2">
+      <nav className="flex flex-1 flex-col gap-1 px-2">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive =
             href === '/' ? pathname === '/' : pathname.startsWith(href)
@@ -37,6 +41,15 @@ export function Sidebar() {
           )
         })}
       </nav>
+      {!isLoading && user != null && (
+        <div className="px-2 pb-4">
+          <Separator className="mb-3" />
+          <p className="text-muted-foreground truncate px-3 pb-1 text-xs">
+            {user.email}
+          </p>
+          <LogoutButton />
+        </div>
+      )}
     </aside>
   )
 }
