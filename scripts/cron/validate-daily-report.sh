@@ -51,6 +51,13 @@ if [ "$REPORT_JSON" = "null" ] || [ -z "$REPORT_JSON" ]; then
 fi
 
 REPORT_DATE=$(echo "$REPORT_JSON" | jq -r '.today.date')
+
+# 날짜 포맷 검증 — 경로 순회/인젝션 방지
+if [[ ! "$REPORT_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+  log "✗ 유효하지 않은 날짜 포맷: $REPORT_DATE"
+  exit 1
+fi
+
 REPORT_CONTENT=$(echo "$REPORT_JSON" | jq -r '.today.content')
 HAS_PREV=$(echo "$REPORT_JSON" | jq -r '.prev != null')
 PREV_DATE=$(echo "$REPORT_JSON" | jq -r '.prev.date // "없음"')
@@ -93,7 +100,7 @@ log "✓ 프롬프트 조립 완료"
 log "▶ Claude Code CLI 검증 실행 (타임아웃: ${TIMEOUT_SEC}초)"
 
 QA_RESULT=""
-if timeout "$TIMEOUT_SEC" claude -p "$(cat "$PROMPT_FILE")" --output-format json > "$CLAUDE_RAW_FILE" 2>>"$LOG_FILE"; then
+if timeout "$TIMEOUT_SEC" cat "$PROMPT_FILE" | claude -p --output-format json > "$CLAUDE_RAW_FILE" 2>>"$LOG_FILE"; then
   # --output-format json이면 result 필드에 텍스트가 들어옴
   QA_RAW=$(jq -r '.result // .' "$CLAUDE_RAW_FILE" 2>/dev/null || cat "$CLAUDE_RAW_FILE")
 
@@ -127,7 +134,8 @@ if [ "$HAS_ISSUE" = "true" ]; then
   if [ "${VALIDATE_DRY_RUN:-}" = "1" ]; then
     log "DRY_RUN 모드 — 이슈 생성 건너뜀"
   else
-    ISSUE_TITLE=$(echo "$QA_RESULT" | jq -r '.issueTitle // "일간 보고서 품질 이슈"')
+    # 이슈 제목 길이 제한 (LLM 출력 검증 — indirect injection 방어)
+    ISSUE_TITLE=$(echo "$QA_RESULT" | jq -r '.issueTitle // "일간 보고서 품질 이슈"' | head -c 100)
 
     # 이슈 본문을 파일로 전달 (인수 인젝션 방지)
     echo "$QA_RESULT" | jq -r '.issueBody // ""' > "$ISSUE_BODY_FILE"
