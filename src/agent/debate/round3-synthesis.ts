@@ -318,22 +318,54 @@ export function extractThesesFromText(text: string): ExtractionResult {
 
 /**
  * Extract thesis JSON array AND marketRegime JSON from moderator output.
- * Extends extractThesesFromText with regime extraction.
+ * Parses each JSON block independently: thesis = array, regime = object.
  */
 export function extractDebateOutput(text: string): DebateExtractionResult {
-  const { theses, cleanReport } = extractThesesFromText(text);
+  // thesis: 배열 JSON 블록 추출
+  const theses = (() => {
+    const jsonMatch = text.match(/```json\s*(\[[\s\S]*?\])\s*```/);
+    if (jsonMatch == null) {
+      logger.warn("Round3", "No thesis JSON block found in moderator output");
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      if (!Array.isArray(parsed)) {
+        logger.warn("Round3", "Parsed thesis JSON is not an array");
+        return [];
+      }
+      const normalized = parsed.map((t: unknown) => {
+        if (t != null && typeof t === "object") {
+          return normalizeThesisFields(t as Record<string, unknown>);
+        }
+        return t;
+      });
+      const validated = normalized.filter((t: unknown) => isValidThesis(t));
+      if (validated.length < parsed.length) {
+        logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
+      }
+      return validated;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
+      return [];
+    }
+  })();
+
+  // regime: 객체 JSON 블록 추출
   const marketRegime = extractMarketRegime(text);
 
-  // cleanReport에서 marketRegime JSON 블록도 제거
-  const finalReport = cleanReport
-    .replace(/#{1,3}\s*(?:시장 레짐 판정)[^\n]*\n?/gi, "")
-    .replace(/```json\s*\{[\s\S]*?"marketRegime"[\s\S]*?\}\s*```/g, "")
+  // 두 JSON 블록과 관련 헤더를 모두 제거
+  const cleanReport = text
+    .replace(/#{1,3}\s*(?:검증 가능한 전망 추출|Thesis 추출|전망 추출|시장 레짐 판정)[^\n]*\n?/gi, "")
+    .replace(/```json\s*\[[\s\S]*?\]\s*```/g, "") // Theses JSON block (배열)
+    .replace(/```json\s*\{[\s\S]*?"marketRegime"[\s\S]*?\}\s*```/g, "") // Regime JSON block (객체)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
   return {
     theses,
-    cleanReport: finalReport,
+    cleanReport,
     marketRegime,
   };
 }

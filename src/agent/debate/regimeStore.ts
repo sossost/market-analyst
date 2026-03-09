@@ -18,9 +18,9 @@ const VALID_REGIMES = new Set<string>([
 const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
 
 export interface MarketRegimeInput {
-  regime: string;
+  regime: MarketRegimeType;
   rationale: string;
-  confidence: string;
+  confidence: RegimeConfidence;
 }
 
 export interface MarketRegimeRow {
@@ -52,9 +52,9 @@ export function validateRegimeInput(raw: unknown): MarketRegimeInput | null {
       : "low"; // fallback
 
   return {
-    regime: obj.regime,
+    regime: obj.regime as MarketRegimeType,
     rationale: obj.rationale,
-    confidence,
+    confidence: confidence as RegimeConfidence,
   };
 }
 
@@ -69,9 +69,9 @@ export async function saveRegime(
     .insert(marketRegimes)
     .values({
       regimeDate: date,
-      regime: input.regime as MarketRegimeType,
+      regime: input.regime,
       rationale: input.rationale,
-      confidence: input.confidence as RegimeConfidence,
+      confidence: input.confidence,
     })
     .onConflictDoUpdate({
       target: marketRegimes.regimeDate,

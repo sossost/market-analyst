@@ -526,7 +526,9 @@ ${sanitized}
     const sanitized = sanitizeXml(regimeContext);
     prompt += `
 
+<market-regime-context>
 ${sanitized}
+</market-regime-context>
 
 **활용법**:
 - 현재 레짐에 따라 추천 공격성을 조절 (EARLY_BULL → 적극, LATE_BULL → 보수적, BEAR → 최소화)
