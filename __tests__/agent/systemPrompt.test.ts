@@ -201,6 +201,70 @@ describe("buildDailySystemPrompt", () => {
 
     expect(result).not.toContain("<narrative-chains");
   });
+
+  it("includes data timestamp rules section", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).toContain("## 데이터 시점 규칙");
+    expect(result).toContain("실시간 조회 불가 지표(WTI, 금, 은, DXY, 원화환율 등)");
+    expect(result).toContain("학습 데이터 내 수치를 추론하거나 기억에서 가져오는 행위는 엄격히 금지");
+  });
+
+  it("includes message-markdownContent consistency rule", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).toContain("message와 markdownContent 수치 일치");
+    expect(result).toContain("불일치가 있으면 markdownContent 기준으로 통일");
+  });
+
+  it("includes conditional glossary section for daily subscribers", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).toContain("## 용어 설명 (정기 발송 제외)");
+    expect(result).toContain("MD 파일 하단의 \"용어 설명\" 섹션을 생략하세요");
+    expect(result).toContain("괄호 내 약어 설명(예: RS(상대강도))은 유지");
+  });
+
+  it("places data timestamp rules after Bull-Bias guardrail", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt();
+
+    const bullBiasIdx = result.indexOf("## Bull-Bias 가드레일");
+    const dataTimestampIdx = result.indexOf("## 데이터 시점 규칙");
+    expect(bullBiasIdx).toBeGreaterThan(-1);
+    expect(dataTimestampIdx).toBeGreaterThan(-1);
+    expect(dataTimestampIdx).toBeGreaterThan(bullBiasIdx);
+  });
+
+  it("maintains Bull-Bias → data timestamp order with thesesContext and narrativeChainsContext", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt({
+      thesesContext: "- [HIGH/3/4] 매크로: 금리 인하 가속 (30일)",
+      narrativeChainsContext: "| HBM 공급 부족 | AI인프라 | ACTIVE | 45일 |",
+    });
+
+    const bullBiasIdx = result.indexOf("## Bull-Bias 가드레일");
+    const dataTimestampIdx = result.indexOf("## 데이터 시점 규칙");
+    expect(bullBiasIdx).toBeGreaterThan(-1);
+    expect(dataTimestampIdx).toBeGreaterThan(-1);
+    expect(dataTimestampIdx).toBeGreaterThan(bullBiasIdx);
+  });
+
+  it("uses expanded fallback text for commodity/macro indicators", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).toContain("원자재/거시 지표 동향은 당일 시장 데이터 미수집으로 생략");
+  });
 });
 
 describe("buildWeeklySystemPrompt", () => {
@@ -324,5 +388,52 @@ describe("buildWeeklySystemPrompt", () => {
 
     expect(result).toContain("<fundamental-validation");
     expect(result).toContain("<debate-theses");
+  });
+
+  it("includes data timestamp rules section", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildWeeklySystemPrompt();
+
+    expect(result).toContain("## 데이터 시점 규칙");
+    expect(result).toContain("실시간 조회 불가 지표(WTI, 금, 은, DXY, 원화환율 등)");
+    expect(result).toContain("학습 데이터 내 수치를 추론하거나 기억에서 가져오는 행위는 엄격히 금지");
+  });
+
+  it("places data timestamp rules after Bull-Bias guardrail", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildWeeklySystemPrompt();
+
+    const bullBiasIdx = result.indexOf("## Bull-Bias 가드레일");
+    const dataTimestampIdx = result.indexOf("## 데이터 시점 규칙");
+    expect(bullBiasIdx).toBeGreaterThan(-1);
+    expect(dataTimestampIdx).toBeGreaterThan(-1);
+    expect(dataTimestampIdx).toBeGreaterThan(bullBiasIdx);
+  });
+
+  it("uses expanded fallback text for commodity/macro indicators", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildWeeklySystemPrompt();
+
+    expect(result).toContain("원자재/거시 지표 동향은 당일 시장 데이터 미수집으로 생략");
+  });
+
+  it("includes message-markdownContent consistency rule", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildWeeklySystemPrompt();
+
+    expect(result).toContain("message와 markdownContent 수치 일치");
+    expect(result).toContain("불일치가 있으면 markdownContent 기준으로 통일");
+  });
+
+  it("replaces old glossary instruction with consistency rule", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildWeeklySystemPrompt();
+
+    expect(result).not.toContain("MD 파일 맨 하단에 아래 \"용어 설명\" 섹션을 반드시 포함하세요");
   });
 });
