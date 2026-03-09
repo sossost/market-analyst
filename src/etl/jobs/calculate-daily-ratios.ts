@@ -3,7 +3,7 @@ import pLimit from "p-limit";
 import { db, pool } from "@/db/client";
 import { eq } from "drizzle-orm";
 import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
-import { dailyRatios, symbols } from "@/db/schema/screener";
+import { dailyRatios, symbols } from "@/db/schema/market";
 import { validateEnvironmentVariables } from "@/etl/utils/validation";
 import {
   retryApiCall,

@@ -1,5 +1,5 @@
 import { db } from "@/db/client";
-import { symbols } from "@/db/schema/screener";
+import { symbols } from "@/db/schema/market";
 
 export async function ensureSymbol(sym: string): Promise<void> {
   try {

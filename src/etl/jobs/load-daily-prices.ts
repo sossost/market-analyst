@@ -3,7 +3,7 @@ import pLimit from "p-limit";
 import { db, pool } from "@/db/client";
 import { eq, sql } from "drizzle-orm";
 import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
-import { dailyPrices, symbols } from "@/db/schema/screener";
+import { dailyPrices, symbols } from "@/db/schema/market";
 import {
   validateEnvironmentVariables,
   validatePriceData,

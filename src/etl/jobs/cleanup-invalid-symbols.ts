@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db } from "@/db/client";
 import { eq, or, inArray } from "drizzle-orm";
-import { symbols } from "@/db/schema/screener";
+import { symbols } from "@/db/schema/market";
 import { isValidTicker } from "@/etl/utils/common";
 
 async function cleanupInvalidSymbols() {

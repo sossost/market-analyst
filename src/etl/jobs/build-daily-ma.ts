@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db, pool } from "@/db/client";
 import { sql } from "drizzle-orm";
-import { dailyMa } from "@/db/schema/screener";
+import { dailyMa } from "@/db/schema/market";
 import { sleep } from "@/etl/utils/common";
 import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
 import {

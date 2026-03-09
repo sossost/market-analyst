@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db, pool } from "@/db/client";
 import { sql } from "drizzle-orm";
-import { symbols } from "@/db/schema/screener";
+import { symbols } from "@/db/schema/market";
 import {
   validateEnvironmentVariables,
   validateSymbolData,
