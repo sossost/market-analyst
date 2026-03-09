@@ -4,6 +4,8 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateDate, validateString, validateNumber } from "./validation";
+import { loadLatestRegime } from "../debate/regimeStore";
+import { logger } from "@/agent/logger";
 
 interface RecommendationInput {
   symbol: string;
@@ -76,6 +78,16 @@ export const saveRecommendations: AgentTool = {
       return JSON.stringify({ error: "recommendations must be a non-empty array" });
     }
 
+    // 현재 레짐 조회 (스냅샷용)
+    let currentRegime: string | null = null;
+    try {
+      const latest = await loadLatestRegime();
+      currentRegime = latest?.regime ?? null;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn("Regime", `레짐 조회 실패, null로 저장: ${reason}`);
+    }
+
     let savedCount = 0;
     let skippedCount = 0;
 
@@ -106,6 +118,7 @@ export const saveRecommendations: AgentTool = {
             sector: rec.sector ?? null,
             industry: rec.industry ?? null,
             reason: rec.reason ?? null,
+            marketRegime: currentRegime,
             status: "ACTIVE",
             currentPrice: String(entryPrice),
             currentPhase: rec.phase ?? 2,

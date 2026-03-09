@@ -59,6 +59,7 @@ describe("debate types", () => {
         report: "Synthesis report...",
         theses: [],
       },
+      marketRegime: null,
       metadata: {
         totalTokens: { input: 10000, output: 5000 },
         totalDurationMs: 30000,

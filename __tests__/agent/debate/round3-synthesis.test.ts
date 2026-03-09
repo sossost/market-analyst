@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { extractThesesFromText } from "../../../src/agent/debate/round3-synthesis.js";
+import { extractThesesFromText, extractDebateOutput } from "../../../src/agent/debate/round3-synthesis.js";
+import type { MarketRegimeRaw } from "../../../src/types/debate.js";
 
 // helper: nextBottleneck/dissentReason를 포함한 유효한 thesis JSON 생성
 function makeThesisJson(overrides: Record<string, unknown> = {}): string {
@@ -309,5 +310,148 @@ describe("extractThesesFromText", () => {
     const { cleanReport } = extractThesesFromText(text);
     expect(cleanReport).toContain("주도섹터/주도주 전망");
     expect(cleanReport).not.toContain("검증 가능한 전망 추출");
+  });
+});
+
+// helper: marketRegime JSON 블록 생성
+function makeRegimeJson(overrides: Partial<MarketRegimeRaw> = {}): string {
+  const base = {
+    marketRegime: {
+      regime: "MID_BULL",
+      rationale: "다수 섹터 상승 전환, RS 상위 종목 다수",
+      confidence: "medium",
+      ...overrides,
+    },
+  };
+  return `\`\`\`json\n${JSON.stringify(base, null, 2)}\n\`\`\``;
+}
+
+describe("extractDebateOutput", () => {
+  it("thesis JSON + marketRegime JSON 둘 다 있는 경우 둘 다 정상 추출", () => {
+    const text = `## 핵심 요약
+
+시장 분석 내용...
+
+### 검증 가능한 전망 추출
+
+${makeThesisJson()}
+
+## 시장 레짐 판정
+
+${makeRegimeJson()}`;
+
+    const result = extractDebateOutput(text);
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].agentPersona).toBe("macro");
+    expect(result.marketRegime).not.toBeNull();
+    expect(result.marketRegime!.regime).toBe("MID_BULL");
+    expect(result.marketRegime!.rationale).toBe("다수 섹터 상승 전환, RS 상위 종목 다수");
+    expect(result.marketRegime!.confidence).toBe("medium");
+  });
+
+  it("thesis만 있고 marketRegime 없는 경우 → theses 정상, marketRegime null", () => {
+    const text = `## 핵심 요약
+
+분석 내용...
+
+### 검증 가능한 전망 추출
+
+${makeThesisJson()}`;
+
+    const result = extractDebateOutput(text);
+    expect(result.theses).toHaveLength(1);
+    expect(result.marketRegime).toBeNull();
+  });
+
+  it("marketRegime만 있고 thesis 없는 경우 → theses 빈 배열, marketRegime 정상", () => {
+    const text = `## 핵심 요약
+
+분석 내용...
+
+## 시장 레짐 판정
+
+${makeRegimeJson({ regime: "EARLY_BULL", confidence: "low" })}`;
+
+    const result = extractDebateOutput(text);
+    expect(result.theses).toEqual([]);
+    expect(result.marketRegime).not.toBeNull();
+    expect(result.marketRegime!.regime).toBe("EARLY_BULL");
+    expect(result.marketRegime!.confidence).toBe("low");
+  });
+
+  it("marketRegime 파싱 실패 → null 반환, theses는 영향 없음", () => {
+    const text = `## 분석
+
+${makeThesisJson()}
+
+## 시장 레짐 판정
+
+\`\`\`json
+{ "marketRegime": "잘못된 형식" }
+\`\`\``;
+
+    const result = extractDebateOutput(text);
+    expect(result.theses).toHaveLength(1);
+    expect(result.marketRegime).toBeNull();
+  });
+
+  it("cleanReport에서 marketRegime 관련 텍스트가 제거된다", () => {
+    const text = `## 핵심 요약
+
+시장 분석 내용...
+
+### 검증 가능한 전망 추출
+
+${makeThesisJson()}
+
+## 시장 레짐 판정
+
+${makeRegimeJson()}`;
+
+    const { cleanReport } = extractDebateOutput(text);
+    expect(cleanReport).toContain("핵심 요약");
+    expect(cleanReport).toContain("시장 분석 내용");
+    expect(cleanReport).not.toContain("시장 레짐 판정");
+    expect(cleanReport).not.toContain("marketRegime");
+    expect(cleanReport).not.toContain("MID_BULL");
+    // thesis JSON도 제거됨
+    expect(cleanReport).not.toContain("agentPersona");
+    expect(cleanReport).not.toContain("검증 가능한 전망 추출");
+  });
+
+  it("marketRegime의 confidence가 없으면 'low'로 기본값 설정", () => {
+    const text = `분석...
+
+\`\`\`json
+{
+  "marketRegime": {
+    "regime": "BEAR",
+    "rationale": "다수 섹터 하락 추세"
+  }
+}
+\`\`\``;
+
+    const result = extractDebateOutput(text);
+    expect(result.marketRegime).not.toBeNull();
+    expect(result.marketRegime!.regime).toBe("BEAR");
+    expect(result.marketRegime!.confidence).toBe("low");
+  });
+
+  it("주도섹터/주도주 전망 헤더는 보존된다", () => {
+    const text = `### 4. 주도섹터/주도주 전망
+
+부상하는 섹터 분석...
+
+### 검증 가능한 전망 추출
+
+${makeThesisJson()}
+
+## 시장 레짐 판정
+
+${makeRegimeJson()}`;
+
+    const { cleanReport } = extractDebateOutput(text);
+    expect(cleanReport).toContain("주도섹터/주도주 전망");
+    expect(cleanReport).not.toContain("시장 레짐 판정");
   });
 });

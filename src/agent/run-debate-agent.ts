@@ -6,6 +6,7 @@ import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoa
 import { collectNews, formatNewsForPersona } from "./debate/newsCollector";
 import { loadNewsForPersona } from "./debate/newsLoader";
 import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
+import { validateRegimeInput, saveRegime } from "./debate/regimeStore";
 import { verifyTheses } from "./debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
@@ -330,10 +331,23 @@ async function main() {
     }
   }
 
-  // 7. Thesis 저장 + 세션 저장
-  logger.step("[7/9] Saving theses & session...");
+  // 7. Thesis 저장 + 레짐 저장 + 세션 저장
+  logger.step("[7/9] Saving theses, regime & session...");
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
+
+  // 레짐 저장 (에러 격리 — 실패해도 토론 결과에 영향 없음)
+  if (result.marketRegime != null) {
+    try {
+      const validated = validateRegimeInput(result.marketRegime);
+      if (validated != null) {
+        await saveRegime(debateDate, validated);
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.error("Regime", `레짐 저장 실패 (토론은 계속): ${reason}`);
+    }
+  }
 
   try {
     await saveDebateSession({

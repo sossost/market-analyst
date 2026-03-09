@@ -96,6 +96,15 @@ export interface ConsensusHitRateRow {
 }
 
 /**
+ * Raw market regime data extracted from moderator output.
+ */
+export interface MarketRegimeRaw {
+  regime: string;
+  rationale: string;
+  confidence: string;
+}
+
+/**
  * Full debate result from all 3 rounds.
  */
 export interface DebateResult {
@@ -103,6 +112,7 @@ export interface DebateResult {
   round1: DebateRound;
   round2: DebateRound;
   round3: SynthesisResult;
+  marketRegime: MarketRegimeRaw | null;
   metadata: {
     totalTokens: { input: number; output: number };
     totalDurationMs: number;

@@ -1,8 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { callAgent } from "./callAgent.js";
 import { logger } from "../logger.js";
-import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory } from "../../types/debate.js";
-import type { PersonaDefinition } from "../../types/debate.js";
+import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition } from "../../types/debate.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
 
@@ -18,6 +17,7 @@ interface Round3Input {
 
 interface Round3Result {
   synthesis: SynthesisResult;
+  marketRegime: MarketRegimeRaw | null;
   tokensUsed: { input: number; output: number };
 }
 
@@ -189,7 +189,32 @@ ${round2Section}
 - 현재 병목이 ACTIVE 초기 단계라면 null (아직 N+1을 논하기 이른 단계)
 
 **dissentReason 작성 규칙:**
-- 합의되지 않은 의견이 있을 경우 \`dissentReason\`에 반대 입장 1~2줄 요약. 만장일치면 null.`;
+- 합의되지 않은 의견이 있을 경우 \`dissentReason\`에 반대 입장 1~2줄 요약. 만장일치면 null.
+
+## 시장 레짐 판정 (JSON)
+
+리포트 마지막에 아래 JSON 블록을 **별도의 코드블록**으로 추가하세요.
+이 데이터는 시스템이 자동 파싱합니다.
+
+레짐 분류 기준:
+- EARLY_BULL: 브레드스 반전 신호, 상승 전환 비율 상승 초기, 지수 바닥 확인 구간
+- MID_BULL: 다수 섹터 상승 전환, RS 상위 종목 다수, 추천 적극성 정상
+- LATE_BULL: 소수 종목만 주도, 브레드스 피크 후 하락, 과열 신호
+- EARLY_BEAR: 브레드스 급락, 하락 추세 비율 상승, 방어 필요
+- BEAR: 다수 섹터 하락 추세, 상승 전환 신호 신뢰도 매우 낮음
+
+macro-economist의 round1 분석을 최우선으로 참조.
+확신이 없으면 confidence: 'low'로 표기.
+
+\`\`\`json
+{
+  "marketRegime": {
+    "regime": "MID_BULL",
+    "rationale": "판정 근거 2~4줄",
+    "confidence": "low|medium|high"
+  }
+}
+\`\`\``;
 }
 
 const VALID_PERSONAS = new Set<string>(["macro", "tech", "geopolitics", "sentiment"]);
@@ -244,6 +269,10 @@ interface ExtractionResult {
   cleanReport: string;
 }
 
+export interface DebateExtractionResult extends ExtractionResult {
+  marketRegime: MarketRegimeRaw | null;
+}
+
 /**
  * Extract thesis JSON array from moderator output and return clean report.
  * JSON block is removed from the report (system-only data, not for users).
@@ -288,6 +317,92 @@ export function extractThesesFromText(text: string): ExtractionResult {
 }
 
 /**
+ * Extract thesis JSON array AND marketRegime JSON from moderator output.
+ * Parses each JSON block independently: thesis = array, regime = object.
+ */
+export function extractDebateOutput(text: string): DebateExtractionResult {
+  // thesis: 배열 JSON 블록 추출
+  const theses = (() => {
+    const jsonMatch = text.match(/```json\s*(\[[\s\S]*?\])\s*```/);
+    if (jsonMatch == null) {
+      logger.warn("Round3", "No thesis JSON block found in moderator output");
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      if (!Array.isArray(parsed)) {
+        logger.warn("Round3", "Parsed thesis JSON is not an array");
+        return [];
+      }
+      const normalized = parsed.map((t: unknown) => {
+        if (t != null && typeof t === "object") {
+          return normalizeThesisFields(t as Record<string, unknown>);
+        }
+        return t;
+      });
+      const validated = normalized.filter((t: unknown) => isValidThesis(t));
+      if (validated.length < parsed.length) {
+        logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
+      }
+      return validated;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
+      return [];
+    }
+  })();
+
+  // regime: 객체 JSON 블록 추출
+  const marketRegime = extractMarketRegime(text);
+
+  // 두 JSON 블록과 관련 헤더를 모두 제거
+  const cleanReport = text
+    .replace(/#{1,3}\s*(?:검증 가능한 전망 추출|Thesis 추출|전망 추출|시장 레짐 판정)[^\n]*\n?/gi, "")
+    .replace(/```json\s*\[[\s\S]*?\]\s*```/g, "") // Theses JSON block (배열)
+    .replace(/```json\s*\{[\s\S]*?"marketRegime"[\s\S]*?\}\s*```/g, "") // Regime JSON block (객체)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return {
+    theses,
+    cleanReport,
+    marketRegime,
+  };
+}
+
+/**
+ * Extract marketRegime JSON object from text.
+ * Returns null on parse failure (conservative).
+ */
+function extractMarketRegime(text: string): MarketRegimeRaw | null {
+  // marketRegime JSON은 별도 코드블록으로 온다
+  // 패턴: ```json { "marketRegime": { ... } } ```
+  const regimeMatch = text.match(/```json\s*(\{[\s\S]*?"marketRegime"[\s\S]*?\})\s*```/);
+  if (regimeMatch == null) {
+    logger.warn("Round3", "No marketRegime JSON block found");
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(regimeMatch[1]);
+    const regime = parsed.marketRegime;
+    if (regime == null || typeof regime !== "object") {
+      logger.warn("Round3", "marketRegime field is not an object");
+      return null;
+    }
+    return {
+      regime: String(regime.regime ?? ""),
+      rationale: String(regime.rationale ?? ""),
+      confidence: String(regime.confidence ?? "low"),
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.warn("Round3", `Failed to parse marketRegime JSON: ${msg}`);
+    return null;
+  }
+}
+
+/**
  * Round 3 — Moderator Synthesis.
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
@@ -300,7 +415,7 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
     disableTools: true,
   });
 
-  const { theses, cleanReport } = extractThesesFromText(result.content);
+  const { theses, cleanReport, marketRegime } = extractDebateOutput(result.content);
   logger.info("Round3", `Synthesis complete: ${theses.length} theses extracted`);
 
   return {
@@ -308,6 +423,7 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
       report: cleanReport,
       theses,
     },
+    marketRegime,
     tokensUsed: result.tokensUsed,
   };
 }
