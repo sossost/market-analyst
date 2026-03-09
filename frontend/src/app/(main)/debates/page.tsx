@@ -1,5 +1,3 @@
-import Link from 'next/link'
-
 import {
   Pagination,
   PaginationContent,
@@ -11,6 +9,7 @@ import {
 import { DebateEmptyState } from '@/features/debates/components/DebateEmptyState'
 import { DebateListItem } from '@/features/debates/components/DebateListItem'
 import { fetchDebateSessions } from '@/features/debates/lib/supabase-queries'
+import type { DebateSessionSummary } from '@/features/debates/types'
 
 const ITEMS_PER_PAGE = 20
 
@@ -22,8 +21,8 @@ export default async function DebatesPage({ searchParams }: Props) {
   const { page: pageParam } = await searchParams
   const currentPage = Math.max(1, Number(pageParam) || 1)
 
-  let sessions
-  let total
+  let sessions: DebateSessionSummary[] = []
+  let total = 0
   let errorMessage: string | null = null
 
   try {
@@ -31,8 +30,6 @@ export default async function DebatesPage({ searchParams }: Props) {
     sessions = result.sessions
     total = result.total
   } catch (error) {
-    sessions = []
-    total = 0
     errorMessage =
       error instanceof Error
         ? error.message
