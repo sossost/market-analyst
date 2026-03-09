@@ -1,16 +1,11 @@
 'use client'
 
-import { FileText, Home, MessageSquare } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 import { cn } from '@/shared/lib/utils'
 
-const NAV_ITEMS = [
-  { href: '/', label: '홈', icon: Home },
-  { href: '/reports', label: '리포트', icon: FileText },
-  { href: '/debates', label: '토론', icon: MessageSquare },
-] as const
+import { NAV_ITEMS } from './nav-items'
 
 export function MobileNav() {
   const pathname = usePathname()
