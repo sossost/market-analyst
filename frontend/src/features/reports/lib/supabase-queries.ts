@@ -1,8 +1,7 @@
 import { createClient } from '@/features/auth/lib/supabase-server'
 
-import type { ReportSummary, ReportDetail, ReportType } from '../types'
-
-const ITEMS_PER_PAGE = 20
+import { ITEMS_PER_PAGE, isReportType } from '../constants'
+import type { ReportSummary, ReportDetail } from '../types'
 
 interface FetchReportsResult {
   reports: ReportSummary[]
@@ -30,7 +29,7 @@ export async function fetchReports(
   const reports: ReportSummary[] = (data ?? []).map((row) => ({
     id: row.id,
     reportDate: row.report_date,
-    type: row.type as ReportType,
+    type: isReportType(row.type) ? row.type : 'daily',
     symbolCount: Array.isArray(row.reported_symbols)
       ? row.reported_symbols.length
       : 0,
@@ -74,7 +73,7 @@ export async function fetchReportByDate(
   return {
     id: data.id,
     reportDate: data.report_date,
-    type: data.type as ReportType,
+    type: isReportType(data.type) ? data.type : 'daily',
     reportedSymbols: Array.isArray(data.reported_symbols)
       ? data.reported_symbols
       : [],

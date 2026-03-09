@@ -8,10 +8,9 @@ import {
 } from '@/shared/components/ui/pagination'
 import { ReportEmptyState } from '@/features/reports/components/ReportEmptyState'
 import { ReportListItem } from '@/features/reports/components/ReportListItem'
+import { ITEMS_PER_PAGE } from '@/features/reports/constants'
 import { fetchReports } from '@/features/reports/lib/supabase-queries'
 import type { ReportSummary } from '@/features/reports/types'
-
-const ITEMS_PER_PAGE = 20
 
 interface Props {
   searchParams: Promise<{ page?: string }>

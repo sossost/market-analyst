@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { MarketSummaryCard } from '@/features/reports/components/MarketSummaryCard'
 import { RecommendedStockTable } from '@/features/reports/components/RecommendedStockTable'
 import { ReportTypeBadge } from '@/features/reports/components/ReportTypeBadge'
+import { isValidDateParam } from '@/features/reports/constants'
 import { fetchReportByDate } from '@/features/reports/lib/supabase-queries'
 import {
   Card,
@@ -21,6 +22,10 @@ interface Props {
 
 export default async function ReportDetailPage({ params }: Props) {
   const { date } = await params
+
+  if (!isValidDateParam(date)) {
+    notFound()
+  }
 
   const report = await fetchReportByDate(date)
 
@@ -88,7 +93,7 @@ function MetadataSection({
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <MetricItem label="실행 모델" value={model || '-'} />
+          <MetricItem label="실행 모델" value={model === '' ? '-' : model} />
           <MetricItem
             label="토큰 사용량"
             value={`입력 ${tokensInput.toLocaleString()} / 출력 ${tokensOutput.toLocaleString()}`}
