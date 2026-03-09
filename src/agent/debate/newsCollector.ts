@@ -80,7 +80,7 @@ async function searchBraveNews(query: string): Promise<NewsItem[]> {
 
 /**
  * 토론 전 뉴스 사전 수집.
- * 애널리스트별 2~3개 쿼리 × 5건 = 최대 50건 수집.
+ * 애널리스트별 2~5개 쿼리 × 5건 = 최대 70건 수집.
  * 순차 실행 (rate limit 방지).
  */
 export async function collectNews(): Promise<NewsCollection> {
