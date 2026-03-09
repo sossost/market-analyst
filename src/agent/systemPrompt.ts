@@ -62,9 +62,10 @@ const ANALYSIS_FRAMEWORK = `## 분석 프레임워크
  * 시장 온도 + 특이종목 카탈리스트 분석에 집중.
  */
 export function buildDailySystemPrompt(options?: {
+  targetDate?: string;
   thesesContext?: string;
 }): string {
-  const { thesesContext } = options ?? {};
+  const { targetDate, thesesContext } = options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 매일 시장 온도를 체크하고, 특이종목이 있으면 카탈리스트(원인)를 분석하여 간결한 브리핑을 전달합니다.
 
@@ -215,6 +216,10 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 <debate-theses trust="internal">
 ${sanitized}
 </debate-theses>`;
+  }
+
+  if (targetDate != null && targetDate !== "") {
+    prompt += `\n\n오늘 날짜: ${targetDate}`;
   }
 
   return injectFeedbackLayers(prompt);

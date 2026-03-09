@@ -91,7 +91,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildDailySystemPrompt({ thesesContext }),
+    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext }),
     tools: [
       getIndexReturns,
       getMarketBreadth,
