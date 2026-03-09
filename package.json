@@ -2,6 +2,7 @@
   "name": "market-analyst",
   "version": "0.1.0",
   "private": true,
+  "workspaces": ["frontend"],
   "type": "module",
   "scripts": {
     "etl:symbols": "tsx src/etl/jobs/load-us-symbols.ts",
@@ -41,7 +42,11 @@
     "typecheck": "tsc --noEmit",
     "backfill:etl": "tsx scripts/backfill-etl.ts",
     "backtest:debate": "tsx scripts/backtest-debate.ts",
-    "report:ceo": "tsx src/etl/jobs/generate-ceo-report.ts"
+    "report:ceo": "tsx src/etl/jobs/generate-ceo-report.ts",
+    "frontend:dev": "npm run dev --workspace=frontend",
+    "frontend:build": "npm run build --workspace=frontend",
+    "frontend:lint": "npm run lint --workspace=frontend",
+    "frontend:typecheck": "tsc --noEmit --project frontend/tsconfig.json"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
