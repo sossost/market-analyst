@@ -218,7 +218,8 @@ ${sanitized}
 </debate-theses>`;
   }
 
-  if (targetDate != null && targetDate !== "") {
+  const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+  if (targetDate != null && DATE_PATTERN.test(targetDate)) {
     prompt += `\n\n오늘 날짜: ${targetDate}`;
   }
 
