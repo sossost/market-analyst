@@ -36,7 +36,7 @@ describe('getSupabaseConfig', () => {
   })
 
   it('throws when environment variable is undefined', () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', undefined as unknown as string)
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-anon-key')
 
     expect(() => getSupabaseConfig()).toThrow(
