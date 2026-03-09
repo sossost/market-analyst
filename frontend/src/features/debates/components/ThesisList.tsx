@@ -6,7 +6,7 @@ import {
 } from '@/shared/components/ui/card'
 import { Badge } from '@/shared/components/ui/badge'
 
-import { PERSONA_LABELS } from '../constants'
+import { getPersonaLabel } from '../constants'
 import type { DebateThesis } from '../types'
 import { ThesisBadge } from './ThesisBadge'
 
@@ -33,7 +33,7 @@ export function ThesisList({ theses }: ThesisListProps) {
 }
 
 function ThesisCard({ thesis }: { thesis: DebateThesis }) {
-  const personaLabel = PERSONA_LABELS[thesis.agentPersona] ?? thesis.agentPersona
+  const personaLabel = getPersonaLabel(thesis.agentPersona)
 
   return (
     <Card size="sm">
