@@ -18,7 +18,7 @@ interface Props {
 
 export default async function ReportsPage({ searchParams }: Props) {
   const { page: pageParam } = await searchParams
-  const currentPage = Math.max(1, Number(pageParam) || 1)
+  const currentPage = Math.max(1, Math.floor(Number(pageParam) || 1))
 
   let reports: ReportSummary[] = []
   let total = 0
