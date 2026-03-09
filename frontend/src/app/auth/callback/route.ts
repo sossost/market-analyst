@@ -18,6 +18,6 @@ export async function GET(request: NextRequest) {
   }
 
   const raw = searchParams.get('next') ?? searchParams.get('redirectTo') ?? '/'
-  const redirectTo = raw.startsWith('/') ? raw : '/'
+  const redirectTo = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/'
   return NextResponse.redirect(new URL(redirectTo, origin))
 }
