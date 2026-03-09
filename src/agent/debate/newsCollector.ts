@@ -36,6 +36,8 @@ const SEARCH_QUERIES: Record<keyof NewsCollection, string[]> = {
     "US China trade tariff sanctions latest",
     "geopolitical risk oil supply chain disruption",
     "US legislation bill regulation tariff subsidy sector impact latest",
+    "US Congress bill passed signed executive order sector impact 2026",
+    "tariff implementation effective date trade policy enforcement 2026",
   ],
   sentiment: [
     "stock market sentiment VIX fear greed index",
