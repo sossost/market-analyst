@@ -4,7 +4,7 @@ import type { AgentTool } from "./types";
 import { validateDate } from "./validation";
 
 /**
- * 당일 리포트 이력을 JSON 파일로 저장한다.
+ * 당일 리포트 이력을 DB + JSON 파일(백업)로 저장한다.
  * 다음 날 Agent가 read_report_history로 참조.
  */
 export const saveReportLogTool: AgentTool = {
@@ -86,7 +86,7 @@ export const saveReportLogTool: AgentTool = {
       },
     };
 
-    saveReportLog(reportWithMetadata);
+    await saveReportLog(reportWithMetadata);
 
     return JSON.stringify({
       success: true,
