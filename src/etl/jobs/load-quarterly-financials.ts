@@ -1,7 +1,7 @@
 import "dotenv/config";
 import pLimit from "p-limit";
 import { db } from "@/db/client";
-import { quarterlyFinancials } from "@/db/schema/screener";
+import { quarterlyFinancials } from "@/db/schema/market";
 import { sql } from "drizzle-orm";
 import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
 import { asQuarter } from "@/etl/utils/date";

@@ -4,7 +4,7 @@ import { db, pool } from "@/db/client";
 import { eq } from "drizzle-orm";
 import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
 import { asQuarter } from "@/etl/utils/date";
-import { quarterlyRatios, symbols } from "@/db/schema/screener";
+import { quarterlyRatios, symbols } from "@/db/schema/market";
 import {
   validateEnvironmentVariables,
   validateRatioData,

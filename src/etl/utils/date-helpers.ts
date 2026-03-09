@@ -22,7 +22,7 @@ export async function getLatestTradeDate(): Promise<string | null> {
 
 /**
  * Get the latest date that has price data (daily_prices only, no stock_phases join).
- * Used by screener ETL jobs that run before stock_phases is built.
+ * Used by market-analyst ETL jobs that run before stock_phases is built.
  *
  * Can be overridden via TARGET_DATE env var for backfill runs.
  */

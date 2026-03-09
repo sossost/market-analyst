@@ -1,6 +1,5 @@
 /**
- * Screener 프로젝트에서 이전한 테이블 — market-analyst가 ETL + 스키마를 관리.
- * screener 웹앱은 이 DB를 읽기 전용으로 사용.
+ * market-analyst가 소유하고 ETL을 관리하는 테이블.
  */
 import {
   pgTable,

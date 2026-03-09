@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db, pool } from "@/db/client";
-import { dailyBreakoutSignals } from "@/db/schema/screener";
+import { dailyBreakoutSignals } from "@/db/schema/market";
 import { getLatestPriceDate, getPreviousTradeDate } from "@/etl/utils/date-helpers";
 import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
 

@@ -70,7 +70,7 @@ export function validateEnvironmentVariables(): ValidationResult {
 }
 
 /**
- * Alias: DB-only environment validation (screener convention name).
+ * Alias: DB-only environment validation.
  */
 export const validateDatabaseOnlyEnvironment = validateEnvironment;
 
