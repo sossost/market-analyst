@@ -123,6 +123,46 @@ describe("buildDailySystemPrompt", () => {
 
     expect(result).not.toContain("<debate-theses");
   });
+
+  it("includes targetDate in system prompt when provided", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt({ targetDate: "2026-03-09" });
+
+    expect(result).toContain("오늘 날짜: 2026-03-09");
+  });
+
+  it("does not include date line when targetDate is undefined", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).not.toContain("오늘 날짜:");
+  });
+
+  it("does not include date line when targetDate is empty string", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt({ targetDate: "" });
+
+    expect(result).not.toContain("오늘 날짜:");
+  });
+
+  it("does not include date line when targetDate has invalid format", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt({ targetDate: "not-a-date" });
+
+    expect(result).not.toContain("오늘 날짜:");
+  });
+
+  it("does not include date line when targetDate uses wrong separator", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt({ targetDate: "2026/03/09" });
+
+    expect(result).not.toContain("오늘 날짜:");
+  });
 });
 
 describe("buildWeeklySystemPrompt", () => {
