@@ -34,6 +34,7 @@ function makeResult(theses: Thesis[]): DebateResult {
     round1: { round: 1, outputs: [] },
     round2: { round: 2, outputs: [] },
     round3: { report: "", theses },
+    marketRegime: null,
     metadata: { totalTokens: { input: 0, output: 0 }, totalDurationMs: 0, agentErrors: [] },
   };
 }

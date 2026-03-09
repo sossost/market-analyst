@@ -174,6 +174,9 @@ export const recommendations = pgTable(
     daysHeld: integer("days_held").default(0),
     lastUpdated: text("last_updated"),
 
+    // 시장 레짐 스냅샷
+    marketRegime: text("market_regime"), // 추천 시점의 레짐 (EARLY_BULL 등)
+
     // 종료 정보
     closeDate: text("close_date"),
     closePrice: numeric("close_price"),
@@ -678,5 +681,38 @@ export const sectorLagPatterns = pgTable(
       t.leaderEntity,
       t.transition,
     ),
+  }),
+);
+
+/**
+ * market_regimes — 시장 레짐 정성 태깅.
+ * 토론 moderator가 macro-economist의 분석을 참조하여 시장 레짐을 판정.
+ * debate_date별 UNIQUE — 하루에 하나의 레짐만 기록.
+ */
+export type MarketRegimeType =
+  | "EARLY_BULL"
+  | "MID_BULL"
+  | "LATE_BULL"
+  | "EARLY_BEAR"
+  | "BEAR";
+
+export type RegimeConfidence = "low" | "medium" | "high";
+
+export const marketRegimes = pgTable(
+  "market_regimes",
+  {
+    id: serial("id").primaryKey(),
+    regimeDate: text("regime_date").notNull(), // YYYY-MM-DD
+    regime: text("regime").$type<MarketRegimeType>().notNull(),
+    rationale: text("rationale").notNull(), // 판정 근거 2~4줄
+    confidence: text("confidence").$type<RegimeConfidence>().notNull(),
+    taggedBy: text("tagged_by").notNull().default("macro"), // 향후 확장용
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqDate: unique("uq_market_regimes_date").on(t.regimeDate),
+    idxDate: index("idx_market_regimes_date").on(t.regimeDate),
   }),
 );

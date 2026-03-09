@@ -230,8 +230,9 @@ export function buildWeeklySystemPrompt(options?: {
   signalPerformance?: string;
   narrativeChainsSummary?: string;
   sectorLagContext?: string;
+  regimeContext?: string;
 }): string {
-  const { fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext } =
+  const { fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext, regimeContext } =
     options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 주간 단위로 "이번 주 시장 구조가 어떻게 바뀌었는가"를 분석하고, Phase 2 초입 주도주를 발굴합니다.
@@ -519,6 +520,18 @@ ${sanitized}
 - 예상 진입 윈도우 내에 팔로워 섹터 RS 상승 조짐이 보이면 해당 섹터 종목을 적극 주시
 - 시차 패턴과 서사 레이어(narrative_chains) 병목 해소가 동시에 가리키는 섹터는 강한 신호
 - 과거 관측 횟수와 표준편차를 감안하여 신뢰도를 자체 판단`;
+  }
+
+  if (regimeContext != null && regimeContext !== "") {
+    const sanitized = sanitizeXml(regimeContext);
+    prompt += `
+
+${sanitized}
+
+**활용법**:
+- 현재 레짐에 따라 추천 공격성을 조절 (EARLY_BULL → 적극, LATE_BULL → 보수적, BEAR → 최소화)
+- 레짐 전환 조짐이 보이면 리포트에 명시적으로 경고
+- 추천 종목의 레짐 적합성을 판단 근거에 포함`;
   }
 
   if (signalPerformance != null && signalPerformance !== "") {

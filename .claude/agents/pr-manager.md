@@ -47,7 +47,7 @@ git log main..HEAD --oneline
 ### 4. PR body 작성
 `.github/PULL_REQUEST_TEMPLATE.md` 템플릿의 모든 섹션을 채운다.
 
-**필수: body 첫 줄에 `Closes #XX` (관련 이슈 번호)를 포함한다.** 머지 시 이슈 자동 닫기를 위해 반드시 필요. 누락 시 PR 생성 금지.
+**[CRITICAL] body 첫 줄에 반드시 `Closes #XX` (관련 이슈 번호)를 포함한다.** 머지 시 이슈 자동 닫기를 위해 필수. **이 줄이 없으면 PR 생성을 중단하고 에러를 반환한다.** 여러 이슈를 닫는 경우 `Closes #XX, Closes #YY` 형식.
 - 왜 — 프로젝트 골과의 연결
 - 뭐가 달라지는가 — Before/After
 - 의사결정 필요 — CEO가 판단할 것

@@ -114,6 +114,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     round1: round1Result.round,
     round2: round2Result.round,
     round3: round3Result.synthesis,
+    marketRegime: round3Result.marketRegime,
     metadata: {
       totalTokens,
       totalDurationMs,
