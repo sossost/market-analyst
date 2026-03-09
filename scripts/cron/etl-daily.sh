@@ -68,4 +68,14 @@ if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
   run_step "Run Daily Agent" "src/agent/run-daily-agent.ts"
 fi
 
+# Phase 5: 보고서 품질 검증 (비블로킹 — 실패해도 파이프라인 종료 안 됨)
+if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
+  log "▶ Daily Report QA"
+  if "$SCRIPT_DIR/validate-daily-report.sh" >> "$LOG_FILE" 2>&1; then
+    log "✓ Daily Report QA 완료"
+  else
+    log "⚠ Daily Report QA 실패 (비블로킹)"
+  fi
+fi
+
 log "=== ETL 파이프라인 완료 ==="

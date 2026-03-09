@@ -6,3 +6,4 @@ dist/
 *.log
 logs/
 data/fundamental-cache/
+data/report-qa/
