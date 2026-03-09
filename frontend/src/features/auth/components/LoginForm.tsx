@@ -7,6 +7,8 @@ import { Button } from '@/shared/components/ui/button'
 
 import { createClient } from '../lib/supabase-browser'
 
+const SAFE_REDIRECT_PATTERN = /^\/[^/]/
+
 type FormState =
   | { status: 'idle' }
   | { status: 'submitting' }
@@ -65,7 +67,6 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
       const supabase = createClient()
       // 전제: Supabase 대시보드 > Authentication > URL Configuration > Redirect URLs에
       // 이 origin이 허용 목록으로 등록되어 있어야 함. 누락 시 Magic Link 클릭 후 에러 발생.
-      const SAFE_REDIRECT_PATTERN = /^\/[^/]/
       const safePath = (redirectTo != null && SAFE_REDIRECT_PATTERN.test(redirectTo))
         ? redirectTo
         : '/'

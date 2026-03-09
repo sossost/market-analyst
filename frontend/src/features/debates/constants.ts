@@ -9,9 +9,13 @@ export const PERSONA_LABELS: Record<Persona, string> = {
   sentiment: '심리분석',
 }
 
+function isPersona(key: string): key is Persona {
+  return key in PERSONA_LABELS
+}
+
 export function getPersonaLabel(persona: string): string {
-  if (persona in PERSONA_LABELS) {
-    return PERSONA_LABELS[persona as Persona]
+  if (isPersona(persona)) {
+    return PERSONA_LABELS[persona]
   }
   return persona
 }
