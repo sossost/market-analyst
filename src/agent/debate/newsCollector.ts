@@ -36,6 +36,8 @@ const SEARCH_QUERIES: Record<keyof NewsCollection, string[]> = {
     "US China trade tariff sanctions latest",
     "geopolitical risk oil supply chain disruption",
     "US legislation bill regulation tariff subsidy sector impact latest",
+    "US Congress bill passed signed executive order sector impact latest",
+    "tariff implementation effective date trade policy enforcement latest",
   ],
   sentiment: [
     "stock market sentiment VIX fear greed index",
@@ -78,7 +80,7 @@ async function searchBraveNews(query: string): Promise<NewsItem[]> {
 
 /**
  * 토론 전 뉴스 사전 수집.
- * 애널리스트별 2~3개 쿼리 × 5건 = 최대 50건 수집.
+ * 애널리스트별 2~5개 쿼리 × 5건 = 최대 60건 수집.
  * 순차 실행 (rate limit 방지).
  */
 export async function collectNews(): Promise<NewsCollection> {
