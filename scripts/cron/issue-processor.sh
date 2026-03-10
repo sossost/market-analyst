@@ -1,16 +1,14 @@
 #!/bin/bash
 #
-# 자율 이슈 처리 시스템 — 평일 09:00~18:00 KST 매 1시간 실행
+# 자율 이슈 처리 시스템 — 평일 10:00, 12:00, 14:00, 16:00 KST 하루 4회 실행
 #
-# 열린 이슈를 자율 점검하여:
-# - 자율 처리 가능 → Claude Code CLI로 구현 → PR 생성
-# - CEO 판단 필요 → 이슈 코멘트로 에스컬레이션
+# 미처리 이슈를 자율 점검하여 Claude Code CLI로 구현 → PR 생성.
+# CEO는 PR 리뷰 + 머지 결정만.
 #
 # Usage:
 #   ./scripts/cron/issue-processor.sh
 #
 # 필수 환경변수:
-#   ANTHROPIC_API_KEY — LLM 트리아지
 #   GITHUB_TOKEN 또는 gh auth 상태 — 이슈/PR 조작
 
 set -euo pipefail
