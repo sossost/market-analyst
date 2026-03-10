@@ -40,11 +40,10 @@ run_parallel \
   "Build RS" "src/etl/jobs/build-rs.ts" \
   "Calculate Ratios" "src/etl/jobs/calculate-daily-ratios.ts"
 
-# Phase 3 (병렬 — MA + RS 완료 후)
-run_parallel \
-  "Build Breakout Signals" "src/etl/jobs/build-breakout-signals.ts" \
-  "Build Noise Signals" "src/etl/jobs/build-noise-signals.ts" \
-  "Build Stock Phases" "src/etl/jobs/build-stock-phases.ts"
+# Phase 3 (순차 — 각 쿼리가 무거워 병렬 시 커넥션 풀 경쟁으로 타임아웃 발생)
+run_step "Build Breakout Signals" "src/etl/jobs/build-breakout-signals.ts"
+run_step "Build Noise Signals" "src/etl/jobs/build-noise-signals.ts"
+run_step "Build Stock Phases" "src/etl/jobs/build-stock-phases.ts"
 
 # Phase 3.5 (stock_phases 완료 후)
 run_parallel \
