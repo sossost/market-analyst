@@ -8,6 +8,7 @@ import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
 const BREAKOUT_CONFIG = {
   WINDOW_DAYS: 20,
   VOLUME_MULTIPLIER: 2.0,
+  /** avg_volume는 daily_ma.vol_ma30 (30일 이동평균) 재활용. 20일 vs 30일 차이 허용 (성능 우선). */
   UPPER_SHADOW_MAX_RATIO: 0.2,
   RETEST_LOOKBACK_MIN_DAYS: 3,
   RETEST_LOOKBACK_MAX_DAYS: 10,
@@ -42,15 +43,7 @@ export async function buildBreakoutSignals() {
     );
 
     const result = await db.execute(sql`
-      WITH last_trade_date AS (
-        SELECT MAX(date::date)::date AS d FROM daily_prices
-      ),
-      yesterday_trade_date AS (
-        SELECT MAX(date::date)::date AS d
-        FROM daily_prices
-        WHERE date::date < (SELECT d FROM last_trade_date)
-      ),
-      yesterday_data AS (
+      WITH yesterday_data AS (
         SELECT
           dp.symbol,
           dp.close,
@@ -60,11 +53,11 @@ export async function buildBreakoutSignals() {
           dp.volume,
           dm.ma20,
           dm.ma50,
-          dm.ma200
+          dm.ma200,
+          dm.vol_ma30
         FROM daily_prices dp
-        JOIN daily_ma dm ON dp.symbol = dm.symbol AND dp.date::date = dm.date::date
-        WHERE dp.date::date = (SELECT d FROM yesterday_trade_date)
-          AND (SELECT d FROM yesterday_trade_date) IS NOT NULL
+        JOIN daily_ma dm ON dp.symbol = dm.symbol AND dp.date = dm.date
+        WHERE dp.date = ${previousDate}
           AND dp.close IS NOT NULL
           AND dp.open IS NOT NULL
           AND dp.low IS NOT NULL
@@ -78,66 +71,87 @@ export async function buildBreakoutSignals() {
           AND dm.ma50 > 0
           AND dm.ma200 > 0
       ),
-      yesterday_with_windows AS (
+      -- 당일 제외: "전일까지 20거래일 고가"를 돌파했는지 판정
+      trading_dates_20 AS (
+        SELECT DISTINCT date
+        FROM daily_prices
+        WHERE date < ${previousDate}
+        ORDER BY date DESC
+        LIMIT ${BREAKOUT_CONFIG.WINDOW_DAYS}
+      ),
+      high_20d_agg AS (
         SELECT
           dp.symbol,
-          dp.close,
-          dp.high,
-          dp.low,
-          dp.volume,
-          MAX(dp.high) OVER (
-            PARTITION BY dp.symbol
-            ORDER BY dp.date::date
-            ROWS BETWEEN ${BREAKOUT_CONFIG.WINDOW_DAYS - 1} PRECEDING AND CURRENT ROW
-          ) AS high_20d,
-          AVG(dp.volume) OVER (
-            PARTITION BY dp.symbol
-            ORDER BY dp.date::date
-            ROWS BETWEEN ${BREAKOUT_CONFIG.WINDOW_DAYS - 1} PRECEDING AND CURRENT ROW
-          ) AS avg_volume_20d
+          MAX(dp.high) AS high_20d
         FROM daily_prices dp
-        WHERE dp.date::date = (SELECT d FROM yesterday_trade_date)
-          AND (SELECT d FROM yesterday_trade_date) IS NOT NULL
-          AND dp.close IS NOT NULL
-          AND dp.high IS NOT NULL
-          AND dp.low IS NOT NULL
-          AND dp.volume IS NOT NULL
-          AND dp.volume > 0
+        JOIN trading_dates_20 td ON dp.date = td.date
+        WHERE dp.high IS NOT NULL
+        GROUP BY dp.symbol
       ),
       confirmed_breakout AS (
         SELECT
-          y.symbol,
+          yd.symbol,
           TRUE AS is_confirmed_breakout,
-          (y.close / y.high_20d - 1) * 100 AS breakout_percent,
-          (y.volume / y.avg_volume_20d) AS volume_ratio
-        FROM yesterday_with_windows y
+          (yd.close / h.high_20d - 1) * 100 AS breakout_percent,
+          (yd.volume / yd.vol_ma30) AS volume_ratio
+        FROM yesterday_data yd
+        JOIN high_20d_agg h ON h.symbol = yd.symbol
         WHERE
-          y.high_20d IS NOT NULL
-          AND y.avg_volume_20d IS NOT NULL
-          AND y.avg_volume_20d > 0
-          AND y.close >= y.high_20d
-          AND y.volume >= (y.avg_volume_20d * ${BREAKOUT_CONFIG.VOLUME_MULTIPLIER})
-          AND (y.high - y.low) > 0
-          AND (y.high - y.close) < ((y.high - y.low) * ${BREAKOUT_CONFIG.UPPER_SHADOW_MAX_RATIO})
+          h.high_20d IS NOT NULL
+          AND yd.vol_ma30 IS NOT NULL
+          AND yd.vol_ma30 > 0
+          AND yd.close >= h.high_20d
+          AND yd.volume >= (yd.vol_ma30 * ${BREAKOUT_CONFIG.VOLUME_MULTIPLIER})
+          AND (yd.high - yd.low) > 0
+          AND (yd.high - yd.close) < ((yd.high - yd.low) * ${BREAKOUT_CONFIG.UPPER_SHADOW_MAX_RATIO})
+      ),
+      retest_trading_dates AS (
+        SELECT date, ROW_NUMBER() OVER (ORDER BY date DESC) AS rn
+        FROM (
+          SELECT DISTINCT date
+          FROM daily_prices
+          WHERE date < ${latestDate}
+          ORDER BY date DESC
+          LIMIT ${BREAKOUT_CONFIG.RETEST_LOOKBACK_MAX_DAYS}
+        ) sub
+      ),
+      retest_range_dates AS (
+        SELECT date
+        FROM retest_trading_dates
+        WHERE rn >= ${BREAKOUT_CONFIG.RETEST_LOOKBACK_MIN_DAYS}
+          AND rn <= ${BREAKOUT_CONFIG.RETEST_LOOKBACK_MAX_DAYS}
+      ),
+      -- retest 날짜별 20거래일 범위를 사전 집계 (상관 서브쿼리 제거)
+      retest_window_dates AS (
+        SELECT
+          rd.date AS retest_date,
+          td.date AS window_date
+        FROM retest_range_dates rd
+        JOIN LATERAL (
+          SELECT DISTINCT date
+          FROM daily_prices
+          WHERE date <= rd.date
+          ORDER BY date DESC
+          LIMIT ${BREAKOUT_CONFIG.WINDOW_DAYS}
+        ) td ON TRUE
+      ),
+      retest_high_20d AS (
+        SELECT
+          rw.retest_date,
+          dp.symbol,
+          MAX(dp.high) AS high_20d_at_date
+        FROM retest_window_dates rw
+        JOIN daily_prices dp ON dp.date = rw.window_date
+        WHERE dp.high IS NOT NULL
+        GROUP BY rw.retest_date, dp.symbol
       ),
       past_breakouts_retest AS (
         SELECT DISTINCT dp.symbol
         FROM daily_prices dp
-        WHERE (SELECT d FROM last_trade_date) IS NOT NULL
-          AND dp.date::date BETWEEN
-            ((SELECT d FROM last_trade_date) - INTERVAL '${sql.raw(String(BREAKOUT_CONFIG.RETEST_LOOKBACK_MAX_DAYS))} days')::date AND
-            ((SELECT d FROM last_trade_date) - INTERVAL '${sql.raw(String(BREAKOUT_CONFIG.RETEST_LOOKBACK_MIN_DAYS))} days')::date
-          AND dp.close IS NOT NULL
-          AND dp.high IS NOT NULL
-          AND EXISTS (
-            SELECT 1
-            FROM daily_prices dp2
-            WHERE dp2.symbol = dp.symbol
-              AND dp2.date::date <= dp.date::date
-              AND dp2.date::date >= (dp.date::date - INTERVAL '${sql.raw(String(BREAKOUT_CONFIG.WINDOW_DAYS - 1))} days')::date
-              AND dp2.high IS NOT NULL
-            HAVING dp.close >= MAX(dp2.high)
-          )
+        JOIN retest_range_dates rd ON dp.date = rd.date
+        JOIN retest_high_20d rh ON rh.retest_date = rd.date AND rh.symbol = dp.symbol
+        WHERE dp.close IS NOT NULL
+          AND dp.close >= rh.high_20d_at_date
       ),
       perfect_retest AS (
         SELECT
@@ -159,7 +173,7 @@ export async function buildBreakoutSignals() {
       merged AS (
         SELECT
           yd.symbol,
-          (SELECT d FROM yesterday_trade_date) AS date,
+          ${previousDate} AS date,
           COALESCE(cb.is_confirmed_breakout, FALSE) AS is_confirmed_breakout,
           cb.breakout_percent,
           cb.volume_ratio,

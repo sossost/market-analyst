@@ -33,47 +33,49 @@ export async function buildNoiseSignals() {
     console.log(`📅 latest date: ${latestDate}`);
 
     const result = await db.execute(sql`
-      WITH last_trade_date AS (
-        SELECT MAX(date::date)::date AS d FROM daily_prices
-      ),
-      volume_metrics AS (
+      WITH volume_metrics AS (
         SELECT
           dp.symbol,
-          dp.date::date AS d,
           dp.close,
           dp.volume,
-          AVG(dp.volume * dp.close) OVER (
-            PARTITION BY dp.symbol
-            ORDER BY dp.date::date
-            ROWS BETWEEN ${NOISE_CONFIG.VOLUME_WINDOW_DAYS - 1} PRECEDING AND CURRENT ROW
-          ) AS avg_dollar_volume_20d,
-          AVG(dp.volume) OVER (
-            PARTITION BY dp.symbol
-            ORDER BY dp.date::date
-            ROWS BETWEEN ${NOISE_CONFIG.VOLUME_WINDOW_DAYS - 1} PRECEDING AND CURRENT ROW
-          ) AS avg_volume_20d
+          dm.vol_ma30 AS avg_volume_20d,
+          dm.vol_ma30 * dp.close AS avg_dollar_volume_20d
         FROM daily_prices dp
-        WHERE dp.date::date = (SELECT d FROM last_trade_date)
+        JOIN daily_ma dm ON dm.symbol = dp.symbol AND dm.date = dp.date
+        WHERE dp.date = ${latestDate}
           AND dp.close IS NOT NULL
           AND dp.volume IS NOT NULL
           AND dp.volume > 0
+          AND dm.vol_ma30 IS NOT NULL
+      ),
+      atr_recent_dates AS (
+        SELECT DISTINCT date
+        FROM daily_prices
+        WHERE date <= ${latestDate}
+          AND date >= ${latestDate}::date - INTERVAL '20 days'
+        ORDER BY date DESC
+        LIMIT ${NOISE_CONFIG.ATR_WINDOW_DAYS + 1}
       ),
       atr_calc AS (
         SELECT
           dp.symbol,
-          dp.date::date AS d,
+          dp.date,
           dp.close,
-          dp.high,
-          dp.low,
-          LAG(dp.close) OVER (PARTITION BY dp.symbol ORDER BY dp.date::date) AS prev_close,
           GREATEST(
             dp.high - dp.low,
-            ABS(dp.high - LAG(dp.close) OVER (PARTITION BY dp.symbol ORDER BY dp.date::date)),
-            ABS(dp.low - LAG(dp.close) OVER (PARTITION BY dp.symbol ORDER BY dp.date::date))
+            ABS(dp.high - prev.close),
+            ABS(dp.low - prev.close)
           ) AS true_range
         FROM daily_prices dp
-        WHERE dp.date::date <= (SELECT d FROM last_trade_date)
-          AND dp.date::date >= ((SELECT d FROM last_trade_date) - INTERVAL '${sql.raw(String(NOISE_CONFIG.BB_AVG_WINDOW_DAYS))} days')::date
+        JOIN LATERAL (
+          SELECT dp2.close
+          FROM daily_prices dp2
+          WHERE dp2.symbol = dp.symbol
+            AND dp2.date < dp.date
+          ORDER BY dp2.date DESC
+          LIMIT 1
+        ) prev ON TRUE
+        WHERE dp.date IN (SELECT date FROM atr_recent_dates)
           AND dp.close IS NOT NULL
           AND dp.high IS NOT NULL
           AND dp.low IS NOT NULL
@@ -81,41 +83,51 @@ export async function buildNoiseSignals() {
       atr_values AS (
         SELECT
           symbol,
-          d,
-          close,
-          AVG(true_range) OVER (
-            PARTITION BY symbol
-            ORDER BY d
-            ROWS BETWEEN ${NOISE_CONFIG.ATR_WINDOW_DAYS - 1} PRECEDING AND CURRENT ROW
-          ) AS atr_14
+          CASE WHEN COUNT(*) >= ${NOISE_CONFIG.ATR_WINDOW_DAYS}
+               THEN AVG(true_range)
+               ELSE NULL
+          END AS atr_14,
+          MAX(close) FILTER (WHERE date = ${latestDate}) AS close
         FROM atr_calc
-        WHERE true_range IS NOT NULL
-          AND d = (SELECT d FROM last_trade_date)
+        WHERE date <= ${latestDate}
+          AND date > (
+            SELECT date FROM atr_recent_dates
+            ORDER BY date ASC
+            LIMIT 1
+          )
+        GROUP BY symbol
+      ),
+      bb_dates AS (
+        SELECT DISTINCT date
+        FROM daily_prices
+        WHERE date <= ${latestDate}
+          AND date >= ${latestDate}::date - INTERVAL '130 days'
+        ORDER BY date DESC
+        LIMIT ${NOISE_CONFIG.BB_AVG_WINDOW_DAYS + NOISE_CONFIG.BB_WINDOW_DAYS}
       ),
       bb_calc AS (
         SELECT
           dp.symbol,
-          dp.date::date AS d,
+          dp.date,
           dp.close,
           AVG(dp.close) OVER (
             PARTITION BY dp.symbol
-            ORDER BY dp.date::date
+            ORDER BY dp.date
             ROWS BETWEEN ${NOISE_CONFIG.BB_WINDOW_DAYS - 1} PRECEDING AND CURRENT ROW
           ) AS bb_middle,
           STDDEV(dp.close) OVER (
             PARTITION BY dp.symbol
-            ORDER BY dp.date::date
+            ORDER BY dp.date
             ROWS BETWEEN ${NOISE_CONFIG.BB_WINDOW_DAYS - 1} PRECEDING AND CURRENT ROW
           ) AS bb_stddev
         FROM daily_prices dp
-        WHERE dp.date::date <= (SELECT d FROM last_trade_date)
-          AND dp.date::date >= ((SELECT d FROM last_trade_date) - INTERVAL '${sql.raw(String(NOISE_CONFIG.BB_AVG_WINDOW_DAYS + NOISE_CONFIG.BB_WINDOW_DAYS))} days')::date
+        WHERE dp.date IN (SELECT date FROM bb_dates)
           AND dp.close IS NOT NULL
       ),
       bb_width_all AS (
         SELECT
           symbol,
-          d,
+          date,
           close,
           bb_middle,
           CASE
@@ -131,7 +143,7 @@ export async function buildNoiseSignals() {
             END
           ) OVER (
             PARTITION BY symbol
-            ORDER BY d
+            ORDER BY date
             ROWS BETWEEN ${NOISE_CONFIG.BB_AVG_WINDOW_DAYS - 1} PRECEDING AND ${NOISE_CONFIG.BB_WINDOW_DAYS} PRECEDING
           ) AS bb_width_avg_60d
         FROM bb_calc
@@ -139,21 +151,20 @@ export async function buildNoiseSignals() {
           AND bb_stddev IS NOT NULL
       ),
       bb_width AS (
-        SELECT symbol, d, close, bb_middle, bb_width_current, bb_width_avg_60d
+        SELECT symbol, close, bb_middle, bb_width_current, bb_width_avg_60d
         FROM bb_width_all
-        WHERE d = (SELECT d FROM last_trade_date)
+        WHERE date = ${latestDate}
       ),
       body_ratio AS (
         SELECT
           dp.symbol,
-          dp.date::date AS d,
           CASE
             WHEN (dp.high - dp.low) > 0
             THEN ABS(dp.close - dp.open) / (dp.high - dp.low)
             ELSE NULL
           END AS body_ratio
         FROM daily_prices dp
-        WHERE dp.date::date = (SELECT d FROM last_trade_date)
+        WHERE dp.date = ${latestDate}
           AND dp.close IS NOT NULL
           AND dp.open IS NOT NULL
           AND dp.high IS NOT NULL
@@ -162,7 +173,6 @@ export async function buildNoiseSignals() {
       ma_convergence AS (
         SELECT
           dm.symbol,
-          dm.date::date AS d,
           dm.ma20,
           dm.ma50,
           CASE
@@ -171,14 +181,14 @@ export async function buildNoiseSignals() {
             ELSE NULL
           END AS ma20_ma50_distance_percent
         FROM daily_ma dm
-        WHERE dm.date::date = (SELECT d FROM last_trade_date)
+        WHERE dm.date = ${latestDate}
           AND dm.ma20 IS NOT NULL
           AND dm.ma50 IS NOT NULL
       ),
       merged AS (
         SELECT
           vm.symbol,
-          (SELECT d FROM last_trade_date) AS date,
+          ${latestDate} AS date,
           vm.avg_dollar_volume_20d,
           vm.avg_volume_20d,
           atr.atr_14,
