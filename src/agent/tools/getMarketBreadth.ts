@@ -2,7 +2,7 @@ import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate } from "./validation";
+import { clampPercent, validateDate } from "./validation";
 
 /**
  * 전체 시장 브레드스 지표를 조회한다.
@@ -83,7 +83,9 @@ export const getMarketBreadth: AgentTool = {
         const p2 = toNum(r.phase2_count);
         return {
           date: r.date,
-          phase2Ratio: t > 0 ? Number(((p2 / t) * 100).toFixed(1)) : 0,
+          phase2Ratio: t > 0
+            ? clampPercent(Number(((p2 / t) * 100).toFixed(1)), "weeklyTrend:phase2Ratio")
+            : 0,
           marketAvgRs: toNum(r.avg_rs),
         };
       });
@@ -345,7 +347,10 @@ export const getMarketBreadth: AgentTool = {
       date,
       totalStocks: total,
       phaseDistribution,
-      phase2Ratio: Number((phase2Ratio * 100).toFixed(1)),
+      phase2Ratio: clampPercent(
+        Number((phase2Ratio * 100).toFixed(1)),
+        "daily:phase2Ratio",
+      ),
       phase2RatioChange: Number(
         ((phase2Ratio - prevPhase2Ratio) * 100).toFixed(1),
       ),

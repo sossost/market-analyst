@@ -1,4 +1,5 @@
 import { pool } from "../../db/client.js";
+import { clampPercent } from "../tools/validation.js";
 import { logger } from "../logger.js";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -100,7 +101,10 @@ async function loadSectorSnapshot(date: string): Promise<SectorSnapshot[]> {
     prevGroupPhase: r.prev_group_phase,
     change4w: r.change_4w != null ? toNum(r.change_4w) : null,
     change12w: r.change_12w != null ? toNum(r.change_12w) : null,
-    phase2Ratio: Number((toNum(r.phase2_ratio) * 100).toFixed(1)),
+    phase2Ratio: clampPercent(
+      Number((toNum(r.phase2_ratio) * 100).toFixed(1)),
+      `sector:${r.sector}:phase2Ratio`,
+    ),
     phase1to2Count5d: r.phase1to2_count_5d,
   }));
 }
@@ -250,7 +254,7 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   return {
     totalStocks: total,
     phaseDistribution,
-    phase2Ratio: Number(phase2RatioRaw.toFixed(1)),
+    phase2Ratio: clampPercent(Number(phase2RatioRaw.toFixed(1)), "breadth:phase2Ratio"),
     phase2RatioChange: Number((phase2RatioRaw - prevPhase2RatioRaw).toFixed(1)),
     marketAvgRs: toNum(rsRows[0]?.avg_rs),
   };

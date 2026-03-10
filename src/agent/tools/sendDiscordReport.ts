@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
 import { createGist } from "@/agent/gist";
+import { validateReport } from "@/agent/lib/reportValidator";
 import type { AgentTool } from "./types";
 import { validateString } from "./validation";
 
@@ -35,6 +36,22 @@ export const SEND_DISCORD_REPORT_SCHEMA: Anthropic.Tool = {
 };
 
 /**
+ * 마크다운 리포트에 자동 품질 검증 결과를 삽입한다.
+ * warnings/errors가 없으면 원본을 그대로 반환한다.
+ */
+export function appendValidationWarnings(markdown: string): string {
+  const result = validateReport({ markdown });
+
+  const messages = [...result.errors, ...result.warnings];
+  if (messages.length === 0) {
+    return markdown;
+  }
+
+  const warningSection = messages.map((msg) => `- ${msg}`).join("\n");
+  return `${markdown}\n\n---\n**[자동 품질 검증 결과]**\n${warningSection}`;
+}
+
+/**
  * Discord Webhook으로 리포트를 전달하는 도구를 생성한다.
  * markdownContent가 있으면 GitHub Gist로 생성하여 링크를 메시지에 추가.
  * Gist 실패 시 기존 MD 파일 첨부로 fallback.
@@ -58,7 +75,9 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
         });
       }
 
-      const mdContent = validateString(input.markdownContent);
+      const rawMdContent = validateString(input.markdownContent);
+      const mdContent =
+        rawMdContent != null ? appendValidationWarnings(rawMdContent) : null;
       const filename = validateString(input.filename) ?? "report.md";
 
       try {

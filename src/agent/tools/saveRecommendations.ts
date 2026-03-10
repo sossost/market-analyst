@@ -3,7 +3,7 @@ import { recommendations, recommendationFactors } from "@/db/schema/analyst";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateString, validateNumber } from "./validation";
+import { validateDate, validateString, validateNumber, MIN_PHASE, MIN_RS_SCORE } from "./validation";
 import { loadLatestRegime } from "../debate/regimeStore";
 import { logger } from "@/agent/logger";
 
@@ -16,6 +16,36 @@ interface RecommendationInput {
   sector: string;
   industry: string;
   reason: string;
+}
+
+const SUBSTANDARD_TAG = "[기준 미달]";
+
+/**
+ * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
+ * 이미 태그가 있거나 기준을 충족하면 원본을 그대로 반환한다.
+ */
+export function tagSubstandardReason(
+  reason: string | null | undefined,
+  phase: number | null | undefined,
+  rsScore: number | null | undefined,
+): string | null {
+  const isSubstandard =
+    (phase != null && phase < MIN_PHASE) ||
+    (rsScore != null && rsScore < MIN_RS_SCORE);
+
+  if (isSubstandard === false) {
+    return reason ?? null;
+  }
+
+  if (reason == null || reason === "") {
+    return `${SUBSTANDARD_TAG} 사유 미기재`;
+  }
+
+  if (reason.startsWith(SUBSTANDARD_TAG)) {
+    return reason;
+  }
+
+  return `${SUBSTANDARD_TAG} ${reason}`;
 }
 
 /**
@@ -104,6 +134,13 @@ export const saveRecommendations: AgentTool = {
         continue;
       }
 
+      // 기준 미달 태깅 (Phase < 2 또는 RS < 60)
+      const taggedReason = tagSubstandardReason(
+        rec.reason,
+        rec.phase,
+        rec.rs_score,
+      );
+
       // 1. recommendations 테이블 INSERT
       const insertResult = await retryDatabaseOperation(() =>
         db
@@ -117,7 +154,7 @@ export const saveRecommendations: AgentTool = {
             entryPrevPhase: rec.prev_phase ?? null,
             sector: rec.sector ?? null,
             industry: rec.industry ?? null,
-            reason: rec.reason ?? null,
+            reason: taggedReason,
             marketRegime: currentRegime,
             status: "ACTIVE",
             currentPrice: String(entryPrice),
