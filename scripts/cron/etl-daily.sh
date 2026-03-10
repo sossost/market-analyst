@@ -5,7 +5,7 @@
 # 실행 순서 (의존 관계 반영):
 #   Phase 1: load-daily-prices
 #   Phase 2: build-daily-ma, build-rs, calculate-daily-ratios (병렬)
-#   Phase 3: build-breakout-signals, build-noise-signals, build-stock-phases (병렬)
+#   Phase 3: build-breakout-signals, build-noise-signals, build-stock-phases (순차 — 커넥션 풀 경쟁 방지)
 #   Phase 3.5: build-sector-rs, build-industry-rs, record-signals, update-signal-returns
 #   Phase 3.6: detect-sector-phase-events, update-sector-lag-patterns
 #   Phase 4: validate-data → run-daily-agent
