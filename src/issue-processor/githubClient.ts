@@ -7,7 +7,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { AutoLabel } from './types.js'
+import type { AutoLabel, GitHubIssue } from './types.js'
 import { AUTO_LABELS } from './types.js'
 
 const execFileAsync = promisify(execFile)
@@ -28,9 +28,7 @@ async function gh(args: string[]): Promise<string> {
 /**
  * 열린 이슈 중 auto: 라벨이 없는 미처리 이슈 조회
  */
-export async function fetchUnprocessedIssues(): Promise<
-  Array<{ number: number; title: string; body: string; labels: string[] }>
-> {
+export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
   const raw = await gh([
     'issue',
     'list',
