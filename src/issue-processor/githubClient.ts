@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { AutoLabel, GitHubIssue } from './types.js'
-import { AUTO_LABELS } from './types.js'
+import { AUTO_LABELS, MAX_ISSUES_PER_CYCLE } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -63,7 +63,6 @@ export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
       title: issue.title,
       body: issue.body ?? '',
       labels: issue.labels.map((l) => l.name),
-      state: 'open',
     }))
 }
 
@@ -133,7 +132,7 @@ export async function fetchQueuedIssues(): Promise<GitHubIssue[]> {
     '--json',
     'number,title,body,labels',
     '--limit',
-    '5',
+    String(MAX_ISSUES_PER_CYCLE),
   ])
 
   if (raw === '') return []
@@ -150,6 +149,5 @@ export async function fetchQueuedIssues(): Promise<GitHubIssue[]> {
     title: issue.title,
     body: issue.body ?? '',
     labels: issue.labels.map((l) => l.name),
-    state: 'open',
   }))
 }

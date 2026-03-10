@@ -16,7 +16,6 @@ export interface GitHubIssue {
   title: string
   body: string
   labels: string[]
-  state: string
 }
 
 export type AutoLabel =

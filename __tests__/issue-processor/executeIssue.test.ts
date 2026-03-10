@@ -31,7 +31,7 @@ const sampleIssue: GitHubIssue = {
   title: 'fix: 타입 에러',
   body: '타입 에러 수정 필요',
   labels: ['bug'],
-  state: 'open',
+
 }
 
 const sampleTriage: TriageResult = {

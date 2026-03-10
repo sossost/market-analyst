@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GitHubIssue } from '@/issue-processor/types'
 
-const mockCreate = vi.hoisted(() => vi.fn())
+const mockCreate = vi.hoisted(() => {
+  // requireEnv가 모듈 로드 시 호출되므로 env 먼저 설정
+  process.env.ANTHROPIC_API_KEY = 'test-key'
+  return vi.fn()
+})
 
 vi.mock('@anthropic-ai/sdk', () => {
   class MockAnthropic {
@@ -18,7 +22,6 @@ function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
     title: 'fix: 타입 에러 수정',
     body: 'src/lib/foo.ts에서 타입 에러가 발생합니다.',
     labels: ['bug'],
-    state: 'open',
     ...overrides,
   }
 }

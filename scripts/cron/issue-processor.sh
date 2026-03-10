@@ -28,6 +28,15 @@ source "$SCRIPT_DIR/common.sh"
 cd "$PROJECT_DIR"
 load_env "$PROJECT_DIR/.env"
 
+# 동시 실행 방지 — 이전 사이클이 아직 실행 중이면 스킵
+LOCK_FILE="/tmp/market-analyst-issue-processor.lock"
+if [ -f "$LOCK_FILE" ] && kill -0 "$(cat "$LOCK_FILE")" 2>/dev/null; then
+  log "이미 실행 중 (PID: $(cat "$LOCK_FILE")). 종료."
+  exit 0
+fi
+echo $$ > "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"' EXIT
+
 log "=== 자율 이슈 처리 시작 ==="
 
 # git 최신화 — 다른 프로세스가 만든 브랜치/변경사항 반영

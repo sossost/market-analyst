@@ -8,6 +8,20 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { GitHubIssue, TriageResult } from './types.js'
 
+function requireEnv(key: string): string {
+  const value = process.env[key]
+  if (value == null || value === '') {
+    throw new Error(`Missing required environment variable: ${key}`)
+  }
+  return value
+}
+
+// 모듈 로드 시점에 API 키 검증 — 이슈 처리 루프 진입 전 빠르게 실패
+requireEnv('ANTHROPIC_API_KEY')
+
+// 싱글톤 클라이언트 — 커넥션 재사용
+const client = new Anthropic()
+
 const TRIAGE_SYSTEM_PROMPT = `당신은 소프트웨어 프로젝트의 이슈 트리아지 전문가입니다.
 
 ## 프로젝트 컨텍스트
@@ -57,8 +71,6 @@ ${issue.body || '(본문 없음)'}
 export async function triageIssue(
   issue: GitHubIssue,
 ): Promise<TriageResult> {
-  const client = new Anthropic()
-
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 500,

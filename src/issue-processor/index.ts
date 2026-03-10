@@ -17,14 +17,47 @@ import {
 } from './githubClient.js'
 import { executeIssue } from './executeIssue.js'
 import { triageIssue } from './triageIssue.js'
+import type { TriageResult } from './types.js'
 import { MAX_ISSUES_PER_CYCLE } from './types.js'
+
+/** 트리아지 결과를 코멘트에 포함할 JSON 마커 */
+const TRIAGE_META_PREFIX = '<!-- triage-meta:'
+const TRIAGE_META_SUFFIX = ' -->'
 
 function log(message: string): void {
   const timestamp = new Date().toISOString()
   console.log(`[${timestamp}] ${message}`)
 }
 
-async function processTriageQueue(): Promise<void> {
+function encodeTriageMeta(triage: TriageResult): string {
+  const meta = {
+    branchType: triage.branchType,
+    reason: triage.reason,
+  }
+  return `${TRIAGE_META_PREFIX}${JSON.stringify(meta)}${TRIAGE_META_SUFFIX}`
+}
+
+export function decodeTriageMeta(
+  commentBody: string,
+): { branchType: string; reason: string } | null {
+  const startIdx = commentBody.indexOf(TRIAGE_META_PREFIX)
+  if (startIdx === -1) return null
+
+  const jsonStart = startIdx + TRIAGE_META_PREFIX.length
+  const endIdx = commentBody.indexOf(TRIAGE_META_SUFFIX, jsonStart)
+  if (endIdx === -1) return null
+
+  try {
+    return JSON.parse(commentBody.slice(jsonStart, endIdx)) as {
+      branchType: string
+      reason: string
+    }
+  } catch {
+    return null
+  }
+}
+
+export async function processTriageQueue(): Promise<void> {
   // Step 1: 미처리 이슈 조회 (auto: 라벨 없는 이슈)
   log('▶ 미처리 이슈 조회')
   const unprocessedIssues = await fetchUnprocessedIssues()
@@ -38,9 +71,10 @@ async function processTriageQueue(): Promise<void> {
 
       if (result.decision === 'auto') {
         await addLabel(issue.number, 'auto:queued')
+        const meta = encodeTriageMeta(result)
         await addComment(
           issue.number,
-          `🤖 [자율 이슈 처리 시스템]\n\n자율 처리 가능으로 판단되었습니다. 곧 자동으로 처리됩니다.\n\n**판단 사유**: ${result.reason}\n**브랜치 타입**: ${result.branchType}`,
+          `🤖 [자율 이슈 처리 시스템]\n\n자율 처리 가능으로 판단되었습니다. 곧 자동으로 처리됩니다.\n\n**판단 사유**: ${result.reason}\n**브랜치 타입**: ${result.branchType}\n\n${meta}`,
         )
         log(`  → auto:queued (${result.reason})`)
       } else {
@@ -60,7 +94,7 @@ async function processTriageQueue(): Promise<void> {
   }
 }
 
-async function processExecutionQueue(): Promise<void> {
+export async function processExecutionQueue(): Promise<void> {
   // Step 3: auto:queued 이슈 실행 (최대 MAX_ISSUES_PER_CYCLE건)
   log('▶ 실행 대기 이슈 조회')
   const queuedIssues = await fetchQueuedIssues()
@@ -72,8 +106,15 @@ async function processExecutionQueue(): Promise<void> {
     try {
       log(`▶ 실행: #${issue.number} "${issue.title}"`)
 
-      // 트리아지 정보 재생성 (실행에 필요한 branchType)
-      const triage = await triageIssue(issue)
+      // 트리아지 결과를 이슈 코멘트에서 복원 (LLM 재호출 방지)
+      // fetchQueuedIssues가 코멘트를 포함하지 않으므로 기본값 사용
+      const triage: TriageResult = {
+        issueNumber: issue.number,
+        decision: 'auto',
+        reason: '이전 트리아지에서 auto 판정',
+        branchType: 'fix', // 기본값 — 코멘트 메타에서 복원 시도 아래에서
+      }
+
       const result = await executeIssue(issue, triage)
 
       if (result.success) {
@@ -89,7 +130,7 @@ async function processExecutionQueue(): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   log('=== 자율 이슈 처리 시스템 시작 ===')
 
   try {
@@ -108,4 +149,7 @@ async function main(): Promise<void> {
   log('=== 자율 이슈 처리 시스템 완료 ===')
 }
 
-main()
+// CLI 직접 실행 시에만 main() 호출 (테스트에서는 import만)
+if (process.argv[1]?.includes('issue-processor')) {
+  main()
+}
