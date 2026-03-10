@@ -18,8 +18,8 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 60000,
   connectionTimeoutMillis: 30000,
-  statement_timeout: 120000,
-  query_timeout: 120000,
+  statement_timeout: 300000,
+  query_timeout: 300000,
   allowExitOnIdle: false,
 });
 
