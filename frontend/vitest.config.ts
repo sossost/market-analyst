@@ -8,5 +8,25 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    exclude: ['src/e2e/**', 'node_modules/**'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/features/**', 'src/shared/lib/**'],
+      exclude: [
+        'src/test/**',
+        '**/*.test.{ts,tsx}',
+        '**/*.d.ts',
+        '**/.gitkeep',
+        '**/types.ts',
+        'src/features/auth/**',
+      ],
+      thresholds: {
+        lines: 80,
+        branches: 80,
+        functions: 80,
+        statements: 80,
+      },
+    },
   },
 })

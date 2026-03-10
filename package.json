@@ -48,6 +48,10 @@
     "fe:dev": "yarn workspace frontend dev",
     "fe:build": "yarn workspace frontend build",
     "fe:lint": "yarn workspace frontend lint",
+    "fe:test": "yarn workspace frontend test",
+    "fe:test:watch": "yarn workspace frontend test:watch",
+    "fe:test:coverage": "yarn workspace frontend test:coverage",
+    "fe:e2e": "yarn workspace frontend e2e",
     "fe:typecheck": "tsc --noEmit --project frontend/tsconfig.json"
   },
   "dependencies": {
