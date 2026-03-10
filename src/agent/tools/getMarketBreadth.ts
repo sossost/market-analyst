@@ -351,9 +351,8 @@ export const getMarketBreadth: AgentTool = {
         Number((phase2Ratio * 100).toFixed(1)),
         "daily:phase2Ratio",
       ),
-      phase2RatioChange: clampPercent(
-        Number(((phase2Ratio - prevPhase2Ratio) * 100).toFixed(1)),
-        "daily:phase2RatioChange",
+      phase2RatioChange: Number(
+        ((phase2Ratio - prevPhase2Ratio) * 100).toFixed(1),
       ),
       marketAvgRs: toNum(rsRows[0]?.avg_rs),
       advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },

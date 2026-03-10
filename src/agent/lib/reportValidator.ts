@@ -84,9 +84,12 @@ function checkSectorAlignment(
   recommendations: Array<{ symbol: string; sector?: string }>,
   warnings: string[],
 ): void {
-  const sectorSet = new Set(leadingSectors);
   const hasMatch = recommendations.some(
-    (rec) => rec.sector != null && sectorSet.has(rec.sector),
+    (rec) =>
+      rec.sector != null &&
+      leadingSectors.some((ls) =>
+        rec.sector!.toLowerCase().includes(ls.toLowerCase()),
+      ),
   );
 
   if (!hasMatch) {
