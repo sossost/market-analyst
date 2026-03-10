@@ -7,8 +7,8 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { AutoLabel, GitHubIssue } from './types.js'
-import { AUTO_LABELS, MAX_ISSUES_PER_CYCLE } from './types.js'
+import type { AutoLabel } from './types.js'
+import { AUTO_LABELS } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -28,7 +28,9 @@ async function gh(args: string[]): Promise<string> {
 /**
  * 열린 이슈 중 auto: 라벨이 없는 미처리 이슈 조회
  */
-export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
+export async function fetchUnprocessedIssues(): Promise<
+  Array<{ number: number; title: string; body: string; labels: string[] }>
+> {
   const raw = await gh([
     'issue',
     'list',
@@ -116,38 +118,4 @@ export async function addComment(
     '--body',
     body,
   ])
-}
-
-/**
- * auto:queued 라벨이 붙은 이슈 조회 (실행 대기 중인 이슈)
- */
-export async function fetchQueuedIssues(): Promise<GitHubIssue[]> {
-  const raw = await gh([
-    'issue',
-    'list',
-    '--state',
-    'open',
-    '--label',
-    'auto:queued',
-    '--json',
-    'number,title,body,labels',
-    '--limit',
-    String(MAX_ISSUES_PER_CYCLE),
-  ])
-
-  if (raw === '') return []
-
-  const issues: Array<{
-    number: number
-    title: string
-    body: string
-    labels: Array<{ name: string }>
-  }> = JSON.parse(raw)
-
-  return issues.map((issue) => ({
-    number: issue.number,
-    title: issue.title,
-    body: issue.body ?? '',
-    labels: issue.labels.map((l) => l.name),
-  }))
 }

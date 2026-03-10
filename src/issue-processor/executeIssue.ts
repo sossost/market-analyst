@@ -1,21 +1,32 @@
 /**
  * 이슈 자율 실행 — Claude Code CLI 기반
  *
- * 트리아지에서 "auto"로 판정된 이슈를 Claude Code CLI로 구현하여 PR을 생성한다.
- * 실패 시 auto:needs-ceo 라벨로 에스컬레이션.
+ * 미처리 이슈를 Claude Code CLI로 구현하여 PR을 생성한다.
+ * 실패 시 에러 코멘트를 남기고 auto:in-progress 라벨을 제거한다.
  */
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { GitHubIssue, TriageResult } from './types.js'
+import type { BranchType, GitHubIssue } from './types.js'
 import { addComment, addLabel, removeLabel } from './githubClient.js'
 
 const execFileAsync = promisify(execFile)
 
 const EXECUTION_TIMEOUT_MS = 10 * 60 * 1_000 // 10분
 
-function buildClaudePrompt(issue: GitHubIssue, triage: TriageResult): string {
-  const branchName = `${triage.branchType}/issue-${issue.number}`
+/**
+ * 이슈 타이틀에서 브랜치 타입을 추출한다.
+ * "fix: ...", "feat: ...", "refactor: ...", "chore: ..." 접두사를 감지.
+ * 매칭되지 않으면 기본값 'fix' 반환.
+ */
+export function extractBranchType(title: string): BranchType {
+  const match = title.match(/^(fix|feat|refactor|chore)\s*:/i)
+  if (match == null) return 'fix'
+  return match[1].toLowerCase() as BranchType
+}
+
+function buildClaudePrompt(issue: GitHubIssue, branchType: BranchType): string {
+  const branchName = `${branchType}/issue-${issue.number}`
 
   return `## 미션
 
@@ -57,15 +68,15 @@ interface ExecuteResult {
 
 export async function executeIssue(
   issue: GitHubIssue,
-  triage: TriageResult,
 ): Promise<ExecuteResult> {
-  // 1. 라벨 전환: auto:queued → auto:in-progress
-  await removeLabel(issue.number, 'auto:queued')
+  const branchType = extractBranchType(issue.title)
+
+  // 1. 라벨 전환: auto:in-progress
   await addLabel(issue.number, 'auto:in-progress')
 
   try {
     // 2. Claude Code CLI 실행
-    const prompt = buildClaudePrompt(issue, triage)
+    const prompt = buildClaudePrompt(issue, branchType)
 
     const { stdout } = await execFileAsync(
       'claude',
@@ -97,22 +108,20 @@ export async function executeIssue(
 
     // PR URL을 못 찾았으나 에러는 아닌 경우
     await removeLabel(issue.number, 'auto:in-progress')
-    await addLabel(issue.number, 'auto:needs-ceo')
     await addComment(
       issue.number,
       `🤖 [자율 이슈 처리 시스템]\n\nClaude Code CLI 실행은 완료되었으나 PR URL을 확인할 수 없습니다.\n\n**사유**: 실행 결과에서 PR 링크를 찾지 못함\n\n수동 확인이 필요합니다.`,
     )
     return { success: false, error: 'PR URL not found in output' }
   } catch (err) {
-    // 실패: auto:needs-ceo 라벨 + 실패 코멘트
+    // 실패: 에러 코멘트
     const errorMessage =
       err instanceof Error ? err.message : String(err)
 
     await removeLabel(issue.number, 'auto:in-progress')
-    await addLabel(issue.number, 'auto:needs-ceo')
     await addComment(
       issue.number,
-      `🤖 [자율 이슈 처리 시스템]\n\n자율 처리에 실패하여 CEO 판단을 요청합니다.\n\n**사유**: ${errorMessage.slice(0, 500)}\n\n처리를 원하시면 이슈에 추가 지시를 남겨 주세요.`,
+      `🤖 [자율 이슈 처리 시스템]\n\n자율 처리에 실패했습니다.\n\n**사유**: ${errorMessage.slice(0, 500)}\n\n수동 확인이 필요합니다.`,
     )
     return { success: false, error: errorMessage }
   }
