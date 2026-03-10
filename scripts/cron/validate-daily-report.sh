@@ -17,6 +17,16 @@
 
 set -euo pipefail
 
+# macOS 호환: GNU timeout이 없으면 gtimeout(coreutils) 사용
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+else
+  echo "ERROR: timeout 또는 gtimeout 필요. brew install coreutils" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_DIR="$PROJECT_DIR/logs"
@@ -100,7 +110,7 @@ log "✓ 프롬프트 조립 완료"
 log "▶ Claude Code CLI 검증 실행 (타임아웃: ${TIMEOUT_SEC}초)"
 
 QA_RESULT=""
-if timeout "$TIMEOUT_SEC" cat "$PROMPT_FILE" | claude -p --output-format json > "$CLAUDE_RAW_FILE" 2>>"$LOG_FILE"; then
+if $TIMEOUT_CMD "$TIMEOUT_SEC" cat "$PROMPT_FILE" | claude -p --output-format json > "$CLAUDE_RAW_FILE" 2>>"$LOG_FILE"; then
   # --output-format json이면 result 필드에 텍스트가 들어옴
   QA_RAW=$(jq -r '.result // .' "$CLAUDE_RAW_FILE" 2>/dev/null || cat "$CLAUDE_RAW_FILE")
 
