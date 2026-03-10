@@ -32,6 +32,15 @@ export async function buildNoiseSignals() {
 
     console.log(`📅 latest date: ${latestDate}`);
 
+    // date 컬럼이 text 타입이므로 INTERVAL 연산 대신 TS에서 미리 계산
+    const atrStartDate = new Date(latestDate);
+    atrStartDate.setDate(atrStartDate.getDate() - 20);
+    const atrStartDateStr = atrStartDate.toISOString().split("T")[0];
+
+    const bbStartDate = new Date(latestDate);
+    bbStartDate.setDate(bbStartDate.getDate() - 130);
+    const bbStartDateStr = bbStartDate.toISOString().split("T")[0];
+
     const result = await db.execute(sql`
       WITH volume_metrics AS (
         SELECT
@@ -52,7 +61,7 @@ export async function buildNoiseSignals() {
         SELECT DISTINCT date
         FROM daily_prices
         WHERE date <= ${latestDate}
-          AND date >= CAST(${latestDate} AS date) - INTERVAL '20 days'
+          AND date >= ${atrStartDateStr}
         ORDER BY date DESC
         LIMIT ${NOISE_CONFIG.ATR_WINDOW_DAYS + 1}
       ),
@@ -101,7 +110,7 @@ export async function buildNoiseSignals() {
         SELECT DISTINCT date
         FROM daily_prices
         WHERE date <= ${latestDate}
-          AND date >= CAST(${latestDate} AS date) - INTERVAL '130 days'
+          AND date >= ${bbStartDateStr}
         ORDER BY date DESC
         LIMIT ${NOISE_CONFIG.BB_AVG_WINDOW_DAYS + NOISE_CONFIG.BB_WINDOW_DAYS}
       ),
