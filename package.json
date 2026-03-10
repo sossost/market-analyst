@@ -35,6 +35,7 @@
     "agent:weekly": "tsx src/agent/run-weekly-agent.ts",
     "agent:debate": "tsx src/agent/run-debate-agent.ts",
     "agent:qa": "tsx src/agent/run-weekly-qa.ts",
+    "agent:issue-processor": "tsx src/issue-processor/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
