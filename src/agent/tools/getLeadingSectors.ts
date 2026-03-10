@@ -2,7 +2,7 @@ import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateNumber } from "./validation";
+import { clampPercent, validateDate, validateNumber } from "./validation";
 
 const DEFAULT_LIMIT = 10;
 
@@ -44,14 +44,23 @@ function mapSectorRow(
     change12w: s.change_12w != null ? toNum(s.change_12w) : null,
     groupPhase: s.group_phase,
     prevGroupPhase: s.prev_group_phase,
-    phase2Ratio: Number((toNum(s.phase2_ratio) * 100).toFixed(1)),
-    maOrderedRatio: Number((toNum(s.ma_ordered_ratio) * 100).toFixed(1)),
+    phase2Ratio: clampPercent(
+      Number((toNum(s.phase2_ratio) * 100).toFixed(1)),
+      `sector:${s.sector}:phase2Ratio`,
+    ),
+    maOrderedRatio: clampPercent(
+      Number((toNum(s.ma_ordered_ratio) * 100).toFixed(1)),
+      `sector:${s.sector}:maOrderedRatio`,
+    ),
     phase1to2Count5d: s.phase1to2_count_5d,
     topIndustries: (industryBySector.get(s.sector) ?? []).map((i) => ({
       industry: i.industry,
       avgRs: toNum(i.avg_rs),
       groupPhase: i.group_phase,
-      phase2Ratio: Number((toNum(i.phase2_ratio) * 100).toFixed(1)),
+      phase2Ratio: clampPercent(
+        Number((toNum(i.phase2_ratio) * 100).toFixed(1)),
+        `industry:${i.industry}:phase2Ratio`,
+      ),
     })),
   };
 }
