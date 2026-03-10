@@ -52,7 +52,7 @@ export async function buildNoiseSignals() {
         SELECT DISTINCT date
         FROM daily_prices
         WHERE date <= ${latestDate}
-          AND date >= ${latestDate}::date - INTERVAL '20 days'
+          AND date >= CAST(${latestDate} AS date) - INTERVAL '20 days'
         ORDER BY date DESC
         LIMIT ${NOISE_CONFIG.ATR_WINDOW_DAYS + 1}
       ),
@@ -101,7 +101,7 @@ export async function buildNoiseSignals() {
         SELECT DISTINCT date
         FROM daily_prices
         WHERE date <= ${latestDate}
-          AND date >= ${latestDate}::date - INTERVAL '130 days'
+          AND date >= CAST(${latestDate} AS date) - INTERVAL '130 days'
         ORDER BY date DESC
         LIMIT ${NOISE_CONFIG.BB_AVG_WINDOW_DAYS + NOISE_CONFIG.BB_WINDOW_DAYS}
       ),
