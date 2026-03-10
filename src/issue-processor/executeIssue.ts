@@ -3,14 +3,20 @@
  *
  * 미처리 이슈를 Claude Code CLI로 구현하여 PR을 생성한다.
  * 실패 시 에러 코멘트를 남기고 auto:in-progress 라벨을 제거한다.
+ *
+ * Claude CLI는 bash를 통해 실행한다 (execFile 직접 호출 시 프로세스가 죽는 문제 회피).
+ * Automated_Trading 프로젝트에서 검증된 패턴.
  */
 
-import { execFile } from 'node:child_process'
+import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
+import { writeFile, unlink } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import type { BranchType, GitHubIssue } from './types.js'
 import { addComment, addLabel, removeLabel } from './githubClient.js'
 
-const execFileAsync = promisify(execFile)
+const execAsync = promisify(exec)
 
 const EXECUTION_TIMEOUT_MS = 90 * 60 * 1_000 // 90분
 
@@ -74,16 +80,19 @@ export async function executeIssue(
   // 1. 라벨 전환: auto:in-progress
   await addLabel(issue.number, 'auto:in-progress')
 
-  try {
-    // 2. Claude Code CLI 실행
-    const prompt = buildClaudePrompt(issue, branchType)
+  // 프롬프트를 임시 파일로 저장 (셸 이스케이프 문제 방지)
+  const promptFile = join(tmpdir(), `issue-${issue.number}-${Date.now()}.txt`)
 
-    const { stdout } = await execFileAsync(
-      'claude',
-      ['-p', '--output-format', 'text', prompt],
+  try {
+    // 2. Claude Code CLI 실행 — bash 경유
+    const prompt = buildClaudePrompt(issue, branchType)
+    await writeFile(promptFile, prompt, 'utf-8')
+
+    const { stdout } = await execAsync(
+      `claude -p "$(cat '${promptFile}')" --output-format text --dangerously-skip-permissions`,
       {
         timeout: EXECUTION_TIMEOUT_MS,
-        maxBuffer: 10 * 1024 * 1024, // 10MB
+        maxBuffer: 50 * 1024 * 1024, // 50MB
         env: { ...process.env },
         cwd: process.cwd(),
       },
@@ -114,9 +123,16 @@ export async function executeIssue(
     )
     return { success: false, error: 'PR URL not found in output' }
   } catch (err) {
-    // 실패: 에러 코멘트
-    const errorMessage =
-      err instanceof Error ? err.message : String(err)
+    // 실패: 에러 코멘트 — stderr에서 실제 사유 추출
+    let errorMessage = 'Unknown error'
+    if (err instanceof Error) {
+      const execErr = err as Error & { stderr?: string }
+      errorMessage = execErr.stderr?.trim() || err.message
+      // "Command failed:" 이후 프롬프트가 포함되면 제거
+      if (errorMessage.includes('Command failed:')) {
+        errorMessage = execErr.stderr?.trim() || 'CLI 실행 실패 (exit non-zero)'
+      }
+    }
 
     await removeLabel(issue.number, 'auto:in-progress')
     await addComment(
@@ -124,5 +140,8 @@ export async function executeIssue(
       `🤖 [자율 이슈 처리 시스템]\n\n자율 처리에 실패했습니다.\n\n**사유**: ${errorMessage.slice(0, 500)}\n\n수동 확인이 필요합니다.`,
     )
     return { success: false, error: errorMessage }
+  } finally {
+    // 임시 파일 정리
+    await unlink(promptFile).catch(() => {})
   }
 }

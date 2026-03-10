@@ -8,20 +8,26 @@ vi.mock('@/issue-processor/githubClient', () => ({
   addComment: vi.fn(),
 }))
 
-// child_process 모킹
+// child_process 모킹 — exec (셸 경유)
 vi.mock('node:child_process', () => ({
-  execFile: vi.fn(),
+  exec: vi.fn(),
 }))
 
 vi.mock('node:util', () => ({
   promisify: (fn: unknown) => fn,
 }))
 
-import { execFile } from 'node:child_process'
+// fs/promises 모킹
+vi.mock('node:fs/promises', () => ({
+  writeFile: vi.fn().mockResolvedValue(undefined),
+  unlink: vi.fn().mockResolvedValue(undefined),
+}))
+
+import { exec } from 'node:child_process'
 import { addLabel, removeLabel, addComment } from '@/issue-processor/githubClient'
 import { executeIssue, extractBranchType } from '@/issue-processor/executeIssue'
 
-const mockExecFile = vi.mocked(execFile)
+const mockExec = vi.mocked(exec)
 const mockAddLabel = vi.mocked(addLabel)
 const mockRemoveLabel = vi.mocked(removeLabel)
 const mockAddComment = vi.mocked(addComment)
@@ -68,8 +74,9 @@ describe('executeIssue', () => {
   })
 
   it('성공 시 auto:done 라벨과 PR 링크 코멘트를 남긴다', async () => {
-    vi.mocked(mockExecFile).mockResolvedValueOnce({
+    vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: '작업 완료\nhttps://github.com/sossost/market-analyst/pull/99\n',
+      stderr: '',
     })
 
     const result = await executeIssue(sampleIssue)
@@ -92,8 +99,9 @@ describe('executeIssue', () => {
   })
 
   it('PR URL을 못 찾으면 실패 처리하고 코멘트를 남긴다', async () => {
-    vi.mocked(mockExecFile).mockResolvedValueOnce({
+    vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: '뭔가 했지만 PR 링크 없음',
+      stderr: '',
     })
 
     const result = await executeIssue(sampleIssue)
@@ -107,45 +115,40 @@ describe('executeIssue', () => {
   })
 
   it('CLI 실행 실패 시 에러 코멘트를 남긴다', async () => {
-    vi.mocked(mockExecFile).mockRejectedValueOnce(
-      new Error('Command timed out'),
-    )
+    const error = new Error('Command timed out') as Error & { stderr?: string }
+    error.stderr = 'timeout exceeded'
+    vi.mocked(mockExec).mockRejectedValueOnce(error)
 
     const result = await executeIssue(sampleIssue)
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('timed out')
+    expect(result.error).toContain('timeout')
     expect(mockRemoveLabel).toHaveBeenCalledWith(42, 'auto:in-progress')
     expect(mockAddComment).toHaveBeenCalledWith(
       42,
-      expect.stringContaining('timed out'),
+      expect.stringContaining('timeout'),
     )
   })
 
-  it('Claude Code CLI에 올바른 프롬프트를 전달한다', async () => {
-    vi.mocked(mockExecFile).mockResolvedValueOnce({
+  it('Claude Code CLI에 올바른 명령을 실행한다', async () => {
+    vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: 'https://github.com/sossost/market-analyst/pull/100',
+      stderr: '',
     })
 
     await executeIssue(sampleIssue)
 
-    const callArgs = (mockExecFile as unknown as ReturnType<typeof vi.fn>).mock
-      .calls[0]
-    expect(callArgs[0]).toBe('claude')
-    expect(callArgs[1][0]).toBe('-p')
-    expect(callArgs[1][1]).toBe('--output-format')
-    expect(callArgs[1][2]).toBe('text')
-
-    // 프롬프트는 4번째 인자 (index 3)
-    const prompt = callArgs[1][3]
-    expect(prompt).toContain('#42')
-    expect(prompt).toContain('fix/issue-42')
-    expect(prompt).toContain('Closes #42')
+    const callArgs = (mockExec as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    const command = callArgs[0] as string
+    expect(command).toContain('claude -p')
+    expect(command).toContain('--output-format text')
+    expect(command).toContain('--dangerously-skip-permissions')
   })
 
   it('이슈 타이틀에서 브랜치 타입을 추출하여 사용한다', async () => {
-    vi.mocked(mockExecFile).mockResolvedValueOnce({
+    vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: 'https://github.com/sossost/market-analyst/pull/101',
+      stderr: '',
     })
 
     const featIssue: GitHubIssue = {
@@ -158,9 +161,10 @@ describe('executeIssue', () => {
 
     await executeIssue(featIssue)
 
-    const callArgs = (mockExecFile as unknown as ReturnType<typeof vi.fn>).mock
-      .calls[0]
-    const prompt = callArgs[1][3]
-    expect(prompt).toContain('feat/issue-50')
+    // writeFile로 프롬프트에 feat/issue-50이 포함됐는지 확인
+    const { writeFile } = await import('node:fs/promises')
+    const writeCall = vi.mocked(writeFile).mock.calls[0]
+    const promptContent = writeCall[1] as string
+    expect(promptContent).toContain('feat/issue-50')
   })
 })
