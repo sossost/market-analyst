@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { AutoLabel, GitHubIssue } from './types.js'
-import { AUTO_LABELS } from './types.js'
+import { ALLOWED_AUTHORS, AUTO_LABELS } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -35,7 +35,7 @@ export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
     '--state',
     'open',
     '--json',
-    'number,title,body,labels',
+    'number,title,body,labels,author',
     '--limit',
     '20',
   ])
@@ -47,10 +47,15 @@ export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
     title: string
     body: string
     labels: Array<{ name: string }>
+    author: { login: string }
   }> = JSON.parse(raw)
 
   return issues
     .filter((issue) => {
+      // 허용된 작성자가 아니면 무시 — 프롬프트 인젝션 방지
+      const authorLogin = issue.author?.login ?? ''
+      if (!ALLOWED_AUTHORS.includes(authorLogin)) return false
+
       const labelNames = issue.labels.map((l) => l.name)
       // auto: 라벨이 하나라도 있으면 이미 처리된 이슈
       const hasAutoLabel = labelNames.some((name) =>
@@ -63,6 +68,7 @@ export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
       title: issue.title,
       body: issue.body ?? '',
       labels: issue.labels.map((l) => l.name),
+      author: issue.author?.login ?? '',
     }))
 }
 

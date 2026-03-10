@@ -31,6 +31,7 @@ const sampleIssue: GitHubIssue = {
   title: 'fix: 타입 에러',
   body: '타입 에러 수정 필요',
   labels: ['bug'],
+  author: 'sossost',
 }
 
 describe('extractBranchType', () => {
@@ -157,6 +158,7 @@ describe('executeIssue', () => {
       title: 'feat: 새로운 기능',
       body: '기능 추가',
       labels: ['feature'],
+      author: 'sossost',
     }
 
     await executeIssue(featIssue)

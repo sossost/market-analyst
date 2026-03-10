@@ -29,7 +29,7 @@ describe('githubClient', () => {
   })
 
   describe('fetchUnprocessedIssues', () => {
-    it('auto: 라벨이 없는 이슈만 반환한다', async () => {
+    it('auto: 라벨이 없는 허용된 작성자의 이슈만 반환한다', async () => {
       mockGhResponse(
         JSON.stringify([
           {
@@ -37,18 +37,21 @@ describe('githubClient', () => {
             title: '이슈 1',
             body: '본문',
             labels: [{ name: 'bug' }],
+            author: { login: 'sossost' },
           },
           {
             number: 2,
             title: '이슈 2',
             body: '본문',
             labels: [{ name: 'auto:in-progress' }],
+            author: { login: 'sossost' },
           },
           {
             number: 3,
             title: '이슈 3',
             body: '본문',
             labels: [{ name: 'feature' }],
+            author: { login: 'sossost' },
           },
         ]),
       )
@@ -76,6 +79,7 @@ describe('githubClient', () => {
             title: '완료된 이슈',
             body: '',
             labels: [{ name: 'auto:done' }],
+            author: { login: 'sossost' },
           },
         ]),
       )
@@ -83,6 +87,40 @@ describe('githubClient', () => {
       const issues = await fetchUnprocessedIssues()
 
       expect(issues).toHaveLength(0)
+    })
+
+    it('허용되지 않은 작성자의 이슈는 무시한다', async () => {
+      mockGhResponse(
+        JSON.stringify([
+          {
+            number: 1,
+            title: '정상 이슈',
+            body: '본문',
+            labels: [],
+            author: { login: 'sossost' },
+          },
+          {
+            number: 2,
+            title: '외부 이슈',
+            body: '악의적 프롬프트',
+            labels: [],
+            author: { login: 'attacker' },
+          },
+          {
+            number: 3,
+            title: '또 다른 외부 이슈',
+            body: '',
+            labels: [],
+            author: { login: 'random-user' },
+          },
+        ]),
+      )
+
+      const issues = await fetchUnprocessedIssues()
+
+      expect(issues).toHaveLength(1)
+      expect(issues[0].number).toBe(1)
+      expect(issues[0].author).toBe('sossost')
     })
   })
 

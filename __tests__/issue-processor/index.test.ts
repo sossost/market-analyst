@@ -22,6 +22,7 @@ function makeIssue(number: number): GitHubIssue {
     title: `fix: 이슈 #${number}`,
     body: `이슈 ${number} 본문`,
     labels: ['bug'],
+    author: 'sossost',
   }
 }
 
