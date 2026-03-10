@@ -19,8 +19,7 @@ import {
 const mockExecFile = vi.mocked(execFile)
 
 function mockGhResponse(stdout: string): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(mockExecFile as any).mockResolvedValueOnce({ stdout })
+  vi.mocked(mockExecFile).mockResolvedValueOnce({ stdout })
 }
 
 describe('githubClient', () => {

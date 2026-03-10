@@ -39,7 +39,7 @@ log "=== 자율 이슈 처리 시작 ==="
 
 # git 최신화 — 다른 프로세스가 만든 브랜치/변경사항 반영
 log "▶ git pull"
-git pull --rebase >> "$LOG_FILE" 2>&1 || log "git pull 실패 (계속 진행)"
+git pull --rebase origin main >> "$LOG_FILE" 2>&1 || log "git pull 실패 (계속 진행)"
 
 # 메인 스크립트 실행
 if npx tsx src/issue-processor/index.ts >> "$LOG_FILE" 2>&1; then

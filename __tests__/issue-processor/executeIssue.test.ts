@@ -68,8 +68,7 @@ describe('executeIssue', () => {
   })
 
   it('성공 시 auto:done 라벨과 PR 링크 코멘트를 남긴다', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(mockExecFile as any).mockResolvedValueOnce({
+    vi.mocked(mockExecFile).mockResolvedValueOnce({
       stdout: '작업 완료\nhttps://github.com/sossost/market-analyst/pull/99\n',
     })
 
@@ -93,8 +92,7 @@ describe('executeIssue', () => {
   })
 
   it('PR URL을 못 찾으면 실패 처리하고 코멘트를 남긴다', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(mockExecFile as any).mockResolvedValueOnce({
+    vi.mocked(mockExecFile).mockResolvedValueOnce({
       stdout: '뭔가 했지만 PR 링크 없음',
     })
 
@@ -109,8 +107,7 @@ describe('executeIssue', () => {
   })
 
   it('CLI 실행 실패 시 에러 코멘트를 남긴다', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(mockExecFile as any).mockRejectedValueOnce(
+    vi.mocked(mockExecFile).mockRejectedValueOnce(
       new Error('Command timed out'),
     )
 
@@ -126,8 +123,7 @@ describe('executeIssue', () => {
   })
 
   it('Claude Code CLI에 올바른 프롬프트를 전달한다', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(mockExecFile as any).mockResolvedValueOnce({
+    vi.mocked(mockExecFile).mockResolvedValueOnce({
       stdout: 'https://github.com/sossost/market-analyst/pull/100',
     })
 
@@ -148,8 +144,7 @@ describe('executeIssue', () => {
   })
 
   it('이슈 타이틀에서 브랜치 타입을 추출하여 사용한다', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(mockExecFile as any).mockResolvedValueOnce({
+    vi.mocked(mockExecFile).mockResolvedValueOnce({
       stdout: 'https://github.com/sossost/market-analyst/pull/101',
     })
 
