@@ -57,8 +57,8 @@ describe('processIssues', () => {
 
     await processIssues()
 
-    // MAX_ISSUES_PER_CYCLE = 2 → 3개 중 2개만 실행
-    expect(mockExecuteIssue).toHaveBeenCalledTimes(2)
+    // MAX_ISSUES_PER_CYCLE = 1 → 3개 중 1개만 실행
+    expect(mockExecuteIssue).toHaveBeenCalledTimes(1)
   })
 
   it('미처리 이슈가 없으면 실행하지 않는다', async () => {
@@ -67,16 +67,5 @@ describe('processIssues', () => {
     await processIssues()
 
     expect(mockExecuteIssue).not.toHaveBeenCalled()
-  })
-
-  it('실행 실패해도 다음 이슈를 계속 처리한다', async () => {
-    mockFetchUnprocessed.mockResolvedValueOnce([makeIssue(1), makeIssue(2)])
-    mockExecuteIssue
-      .mockRejectedValueOnce(new Error('실행 실패'))
-      .mockResolvedValueOnce({ success: true, prUrl: 'url' })
-
-    await processIssues()
-
-    expect(mockExecuteIssue).toHaveBeenCalledTimes(2)
   })
 })

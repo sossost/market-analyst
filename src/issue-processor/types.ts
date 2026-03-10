@@ -22,4 +22,4 @@ export const AUTO_LABELS: readonly AutoLabel[] = [
 
 export type BranchType = 'fix' | 'feat' | 'refactor' | 'chore'
 
-export const MAX_ISSUES_PER_CYCLE = 2
+export const MAX_ISSUES_PER_CYCLE = 1

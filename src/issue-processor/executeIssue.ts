@@ -12,7 +12,7 @@ import { addComment, addLabel, removeLabel } from './githubClient.js'
 
 const execFileAsync = promisify(execFile)
 
-const EXECUTION_TIMEOUT_MS = 10 * 60 * 1_000 // 10분
+const EXECUTION_TIMEOUT_MS = 90 * 60 * 1_000 // 90분
 
 /**
  * 이슈 타이틀에서 브랜치 타입을 추출한다.

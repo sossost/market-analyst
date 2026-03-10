@@ -8,7 +8,7 @@ describe('types', () => {
     expect(AUTO_LABELS).toContain('auto:done')
   })
 
-  it('MAX_ISSUES_PER_CYCLE은 2이다', () => {
-    expect(MAX_ISSUES_PER_CYCLE).toBe(2)
+  it('MAX_ISSUES_PER_CYCLE은 1이다', () => {
+    expect(MAX_ISSUES_PER_CYCLE).toBe(1)
   })
 })
