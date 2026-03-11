@@ -7,13 +7,22 @@ import {
 } from '@/shared/components/ui/card'
 
 import type { RecommendationStats, RecommendationSummary } from '../types'
+import {
+  fetchActiveRecommendations,
+  calculateRecommendationStats,
+} from '../lib/supabase-queries'
 import { MetricItem } from './MetricItem'
 
-interface RecommendationCardProps {
-  stats: RecommendationStats
-}
+export async function RecommendationCard() {
+  let stats: RecommendationStats = calculateRecommendationStats([])
 
-export function RecommendationCard({ stats }: RecommendationCardProps) {
+  try {
+    const recommendations = await fetchActiveRecommendations()
+    stats = calculateRecommendationStats(recommendations)
+  } catch (error) {
+    console.error('[RecommendationCard] fetchActiveRecommendations 실패:', error)
+  }
+
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>

@@ -10,13 +10,18 @@ import {
 } from '@/shared/components/ui/card'
 
 import type { DashboardReport } from '../types'
+import { fetchLatestDailyReport } from '../lib/supabase-queries'
 import { MetricItem } from './MetricItem'
 
-interface DailyReportCardProps {
-  report: DashboardReport | null
-}
+export async function DailyReportCard() {
+  let report: DashboardReport | null = null
 
-export function DailyReportCard({ report }: DailyReportCardProps) {
+  try {
+    report = await fetchLatestDailyReport()
+  } catch (error) {
+    console.error('[DailyReportCard] fetchLatestDailyReport 실패:', error)
+  }
+
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>

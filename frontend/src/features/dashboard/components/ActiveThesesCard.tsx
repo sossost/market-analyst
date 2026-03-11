@@ -12,18 +12,22 @@ import { ThesisBadge } from '@/features/debates/components/ThesisBadge'
 import { getPersonaLabel } from '@/features/debates/constants'
 
 import type { ActiveThesis } from '../types'
+import { fetchActiveTheses } from '../lib/supabase-queries'
 
 const ACTIVE_THESES_DISPLAY_LIMIT = 10
 
-interface ActiveThesesCardProps {
-  theses: ActiveThesis[]
-  totalCount: number
-}
+export async function ActiveThesesCard() {
+  let theses: ActiveThesis[] = []
+  let totalCount = 0
 
-export function ActiveThesesCard({
-  theses,
-  totalCount,
-}: ActiveThesesCardProps) {
+  try {
+    const result = await fetchActiveTheses()
+    theses = result.items
+    totalCount = result.totalCount
+  } catch (error) {
+    console.error('[ActiveThesesCard] fetchActiveTheses 실패:', error)
+  }
+
   const hasMore = totalCount > ACTIVE_THESES_DISPLAY_LIMIT
 
   return (

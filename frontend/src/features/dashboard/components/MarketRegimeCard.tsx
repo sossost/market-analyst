@@ -10,13 +10,18 @@ import {
 import { RegimeBadge } from '@/features/debates/components/RegimeBadge'
 
 import type { RecentRegime } from '../types'
+import { fetchRecentRegimes } from '../lib/supabase-queries'
 import { RegimeTimeline } from './RegimeTimeline'
 
-interface MarketRegimeCardProps {
-  regimes: RecentRegime[]
-}
+export async function MarketRegimeCard() {
+  let regimes: RecentRegime[] = []
 
-export function MarketRegimeCard({ regimes }: MarketRegimeCardProps) {
+  try {
+    regimes = await fetchRecentRegimes()
+  } catch (error) {
+    console.error('[MarketRegimeCard] fetchRecentRegimes 실패:', error)
+  }
+
   const latestRegime = regimes.length > 0 ? regimes[0] : null
 
   return (
