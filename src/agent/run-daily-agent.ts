@@ -28,6 +28,7 @@ import {
 } from "./debate/thesisStore";
 import { formatChainsForDailyPrompt } from "../lib/narrativeChainStats";
 import { evaluateDailySendGate } from "./dailySendGate";
+import { buildMarketTempBlock } from "./marketTempBlock";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 8192;
@@ -103,8 +104,8 @@ async function main() {
   if (process.env.SKIP_DAILY_GATE !== "true") {
     const gate = await evaluateDailySendGate(targetDate);
     if (!gate.shouldSend) {
-      logger.step("[5/8] Send gate: SKIP — 발송 조건 미충족");
-      logger.info("SendGate", "모든 조건 미충족 — 오늘은 인사이트 없음. 에이전트 스킵.");
+      logger.step("[5/8] Send gate: SKIP — 시장 온도 간소 발송");
+      await sendMarketTempOnly(targetDate);
       await pool.end();
       return;
     }
@@ -192,6 +193,17 @@ async function main() {
 
   await pool.end();
   logger.step("\nDone.");
+}
+
+async function sendMarketTempOnly(targetDate: string): Promise<void> {
+  try {
+    const block = await buildMarketTempBlock(targetDate);
+    await sendDiscordMessage(block);
+    logger.info("MarketTemp", "간소 리포트 발송 완료");
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("MarketTemp", `간소 리포트 발송 실패 (에이전트는 정상 종료): ${reason}`);
+  }
 }
 
 main().catch(async (err) => {

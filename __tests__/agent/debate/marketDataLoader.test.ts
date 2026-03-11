@@ -39,7 +39,7 @@ describe("formatMarketSnapshot", () => {
     const result = formatMarketSnapshot(
       createSnapshot({
         indices: [{ name: "S&P 500", close: 5200, changePercent: 0 }],
-        fearGreed: { score: 35, rating: "Fear" },
+        fearGreed: { score: 35, rating: "Fear", previousClose: null, previous1Week: null },
       }),
     );
 
@@ -55,6 +55,11 @@ describe("formatMarketSnapshot", () => {
           phase2Ratio: 30,
           phase2RatioChange: 1.5,
           marketAvgRs: 50,
+          advancers: null,
+          decliners: null,
+          adRatio: null,
+          newHighs: null,
+          newLows: null,
         },
       }),
     );
@@ -223,6 +228,11 @@ describe("formatMarketSnapshot", () => {
           phase2Ratio: 20,
           phase2RatioChange: -2.3,
           marketAvgRs: 45,
+          advancers: null,
+          decliners: null,
+          adRatio: null,
+          newHighs: null,
+          newLows: null,
         },
       }),
     );

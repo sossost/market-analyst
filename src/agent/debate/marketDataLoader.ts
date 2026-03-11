@@ -39,6 +39,11 @@ interface MarketBreadthSnapshot {
   phase2Ratio: number;
   phase2RatioChange: number;
   marketAvgRs: number;
+  advancers: number | null;
+  decliners: number | null;
+  adRatio: number | null;
+  newHighs: number | null;
+  newLows: number | null;
 }
 
 interface IndexQuote {
@@ -50,6 +55,8 @@ interface IndexQuote {
 interface FearGreedSnapshot {
   score: number;
   rating: string;
+  previousClose: number | null;
+  previous1Week: number | null;
 }
 
 export interface MarketSnapshot {
@@ -251,12 +258,73 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
     [date],
   );
 
+  // A/D ratio (상승/하락 종목수)
+  const { rows: adRows } = await pool.query<{
+    advancers: string;
+    decliners: string;
+  }>(
+    `SELECT
+       COUNT(*) FILTER (WHERE dp.close::numeric > dp_prev.close::numeric)::text AS advancers,
+       COUNT(*) FILTER (WHERE dp.close::numeric < dp_prev.close::numeric)::text AS decliners
+     FROM daily_prices dp
+     JOIN daily_prices dp_prev
+       ON dp.symbol = dp_prev.symbol
+       AND dp_prev.date = (SELECT MAX(date) FROM daily_prices WHERE date < $1)
+     JOIN symbols s ON dp.symbol = s.symbol
+     WHERE dp.date = $1
+       AND s.is_actively_trading = true
+       AND s.is_etf = false
+       AND s.is_fund = false`,
+    [date],
+  ).catch(() => ({ rows: [] as { advancers: string; decliners: string }[] }));
+
+  const advancers = adRows.length > 0 ? toNum(adRows[0].advancers) : null;
+  const decliners = adRows.length > 0 ? toNum(adRows[0].decliners) : null;
+  const adRatio =
+    advancers != null && decliners != null && decliners > 0
+      ? Number((advancers / decliners).toFixed(2))
+      : null;
+
+  // 52주 신고가/신저가
+  const { rows: hlRows } = await pool.query<{
+    new_highs: string;
+    new_lows: string;
+  }>(
+    `WITH yearly_range AS (
+       SELECT symbol,
+         MAX(high::numeric) AS high_52w,
+         MIN(low::numeric) AS low_52w
+       FROM daily_prices
+       WHERE date::date BETWEEN ($1::date - INTERVAL '365 days')::date AND ($1::date - INTERVAL '1 day')::date
+       GROUP BY symbol
+     )
+     SELECT
+       COUNT(*) FILTER (WHERE dp.close::numeric >= yr.high_52w)::text AS new_highs,
+       COUNT(*) FILTER (WHERE dp.close::numeric <= yr.low_52w)::text AS new_lows
+     FROM daily_prices dp
+     JOIN yearly_range yr ON dp.symbol = yr.symbol
+     JOIN symbols s ON dp.symbol = s.symbol
+     WHERE dp.date = $1
+       AND s.is_actively_trading = true
+       AND s.is_etf = false
+       AND s.is_fund = false`,
+    [date],
+  ).catch(() => ({ rows: [] as { new_highs: string; new_lows: string }[] }));
+
+  const newHighs = hlRows.length > 0 ? toNum(hlRows[0].new_highs) : null;
+  const newLows = hlRows.length > 0 ? toNum(hlRows[0].new_lows) : null;
+
   return {
     totalStocks: total,
     phaseDistribution,
     phase2Ratio: clampPercent(Number(phase2RatioRaw.toFixed(1)), "breadth:phase2Ratio"),
     phase2RatioChange: Number((phase2RatioRaw - prevPhase2RatioRaw).toFixed(1)),
     marketAvgRs: toNum(rsRows[0]?.avg_rs),
+    advancers,
+    decliners,
+    adRatio,
+    newHighs,
+    newLows,
   };
 }
 
@@ -336,6 +404,14 @@ async function fetchFearGreed(): Promise<FearGreedSnapshot | null> {
     return {
       score: Number(fg.score.toFixed(1)),
       rating: String(fg.rating ?? "unknown"),
+      previousClose:
+        typeof fg.previous_close === "number"
+          ? Number(fg.previous_close.toFixed(1))
+          : null,
+      previous1Week:
+        typeof fg.previous_1_week === "number"
+          ? Number(fg.previous_1_week.toFixed(1))
+          : null,
     };
   } catch {
     return null;
