@@ -132,4 +132,27 @@ describe("generateStockReport", () => {
     expect(report).not.toContain("0.15%");
   });
 
+  it("shows structured summary for S grade with technical data", () => {
+    const ctx: StockReportContext = {
+      score: makeScore({ grade: "S", symbol: "NVDA" }),
+      input: makeInput(),
+      narrative: "슈퍼퍼포머",
+      technical: {
+        phase: 2,
+        rsScore: 95,
+        volumeConfirmed: true,
+        pctFromHigh52w: -3.0,
+        marketCapB: 2800,
+        sector: "Technology",
+        industry: "Semiconductors",
+      },
+    };
+
+    const report = generateStockReport(ctx);
+
+    expect(report).toContain("종합 판단");
+    expect(report).toContain("최우선 관찰 대상");
+    expect(report).toContain("Phase 2");
+    expect(report).toContain("S등급");
+  });
 });
