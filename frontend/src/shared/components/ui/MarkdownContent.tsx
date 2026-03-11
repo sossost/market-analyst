@@ -57,11 +57,12 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
             </blockquote>
           ),
           code: ({ children, className: codeClassName }) => {
-            const isBlock = codeClassName != null
+            const isBlock =
+              codeClassName != null || String(children).includes('\n')
 
             if (isBlock) {
               return (
-                <code className="block rounded-md bg-muted px-3 py-2 text-xs font-mono text-foreground">
+                <code className="block text-xs font-mono text-foreground">
                   {children}
                 </code>
               )

@@ -72,14 +72,14 @@ describe('MarkdownContent', () => {
   })
 
   it('renders code block', () => {
-    render(
+    const { container } = render(
       <MarkdownContent
         content={'```\nfunction hello() {\n  return "world"\n}\n```'}
       />,
     )
 
-    const pre = screen.getByRole('code')
-    expect(pre).toBeInTheDocument()
+    const code = container.querySelector('pre code')
+    expect(code).toBeInTheDocument()
   })
 
   it('renders GFM table via remark-gfm', () => {
@@ -109,7 +109,6 @@ describe('MarkdownContent', () => {
   it('does not render raw HTML tags as markup (XSS safe)', () => {
     render(<MarkdownContent content="<script>alert('xss')</script>" />)
 
-    expect(screen.queryByRole('generic', { name: 'script' })).not.toBeInTheDocument()
     const scripts = document.querySelectorAll('script')
     // 문서 내 script 태그가 주입되지 않아야 함
     const injectedScript = Array.from(scripts).find(s =>

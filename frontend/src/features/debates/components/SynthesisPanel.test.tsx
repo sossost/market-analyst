@@ -100,4 +100,30 @@ describe('SynthesisPanel', () => {
 
     expect(screen.getByText('테스트 전망')).toBeInTheDocument()
   })
+
+  it('renders synthesisReport with markdown heading', () => {
+    render(
+      <SynthesisPanel
+        synthesisReport={'# 종합 분석\n시장 상황을 분석합니다.'}
+        theses={[]}
+        regime={null}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(screen.getByText('종합 분석')).toBeInTheDocument()
+  })
+
+  it('renders synthesisReport with bold text via markdown', () => {
+    render(
+      <SynthesisPanel
+        synthesisReport="**핵심 결론**: 상승 초입 국면"
+        theses={[]}
+        regime={null}
+      />,
+    )
+
+    const strong = screen.getByText('핵심 결론')
+    expect(strong.tagName).toBe('STRONG')
+  })
 })

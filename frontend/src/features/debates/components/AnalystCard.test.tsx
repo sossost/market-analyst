@@ -43,4 +43,26 @@ describe('AnalystCard', () => {
 
     expect(screen.getByText('시장 변동성 확대')).toBeInTheDocument()
   })
+
+  it('renders markdown content with heading', () => {
+    render(
+      <AnalystCard
+        output={createOutput({ content: '## 매크로 분석\n금리 인하 사이클 진입' })}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument()
+    expect(screen.getByText('금리 인하 사이클 진입')).toBeInTheDocument()
+  })
+
+  it('renders markdown content with bold text', () => {
+    render(
+      <AnalystCard
+        output={createOutput({ content: '**핵심 지표**: 인플레이션 둔화 확인' })}
+      />,
+    )
+
+    const strong = screen.getByText('핵심 지표')
+    expect(strong.tagName).toBe('STRONG')
+  })
 })
