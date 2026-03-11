@@ -41,7 +41,7 @@ export function RecommendationCard({ stats }: RecommendationCardProps) {
               />
               <MetricItem
                 label="최대 수익률"
-                value={`+${stats.maxPnlPercent.toFixed(2)}%`}
+                value={`${stats.maxPnlPercent >= 0 ? '+' : ''}${stats.maxPnlPercent.toFixed(2)}%`}
               />
               <MetricItem
                 label="평균 보유일"

@@ -19,10 +19,23 @@ export default async function HomePage() {
       fetchRecentRegimes(),
     ])
 
+  if (reportResult.status === 'rejected') {
+    console.error('[Dashboard] fetchLatestDailyReport failed:', reportResult.reason)
+  }
+  if (thesesResult.status === 'rejected') {
+    console.error('[Dashboard] fetchActiveTheses failed:', thesesResult.reason)
+  }
+  if (recommendationsResult.status === 'rejected') {
+    console.error('[Dashboard] fetchActiveRecommendations failed:', recommendationsResult.reason)
+  }
+  if (regimesResult.status === 'rejected') {
+    console.error('[Dashboard] fetchRecentRegimes failed:', regimesResult.reason)
+  }
+
   const report =
     reportResult.status === 'fulfilled' ? reportResult.value : null
 
-  const theses =
+  const thesesData =
     thesesResult.status === 'fulfilled' ? thesesResult.value : null
 
   const recommendations =
@@ -45,8 +58,8 @@ export default async function HomePage() {
         <DailyReportCard report={report} />
         <MarketRegimeCard regimes={regimes ?? []} />
         <ActiveThesesCard
-          theses={theses ?? []}
-          totalCount={theses != null ? theses.length : 0}
+          theses={thesesData?.items ?? []}
+          totalCount={thesesData?.totalCount ?? 0}
         />
         <RecommendationCard
           stats={

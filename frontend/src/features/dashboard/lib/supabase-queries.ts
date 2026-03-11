@@ -41,13 +41,17 @@ export async function fetchLatestDailyReport(): Promise<DashboardReport | null> 
   }
 }
 
-export async function fetchActiveTheses(): Promise<ActiveThesis[]> {
+export async function fetchActiveTheses(): Promise<{
+  items: ActiveThesis[]
+  totalCount: number
+}> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from('theses')
     .select(
       'id, agent_persona, thesis, timeframe_days, confidence, consensus_level, category, status, next_bottleneck, dissent_reason',
+      { count: 'exact' },
     )
     .eq('status', 'ACTIVE')
     .order('confidence', { ascending: false })
@@ -58,7 +62,7 @@ export async function fetchActiveTheses(): Promise<ActiveThesis[]> {
     throw new Error(`Active thesis 조회 실패: ${error.message}`)
   }
 
-  return (data ?? []).map((row) => ({
+  const items = (data ?? []).map((row) => ({
     id: row.id,
     agentPersona: row.agent_persona,
     thesis: row.thesis,
@@ -70,6 +74,8 @@ export async function fetchActiveTheses(): Promise<ActiveThesis[]> {
     nextBottleneck: row.next_bottleneck,
     dissentReason: row.dissent_reason,
   }))
+
+  return { items, totalCount: count ?? items.length }
 }
 
 export async function fetchActiveRecommendations(): Promise<RecommendationSummary[]> {
@@ -139,7 +145,9 @@ export function calculateRecommendationStats(
       ? items.reduce((sum, item) => sum + item.daysHeld, 0) / activeCount
       : 0
 
-  const topItems = items.slice(0, 5)
+  const topItems = [...items]
+    .sort((a, b) => (b.pnlPercent ?? 0) - (a.pnlPercent ?? 0))
+    .slice(0, 5)
 
   return {
     activeCount,

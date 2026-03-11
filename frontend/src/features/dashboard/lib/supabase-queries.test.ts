@@ -134,12 +134,12 @@ describe('fetchActiveTheses', () => {
       },
     ]
 
-    setupMockClient({ data: mockData })
+    setupMockClient({ data: mockData, count: 1 })
 
     const result = await fetchActiveTheses()
 
-    expect(result).toHaveLength(1)
-    expect(result[0]).toEqual({
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0]).toEqual({
       id: 10,
       agentPersona: 'macro',
       thesis: 'Tech sector will outperform',
@@ -151,14 +151,38 @@ describe('fetchActiveTheses', () => {
       nextBottleneck: 'Fed decision',
       dissentReason: null,
     })
+    expect(result.totalCount).toBe(1)
   })
 
-  it('data가 null이면 빈 배열 반환', async () => {
-    setupMockClient({ data: null })
+  it('count가 있으면 totalCount에 실제 DB 총합 반영', async () => {
+    const mockData = Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      agent_persona: 'macro',
+      thesis: `Thesis ${i}`,
+      timeframe_days: 30,
+      confidence: 'high',
+      consensus_level: 'strong',
+      category: 'sector',
+      status: 'ACTIVE',
+      next_bottleneck: null,
+      dissent_reason: null,
+    }))
+
+    setupMockClient({ data: mockData, count: 15 })
 
     const result = await fetchActiveTheses()
 
-    expect(result).toEqual([])
+    expect(result.items).toHaveLength(10)
+    expect(result.totalCount).toBe(15)
+  })
+
+  it('data가 null이면 빈 items 배열 반환', async () => {
+    setupMockClient({ data: null, count: 0 })
+
+    const result = await fetchActiveTheses()
+
+    expect(result.items).toEqual([])
+    expect(result.totalCount).toBe(0)
   })
 
   it('DB 에러 시 Error throw', async () => {
@@ -353,6 +377,20 @@ describe('calculateRecommendationStats', () => {
     const result = calculateRecommendationStats(items)
 
     expect(result.topItems).toHaveLength(5)
+  })
+
+  it('topItems는 pnlPercent 내림차순으로 정렬', () => {
+    const items = [
+      createItem({ id: 1, symbol: 'LOW', pnlPercent: 5 }),
+      createItem({ id: 2, symbol: 'HIGH', pnlPercent: 50 }),
+      createItem({ id: 3, symbol: 'MID', pnlPercent: 20 }),
+    ]
+
+    const result = calculateRecommendationStats(items)
+
+    expect(result.topItems[0].symbol).toBe('HIGH')
+    expect(result.topItems[1].symbol).toBe('MID')
+    expect(result.topItems[2].symbol).toBe('LOW')
   })
 
   it('activeCount는 전체 개수', () => {

@@ -69,6 +69,19 @@ describe('RecommendationCard', () => {
     expect(screen.getByText('-3.20%')).toBeInTheDocument()
   })
 
+  it('양수 최대 수익률에 + 접두어', () => {
+    render(<RecommendationCard stats={createStats({ maxPnlPercent: 35.2 })} />)
+
+    expect(screen.getByText('+35.20%')).toBeInTheDocument()
+  })
+
+  it('음수 최대 수익률에 +- 없이 - 접두어만', () => {
+    render(<RecommendationCard stats={createStats({ maxPnlPercent: -5.0 })} />)
+
+    expect(screen.getByText('-5.00%')).toBeInTheDocument()
+    expect(screen.queryByText('+-5.00%')).not.toBeInTheDocument()
+  })
+
   it('상위 종목 목록 렌더링', () => {
     const topItems = [
       createRecommendation({ id: 1, symbol: 'NVDA', pnlPercent: 35.5 }),
