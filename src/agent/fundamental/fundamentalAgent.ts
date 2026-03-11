@@ -87,8 +87,8 @@ export function buildUserMessage(
     lines.push("위 데이터를 바탕으로 이 종목의 펀더멘탈을 2-3문단으로 해석해주세요.");
   }
 
-  // DB 데이터를 XML 래핑하여 프롬프트 인젝션 방어
-  const content = lines.join("\n").replace(/<\/?financial-data[^>]*>/g, "");
+  // DB 데이터를 XML 래핑하여 프롬프트 인젝션 방어 (대소문자 구분 없이 처리)
+  const content = lines.join("\n").replace(/<\/?financial-data[^>]*>/gi, "");
   return `<financial-data source="db" trust="internal">\n${content}\n</financial-data>`;
 }
 
