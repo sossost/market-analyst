@@ -27,6 +27,7 @@ import {
   formatThesesForPrompt,
 } from "./debate/thesisStore";
 import { formatChainsForDailyPrompt } from "../lib/narrativeChainStats";
+import { evaluateDailySendGate } from "./dailySendGate";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 8192;
@@ -58,7 +59,7 @@ async function main() {
 
   // 1. 환경변수 검증
   validateAgentEnvironment();
-  logger.step("[1/7] Environment validated");
+  logger.step("[1/8] Environment validated");
 
   // 2. 최신 거래일 확인
   const targetDate = await getLatestPriceDate();
@@ -68,7 +69,7 @@ async function main() {
     await pool.end();
     return;
   }
-  logger.step(`[2/7] Target date: ${targetDate}`);
+  logger.step(`[2/8] Target date: ${targetDate}`);
 
   // 3. 애널리스트 토론 전망 로드
   let thesesContext = "";
@@ -83,7 +84,7 @@ async function main() {
   } catch (err) {
     logger.warn("Thesis", `Failed to load theses: ${err instanceof Error ? err.message : String(err)}`);
   }
-  logger.step("[3/7] Theses loaded");
+  logger.step("[3/8] Theses loaded");
 
   // 4. 활성 서사 체인 로드
   let narrativeChainsContext = "";
@@ -96,10 +97,24 @@ async function main() {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("NarrativeChain", `로드 실패 (에이전트는 계속 진행): ${reason}`);
   }
-  logger.step("[4/7] Narrative chains loaded");
+  logger.step("[4/8] Narrative chains loaded");
 
-  // 5. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
-  logger.step("[5/7] Running agent loop...\n");
+  // 5. 발송 게이트 평가 (인사이트 없으면 에이전트 루프 스킵)
+  if (process.env.SKIP_DAILY_GATE !== "true") {
+    const gate = await evaluateDailySendGate(targetDate);
+    if (!gate.shouldSend) {
+      logger.step("[5/8] Send gate: SKIP — 발송 조건 미충족");
+      logger.info("SendGate", "모든 조건 미충족 — 오늘은 인사이트 없음. 에이전트 스킵.");
+      await pool.end();
+      return;
+    }
+    logger.step(`[5/8] Send gate: PASS — ${gate.reasons.join(" | ")}`);
+  } else {
+    logger.step("[5/8] Send gate: BYPASSED (SKIP_DAILY_GATE=true)");
+  }
+
+  // 6. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
+  logger.step("[6/8] Running agent loop...\n");
 
   const reportDrafts: ReportDraft[] = [];
 
@@ -128,7 +143,7 @@ async function main() {
   try {
     const result = await runAgentLoop(config);
 
-    logger.step("\n[6/7] Agent result:");
+    logger.step("\n[7/8] Agent result:");
     logger.info("Result", `Success: ${result.success}`);
     logger.info(
       "Result",
@@ -165,9 +180,9 @@ async function main() {
     logger.error("Agent", `Agent loop crashed: ${loopError}`);
   }
 
-  // 6. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
+  // 8. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (reportDrafts.length > 0) {
-    logger.step("[6/7] Running review pipeline...");
+    logger.step("[8/8] Running review pipeline...");
     await runReviewPipeline(reportDrafts, "DISCORD_WEBHOOK_URL");
   } else if (loopError != null) {
     throw new Error(`Agent failed with no drafts: ${loopError}`);
