@@ -5,6 +5,7 @@ import { vi } from 'vitest'
 import type { ActiveThesis } from '../types'
 
 vi.mock('../lib/supabase-queries', () => ({
+  THESES_QUERY_LIMIT: 10,
   fetchActiveTheses: vi.fn(),
 }))
 

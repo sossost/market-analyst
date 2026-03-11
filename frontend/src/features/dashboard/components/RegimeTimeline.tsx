@@ -21,7 +21,7 @@ export function RegimeTimeline({ regimes }: RegimeTimelineProps) {
             className="flex flex-col items-center gap-1"
           >
             <span className="text-xs text-muted-foreground">
-              {item.regimeDate.slice(5)}
+              {item.regimeDate.slice('YYYY-'.length)}
             </span>
             <RegimeBadge regime={item.regime} />
           </div>

@@ -8,6 +8,17 @@ import type {
   RecentRegime,
 } from '../types'
 
+const CONFIDENCE_ORDER: Record<string, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+}
+
+export const THESES_QUERY_LIMIT = 10
+const RECOMMENDATIONS_QUERY_LIMIT = 100
+const REGIMES_QUERY_LIMIT = 7
+const TOP_ITEMS_LIMIT = 5
+
 export async function fetchLatestDailyReport(): Promise<DashboardReport | null> {
   const supabase = await createClient()
 
@@ -54,26 +65,31 @@ export async function fetchActiveTheses(): Promise<{
       { count: 'exact' },
     )
     .eq('status', 'ACTIVE')
-    .order('confidence', { ascending: false })
     .order('id', { ascending: false })
-    .range(0, 9)
+    .range(0, THESES_QUERY_LIMIT - 1)
 
   if (error != null) {
     throw new Error(`Active thesis 조회 실패: ${error.message}`)
   }
 
-  const items = (data ?? []).map((row) => ({
-    id: row.id,
-    agentPersona: row.agent_persona,
-    thesis: row.thesis,
-    timeframeDays: row.timeframe_days,
-    confidence: row.confidence as ActiveThesis['confidence'],
-    consensusLevel: row.consensus_level,
-    category: row.category,
-    status: row.status as ActiveThesis['status'],
-    nextBottleneck: row.next_bottleneck,
-    dissentReason: row.dissent_reason,
-  }))
+  const items = (data ?? [])
+    .map((row) => ({
+      id: row.id,
+      agentPersona: row.agent_persona,
+      thesis: row.thesis,
+      timeframeDays: row.timeframe_days,
+      confidence: row.confidence as ActiveThesis['confidence'],
+      consensusLevel: row.consensus_level,
+      category: row.category,
+      status: row.status as ActiveThesis['status'],
+      nextBottleneck: row.next_bottleneck,
+      dissentReason: row.dissent_reason,
+    }))
+    .sort(
+      (a, b) =>
+        (CONFIDENCE_ORDER[a.confidence] ?? 99) -
+        (CONFIDENCE_ORDER[b.confidence] ?? 99),
+    )
 
   return { items, totalCount: count ?? items.length }
 }
@@ -88,7 +104,7 @@ export async function fetchActiveRecommendations(): Promise<RecommendationSummar
     )
     .eq('status', 'ACTIVE')
     .order('pnl_percent', { ascending: false })
-    .range(0, 99)
+    .range(0, RECOMMENDATIONS_QUERY_LIMIT - 1)
 
   if (error != null) {
     throw new Error(`활성 추천 종목 조회 실패: ${error.message}`)
@@ -122,17 +138,18 @@ export function calculateRecommendationStats(
     }
   }
 
-  const itemsWithPnl = items.filter((item) => item.pnlPercent != null)
-  const winCount = itemsWithPnl.filter(
-    (item) => (item.pnlPercent ?? 0) > 0,
-  ).length
+  const itemsWithPnl = items.filter(
+    (item): item is RecommendationSummary & { pnlPercent: number } =>
+      item.pnlPercent != null,
+  )
+  const winCount = itemsWithPnl.filter((item) => item.pnlPercent > 0).length
 
   const winRate =
     itemsWithPnl.length > 0 ? (winCount / itemsWithPnl.length) * 100 : 0
 
   const avgPnlPercent =
     itemsWithPnl.length > 0
-      ? itemsWithPnl.reduce((sum, item) => sum + (item.pnlPercent ?? 0), 0) /
+      ? itemsWithPnl.reduce((sum, item) => sum + item.pnlPercent, 0) /
         itemsWithPnl.length
       : 0
 
@@ -147,7 +164,7 @@ export function calculateRecommendationStats(
 
   const topItems = [...items]
     .sort((a, b) => (b.pnlPercent ?? 0) - (a.pnlPercent ?? 0))
-    .slice(0, 5)
+    .slice(0, TOP_ITEMS_LIMIT)
 
   return {
     activeCount,
@@ -166,7 +183,7 @@ export async function fetchRecentRegimes(): Promise<RecentRegime[]> {
     .from('market_regimes')
     .select('regime_date, regime, rationale, confidence')
     .order('regime_date', { ascending: false })
-    .range(0, 6)
+    .range(0, REGIMES_QUERY_LIMIT - 1)
 
   if (error != null) {
     throw new Error(`최근 레짐 조회 실패: ${error.message}`)

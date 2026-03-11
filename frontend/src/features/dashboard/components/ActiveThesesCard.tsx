@@ -12,13 +12,11 @@ import { ThesisBadge } from '@/features/debates/components/ThesisBadge'
 import { getPersonaLabel } from '@/features/debates/constants'
 
 import type { ActiveThesis } from '../types'
-import { fetchActiveTheses } from '../lib/supabase-queries'
-
-const ACTIVE_THESES_DISPLAY_LIMIT = 10
+import { THESES_QUERY_LIMIT, fetchActiveTheses } from '../lib/supabase-queries'
 
 export async function ActiveThesesCard() {
   const { items: theses, totalCount } = await fetchActiveTheses()
-  const hasMore = totalCount > ACTIVE_THESES_DISPLAY_LIMIT
+  const hasMore = totalCount > THESES_QUERY_LIMIT
 
   return (
     <Card className="flex h-full flex-col">
@@ -37,7 +35,7 @@ export async function ActiveThesesCard() {
             ))}
             {hasMore && (
               <p className="text-center text-xs text-muted-foreground">
-                외 {totalCount - ACTIVE_THESES_DISPLAY_LIMIT}건 더 있음
+                외 {totalCount - THESES_QUERY_LIMIT}건 더 있음
               </p>
             )}
           </div>
@@ -69,7 +67,9 @@ function ThesisItem({ thesis }: { thesis: ActiveThesis }) {
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
         <span>기간: {thesis.timeframeDays}일</span>
         <span>합의: {thesis.consensusLevel}</span>
-        {thesis.category !== '' && <span>{thesis.category}</span>}
+        {thesis.category != null && thesis.category !== '' && (
+          <span>{thesis.category}</span>
+        )}
       </div>
     </div>
   )

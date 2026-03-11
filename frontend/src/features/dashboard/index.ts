@@ -7,6 +7,7 @@ export type {
 } from './types'
 
 export {
+  THESES_QUERY_LIMIT,
   fetchLatestDailyReport,
   fetchActiveTheses,
   fetchActiveRecommendations,
@@ -20,6 +21,5 @@ export { RecommendationCard } from './components/RecommendationCard'
 export { MarketRegimeCard } from './components/MarketRegimeCard'
 export { RegimeTimeline } from './components/RegimeTimeline'
 export { MetricItem } from './components/MetricItem'
-export { DashboardSkeleton } from './components/DashboardSkeleton'
 export { CardSkeleton } from './components/CardSkeleton'
 export { CardError } from './components/CardError'
