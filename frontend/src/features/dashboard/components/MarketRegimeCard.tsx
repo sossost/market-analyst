@@ -20,11 +20,11 @@ export function MarketRegimeCard({ regimes }: MarketRegimeCardProps) {
   const latestRegime = regimes.length > 0 ? regimes[0] : null
 
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardHeader>
         <CardTitle>시장 레짐</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         {latestRegime == null ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             레짐 데이터가 없습니다

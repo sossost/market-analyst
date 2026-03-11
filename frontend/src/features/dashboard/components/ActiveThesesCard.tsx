@@ -27,11 +27,11 @@ export function ActiveThesesCard({
   const hasMore = totalCount > ACTIVE_THESES_DISPLAY_LIMIT
 
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardHeader>
         <CardTitle>Active Thesis</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         {theses.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             활성 thesis가 없습니다

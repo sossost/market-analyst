@@ -18,11 +18,11 @@ interface DailyReportCardProps {
 
 export function DailyReportCard({ report }: DailyReportCardProps) {
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardHeader>
         <CardTitle>오늘의 리포트</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         {report == null ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             리포트 데이터가 없습니다

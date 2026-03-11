@@ -15,11 +15,11 @@ interface RecommendationCardProps {
 
 export function RecommendationCard({ stats }: RecommendationCardProps) {
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardHeader>
         <CardTitle>추천 성과 현황</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         {stats.activeCount === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             활성 추천 종목이 없습니다
