@@ -4,6 +4,9 @@
  * A급 종목에 대해 구조화된 마크다운 리포트를 생성하고
  * Discord 파일 첨부 + Gist 저장한다.
  */
+import { writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
 import { sendDiscordFile } from "../discord.js";
 import { createGist } from "../gist.js";
 import { logger } from "../logger.js";
@@ -143,6 +146,17 @@ export async function publishStockReport(
 ): Promise<{ gistUrl: string | null }> {
   const date = new Date().toISOString().slice(0, 10);
   const filename = `${symbol}-${date}.md`;
+
+  // 파일 저장 (검증용)
+  try {
+    const reportsDir = join(process.cwd(), "data", "fundamental-reports");
+    await mkdir(reportsDir, { recursive: true });
+    await writeFile(join(reportsDir, filename), reportMd, "utf-8");
+    logger.info("StockReport", `${symbol} 파일 저장: data/fundamental-reports/${filename}`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("StockReport", `${symbol} 파일 저장 실패 (계속 진행): ${reason}`);
+  }
 
   // Gist 저장
   const gist = await createGist(
