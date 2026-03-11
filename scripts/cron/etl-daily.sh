@@ -60,6 +60,9 @@ run_step "Update Sector Lag Patterns" "src/etl/jobs/update-sector-lag-patterns.t
 run_step "Track Phase Exits" "src/etl/jobs/track-phase-exits.ts"
 run_step "Collect Failure Patterns" "src/etl/jobs/collect-failure-patterns.ts"
 
+# Phase 3.8 (추천 종목 성과 갱신)
+run_step "Update Recommendation Status" "src/etl/jobs/update-recommendation-status.ts"
+
 # Phase 4
 run_step "Validate Data" "src/etl/jobs/validate-data.ts"
 
