@@ -257,17 +257,6 @@ function getToday(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function sanitizeErrorForDiscord(msg: string): string {
-  const MAX_LENGTH = 500;
-  const sanitized = msg
-    .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
-    .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
-    .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]");
-  return sanitized.length > MAX_LENGTH
-    ? `${sanitized.slice(0, MAX_LENGTH)}...`
-    : sanitized;
-}
-
 /**
  * Discord 멘션 sanitize — LLM 생성 텍스트에서 @everyone, @here 등 제거.
  */
@@ -402,7 +391,7 @@ main()
   .catch(async (err) => {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error("QA", `Fatal: ${errorMsg}`);
-    await sendDiscordError(sanitizeErrorForDiscord(errorMsg));
+    await sendDiscordError(errorMsg);
     process.exit(1);
   })
   .finally(async () => {

@@ -101,7 +101,7 @@ CEO가 PR 리뷰에서 최종 판단하므로 LLM 트리아지 단계 불필요.
 | 항목 | 값 |
 |------|---|
 | 실행 시간 | 평일(월~금) 10:00, 12:00, 14:00, 16:00 KST — 하루 4회 |
-| 실행 환경 | 맥미니 (`ssh mini@100.77.162.69`) |
+| 실행 환경 | 맥미니 (`ssh <MAC_MINI_USER>@<MAC_MINI_HOST>`) |
 | 스케줄러 | launchd plist (기존 인프라) |
 | 로그 경로 | `logs/launchd-issue-processor.log` |
 

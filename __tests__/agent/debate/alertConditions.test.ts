@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DebateResult, Thesis } from "../../../src/types/debate.js";
+import { sanitizeErrorForDiscord } from "@/agent/discord";
 
 // Extract the logic for unit testing (same as in run-debate-agent.ts)
 function checkAlertConditions(result: DebateResult): { send: boolean; reason: string } {
@@ -170,18 +171,6 @@ describe("extractCoreInsight", () => {
   });
 });
 
-// Same logic as run-debate-agent.ts sanitizeErrorForDiscord
-function sanitizeErrorForDiscord(msg: string): string {
-  const MAX_LENGTH = 500;
-  const sanitized = msg
-    .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
-    .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
-    .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]");
-  return sanitized.length > MAX_LENGTH
-    ? `${sanitized.slice(0, MAX_LENGTH)}...`
-    : sanitized;
-}
-
 describe("sanitizeErrorForDiscord", () => {
   it("redacts postgres connection strings", () => {
     const msg = "Connection failed: postgresql://user:pass@host:5432/db";
@@ -206,5 +195,19 @@ describe("sanitizeErrorForDiscord", () => {
   it("leaves normal errors unchanged", () => {
     const msg = "Round 1 failed: no agents produced output";
     expect(sanitizeErrorForDiscord(msg)).toBe(msg);
+  });
+
+  it("redacts webhook URLs", () => {
+    const msg = "Failed: https://discord.com/api/webhooks/123/abc";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[REDACTED_URL]");
+    expect(result).not.toContain("webhooks/123");
+  });
+
+  it("redacts API keys with sk- prefix", () => {
+    const msg = "Auth failed with key sk-ant-api03-abc123";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[REDACTED_KEY]");
+    expect(result).not.toContain("sk-ant-api03-abc123");
   });
 });

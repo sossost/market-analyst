@@ -53,8 +53,23 @@ export async function sendDiscordMessage(
  * Falls back to DISCORD_WEBHOOK_URL if error webhook is not set.
  * Does not throw — errors are logged only.
  */
+export function sanitizeErrorForDiscord(msg: string): string {
+  const MAX_LENGTH = 500;
+  const sanitized = msg
+    .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
+    .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
+    .replace(/https?:\/\/[^\s]*webhook[^\s]*/gi, "[REDACTED_URL]")
+    .replace(/([?&](?:apikey|api_key|access_token|auth)[=][^\s&]+)/gi, "[REDACTED_PARAM]")
+    .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]")
+    .replace(/sk-[a-zA-Z0-9-]{10,}/g, "[REDACTED_KEY]");
+  return sanitized.length > MAX_LENGTH
+    ? `${sanitized.slice(0, MAX_LENGTH)}...`
+    : sanitized;
+}
+
 export async function sendDiscordError(errorMessage: string): Promise<void> {
-  const message = `⚠️ Agent Core 에러\n\n${errorMessage}`;
+  const sanitized = sanitizeErrorForDiscord(errorMessage);
+  const message = `⚠️ Agent Core 에러\n\n${sanitized}`;
   const errorWebhookUrl = process.env.DISCORD_ERROR_WEBHOOK_URL;
   const fallbackWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
   const webhookUrl =
