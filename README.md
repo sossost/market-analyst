@@ -2,6 +2,8 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
+> **Backend** 125 TS files · **Frontend** 85 TS/TSX files · **Tests** 1,027+ · **Open Issues** 12
+
 ## How It Works
 
 ```
@@ -29,10 +31,19 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → "A 섹터 Phase 2 진입 → N주 후 B 섹터 주시" 선행 경보
    → 신뢰 가능 패턴(5회+ 관측)만 주간 에이전트에 주입
 
-5. 에이전트 리포트
-   → 일간: 시장 온도 + 특이종목 브리핑
+5. 품질 관리 (자동)
+   → 일간 리포트 품질 검증 파이프라인 (Claude Code CLI 기반)
+   → 조건부 발송 게이트: 품질 미달 시 발송 차단
+   → bull-bias 감지 + Phase 2 ratio 이중 변환 방어
+
+6. 에이전트 리포트
+   → 일간: 시장 온도 + 특이종목 브리핑 (조건부 발송)
    → 주간: Phase 2 주도주 심층 분석 + 펀더멘탈 검증 (SEPA)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
+
+7. 자율 운영
+   → Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
+   → 맥미니 서버 launchd 기반 스케줄링
 ```
 
 ## Quick Start
@@ -40,15 +51,16 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 ### Prerequisites
 
 - Node.js >= 20
+- Yarn (Classic 1.x)
 - PostgreSQL (Supabase) — screener DB와 공유
 - API Keys: Anthropic, Discord Webhook, Brave Search, GitHub Token
 
 ### Setup
 
 ```bash
-git clone https://github.com/jang-yunsu/market-analyst.git
+git clone https://github.com/sossost/market-analyst.git
 cd market-analyst
-npm ci
+yarn install
 cp .env.example .env  # 환경변수 설정
 ```
 
@@ -69,24 +81,30 @@ GITHUB_TOKEN=gho_...                        # Gist MD 첨부
 
 ```bash
 # ETL 파이프라인
-npm run etl:stock-phases    # Weinstein Phase 판별
-npm run etl:sector-rs       # 섹터 RS 계산
-npm run etl:industry-rs     # 산업 RS 계산
-npm run etl:validate        # 데이터 검증
+yarn etl:stock-phases       # Weinstein Phase 판별
+yarn etl:sector-rs          # 섹터 RS 계산
+yarn etl:industry-rs        # 산업 RS 계산
+yarn etl:validate           # 데이터 검증
 
 # Agent 실행
-npm run agent:daily         # 일간 시장 브리핑
-npm run agent:weekly        # 주간 종목 분석
-npm run agent:debate        # 애널리스트 토론 (매크로/테크/지정학/심리)
+yarn agent:daily            # 일간 시장 브리핑
+yarn agent:weekly           # 주간 종목 분석
+yarn agent:debate           # 애널리스트 토론 (매크로/테크/지정학/심리)
+yarn agent:issue-processor  # 자율 이슈 처리 (Claude Code CLI)
+
+# Frontend
+yarn fe:dev                 # 개발 서버
+yarn fe:build               # 프로덕션 빌드
+yarn fe:test                # 프론트엔드 테스트
 
 # 테스트
-npm test                    # 전체 테스트 (815+ tests)
-npm run test:watch          # 워치 모드
-npm run typecheck           # 타입 체크
+yarn test                   # 전체 테스트 (1,027+ tests)
+yarn test:watch             # 워치 모드
+yarn typecheck              # 타입 체크
 
 # DB
-npm run db:generate         # 마이그레이션 생성
-npm run db:push             # 스키마 적용
+yarn db:generate            # 마이그레이션 생성
+yarn db:push                # 스키마 적용
 ```
 
 ## Architecture
@@ -95,12 +113,12 @@ npm run db:push             # 스키마 적용
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │     ETL      │    │   Debate     │    │    Agent     │
 │              │    │              │    │              │
-│ Stock Phases │───▶│ 4 Ministers  │───▶│Claude Sonnet │
+│ Stock Phases │───▶│ 4 Analysts  │───▶│Claude Sonnet │
 │ Sector RS    │    │ 3-Round Talk │    │ + 16 Tools   │
 │ Industry RS  │    │ + 서사 프레임 │    │ + Fundamental│
-└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
-       │                   │                   │
-       │            ┌──────▼───────┐           │
+│ Breakout/    │    └──────┬───────┘    └──────┬───────┘
+│ Noise Signal │           │                   │
+└──────┬───────┘    ┌──────▼───────┐           │
        └───────────▶│  Learning    │◀──────────┘
                     │    Loop      │
                     └──────┬───────┘
@@ -113,11 +131,21 @@ npm run db:push             # 스키마 적용
         └─────────┘  └──────────┘  └──────────┘
                            │
                     ┌──────▼───────┐
+                    │  QA + Gate   │
+                    │ (품질 검증)   │
+                    └──────┬───────┘
+                           │
+                    ┌──────▼───────┐
                     │   Delivery   │
                     │ Discord+Gist │
                     └──────┬───────┘
                            │
-                    Supabase (PostgreSQL)
+               ┌───────────┼───────────┐
+               │           │           │
+        ┌──────▼──┐  ┌─────▼────┐  ┌──▼───────┐
+        │Supabase │  │ Frontend │  │ Auto     │
+        │   (DB)  │  │Dashboard │  │Issue Proc│
+        └─────────┘  └──────────┘  └──────────┘
 ```
 
 ### Agent Tools
@@ -182,19 +210,18 @@ npm run db:push             # 스키마 적용
 - **합의도(consensus_score)**: 4명 애널리스트 중 동의한 수. 만장일치(4/4) vs 다수(3/4) 적중률 분리 추적 — "아직 컨센서스가 안 된 thesis가 더 높은 알파를 갖는가?" 검증
 - **실패 패턴**: Phase 2 신호 후 실패한 케이스의 시장 조건(브레드스, 섹터 RS, 거래량 등)을 자동 기록. 실패율 70%+ 패턴은 필터링 규칙으로 승격되어 위양성을 사전 차단
 
-### 운영 지표 (2026-03-08 기준)
+### 운영 지표 (2026-03-11 기준)
 
-시스템 운영 초기 단계. 서사 프레임(N-1) 적용 직후이며 데이터 축적 중.
+서사 프레임(N-1) 적용 후 데이터 축적 중. N-2 검증 인프라 착수 대기.
 
 | 지표 | 현재 | 목표 (6개월) | 비고 |
 |------|------|-------------|------|
-| 토론 세션 | 2회 | — | 평일 매일 자동 실행 |
-| Thesis 총 건수 | 28건 | 200건+ | Active 21 / Confirmed 4 / Expired 3 |
-| Thesis 적중률 | 100% (4/4) | 50%+ | 표본 부족으로 통계적 무의미 |
-| 추천 종목 | 7건 (Active) | — | Phase 이탈 시 자동 종료 |
-| 학습 승격 | 0건 | 10건+ | 3회+ 적중 패턴 필요 |
-| 실패 패턴 | 0건 | 5건+ | N-1e 방금 배포, 축적 시작 |
-| 서사 카테고리 분포 | 전부 short_term | structural 30%+ | 서사 프레임 적용 전 데이터 |
+| 테스트 | 1,027+ (90 files) | 유지 | Backend + Frontend |
+| 토론 세션 | 운영 중 | — | 평일 매일 자동 실행 |
+| Thesis 총 건수 | 축적 중 | 200건+ | 서사 카테고리 분리 적용 |
+| 학습 승격 | 축적 중 | 10건+ | 3회+ 적중 패턴 필요 |
+| 실패 패턴 | 축적 중 | 5건+ | N-1e 배포 완료, 데이터 수집 중 |
+| 프론트엔드 | 리포트/토론 아카이브 | 대시보드 확장 | Next.js 16 + Supabase Auth |
 
 **핵심 추적 질문:** 서사-기술적 교집합이 기술적 단독 대비 적중률을 높이는가? → N-2 홀드아웃 테스트(3/22 이후)에서 검증 예정.
 
@@ -210,7 +237,9 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | **C** | 필수 1개만 충족 | 기술적으로만 Phase 2 경고 |
 | **F** | 미충족 또는 데이터 부족 | 펀더멘탈 미달 표시 |
 
-## CI/CD (GitHub Actions)
+## CI/CD & 스케줄링
+
+### GitHub Actions
 
 | Workflow | Schedule | 내용 |
 |----------|----------|------|
@@ -221,34 +250,57 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | `etl-weekly.yml` | 일 UTC 07:00 (KST 16:00) | 주간 ETL (심볼/펀더멘탈) |
 | `agent-rerun.yml` | 수동 트리거 | 에이전트만 재실행 (ETL 생략) |
 
+### 맥미니 서버 (launchd)
+
+| 작업 | 스케줄 | 내용 |
+|------|--------|------|
+| Auto Issue Processor | 주기적 | GitHub 이슈 자동 처리 → PR 생성 |
+| 일간 QA | ETL 후 | 리포트 품질 검증 (Claude Code CLI) |
+
 ## Tech Stack
 
 | 영역 | 기술 |
 |------|------|
 | Runtime | Node.js 20+ (ESM) |
 | Language | TypeScript (strict) |
+| Package Manager | Yarn (Classic 1.x) |
 | AI | Claude Sonnet 4 (Anthropic SDK) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
-| Testing | Vitest |
-| CI/CD | GitHub Actions |
+| Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui |
+| Auth | Supabase Auth (Magic Link) |
+| Testing | Vitest (Backend + Frontend), Playwright (E2E) |
+| CI/CD | GitHub Actions + macOS launchd |
 | Delivery | Discord Webhook + GitHub Gist |
 | Search | Brave Search API |
+| Automation | Claude Code CLI (Auto Issue Processor, QA) |
 
 ## Feature Roadmap
 
-- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스)
-- [x] **F2** Agent Core — Claude agentic loop + 도구 + 일간/주간 분리
+### Core Features (완료)
+
+- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스, 돌파/노이즈 신호)
+- [x] **F2** Agent Core — Claude agentic loop + 16개 도구 + 일간/주간 분리
 - [ ] ~~**F3** Industry Intelligence~~ — 폐기. F6 토론 엔진이 시장 분석 역할을 대체
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지
 - [x] **F5** Report & Delivery — Discord 발송, Gist MD, 리뷰 파이프라인
 - [x] **F6** Debate & Evolution — 애널리스트 4명 토론 + thesis 저장 + 학습 루프
 - [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + 전체 종목 확장
+- [x] **F8** Report/Debate Archive Dashboard — Next.js 16 + Supabase Auth + 리포트/토론 아카이브 UI
+
+### Enhancement Phases (완료)
+
 - [x] **Phase A** Learning Loop — 세션 저장, few-shot 주입, 원인 분석, 패턴 승격
 - [x] **Phase A+** Signal Validation — 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화
 - [x] **Phase A++** Weekly Redesign — 주간 리포트 전면 재설계 (도구 주간 집계 + 프롬프트 차별화)
-- [x] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + thesis 카테고리 분리 + N+1 병목 예측 + 합의도 추적 + 실패 패턴 축적 + 병목 체인 추적 (N-1, Wave 2a/2b 완료, N-2 대기 중)
+- [x] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + thesis 카테고리 분리 + N+1 병목 예측 + 합의도 추적 + 실패 패턴 축적 + 병목 체인 추적 (N-1, Wave 2a/2b 완료)
 - [x] **Sector Lag Pattern** — 섹터 간 Phase 전이 시차 축적 + 선행 경보 → 주간 에이전트 연동
-- [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지 (Phase N과 병렬 가능)
+- [x] **일간 품질 검증** — Claude Code CLI 기반 리포트 QA + 조건부 발송 게이트 + bull-bias 감지
+- [x] **자율 이슈 처리** — Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
+
+### Next (진행 예정)
+
+- [ ] **Phase N-2** 검증 인프라 — 홀드아웃 테스트 + 위양성 비용 리포트 (데이터 축적 대기, 3/22~)
+- [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
 
 자세한 로드맵: [`docs/ROADMAP.md`](docs/ROADMAP.md)
@@ -266,10 +318,19 @@ src/
 │   │   ├── memoryLoader.ts  # 학습 → 프롬프트 주입
 │   │   └── narrativeChainService.ts  # 병목 체인 추적
 │   ├── fundamental/         # SEPA 펀더멘탈 검증
-│   └── tools/               # 에이전트 도구 (16개 + 내부 유틸 1개)
+│   ├── tools/               # 에이전트 도구 (16개 + 내부 유틸 1개)
+│   └── reviewAgent.ts       # 리포트 품질 검증 + 조건부 발송
+├── issue-processor/         # 자율 이슈 처리 (Claude Code CLI)
 ├── etl/                     # 데이터 파이프라인
 ├── lib/                     # 유틸리티 (스코어링, 분석, 시차 통계)
 └── db/schema/               # Drizzle ORM 스키마
+
+frontend/
+├── src/
+│   ├── app/                 # Next.js App Router (라우트만)
+│   ├── features/            # 피쳐 기반 모듈 (auth, reports, debates)
+│   └── shared/              # 공통 컴포넌트, 훅, 유틸
+└── e2e/                     # Playwright E2E 테스트
 
 docs/
 ├── ROADMAP.md               # 전체 로드맵
