@@ -100,9 +100,18 @@ export async function runFundamentalValidation(
     }
   }
 
-  // 6. S급 종목에 대해 LLM 분석
+  // 6. S급 종목에 대해 LLM 분석 (기술적 데이터 선로딩)
   const client = new Anthropic();
   const sGradeScores = scores.filter((s) => s.grade === "S");
+
+  // 기술적 데이터를 LLM 분석 전에 로드하여 프롬프트에 포함
+  const technicalMap = new Map<string, Awaited<ReturnType<typeof loadTechnicalData>>>();
+  for (const score of sGradeScores) {
+    const tech = await loadTechnicalData(score.symbol);
+    if (tech != null) {
+      technicalMap.set(score.symbol, tech);
+    }
+  }
 
   const analyses = new Map<string, string>();
 
@@ -111,7 +120,8 @@ export async function runFundamentalValidation(
     if (input == null) continue;
 
     try {
-      const analysis = await analyzeFundamentals(client, score, input);
+      const technical = technicalMap.get(score.symbol);
+      const analysis = await analyzeFundamentals(client, score, input, technical);
       analyses.set(score.symbol, analysis.narrative);
       totalTokens.input += analysis.tokensUsed.input;
       totalTokens.output += analysis.tokensUsed.output;
@@ -131,7 +141,7 @@ export async function runFundamentalValidation(
       const narrative = analyses.get(score.symbol);
       if (input == null || narrative == null) continue;
 
-      const technical = await loadTechnicalData(score.symbol);
+      const technical = technicalMap.get(score.symbol) ?? await loadTechnicalData(score.symbol);
       const reportMd = generateStockReport({
         score,
         input,
