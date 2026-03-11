@@ -37,7 +37,8 @@ CEO (사용자)
   └── 실행팀 — 미션 수행 (코드 작성/리뷰/탐색)
       ├── 탐색 에이전트 (Explore)
       ├── 설계 에이전트 (Plan/architect)
-      ├── 구현 에이전트 (general-purpose)
+      ├── 프론트엔드 엔지니어 (frontend-engineer)
+      ├── 백엔드 엔지니어 (backend-engineer)
       ├── 리뷰 에이전트 (code-reviewer)
       └── 보안 에이전트 (security-reviewer)
 ```
@@ -158,13 +159,19 @@ CEO 확인이 필요한 것:
 매니저의 미션을 실제로 수행한다. 코드 작성, 탐색, 리뷰 등.
 
 ### 구성원
-| 에이전트 | 용도 | Agent subagent_type |
-|---------|------|-------------------|
-| 탐색 에이전트 | 코드베이스/데이터 조사 | `Explore` |
-| 설계 에이전트 | 아키텍처/구현 계획 | `Plan` 또는 `architect` |
-| 구현 에이전트 | 코드 작성 | `general-purpose` |
-| 리뷰 에이전트 | 코드 품질 검토 | `code-reviewer` |
-| 보안 에이전트 | 보안 취약점 검토 | `security-reviewer` |
+| 에이전트 | 용도 | 에이전트 파일 |
+|---------|------|-------------|
+| 탐색 에이전트 | 코드베이스/데이터 조사 | `Explore` (subagent_type) |
+| 설계 에이전트 | 아키텍처/구현 계획 | `Plan` 또는 `architect` (subagent_type) |
+| 프론트엔드 엔지니어 | React/Next.js 기능 구현 | `.claude/agents/frontend-engineer.md` |
+| 백엔드 엔지니어 | Node.js/DB 기능 구현 | `.claude/agents/backend-engineer.md` |
+| 리뷰 에이전트 | 코드 품질 검토 | `code-reviewer` (subagent_type) |
+| 보안 에이전트 | 보안 취약점 검토 | `security-reviewer` (subagent_type) |
+
+### 소환 기준
+- **프론트엔드 엔지니어**: `frontend/` 하위 컴포넌트/페이지/쿼리 구현 시
+- **백엔드 엔지니어**: `src/` 하위 에이전트 로직/ETL/DB/유틸 구현 시
+- 풀스택 작업: 두 에이전트를 **병렬** 소환 (독립 범위가 확보된 경우)
 
 ### 규칙
 - 실행팀은 **매니저의 지시로만 동작**한다
