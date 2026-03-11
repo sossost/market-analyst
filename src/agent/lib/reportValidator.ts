@@ -18,8 +18,11 @@ const BULL_BIAS_THRESHOLD = 0.8;
 // Types
 // ---------------------------------------------------------------------------
 
+export type ReportType = "daily" | "weekly";
+
 export interface ReportValidationInput {
   markdown: string;
+  reportType?: ReportType;
   leadingSectors?: string[];
   recommendations?: Array<{
     symbol: string;
@@ -133,6 +136,58 @@ function checkSubstandardStocks(
   }
 }
 
+/**
+ * Phase 2 비율이 100%를 초과하는 패턴을 감지한다.
+ * "Phase 2: 3520%" 같은 이중 변환 버그를 리포트 발송 전에 차단.
+ */
+const PHASE2_RATIO_PATTERN = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
+const MAX_PHASE2_RATIO = 100;
+
+function checkPhase2RatioRange(
+  markdown: string,
+  errors: string[],
+): void {
+  let match: RegExpExecArray | null;
+  while ((match = PHASE2_RATIO_PATTERN.exec(markdown)) !== null) {
+    const rawValue = match[1].replace(/,/g, "");
+    const value = Number(rawValue);
+    if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
+      errors.push(
+        `Phase 2 비율 이상값 감지: ${value}% (최대 100%). 이중 변환(×100) 버그 가능성. 원본: "${match[0]}"`,
+      );
+    }
+  }
+}
+
+/**
+ * 일간 리포트 MD에 필수 섹션이 포함되어 있는지 검증한다.
+ * 필수 키워드: "시장 온도", "섹터"(RS 랭킹 표), "시장 흐름"(종합 전망)
+ */
+const DAILY_REQUIRED_SECTIONS = [
+  { keyword: "시장 온도", label: "시장 온도 근거" },
+  { keyword: "섹터", label: "섹터 RS 랭킹 표" },
+  { keyword: "시장 흐름", label: "시장 흐름 및 종합 전망" },
+] as const;
+
+function checkDailySections(
+  markdown: string,
+  warnings: string[],
+): void {
+  const missingSections: string[] = [];
+
+  for (const section of DAILY_REQUIRED_SECTIONS) {
+    if (!markdown.includes(section.keyword)) {
+      missingSections.push(section.label);
+    }
+  }
+
+  if (missingSections.length > 0) {
+    warnings.push(
+      `일간 리포트 필수 섹션 누락: ${missingSections.join(", ")}`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -156,6 +211,14 @@ export function validateReport(
   // C. 기준 미달 종목 태깅
   if (input.recommendations != null && input.recommendations.length > 0) {
     checkSubstandardStocks(input.recommendations, warnings);
+  }
+
+  // D. Phase 2 비율 범위 검증 (이중 변환 방어)
+  checkPhase2RatioRange(input.markdown, errors);
+
+  // E. 일간 리포트 필수 섹션 검증
+  if (input.reportType === "daily") {
+    checkDailySections(input.markdown, warnings);
   }
 
   return {

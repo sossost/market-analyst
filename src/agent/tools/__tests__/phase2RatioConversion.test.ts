@@ -65,5 +65,37 @@ describe("Phase 2 ratio conversion", () => {
 
       warnSpy.mockRestore();
     });
+
+    it("detects 3050% pattern (DB value 0.305 double-converted)", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // DB stores 0.305, first conversion gives 30.5,
+      // if erroneously treated as ratio again: 30.5 * 100 = 3050
+      const alreadyPercent = 30.5;
+      const doubleConverted = Number((alreadyPercent * 100).toFixed(1));
+
+      expect(doubleConverted).toBe(3050);
+
+      const result = clampPercent(doubleConverted, "test:phase2Ratio");
+      expect(result).toBe(100);
+      expect(warnSpy).toHaveBeenCalledOnce();
+
+      warnSpy.mockRestore();
+    });
+
+    it("detects 10000% pattern (DB value 1.0 double-converted)", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const alreadyPercent = 100;
+      const doubleConverted = alreadyPercent * 100;
+
+      expect(doubleConverted).toBe(10000);
+
+      const result = clampPercent(doubleConverted, "test:phase2Ratio");
+      expect(result).toBe(100);
+      expect(warnSpy).toHaveBeenCalledOnce();
+
+      warnSpy.mockRestore();
+    });
   });
 });
