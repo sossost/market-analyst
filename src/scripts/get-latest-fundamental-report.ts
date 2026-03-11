@@ -40,9 +40,12 @@ export async function getLatestFundamentalReports(
   let files: string[];
   try {
     files = await readdir(REPORTS_DIR);
-  } catch {
-    // 디렉토리가 없으면 리포트 없음
-    return null;
+  } catch (err) {
+    // ENOENT(디렉토리 없음)는 리포트 없음으로 처리, 그 외 에러는 전파
+    if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw err;
   }
 
   const reports: FundamentalReportEntry[] = [];
