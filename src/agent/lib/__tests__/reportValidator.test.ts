@@ -157,4 +157,154 @@ describe("validateReport", () => {
     );
     expect(substandardWarning).toBeUndefined();
   });
+
+  // -------------------------------------------------------------------------
+  // D. Phase 2 비율 범위 검증 (이중 변환 방어)
+  // -------------------------------------------------------------------------
+
+  it("Phase 2 비율 3520% → errors에 이중 변환 경고 포함", () => {
+    const result = validateReport({
+      markdown:
+        "Phase 2: 3520% (▲5.2%) 리스크 주의 필요. 시장 하락 가능성.",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 2 비율 이상값"))).toBe(
+      true,
+    );
+    expect(result.errors.some((e) => e.includes("3520"))).toBe(true);
+  });
+
+  it("Phase 2: 35.2% (정상 범위) → Phase 2 비율 에러 없음", () => {
+    const result = validateReport({
+      markdown:
+        "Phase 2: 35.2% (▲1.5%) 리스크 주의 필요. 시장 하락 위험.",
+    });
+
+    const phase2Error = result.errors.find((e) =>
+      e.includes("Phase 2 비율 이상값"),
+    );
+    expect(phase2Error).toBeUndefined();
+  });
+
+  it("Phase 2: 100% (경계값) → Phase 2 비율 에러 없음", () => {
+    const result = validateReport({
+      markdown:
+        "Phase 2: 100% 리스크 주의 필요.",
+    });
+
+    const phase2Error = result.errors.find((e) =>
+      e.includes("Phase 2 비율 이상값"),
+    );
+    expect(phase2Error).toBeUndefined();
+  });
+
+  it("Phase 2 비율 150% → errors에 이상값 포함", () => {
+    const result = validateReport({
+      markdown:
+        "Phase 2: 150% 리스크 주의 필요.",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("150"))).toBe(true);
+  });
+
+  it("여러 Phase 2 비율 패턴이 있으면 각각 검증", () => {
+    const result = validateReport({
+      markdown:
+        "Phase 2: 35.2% 정상. Phase 2 추이: 3520% 비정상. 리스크 주의.",
+    });
+
+    expect(result.isValid).toBe(false);
+    const phase2Errors = result.errors.filter((e) =>
+      e.includes("Phase 2 비율 이상값"),
+    );
+    expect(phase2Errors).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // E. 일간 리포트 필수 섹션 검증
+  // -------------------------------------------------------------------------
+
+  it("validateReport를 연속 두 번 호출해도 각각 독립적으로 동작한다", () => {
+    const first = validateReport({
+      markdown: "Phase 2: 3520% 리스크 주의.",
+    });
+    expect(first.errors.some((e) => e.includes("Phase 2 비율 이상값"))).toBe(
+      true,
+    );
+
+    const second = validateReport({
+      markdown: "Phase 2: 35.2% 리스크 주의.",
+    });
+    const phase2Error = second.errors.find((e) =>
+      e.includes("Phase 2 비율 이상값"),
+    );
+    expect(phase2Error).toBeUndefined();
+  });
+
+  it("일간 리포트에 필수 섹션 모두 포함 → 섹션 누락 경고 없음", () => {
+    const result = validateReport({
+      markdown:
+        "## 시장 온도 근거\n시장 분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n종합 전망. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const sectionWarning = result.warnings.find((w) =>
+      w.includes("필수 섹션 누락"),
+    );
+    expect(sectionWarning).toBeUndefined();
+  });
+
+  it("일간 리포트에 '시장 온도' 누락 → warnings에 누락 경고", () => {
+    const result = validateReport({
+      markdown:
+        "## 섹터 RS 랭킹\n표.\n## 시장 흐름\n종합 전망. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const sectionWarning = result.warnings.find((w) =>
+      w.includes("필수 섹션 누락"),
+    );
+    expect(sectionWarning).toBeDefined();
+    expect(sectionWarning).toContain("시장 온도 근거");
+  });
+
+  it("일간 리포트에 '섹터 RS'와 '시장 흐름' 누락 → warnings에 두 섹션 모두 표시", () => {
+    const result = validateReport({
+      markdown:
+        "## 시장 온도 분석\n데이터. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const sectionWarning = result.warnings.find((w) =>
+      w.includes("필수 섹션 누락"),
+    );
+    expect(sectionWarning).toBeDefined();
+    expect(sectionWarning).toContain("섹터 RS 랭킹 표");
+    expect(sectionWarning).toContain("시장 흐름 및 종합 전망");
+  });
+
+  it("weekly 리포트에서는 일간 필수 섹션 검증을 실행하지 않음", () => {
+    const result = validateReport({
+      markdown: "주간 리포트. 리스크 주의.",
+      reportType: "weekly",
+    });
+
+    const sectionWarning = result.warnings.find((w) =>
+      w.includes("필수 섹션 누락"),
+    );
+    expect(sectionWarning).toBeUndefined();
+  });
+
+  it("reportType 미지정 시 일간 필수 섹션 검증을 실행하지 않음", () => {
+    const result = validateReport({
+      markdown: "일반 리포트. 리스크 주의.",
+    });
+
+    const sectionWarning = result.warnings.find((w) =>
+      w.includes("필수 섹션 누락"),
+    );
+    expect(sectionWarning).toBeUndefined();
+  });
 });
