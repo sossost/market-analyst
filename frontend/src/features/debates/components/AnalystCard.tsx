@@ -4,6 +4,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/shared/components/ui/card'
+import { MarkdownContent } from '@/shared/components/ui/MarkdownContent'
 
 import { PERSONA_LABELS } from '../constants'
 import type { RoundOutput } from '../types'
@@ -21,9 +22,7 @@ export function AnalystCard({ output }: AnalystCardProps) {
         <CardTitle className="text-sm font-semibold">{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-          {output.content}
-        </p>
+        <MarkdownContent content={output.content} />
       </CardContent>
     </Card>
   )

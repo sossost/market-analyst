@@ -1,4 +1,5 @@
 import { Card, CardContent } from '@/shared/components/ui/card'
+import { MarkdownContent } from '@/shared/components/ui/MarkdownContent'
 
 import type { DebateThesis, MarketRegimeSummary } from '../types'
 import { RegimeBadge } from './RegimeBadge'
@@ -28,9 +29,7 @@ export function SynthesisPanel({
         <h3 className="mb-3 text-sm font-semibold">종합 리포트</h3>
         <Card size="sm">
           <CardContent className="max-h-[600px] overflow-y-auto">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-              {synthesisReport}
-            </p>
+            <MarkdownContent content={synthesisReport} />
           </CardContent>
         </Card>
       </section>
