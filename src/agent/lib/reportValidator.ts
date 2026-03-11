@@ -140,15 +140,16 @@ function checkSubstandardStocks(
  * Phase 2 비율이 100%를 초과하는 패턴을 감지한다.
  * "Phase 2: 3520%" 같은 이중 변환 버그를 리포트 발송 전에 차단.
  */
-const PHASE2_RATIO_PATTERN = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
 const MAX_PHASE2_RATIO = 100;
 
 function checkPhase2RatioRange(
   markdown: string,
   errors: string[],
 ): void {
+  // 함수 내부에서 매번 생성하여 lastIndex 상태 오염 방지
+  const pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
   let match: RegExpExecArray | null;
-  while ((match = PHASE2_RATIO_PATTERN.exec(markdown)) !== null) {
+  while ((match = pattern.exec(markdown)) !== null) {
     const rawValue = match[1].replace(/,/g, "");
     const value = Number(rawValue);
     if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
@@ -161,11 +162,11 @@ function checkPhase2RatioRange(
 
 /**
  * 일간 리포트 MD에 필수 섹션이 포함되어 있는지 검증한다.
- * 필수 키워드: "시장 온도", "섹터"(RS 랭킹 표), "시장 흐름"(종합 전망)
+ * 필수 키워드: "시장 온도", "섹터 RS"(RS 랭킹 표), "시장 흐름"(종합 전망)
  */
 const DAILY_REQUIRED_SECTIONS = [
   { keyword: "시장 온도", label: "시장 온도 근거" },
-  { keyword: "섹터", label: "섹터 RS 랭킹 표" },
+  { keyword: "섹터 RS", label: "섹터 RS 랭킹 표" },
   { keyword: "시장 흐름", label: "시장 흐름 및 종합 전망" },
 ] as const;
 

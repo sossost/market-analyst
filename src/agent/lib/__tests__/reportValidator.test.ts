@@ -226,6 +226,23 @@ describe("validateReport", () => {
   // E. 일간 리포트 필수 섹션 검증
   // -------------------------------------------------------------------------
 
+  it("validateReport를 연속 두 번 호출해도 각각 독립적으로 동작한다", () => {
+    const first = validateReport({
+      markdown: "Phase 2: 3520% 리스크 주의.",
+    });
+    expect(first.errors.some((e) => e.includes("Phase 2 비율 이상값"))).toBe(
+      true,
+    );
+
+    const second = validateReport({
+      markdown: "Phase 2: 35.2% 리스크 주의.",
+    });
+    const phase2Error = second.errors.find((e) =>
+      e.includes("Phase 2 비율 이상값"),
+    );
+    expect(phase2Error).toBeUndefined();
+  });
+
   it("일간 리포트에 필수 섹션 모두 포함 → 섹션 누락 경고 없음", () => {
     const result = validateReport({
       markdown:
@@ -253,7 +270,7 @@ describe("validateReport", () => {
     expect(sectionWarning).toContain("시장 온도 근거");
   });
 
-  it("일간 리포트에 '섹터'와 '시장 흐름' 누락 → warnings에 두 섹션 모두 표시", () => {
+  it("일간 리포트에 '섹터 RS'와 '시장 흐름' 누락 → warnings에 두 섹션 모두 표시", () => {
     const result = validateReport({
       markdown:
         "## 시장 온도 분석\n데이터. 리스크 주의.",
