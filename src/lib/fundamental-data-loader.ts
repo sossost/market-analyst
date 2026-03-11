@@ -71,8 +71,7 @@ export function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInp
     if (quarters.length >= QUARTERS_TO_LOAD) continue;
 
     // 같은 as_of_q가 이미 존재하면 스킵 (period_end_date DESC 정렬이므로 최신이 먼저 들어옴)
-    const isDuplicateQuarter = quarters.some((q) => q.asOfQ === row.as_of_q);
-    if (isDuplicateQuarter) continue;
+    if (quarters.some((q) => q.asOfQ === row.as_of_q)) continue;
 
     quarters.push({
       periodEndDate: row.period_end_date,

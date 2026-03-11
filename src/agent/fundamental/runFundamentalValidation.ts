@@ -141,6 +141,7 @@ export async function runFundamentalValidation(
       const narrative = analyses.get(score.symbol);
       if (input == null || narrative == null) continue;
 
+      // technicalMap에 항상 존재해야 하나, 6번 스텝에서 DB 조회 실패 시 누락될 수 있어 방어적으로 재시도
       const technical = technicalMap.get(score.symbol) ?? await loadTechnicalData(score.symbol);
       const reportMd = generateStockReport({
         score,

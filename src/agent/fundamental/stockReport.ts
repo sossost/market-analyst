@@ -173,6 +173,8 @@ function buildSGradeSummary(
     } else {
       parts.push(`- 52주 고점 대비 ${pctFromHigh52w.toFixed(1)}%: 큰 폭 조정, 기술적 회복 확인 후 재평가`);
     }
+  } else {
+    parts.push("기술적 데이터 미확보 — 펀더멘탈 기준 최상위 종목으로 기술적 확인 필요");
   }
 
   return parts.join("\n");
