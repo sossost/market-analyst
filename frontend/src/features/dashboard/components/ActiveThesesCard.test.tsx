@@ -51,12 +51,10 @@ describe('ActiveThesesCard', () => {
     expect(screen.getByText('활성 thesis가 없습니다')).toBeInTheDocument()
   })
 
-  it('fetch 실패 시 빈 상태 메시지 표시', async () => {
+  it('fetch 실패 시 에러가 throw되어 ErrorBoundary로 전파됨', async () => {
     mockFetchActiveTheses.mockRejectedValue(new Error('DB 오류'))
 
-    await renderCard()
-
-    expect(screen.getByText('활성 thesis가 없습니다')).toBeInTheDocument()
+    await expect(ActiveThesesCard()).rejects.toThrow('DB 오류')
   })
 
   it('thesis 목록 렌더링', async () => {

@@ -57,12 +57,10 @@ describe('DailyReportCard', () => {
     expect(screen.queryByText('상세 보기 →')).not.toBeInTheDocument()
   })
 
-  it('fetch 실패 시 빈 상태 메시지 표시', async () => {
+  it('fetch 실패 시 에러가 throw되어 ErrorBoundary로 전파됨', async () => {
     mockFetchLatestDailyReport.mockRejectedValue(new Error('DB 오류'))
 
-    await renderCard()
-
-    expect(screen.getByText('리포트 데이터가 없습니다')).toBeInTheDocument()
+    await expect(DailyReportCard()).rejects.toThrow('DB 오류')
   })
 
   it('리포트 날짜, phase2 비율, 총 분석 종목 수 렌더링', async () => {

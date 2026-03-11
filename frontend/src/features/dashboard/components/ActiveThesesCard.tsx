@@ -17,17 +17,7 @@ import { fetchActiveTheses } from '../lib/supabase-queries'
 const ACTIVE_THESES_DISPLAY_LIMIT = 10
 
 export async function ActiveThesesCard() {
-  let theses: ActiveThesis[] = []
-  let totalCount = 0
-
-  try {
-    const result = await fetchActiveTheses()
-    theses = result.items
-    totalCount = result.totalCount
-  } catch (error) {
-    console.error('[ActiveThesesCard] fetchActiveTheses 실패:', error)
-  }
-
+  const { items: theses, totalCount } = await fetchActiveTheses()
   const hasMore = totalCount > ACTIVE_THESES_DISPLAY_LIMIT
 
   return (

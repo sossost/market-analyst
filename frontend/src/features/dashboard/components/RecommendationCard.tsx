@@ -6,7 +6,7 @@ import {
   CardTitle,
 } from '@/shared/components/ui/card'
 
-import type { RecommendationStats, RecommendationSummary } from '../types'
+import type { RecommendationSummary } from '../types'
 import {
   fetchActiveRecommendations,
   calculateRecommendationStats,
@@ -14,14 +14,8 @@ import {
 import { MetricItem } from './MetricItem'
 
 export async function RecommendationCard() {
-  let stats: RecommendationStats = calculateRecommendationStats([])
-
-  try {
-    const recommendations = await fetchActiveRecommendations()
-    stats = calculateRecommendationStats(recommendations)
-  } catch (error) {
-    console.error('[RecommendationCard] fetchActiveRecommendations 실패:', error)
-  }
+  const recommendations = await fetchActiveRecommendations()
+  const stats = calculateRecommendationStats(recommendations)
 
   return (
     <Card className="flex h-full flex-col">

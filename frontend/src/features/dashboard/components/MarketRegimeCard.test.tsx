@@ -53,12 +53,10 @@ describe('MarketRegimeCard', () => {
     expect(screen.queryByText('토론 보기 →')).not.toBeInTheDocument()
   })
 
-  it('fetch 실패 시 빈 상태 메시지 표시', async () => {
+  it('fetch 실패 시 에러가 throw되어 ErrorBoundary로 전파됨', async () => {
     mockFetchRecentRegimes.mockRejectedValue(new Error('DB 오류'))
 
-    await renderCard()
-
-    expect(screen.getByText('레짐 데이터가 없습니다')).toBeInTheDocument()
+    await expect(MarketRegimeCard()).rejects.toThrow('DB 오류')
   })
 
   it('최신 레짐의 rationale 렌더링', async () => {

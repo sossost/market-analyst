@@ -68,13 +68,10 @@ describe('RecommendationCard', () => {
     expect(screen.getByText('활성 추천 종목이 없습니다')).toBeInTheDocument()
   })
 
-  it('fetch 실패 시 빈 상태 메시지 표시', async () => {
+  it('fetch 실패 시 에러가 throw되어 ErrorBoundary로 전파됨', async () => {
     mockFetchActiveRecommendations.mockRejectedValue(new Error('DB 오류'))
-    mockCalculateRecommendationStats.mockReturnValue(emptyStats())
 
-    await renderCard()
-
-    expect(screen.getByText('활성 추천 종목이 없습니다')).toBeInTheDocument()
+    await expect(RecommendationCard()).rejects.toThrow('DB 오류')
   })
 
   it('집계 수치 렌더링', async () => {

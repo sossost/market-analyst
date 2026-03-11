@@ -9,18 +9,11 @@ import {
   CardTitle,
 } from '@/shared/components/ui/card'
 
-import type { DashboardReport } from '../types'
 import { fetchLatestDailyReport } from '../lib/supabase-queries'
 import { MetricItem } from './MetricItem'
 
 export async function DailyReportCard() {
-  let report: DashboardReport | null = null
-
-  try {
-    report = await fetchLatestDailyReport()
-  } catch (error) {
-    console.error('[DailyReportCard] fetchLatestDailyReport 실패:', error)
-  }
+  const report = await fetchLatestDailyReport()
 
   return (
     <Card className="flex h-full flex-col">
