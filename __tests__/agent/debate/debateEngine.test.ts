@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const createMock = vi.fn();
 
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn(() => ({
-    messages: { create: createMock },
-  })),
+  default: class MockAnthropic {
+    messages = { create: createMock };
+  },
 }));
 
 import { runDebate } from "../../../src/agent/debate/debateEngine.js";

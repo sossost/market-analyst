@@ -6,9 +6,9 @@ const { mockCreate, mockFindSession } = vi.hoisted(() => ({
 }));
 
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn(() => ({
-    messages: { create: mockCreate },
-  })),
+  default: class MockAnthropic {
+    messages = { create: mockCreate };
+  },
 }));
 
 vi.mock("../../../src/agent/debate/sessionStore.js", () => ({
