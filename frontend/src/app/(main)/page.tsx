@@ -10,6 +10,17 @@ import { ActiveThesesCard } from '@/features/dashboard/components/ActiveThesesCa
 import { RecommendationCard } from '@/features/dashboard/components/RecommendationCard'
 import { MarketRegimeCard } from '@/features/dashboard/components/MarketRegimeCard'
 
+function unwrapSettled<T>(
+  result: PromiseSettledResult<T>,
+  label: string,
+): T | null {
+  if (result.status === 'rejected') {
+    console.error(`[Dashboard] ${label} failed:`, result.reason)
+    return null
+  }
+  return result.value
+}
+
 export default async function HomePage() {
   const [reportResult, thesesResult, recommendationsResult, regimesResult] =
     await Promise.allSettled([
@@ -19,37 +30,14 @@ export default async function HomePage() {
       fetchRecentRegimes(),
     ])
 
-  if (reportResult.status === 'rejected') {
-    console.error('[Dashboard] fetchLatestDailyReport failed:', reportResult.reason)
-  }
-  if (thesesResult.status === 'rejected') {
-    console.error('[Dashboard] fetchActiveTheses failed:', thesesResult.reason)
-  }
-  if (recommendationsResult.status === 'rejected') {
-    console.error('[Dashboard] fetchActiveRecommendations failed:', recommendationsResult.reason)
-  }
-  if (regimesResult.status === 'rejected') {
-    console.error('[Dashboard] fetchRecentRegimes failed:', regimesResult.reason)
-  }
+  const report = unwrapSettled(reportResult, 'fetchLatestDailyReport')
+  const thesesData = unwrapSettled(thesesResult, 'fetchActiveTheses')
+  const recommendations = unwrapSettled(recommendationsResult, 'fetchActiveRecommendations')
+  const regimes = unwrapSettled(regimesResult, 'fetchRecentRegimes')
 
-  const report =
-    reportResult.status === 'fulfilled' ? reportResult.value : null
-
-  const thesesData =
-    thesesResult.status === 'fulfilled' ? thesesResult.value : null
-
-  const recommendations =
-    recommendationsResult.status === 'fulfilled'
-      ? recommendationsResult.value
-      : null
-
-  const regimes =
-    regimesResult.status === 'fulfilled' ? regimesResult.value : null
-
-  const recommendationStats =
-    recommendations != null
-      ? calculateRecommendationStats(recommendations)
-      : null
+  const recommendationStats = recommendations != null
+    ? calculateRecommendationStats(recommendations)
+    : calculateRecommendationStats([])
 
   return (
     <main className="p-6">
@@ -61,20 +49,8 @@ export default async function HomePage() {
           theses={thesesData?.items ?? []}
           totalCount={thesesData?.totalCount ?? 0}
         />
-        <RecommendationCard
-          stats={
-            recommendationStats ?? {
-              activeCount: 0,
-              winRate: 0,
-              avgPnlPercent: 0,
-              maxPnlPercent: 0,
-              avgDaysHeld: 0,
-              topItems: [],
-            }
-          }
-        />
+        <RecommendationCard stats={recommendationStats} />
       </div>
     </main>
   )
 }
-
