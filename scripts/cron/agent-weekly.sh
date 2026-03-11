@@ -41,4 +41,20 @@ else
   send_error "generate-ceo-report.ts 실패" "주간"
 fi
 
+# 3. 주간 리포트 품질 검증 (비블로킹 — 실패해도 종료하지 않음)
+log "▶ 주간 리포트 품질 검증"
+if "$SCRIPT_DIR/validate-weekly-report.sh" >> "$LOG_FILE" 2>&1; then
+  log "✓ 주간 리포트 검증 완료"
+else
+  log "✗ 주간 리포트 검증 실패 (파이프라인 계속 진행)"
+fi
+
+# 4. 펀더멘탈 리포트 검증 (비블로킹)
+log "▶ 펀더멘탈 리포트 품질 검증"
+if "$SCRIPT_DIR/validate-fundamental-report.sh" >> "$LOG_FILE" 2>&1; then
+  log "✓ 펀더멘탈 리포트 검증 완료"
+else
+  log "✗ 펀더멘탈 리포트 검증 실패 (비블로킹 — 계속 진행)"
+fi
+
 log "=== 주간 에이전트 완료 ==="
