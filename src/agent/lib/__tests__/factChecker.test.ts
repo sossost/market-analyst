@@ -190,6 +190,14 @@ describe("compareSymbolPhase", () => {
     const result = compareSymbolPhase(0, 1, "TSLA");
     expect(result).not.toBeNull();
   });
+
+  it("dbPhase가 NaN이면 null 반환", () => {
+    expect(compareSymbolPhase(NaN, 2, "NVDA")).toBeNull();
+  });
+
+  it("reportPhase가 NaN이면 null 반환", () => {
+    expect(compareSymbolPhase(2, NaN, "NVDA")).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -236,6 +244,14 @@ describe("compareSymbolRs", () => {
   it("dbRs가 더 큰 경우도 차이 초과이면 warn 반환", () => {
     const result = compareSymbolRs(90, 85, "NVDA", 2);
     expect(result).not.toBeNull();
+  });
+
+  it("dbRs가 NaN이면 null 반환", () => {
+    expect(compareSymbolRs(NaN, 85, "NVDA")).toBeNull();
+  });
+
+  it("reportRs가 NaN이면 null 반환", () => {
+    expect(compareSymbolRs(85, NaN, "NVDA")).toBeNull();
   });
 });
 

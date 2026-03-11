@@ -40,7 +40,7 @@ export interface ReportData {
   };
 }
 
-export type MismatchType = "sector_list" | "phase2_ratio" | "symbol_phase" | "symbol_rs";
+export type MismatchType = "sector_list" | "phase2_ratio" | "symbol_phase" | "symbol_rs" | "db_error";
 export type Severity = "ok" | "warn" | "block";
 
 export interface Mismatch {
@@ -143,6 +143,9 @@ export function compareSymbolPhase(
   reportPhase: number,
   symbol: string,
 ): Mismatch | null {
+  if (!Number.isFinite(dbPhase) || !Number.isFinite(reportPhase)) {
+    return null;
+  }
   if (dbPhase === reportPhase) {
     return null;
   }
@@ -170,6 +173,9 @@ export function compareSymbolRs(
   symbol: string,
   tolerance: number = 2,
 ): Mismatch | null {
+  if (!Number.isFinite(dbRs) || !Number.isFinite(reportRs)) {
+    return null;
+  }
   const diff = Math.abs(dbRs - reportRs);
   if (diff <= tolerance) {
     return null;

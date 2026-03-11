@@ -225,6 +225,7 @@ describe("runDailyQA", () => {
     expect(result.checkedItems).toBe(0);
     expect(result.mismatches).toHaveLength(1);
     expect(result.mismatches[0].field).toBe("db_query");
+    expect(result.mismatches[0].type).toBe("db_error");
   });
 
   it("sector_rs_daily 데이터 없음 — 섹터 검증 스킵, 나머지 정상", async () => {

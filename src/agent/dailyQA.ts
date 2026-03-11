@@ -11,6 +11,7 @@ import {
   type Mismatch,
   type Severity,
 } from "./lib/factChecker.js";
+import { logger } from "./logger";
 
 // ────────────────────────────────────────────
 // Public interface
@@ -119,11 +120,11 @@ function toDbData(
   }
 
   const stocks = stockRows
-    .filter((r) => r.rs_score != null)
+    .filter((r): r is StockPhaseRow & { rs_score: number } => r.rs_score != null)
     .map((r) => ({
       symbol: r.symbol,
       phase: r.phase,
-      rsScore: r.rs_score as number,
+      rsScore: r.rs_score,
     }));
 
   return { topSectors, phase2Ratio, stocks };
@@ -147,17 +148,17 @@ export async function runDailyQA(
     ]);
 
     if (sectorRows.length === 0) {
-      console.log(`[DailyQA] ${date}: sector_rs_daily 데이터 없음 — 섹터 검증 스킵`);
+      logger.info("DailyQA",`[DailyQA] ${date}: sector_rs_daily 데이터 없음 — 섹터 검증 스킵`);
     }
     if (phase2Row == null || Number(phase2Row.total) === 0) {
-      console.log(`[DailyQA] ${date}: stock_phases 데이터 없음 — Phase 2 비율 검증 스킵`);
+      logger.info("DailyQA",`[DailyQA] ${date}: stock_phases 데이터 없음 — Phase 2 비율 검증 스킵`);
     }
 
     // DbData 변환 + 팩트 체크
     const dbData = toDbData(sectorRows, phase2Row, stockRows);
     const result = runFactCheck(dbData, reportData);
 
-    console.log(
+    logger.info("DailyQA",
       `[DailyQA] ${date}: ${result.checkedItems}건 검증, ${result.mismatches.length}건 불일치 (severity: ${result.severity})`,
     );
 
@@ -169,7 +170,7 @@ export async function runDailyQA(
       checkedAt: new Date().toISOString(),
     };
   } catch (error) {
-    console.log(
+    logger.info("DailyQA",
       `[DailyQA] DB 쿼리 실패 — graceful warn 반환:`,
       error instanceof Error ? error.message : error,
     );
@@ -178,7 +179,7 @@ export async function runDailyQA(
       severity: "warn",
       mismatches: [
         {
-          type: "sector_list",
+          type: "db_error",
           field: "db_query",
           expected: "N/A",
           actual: "N/A",
