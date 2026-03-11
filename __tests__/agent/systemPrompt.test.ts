@@ -221,6 +221,19 @@ describe("buildDailySystemPrompt", () => {
     expect(result).toContain("불일치가 있으면 markdownContent 기준으로 통일");
   });
 
+  it("includes numeric basis rule requiring period/basis for percent values", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).toContain("모든 퍼센트 수치에 기준을 명시하세요");
+    expect(result).toContain("AXTI(+105.7%)");
+    expect(result).toContain("+X.X%(일간)");
+    expect(result).toContain("+X.X%(5일)");
+    expect(result).toContain("+X.X%(20일)");
+    expect(result).toContain("52주 저점 대비 +XX%");
+  });
+
   it("includes conditional glossary section for daily subscribers", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
