@@ -127,7 +127,7 @@ describe("formatMarketTempBlock", () => {
     });
     const result = formatMarketTempBlock(snapshot);
 
-    expect(result).toContain("-0.0%p");
+    expect(result).toContain("Phase 2: 35% (-) | 시장 평균 RS:");
   });
 
   it("모든 선택 필드 null — 헤더와 특별한 시장 신호 없음 행만 출력", () => {

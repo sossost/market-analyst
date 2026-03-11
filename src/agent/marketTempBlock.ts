@@ -19,6 +19,11 @@ function formatNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+/** 지수 close를 소수점 2자리 고정 + 천 단위 콤마로 변환한다. */
+function formatIndexClose(n: number): string {
+  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /** 등락률을 부호 포함 문자열로 변환한다. */
 function formatPercent(pct: number): string {
   const sign = pct >= 0 ? "+" : "";
@@ -51,24 +56,24 @@ export function formatMarketTempBlock(snapshot: MarketSnapshot): string {
 
     const row1Parts: string[] = [];
     if (sp500 != null) {
-      row1Parts.push(`S&P 500: ${formatNumber(sp500.close)} (${formatPercent(sp500.changePercent)})`);
+      row1Parts.push(`S&P 500: ${formatIndexClose(sp500.close)} (${formatPercent(sp500.changePercent)})`);
     }
     if (nasdaq != null) {
-      row1Parts.push(`NASDAQ: ${formatNumber(nasdaq.close)} (${formatPercent(nasdaq.changePercent)})`);
+      row1Parts.push(`NASDAQ: ${formatIndexClose(nasdaq.close)} (${formatPercent(nasdaq.changePercent)})`);
     }
     if (row1Parts.length > 0) lines.push(row1Parts.join(" | "));
 
     const row2Parts: string[] = [];
     if (dow != null) {
-      row2Parts.push(`DOW: ${formatNumber(dow.close)} (${formatPercent(dow.changePercent)})`);
+      row2Parts.push(`DOW: ${formatIndexClose(dow.close)} (${formatPercent(dow.changePercent)})`);
     }
     if (russell != null) {
-      row2Parts.push(`Russell: ${formatNumber(russell.close)} (${formatPercent(russell.changePercent)})`);
+      row2Parts.push(`Russell: ${formatIndexClose(russell.close)} (${formatPercent(russell.changePercent)})`);
     }
     if (row2Parts.length > 0) lines.push(row2Parts.join(" | "));
 
     if (vix != null) {
-      lines.push(`VIX: ${vix.close.toFixed(2)} (${formatPercent(vix.changePercent)})`);
+      lines.push(`VIX: ${formatIndexClose(vix.close)} (${formatPercent(vix.changePercent)})`);
     }
 
     lines.push("");
@@ -91,12 +96,14 @@ export function formatMarketTempBlock(snapshot: MarketSnapshot): string {
   // 시장 온도 데이터
   if (snapshot.breadth != null) {
     const b = snapshot.breadth;
-    const indicator = getChangeIndicator(b.phase2RatioChange);
-    const absChange = Math.abs(b.phase2RatioChange).toFixed(1);
+    const changeStr =
+      b.phase2RatioChange === 0
+        ? "-"
+        : `${getChangeIndicator(b.phase2RatioChange)}${Math.abs(b.phase2RatioChange).toFixed(1)}%p`;
 
     lines.push("🌡️ 시장 온도 데이터");
     lines.push(
-      `Phase 2: ${b.phase2Ratio}% (${indicator}${absChange}%p) | 시장 평균 RS: ${b.marketAvgRs}`,
+      `Phase 2: ${b.phase2Ratio}% (${changeStr}) | 시장 평균 RS: ${b.marketAvgRs}`,
     );
 
     const breadthParts: string[] = [];
