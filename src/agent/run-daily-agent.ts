@@ -22,6 +22,9 @@ import {
   runReviewPipeline,
   type ReportDraft,
 } from "./reviewAgent";
+import { runDailyQA, type DailyQAResult } from "./dailyQA";
+import type { AgentTool } from "./tools/types";
+import type { ReportData } from "./lib/factChecker";
 import {
   loadActiveTheses,
   formatThesesForPrompt,
@@ -33,6 +36,57 @@ import { buildMarketTempBlock } from "./marketTempBlock";
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 8192;
 const MAX_ITERATIONS = 15;
+
+/**
+ * saveReportLogTool을 래핑하여 reportData를 캡처한다.
+ * QA에서 DB 대조 시 사용.
+ */
+function createReportLogCaptureTool(
+  captured: { data: ReportData | null },
+): AgentTool {
+  return {
+    definition: saveReportLogTool.definition,
+    async execute(input) {
+      const rawData = input.report_data as Record<string, unknown>;
+      if (rawData != null) {
+        captured.data = {
+          reportedSymbols: (rawData.reportedSymbols ?? []) as ReportData["reportedSymbols"],
+          marketSummary: (rawData.marketSummary ?? {
+            phase2Ratio: 0,
+            leadingSectors: [],
+            totalAnalyzed: 0,
+          }) as ReportData["marketSummary"],
+        };
+      }
+      return saveReportLogTool.execute(input);
+    },
+  };
+}
+
+/**
+ * QA block severity 시 리포트 앞에 경고 블록을 삽입한다.
+ */
+function prependQAWarning(drafts: ReportDraft[], qaResult: DailyQAResult): void {
+  if (drafts.length === 0) return;
+
+  const lines = qaResult.mismatches.map((m) => {
+    const expected = typeof m.expected === "number" ? m.expected : m.expected;
+    const actual = typeof m.actual === "number" ? m.actual : m.actual;
+    return `- ${m.field}: 리포트 ${actual} / DB 실측 ${expected}`;
+  });
+
+  const warningBlock = [
+    "⚠️ **[데이터 정합성 경고]**",
+    ...lines,
+    "분석 참고 시 유의 요망.\n",
+  ].join("\n");
+
+  // 첫 번째 draft 앞에 경고 삽입
+  drafts[0] = {
+    ...drafts[0],
+    message: `${warningBlock}\n${drafts[0].message}`,
+  };
+}
 
 // Sonnet 4 pricing (USD per 1M tokens, as of 2026-03)
 const SONNET_INPUT_COST_PER_M = 3;
@@ -115,9 +169,10 @@ async function main() {
   }
 
   // 6. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
-  logger.step("[6/8] Running agent loop...\n");
+  logger.step("[6/9] Running agent loop...\n");
 
   const reportDrafts: ReportDraft[] = [];
+  const capturedReport: { data: ReportData | null } = { data: null };
 
   const config: AgentConfig = {
     targetDate,
@@ -132,7 +187,7 @@ async function main() {
       searchCatalyst,
       getStockDetail,
       createDraftCaptureTool(reportDrafts),
-      saveReportLogTool,
+      createReportLogCaptureTool(capturedReport),
     ],
     model: MODEL,
     maxTokens: MAX_TOKENS,
@@ -144,7 +199,7 @@ async function main() {
   try {
     const result = await runAgentLoop(config);
 
-    logger.step("\n[7/8] Agent result:");
+    logger.step("\n[7/9] Agent result:");
     logger.info("Result", `Success: ${result.success}`);
     logger.info(
       "Result",
@@ -181,9 +236,28 @@ async function main() {
     logger.error("Agent", `Agent loop crashed: ${loopError}`);
   }
 
-  // 8. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
+  // 8. QA: DB 원본 수치와 리포트 데이터 대조
+  if (capturedReport.data != null) {
+    logger.step("[8/9] Running daily QA...");
+    try {
+      const qaResult = await runDailyQA(targetDate, capturedReport.data);
+      logger.info("DailyQA", `severity: ${qaResult.severity}, mismatches: ${qaResult.mismatches.length}, checked: ${qaResult.checkedItems}`);
+
+      if (qaResult.severity === "block") {
+        logger.warn("DailyQA", "BLOCK — 경고 문구를 리포트에 삽입합니다");
+        prependQAWarning(reportDrafts, qaResult);
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn("DailyQA", `QA 실패 (발송은 계속 진행): ${reason}`);
+    }
+  } else {
+    logger.info("DailyQA", "reportData 미캡처 — QA 스킵");
+  }
+
+  // 9. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (reportDrafts.length > 0) {
-    logger.step("[8/8] Running review pipeline...");
+    logger.step("[9/9] Running review pipeline...");
     await runReviewPipeline(reportDrafts, "DISCORD_WEBHOOK_URL");
   } else if (loopError != null) {
     throw new Error(`Agent failed with no drafts: ${loopError}`);
