@@ -10,7 +10,7 @@ const PHASE1_TO_2_THRESHOLD = 10;
 const UNUSUAL_STOCK_THRESHOLD = 3;
 
 /**
- * 일간 브리핑 발송 게이트.
+ * 투자 브리핑 발송 게이트.
  * 5개 OR 조건 중 하나라도 충족하면 shouldSend: true.
  * DB 오류 시 안전하게 shouldSend: true 반환 (발송 누락 방지).
  */
