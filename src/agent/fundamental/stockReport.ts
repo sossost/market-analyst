@@ -84,7 +84,7 @@ export function generateStockReport(ctx: StockReportContext): string {
     const eps = q.epsDiluted != null ? `$${q.epsDiluted}` : "N/A";
     const rev = q.revenue != null ? `$${formatB(q.revenue)}` : "N/A";
     const ni = q.netIncome != null ? `$${formatB(q.netIncome)}` : "N/A";
-    const margin = q.netMargin != null ? `${q.netMargin}%` : "N/A";
+    const margin = q.netMargin != null ? `${(q.netMargin * 100).toFixed(1)}%` : "N/A";
     lines.push(`| ${q.asOfQ} | ${eps} | ${rev} | ${ni} | ${margin} |`);
   }
 
@@ -113,22 +113,71 @@ function buildSummary(
   score: FundamentalScore,
   technical?: StockReportContext["technical"],
 ): string {
+  const lines: string[] = [];
+
+  // 기술적 + 펀더멘탈 조합 헤더
+  const techLabel = technical != null
+    ? `Phase ${technical.phase} (RS ${technical.rsScore})`
+    : null;
+  const gradeLabel = `펀더멘탈 ${score.grade}등급`;
+
+  if (techLabel != null) {
+    lines.push(`**${techLabel} + ${gradeLabel}**`);
+  } else {
+    lines.push(`**${gradeLabel}**`);
+  }
+
+  lines.push("");
+
+  // 등급별 판단
+  if (score.grade === "S") {
+    lines.push(buildSGradeSummary(technical));
+  } else if (score.grade === "A") {
+    lines.push("기술 + 실적 모두 우수한 슈퍼퍼포머 후보. 진입 타이밍 탐색 구간.");
+  } else if (score.grade === "B") {
+    lines.push("실적 양호하나 가속이 부족. 추가 가속 여부 모니터링 필요.");
+  } else {
+    lines.push("실적 미달 — 기술적 위치와 무관하게 펀더멘탈 개선 확인 전까지 관망.");
+  }
+
+  return lines.join("\n");
+}
+
+function buildSGradeSummary(
+  technical?: StockReportContext["technical"],
+): string {
   const parts: string[] = [];
 
+  parts.push("**최우선 관찰 대상** — 실적 최상위 슈퍼퍼포머 (Top 3)");
+  parts.push("");
+
   if (technical != null) {
-    parts.push(`기술적 Phase ${technical.phase} (RS ${technical.rsScore})`);
-  }
-  parts.push(`펀더멘탈 ${score.grade}급`);
+    const { phase, rsScore, pctFromHigh52w } = technical;
 
-  if (score.grade === "S") {
-    parts.push("— 최상위 슈퍼퍼포머 후보 (Top 3)");
-  } else if (score.grade === "A") {
-    parts.push("— 기술 + 실적 모두 우수한 슈퍼퍼포머 후보");
-  } else if (score.grade === "B") {
-    parts.push("— 실적 양호, 추가 가속 여부 모니터링 필요");
+    // Phase + RS 조합 해석
+    if (phase === 2 && rsScore >= 80) {
+      parts.push("- 기술적 Phase 2 + RS 상위권: 상승 초입 구간, 가장 이상적인 포지션");
+    } else if (phase === 2) {
+      parts.push("- 기술적 Phase 2: 상승 초입이나 RS 보강 필요");
+    } else if (phase === 1) {
+      parts.push(`- 기술적 Phase 1 (RS ${rsScore}): 베이스 형성 중, Phase 2 전환 모니터링`);
+    } else {
+      parts.push(`- 기술적 Phase ${phase} (RS ${rsScore}): 기술적 위치 비이상적, 실적 강도만으로 관찰`);
+    }
+
+    // 52주 고점 대비 해석
+    if (pctFromHigh52w >= -5) {
+      parts.push("- 52주 고점 근접: 신고가 돌파 임박 — 돌파 시 모멘텀 가속 가능");
+    } else if (pctFromHigh52w >= -15) {
+      parts.push(`- 52주 고점 대비 ${pctFromHigh52w.toFixed(1)}%: 건전한 조정 범위, 회복 추세 확인 필요`);
+    } else {
+      parts.push(`- 52주 고점 대비 ${pctFromHigh52w.toFixed(1)}%: 큰 폭 조정, 기술적 회복 확인 후 재평가`);
+    }
+  } else {
+    parts.push("기술적 데이터 미확보 — 펀더멘탈 기준 최상위 종목으로 기술적 확인 필요");
   }
 
-  return parts.join(" + ");
+  return parts.join("\n");
 }
 
 function formatB(n: number): string {

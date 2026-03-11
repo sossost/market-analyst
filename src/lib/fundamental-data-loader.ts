@@ -47,7 +47,8 @@ export async function loadFundamentalData(
   return groupBySymbol(rows.rows as unknown as RawRow[], symbols);
 }
 
-interface RawRow {
+/** @internal — 테스트용 export */
+export interface RawRow {
   symbol: string;
   period_end_date: string;
   as_of_q: string;
@@ -57,7 +58,8 @@ interface RawRow {
   net_margin: string | null;
 }
 
-function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInput[] {
+/** @internal — 테스트용 export */
+export function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInput[] {
   const map = new Map<string, QuarterlyData[]>();
 
   for (const row of rows) {
@@ -67,6 +69,9 @@ function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInput[] {
 
     const quarters = map.get(row.symbol)!;
     if (quarters.length >= QUARTERS_TO_LOAD) continue;
+
+    // 같은 as_of_q가 이미 존재하면 스킵 (period_end_date DESC 정렬이므로 최신이 먼저 들어옴)
+    if (quarters.some((q) => q.asOfQ === row.as_of_q)) continue;
 
     quarters.push({
       periodEndDate: row.period_end_date,

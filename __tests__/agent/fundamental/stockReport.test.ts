@@ -26,8 +26,8 @@ function makeInput(symbol: string = "NVDA"): FundamentalInput {
   return {
     symbol,
     quarters: [
-      { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 35_100_000_000, netIncome: 20_000_000_000, epsDiluted: 1.89, netMargin: 57 },
-      { periodEndDate: "2025-09-30", asOfQ: "Q3 2025", revenue: 30_000_000_000, netIncome: 16_000_000_000, epsDiluted: 1.27, netMargin: 53 },
+      { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 35_100_000_000, netIncome: 20_000_000_000, epsDiluted: 1.89, netMargin: 0.57 },
+      { periodEndDate: "2025-09-30", asOfQ: "Q3 2025", revenue: 30_000_000_000, netIncome: 16_000_000_000, epsDiluted: 1.27, netMargin: 0.53 },
     ],
   };
 }
@@ -111,5 +111,48 @@ describe("generateStockReport", () => {
     const report = generateStockReport(ctx);
 
     expect(report).toContain("추가 가속 여부 모니터링");
+  });
+
+  it("formats netMargin as percentage (×100 conversion)", () => {
+    const ctx: StockReportContext = {
+      score: makeScore(),
+      input: {
+        symbol: "NVDA",
+        quarters: [
+          { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 1_000_000, netIncome: 150_000, epsDiluted: 1.0, netMargin: 0.15 },
+        ],
+      },
+      narrative: "분석",
+    };
+
+    const report = generateStockReport(ctx);
+
+    // 0.15 → 15.0% (×100 변환 확인)
+    expect(report).toContain("15.0%");
+    expect(report).not.toContain("0.15%");
+  });
+
+  it("shows structured summary for S grade with technical data", () => {
+    const ctx: StockReportContext = {
+      score: makeScore({ grade: "S", symbol: "NVDA" }),
+      input: makeInput(),
+      narrative: "슈퍼퍼포머",
+      technical: {
+        phase: 2,
+        rsScore: 95,
+        volumeConfirmed: true,
+        pctFromHigh52w: -3.0,
+        marketCapB: 2800,
+        sector: "Technology",
+        industry: "Semiconductors",
+      },
+    };
+
+    const report = generateStockReport(ctx);
+
+    expect(report).toContain("종합 판단");
+    expect(report).toContain("최우선 관찰 대상");
+    expect(report).toContain("Phase 2");
+    expect(report).toContain("S등급");
   });
 });
