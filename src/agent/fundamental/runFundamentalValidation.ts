@@ -54,8 +54,7 @@ export async function runFundamentalValidation(
 
   if (canSkip) {
     // 기존 스코어 DB 로드
-    const existing = await loadExistingScores(scoredDate);
-    scores = existing.scores;
+    scores = await loadExistingScores(scoredDate);
 
     // S등급 종목만 LLM 분석용 실적 데이터 로드
     const sSymbols = scores
@@ -267,7 +266,7 @@ async function canSkipScoring(scoredDate: string): Promise<boolean> {
  */
 async function loadExistingScores(
   scoredDate: string,
-): Promise<ValidationResult> {
+): Promise<FundamentalScore[]> {
   const rows = await db.execute(sql`
     SELECT symbol, grade, total_score, rank_score, required_met, bonus_met, criteria
     FROM fundamental_scores
@@ -300,7 +299,7 @@ async function loadExistingScores(
     `DB에서 ${scores.length}개 기존 스코어 로드 (${scoredDate})`,
   );
 
-  return { scores, reportsPublished: [], totalTokens: { input: 0, output: 0 } };
+  return scores;
 }
 
 /**

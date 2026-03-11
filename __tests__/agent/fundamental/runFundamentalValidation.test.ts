@@ -80,89 +80,113 @@ function makeInput(symbol: string = "NVDA"): FundamentalInput {
 }
 
 /**
- * db.execute 호출 순서에 따라 다른 결과를 반환하도록 세팅.
- * canSkipScoring 경로: getScoredDate → canSkipScoring(2 calls) → loadExistingScores → loadTechnicalData
- * 일반 경로: getScoredDate → canSkipScoring(2 calls) → getAllScoringSymbols → ...
+ * drizzle sql 템플릿 태그에서 SQL 텍스트를 추출한다.
+ * queryChunks 내 문자열 조각들을 합쳐 패턴 매칭에 사용.
+ */
+function extractSql(query: unknown): string {
+  const q = query as { queryChunks?: unknown[] };
+  if (q.queryChunks == null) return String(query);
+  return q.queryChunks
+    .map((chunk) => {
+      if (typeof chunk === "object" && chunk !== null && "value" in chunk) {
+        return (chunk as { value: string[] }).value.join("");
+      }
+      return "";
+    })
+    .join("");
+}
+
+/**
+ * db.execute 모킹 — SQL 쿼리 내용 기반으로 응답 분기.
+ * 호출 순서에 의존하지 않아 유지보수성이 높다.
  */
 function setupDbForCanSkip(existingScores: FundamentalScore[]) {
   const dbExecute = vi.mocked(db.execute);
-  let callIdx = 0;
 
-  dbExecute.mockImplementation(async () => {
-    callIdx++;
-    switch (callIdx) {
-      // 1. getScoredDate
-      case 1:
-        return { rows: [{ max_date: SCORED_DATE }] } as any;
-      // 2. canSkipScoring — last_scored_at
-      case 2:
-        return { rows: [{ last_scored_at: "2026-03-11T06:00:00Z" }] } as any;
-      // 3. canSkipScoring — new financials count
-      case 3:
-        return { rows: [{ cnt: 0 }] } as any;
-      // 4. loadExistingScores
-      case 4:
-        return {
-          rows: existingScores.map((s) => ({
-            symbol: s.symbol,
-            grade: s.grade,
-            total_score: s.totalScore,
-            rank_score: String(s.rankScore),
-            required_met: s.requiredMet,
-            bonus_met: s.bonusMet,
-            criteria: JSON.stringify(s.criteria),
-          })),
-        } as any;
-      // 5+. loadTechnicalData per S-grade symbol
-      default:
-        return {
-          rows: [{
-            phase: 2,
-            rs_score: 95,
-            volume_confirmed: true,
-            pct_from_high_52w: "-0.05",
-            market_cap: "2800000000000",
-            sector: "Technology",
-            industry: "Semiconductors",
-          }],
-        } as any;
+  dbExecute.mockImplementation(async (query: unknown) => {
+    const sql = extractSql(query);
+
+    // getScoredDate
+    if (sql.includes("MAX(date)") && sql.includes("stock_phases")) {
+      return { rows: [{ max_date: SCORED_DATE }] } as any;
     }
+    // canSkipScoring — last_scored_at
+    if (sql.includes("MAX(created_at)") && sql.includes("fundamental_scores")) {
+      return { rows: [{ last_scored_at: "2026-03-11T06:00:00Z" }] } as any;
+    }
+    // canSkipScoring — new financials count
+    if (sql.includes("COUNT(*)") && sql.includes("quarterly_financials")) {
+      return { rows: [{ cnt: 0 }] } as any;
+    }
+    // loadExistingScores
+    if (sql.includes("fundamental_scores") && sql.includes("scored_date") && sql.includes("ORDER BY")) {
+      return {
+        rows: existingScores.map((s) => ({
+          symbol: s.symbol,
+          grade: s.grade,
+          total_score: s.totalScore,
+          rank_score: String(s.rankScore),
+          required_met: s.requiredMet,
+          bonus_met: s.bonusMet,
+          criteria: JSON.stringify(s.criteria),
+        })),
+      } as any;
+    }
+    // loadTechnicalData
+    if (sql.includes("stock_phases") && sql.includes("symbols")) {
+      return {
+        rows: [{
+          phase: 2,
+          rs_score: 95,
+          volume_confirmed: true,
+          pct_from_high_52w: "-0.05",
+          market_cap: "2800000000000",
+          sector: "Technology",
+          industry: "Semiconductors",
+        }],
+      } as any;
+    }
+    return { rows: [] } as any;
   });
 }
 
 function setupDbForFullScoring(symbols: string[]) {
   const dbExecute = vi.mocked(db.execute);
-  let callIdx = 0;
 
-  dbExecute.mockImplementation(async () => {
-    callIdx++;
-    switch (callIdx) {
-      // 1. getScoredDate
-      case 1:
-        return { rows: [{ max_date: SCORED_DATE }] } as any;
-      // 2. canSkipScoring — no existing scores
-      case 2:
-        return { rows: [{ last_scored_at: null }] } as any;
-      // 3. getAllScoringSymbols
-      case 3:
-        return { rows: symbols.map((s) => ({ symbol: s })) } as any;
-      // 4. saveFundamentalScoresToDB
-      case 4:
-        return { rows: [] } as any;
-      // 5+. loadTechnicalData
-      default:
-        return {
-          rows: [{
-            phase: 2,
-            rs_score: 90,
-            volume_confirmed: true,
-            pct_from_high_52w: "-0.08",
-            market_cap: "1500000000000",
-            sector: "Technology",
-            industry: "Software",
-          }],
-        } as any;
+  dbExecute.mockImplementation(async (query: unknown) => {
+    const sql = extractSql(query);
+
+    // getScoredDate
+    if (sql.includes("MAX(date)") && sql.includes("stock_phases")) {
+      return { rows: [{ max_date: SCORED_DATE }] } as any;
     }
+    // canSkipScoring — no existing scores → 재스코어링 필요
+    if (sql.includes("MAX(created_at)") && sql.includes("fundamental_scores")) {
+      return { rows: [{ last_scored_at: null }] } as any;
+    }
+    // getAllScoringSymbols
+    if (sql.includes("DISTINCT") && sql.includes("quarterly_financials")) {
+      return { rows: symbols.map((s) => ({ symbol: s })) } as any;
+    }
+    // saveFundamentalScoresToDB
+    if (sql.includes("INSERT INTO") && sql.includes("fundamental_scores")) {
+      return { rows: [] } as any;
+    }
+    // loadTechnicalData
+    if (sql.includes("stock_phases") && sql.includes("symbols")) {
+      return {
+        rows: [{
+          phase: 2,
+          rs_score: 90,
+          volume_confirmed: true,
+          pct_from_high_52w: "-0.08",
+          market_cap: "1500000000000",
+          sector: "Technology",
+          industry: "Software",
+        }],
+      } as any;
+    }
+    return { rows: [] } as any;
   });
 }
 
