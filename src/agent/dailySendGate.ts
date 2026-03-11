@@ -28,14 +28,19 @@ export async function evaluateDailySendGate(
       checkPhase1to2Surge(targetDate),
     ]);
 
+    let hasError = false;
     for (const result of results) {
       if (result.status === "fulfilled" && result.value != null) {
         reasons.push(result.value);
       }
       if (result.status === "rejected") {
         logger.warn("SendGate", `Condition check failed: ${result.reason}`);
-        return { shouldSend: true, reasons: ["게이트 조건 평가 중 오류 — 안전 발송"] };
+        hasError = true;
       }
+    }
+
+    if (hasError) {
+      reasons.push("게이트 조건 일부 평가 실패 — 안전 발송 포함");
     }
 
     return { shouldSend: reasons.length > 0, reasons };

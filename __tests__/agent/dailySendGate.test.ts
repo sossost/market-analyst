@@ -21,6 +21,9 @@ const DATE = "2026-03-10";
 
 function setupDefaultMocks() {
   // Default: all conditions return empty/no match
+  // Explicit values chosen to be safely below thresholds:
+  // - UNUSUAL_STOCK_THRESHOLD = 3, so cnt = "0"
+  // - PHASE1_TO_2_THRESHOLD = 10, so total = "0"
   mockQuery.mockImplementation((sql: string) => {
     if (sql.includes("group_phase = 2 AND prev_group_phase = 1")) {
       return { rows: [] };
@@ -35,7 +38,7 @@ function setupDefaultMocks() {
       return { rows: [{ cnt: "0" }] };
     }
     if (sql.includes("phase1to2_count_5d")) {
-      return { rows: [{ total: "3" }] };
+      return { rows: [{ total: "0" }] };
     }
     return { rows: [] };
   });
@@ -247,7 +250,7 @@ describe("evaluateDailySendGate", () => {
     const result = await evaluateDailySendGate(DATE);
 
     expect(result.shouldSend).toBe(true);
-    expect(result.reasons[0]).toContain("오류");
+    expect(result.reasons.some((r) => r.includes("실패"))).toBe(true);
   });
 
   it("returns shouldSend: false when regime data has fewer than 2 rows", async () => {
