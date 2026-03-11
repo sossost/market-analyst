@@ -17,6 +17,8 @@ interface DebateConfig {
   marketDataContext?: string;
   /** Per-persona news context from pre-collection */
   newsContext?: NewsContext;
+  /** SEPA 기반 펀더멘탈 스코어 (XML 태그 래핑 텍스트) */
+  fundamentalContext?: string;
 }
 
 /**
@@ -29,7 +31,7 @@ interface DebateConfig {
  * Individual agent failures are tolerated — debate continues with remaining agents.
  */
 export async function runDebate(config: DebateConfig): Promise<DebateResult> {
-  const { question, debateDate, memoryContext = "", marketDataContext = "", newsContext = {} } = config;
+  const { question, debateDate, memoryContext = "", marketDataContext = "", newsContext = {}, fundamentalContext } = config;
   const startTime = Date.now();
 
   const client = new Anthropic();
@@ -91,6 +93,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     round2Outputs: round2Result.round.outputs,
     question,
     marketDataContext,
+    fundamentalContext,
   });
 
   const totalDurationMs = Date.now() - startTime;

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { callAgent } from "./callAgent.js";
 import { logger } from "../logger.js";
 import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition } from "../../types/debate.js";
+import type { FundamentalScore } from "../../types/fundamental.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
 
@@ -13,6 +14,8 @@ interface Round3Input {
   question: string;
   /** Original market data for cross-validation */
   marketDataContext?: string;
+  /** SEPA 기반 펀더멘탈 스코어 (XML 태그 래핑 텍스트) */
+  fundamentalContext?: string;
 }
 
 interface Round3Result {
@@ -21,11 +24,43 @@ interface Round3Result {
   tokensUsed: { input: number; output: number };
 }
 
-function buildSynthesisPrompt(
+/**
+ * SEPA 펀더멘탈 스코어 배열을 Round 3 프롬프트용 순수 마크다운 테이블로 변환.
+ * XML 래핑은 buildSynthesisPrompt에서 처리한다.
+ * 데이터가 없으면 빈 문자열 반환.
+ */
+export function formatFundamentalContext(scores: FundamentalScore[]): string {
+  if (scores.length === 0) return "";
+
+  const rows = scores.map((s) => {
+    const epsYoY = s.criteria.epsGrowth.value != null
+      ? `${s.criteria.epsGrowth.value > 0 ? "+" : ""}${s.criteria.epsGrowth.value}%`
+      : "—";
+    const revenueYoY = s.criteria.revenueGrowth.value != null
+      ? `${s.criteria.revenueGrowth.value > 0 ? "+" : ""}${s.criteria.revenueGrowth.value}%`
+      : "—";
+    const epsAccel = s.criteria.epsAcceleration.passed ? "예" : "아니오";
+    const marginExp = s.criteria.marginExpansion.passed ? "예" : "아니오";
+
+    return `| ${s.symbol} | ${s.grade} | ${epsYoY} | ${revenueYoY} | ${epsAccel} | ${marginExp} |`;
+  });
+
+  return [
+    "| 종목 | 등급 | EPS YoY | 매출 YoY | EPS 가속 | 마진 확대 |",
+    "|------|------|---------|---------|---------|---------|",
+    ...rows,
+    "",
+    "※ 등급 기준: S(Top 3 of A) > A > B > C > F",
+    "※ B등급 미만 종목을 추천할 경우 \"펀더멘탈 미검증\" 표기 필수",
+  ].join("\n");
+}
+
+export function buildSynthesisPrompt(
   round1Outputs: RoundOutput[],
   round2Outputs: RoundOutput[],
   question: string,
   marketDataContext?: string,
+  fundamentalContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -39,11 +74,26 @@ function buildSynthesisPrompt(
     ? `\n---\n\n## 원본 시장 데이터 (ETL 수집)\n\n아래는 실제 시장 데이터입니다. 분석가들이 이 데이터를 제대로 반영했는지 검증하세요.\n특히 Phase 2 진입 종목과 섹터 RS 순위를 리포트에 반드시 포함하세요.\n\n${marketDataContext}`
     : "";
 
+  const fundamentalSection = fundamentalContext != null && fundamentalContext.length > 0
+    ? [
+        "\n---\n",
+        "<fundamental-data>",
+        "## 추천 종목 펀더멘탈 데이터",
+        "",
+        "아래는 Phase 2 진입 종목들의 SEPA 기반 펀더멘탈 스코어입니다.",
+        "섹션 4(기회: 주도섹터/주도주) 작성 시 이 데이터를 반드시 참조하세요.",
+        "",
+        fundamentalContext,
+        "</fundamental-data>",
+      ].join("\n")
+    : "";
+
   return `## 시장 분석 종합 요청
 
 ### 질문
 ${question}
 ${dataSection}
+${fundamentalSection}
 
 ---
 
@@ -81,6 +131,8 @@ ${round2Section}
   - RESOLVING 이상 신호가 감지된 경우: "이탈 준비 시점 검토" 명시
   - N+1 병목 예측: 애널리스트들의 예측을 종합하여 다음 주목할 공급 체인 노드를 서사로 기술
     (2명 이상 동일 지점 → 아래 JSON의 nextBottleneck 필드에도 기록, 3명 이상 → "강한 예측"으로 표기)
+  - **[가드레일] N+1 병목 작성 시 정량 근거(CAPEX 규모, 리드타임 단축 수치, 재고 증가율 등) 1개 이상 필수. 정량 근거 없으면 nextBottleneck은 null로 기록.**
+- **[가드레일] VIX 해석**: VIX 단기 하락만으로 심리 전환 결론 금지. VIX 20 하회 + 3거래일 이상 지속이 확인된 경우에만 "심리 전환" 언급 가능. 미충족 시 "VIX 추세 모니터링 중" 표기.
 
 ### 4. 기회: 주도섹터/주도주 (가장 중요한 섹션)
 우리의 목표는 **상승 초입에 진입 중인 섹터와 종목을 남들보다 먼저 포착**하는 것입니다.
@@ -94,7 +146,9 @@ ${round2Section}
 - 관련 ETF 티커와 대표 종목 티커
 - 종목의 **현재 모멘텀 상태** 필수: 5일/20일 가격 변화율이 마이너스면 "고점 피로감 경계" 표기
 
-※ 목표가/손절가 같은 트레이딩 시그널은 쓰지 마세요. 우리는 단기 매매가 아니라 **구조적 변화의 초기 신호를 포착**하는 것이 목표입니다.
+※ **[가드레일] 트레이딩 시그널 금지**: 진입가, 매매 타이밍, 손절 수준을 언급하는 문장은 전체 삭제. 우리는 단기 매매가 아니라 **구조적 변화의 초기 신호를 포착**하는 것이 목표입니다.
+※ **[가드레일] 펀더멘탈 필터**: 위 펀더멘탈 데이터에서 B등급 미만(C, F) 종목을 추천할 경우 해당 종목 옆에 반드시 "(펀더멘탈 미검증)" 표기 필수.
+※ **[가드레일] 테마 격상 기준**: 동일 섹터 3종목 이상이 동반 상승 전환을 확인한 경우에만 "구조적 발견" 또는 "주도 테마"로 격상 가능. 단일 종목 또는 2종목 이하로 테마 서사를 작성하지 마세요.
 ※ ETF 티커(QQQ, SPY 등)와 지수(Nasdaq, S&P 500)를 혼동하지 마세요
 
 ### 5. 경고: 과열/위험 종목
@@ -412,9 +466,9 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { client, moderator, round1Outputs, round2Outputs, question, marketDataContext } = input;
+  const { client, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext } = input;
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext);
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext);
   const result = await callAgent(client, moderator.systemPrompt, userMessage, {
     maxTokens: MODERATOR_MAX_TOKENS,
     disableTools: true,
