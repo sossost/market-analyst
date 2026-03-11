@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DebateResult, Thesis } from "../../../src/types/debate.js";
+import { sanitizeErrorForDiscord } from "@/agent/discord";
 
 // Extract the logic for unit testing (same as in run-debate-agent.ts)
 function checkAlertConditions(result: DebateResult): { send: boolean; reason: string } {
@@ -169,8 +170,6 @@ describe("extractCoreInsight", () => {
     expect(result).toContain("짧은 리포트");
   });
 });
-
-import { sanitizeErrorForDiscord } from "@/agent/discord";
 
 describe("sanitizeErrorForDiscord", () => {
   it("redacts postgres connection strings", () => {

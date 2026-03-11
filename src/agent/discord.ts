@@ -59,8 +59,9 @@ export function sanitizeErrorForDiscord(msg: string): string {
     .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
     .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
     .replace(/https?:\/\/[^\s]*webhook[^\s]*/gi, "[REDACTED_URL]")
+    .replace(/([?&](?:apikey|api_key|access_token|auth)[=][^\s&]+)/gi, "[REDACTED_PARAM]")
     .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]")
-    .replace(/sk-[a-zA-Z0-9-]+/g, "[REDACTED_KEY]");
+    .replace(/sk-[a-zA-Z0-9-]{10,}/g, "[REDACTED_KEY]");
   return sanitized.length > MAX_LENGTH
     ? `${sanitized.slice(0, MAX_LENGTH)}...`
     : sanitized;
