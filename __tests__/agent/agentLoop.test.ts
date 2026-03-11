@@ -5,9 +5,9 @@ import type { AgentTool } from "@/agent/tools/types";
 // Mock the Anthropic SDK
 const mockCreate = vi.fn();
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: mockCreate },
-  })),
+  default: class MockAnthropic {
+    messages = { create: mockCreate };
+  },
 }));
 
 // Import after mock setup
