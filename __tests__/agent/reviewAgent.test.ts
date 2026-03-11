@@ -8,9 +8,9 @@ import type { ReportDraft } from "@/agent/reviewAgent";
 const mockCreate = vi.fn();
 
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: mockCreate },
-  })),
+  default: class MockAnthropic {
+    messages = { create: mockCreate };
+  },
 }));
 
 const mockSendDiscordMessage = vi.fn();
