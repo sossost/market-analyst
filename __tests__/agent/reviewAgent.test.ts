@@ -8,9 +8,9 @@ import type { ReportDraft } from "@/agent/reviewAgent";
 const mockCreate = vi.fn();
 
 vi.mock("@anthropic-ai/sdk", () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: mockCreate },
-  })),
+  default: class MockAnthropic {
+    messages = { create: mockCreate };
+  },
 }));
 
 const mockSendDiscordMessage = vi.fn();
@@ -330,6 +330,22 @@ describe("reviewReport", () => {
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("includes numeric basis verification item in reviewer system prompt", async () => {
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(JSON.stringify({ verdict: "OK", feedback: "", issues: [] })),
+    );
+
+    await reviewReport([makeDraft()]);
+
+    const call = mockCreate.mock.calls[0][0];
+    expect(call.system).toContain("수치 기준 명시");
+    expect(call.system).toContain("SYMBOL(+XX%)");
+    expect(call.system).toContain("+XX%(일간)");
+    expect(call.system).toContain("+XX%(5일)");
+    expect(call.system).toContain("+XX%(20일)");
+    expect(call.system).toContain("52주 저점 대비 +XX%");
   });
 
   it("includes all draft messages in the prompt sent to Claude", async () => {
