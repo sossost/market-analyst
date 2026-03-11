@@ -170,17 +170,7 @@ describe("extractCoreInsight", () => {
   });
 });
 
-// Same logic as run-debate-agent.ts sanitizeErrorForDiscord
-function sanitizeErrorForDiscord(msg: string): string {
-  const MAX_LENGTH = 500;
-  const sanitized = msg
-    .replace(/postgres(ql)?:\/\/[^\s]+/gi, "[DB_URL]")
-    .replace(/https?:\/\/[^\s]*token[^\s]*/gi, "[REDACTED_URL]")
-    .replace(/key[=:]\s*\S+/gi, "key=[REDACTED]");
-  return sanitized.length > MAX_LENGTH
-    ? `${sanitized.slice(0, MAX_LENGTH)}...`
-    : sanitized;
-}
+import { sanitizeErrorForDiscord } from "@/agent/discord";
 
 describe("sanitizeErrorForDiscord", () => {
   it("redacts postgres connection strings", () => {
@@ -206,5 +196,19 @@ describe("sanitizeErrorForDiscord", () => {
   it("leaves normal errors unchanged", () => {
     const msg = "Round 1 failed: no agents produced output";
     expect(sanitizeErrorForDiscord(msg)).toBe(msg);
+  });
+
+  it("redacts webhook URLs", () => {
+    const msg = "Failed: https://discord.com/api/webhooks/123/abc";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[REDACTED_URL]");
+    expect(result).not.toContain("webhooks/123");
+  });
+
+  it("redacts API keys with sk- prefix", () => {
+    const msg = "Auth failed with key sk-ant-api03-abc123";
+    const result = sanitizeErrorForDiscord(msg);
+    expect(result).toContain("[REDACTED_KEY]");
+    expect(result).not.toContain("sk-ant-api03-abc123");
   });
 });

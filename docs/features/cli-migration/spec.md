@@ -72,13 +72,13 @@
 
 **0-B. `claude -p` 단일 호출 동작 검증**
 - 담당: 탐색 에이전트
-- 방법: `ssh mini@... "echo 'hello' | claude --print --output-format text"` 또는 `claude -p "ping"`
+- 방법: `ssh <MAC_MINI_USER>@<MAC_MINI_HOST> "echo 'hello' | claude --print --output-format text"` 또는 `claude -p "ping"`
 - 합격 기준: 텍스트 응답 반환, 비정상 종료 없음
 - 확인 사항: `--print` vs `-p` 플래그 동작, `--output-format` 지원 여부
 
 **0-C. Max 플랜 rate limit 확인**
 - 담당: 탐색 에이전트
-- 방법: `ssh mini@... "claude --help"` 후 실제 연속 호출 2~3회 테스트
+- 방법: `ssh <MAC_MINI_USER>@<MAC_MINI_HOST> "claude --help"` 후 실제 연속 호출 2~3회 테스트
 - 합격 기준: 12회/일 자동 호출(Round 1×4 + Round 2×4 + Round 3×1 = 9회/실행) 허용 여부 확인
 - 참고: Max 플랜 기준 대화 길이 제한이 단순 -p 호출에도 적용되는지 확인
 
