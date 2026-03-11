@@ -237,25 +237,26 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | **C** | 필수 1개만 충족 | 기술적으로만 Phase 2 경고 |
 | **F** | 미충족 또는 데이터 부족 | 펀더멘탈 미달 표시 |
 
-## CI/CD & 스케줄링
+## 스케줄링 (맥미니 launchd)
 
-### GitHub Actions
+모든 자동화는 맥미니 서버에서 macOS launchd로 실행. GitHub Actions는 사용하지 않음.
 
-| Workflow | Schedule | 내용 |
-|----------|----------|------|
-| `etl-daily.yml` | 일~금 UTC 23:30 (KST 08:30) | ETL 4단계 → 일간 에이전트 |
-| `debate-daily.yml` | 월~금 UTC 22:00 (KST 07:00) | 애널리스트 토론 → thesis 저장 |
-| `agent-weekly.yml` | 토 UTC 01:00 (KST 10:00) | 주간 에이전트 |
-| `qa-weekly.yml` | 토 UTC 03:00 (KST 12:00) | 주간 QA 분석 |
-| `etl-weekly.yml` | 일 UTC 07:00 (KST 16:00) | 주간 ETL (심볼/펀더멘탈) |
-| `agent-rerun.yml` | 수동 트리거 | 에이전트만 재실행 (ETL 생략) |
+| 작업 | 스케줄 (KST) | 내용 |
+|------|-------------|------|
+| ETL Daily | 08:30 화~토 | ETL 4단계 → 일간 에이전트 → 리포트 검증 |
+| Debate Daily | 07:00 화~금 | 애널리스트 토론 → thesis 저장 |
+| Agent Weekly | 10:00 토 | 주간 에이전트 + 펀더멘탈 검증 |
+| QA Weekly | 12:00 토 | 주간 QA 분석 |
+| News Collect | 00/06/12/18:00 매일 | 뉴스 수집 |
+| Issue Processor | 10/12/14/16:00 평일 | GitHub 이슈 자동 처리 → PR 생성 |
+| Log Cleanup | 09:00 일 | 오래된 로그 정리 |
 
-### 맥미니 서버 (launchd)
-
-| 작업 | 스케줄 | 내용 |
-|------|--------|------|
-| Auto Issue Processor | 주기적 | GitHub 이슈 자동 처리 → PR 생성 |
-| 일간 QA | ETL 후 | 리포트 품질 검증 (Claude Code CLI) |
+```bash
+# 설치/관리 (SSH 원격 가능)
+./scripts/launchd/setup-launchd.sh              # 등록
+./scripts/launchd/setup-launchd.sh --status     # 상태 확인
+./scripts/launchd/setup-launchd.sh --remove     # 해제
+```
 
 ## Tech Stack
 
@@ -269,7 +270,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR |
 | Auth | Supabase Auth (Magic Link) |
 | Testing | Vitest (Backend + Frontend), Playwright (E2E) |
-| CI/CD | GitHub Actions + macOS launchd |
+| Scheduling | macOS launchd (맥미니 서버) |
 | Delivery | Discord Webhook + GitHub Gist |
 | Search | Brave Search API |
 | Automation | Claude Code CLI (Auto Issue Processor, QA) |
