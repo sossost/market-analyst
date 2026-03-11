@@ -266,7 +266,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Package Manager | Yarn (Classic 1.x) |
 | AI | Claude Sonnet 4 (Anthropic SDK) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
-| Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui |
+| Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR |
 | Auth | Supabase Auth (Magic Link) |
 | Testing | Vitest (Backend + Frontend), Playwright (E2E) |
 | CI/CD | GitHub Actions + macOS launchd |
