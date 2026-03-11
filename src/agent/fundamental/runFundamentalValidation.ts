@@ -42,47 +42,63 @@ export async function runFundamentalValidation(
   // 1. 스코어링 기준일 결정
   const scoredDate = await getScoredDate();
 
-  // 실적 미변경 시 기존 스코어 재사용
-  // 분기 실적은 3개월에 1번 변경 → 새 실적이 없으면 재계산 불필요
-  if (options?.symbols == null && options?.forceRescore !== true) {
-    const shouldSkip = await canSkipScoring(scoredDate);
-    if (shouldSkip) {
-      return loadExistingScores(scoredDate);
+  // ── 스코어 획득 단계 ──────────────────────────────────────────────
+  // canSkip이면 DB 기존 스코어 재사용, 아니면 전체 재계산
+  let scores: FundamentalScore[];
+  let inputs: FundamentalInput[];
+
+  const canSkip =
+    options?.symbols == null &&
+    options?.forceRescore !== true &&
+    (await canSkipScoring(scoredDate));
+
+  if (canSkip) {
+    // 기존 스코어 DB 로드
+    const existing = await loadExistingScores(scoredDate);
+    scores = existing.scores;
+
+    // S등급 종목만 LLM 분석용 실적 데이터 로드
+    const sSymbols = scores
+      .filter((s) => s.grade === "S")
+      .map((s) => s.symbol);
+    inputs = sSymbols.length > 0 ? await loadFundamentalData(sSymbols) : [];
+  } else {
+    // 2. 대상 종목 리스트
+    const symbols = options?.symbols ?? (await getAllScoringSymbols());
+    logger.info("Fundamental", `${symbols.length}개 종목 검증 시작`);
+
+    if (symbols.length === 0) {
+      logger.warn("Fundamental", "스코어링 대상 종목 없음 — 검증 생략");
+      return { scores: [], reportsPublished, totalTokens };
     }
-  }
 
-  // 2. 대상 종목 리스트
-  const symbols = options?.symbols ?? (await getAllScoringSymbols());
-  logger.info("Fundamental", `${symbols.length}개 종목 검증 시작`);
+    // 3. DB에서 분기 실적 로드 (500개씩 배치)
+    const BATCH_SIZE = 500;
+    inputs = [];
+    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+      const batch = symbols.slice(i, i + BATCH_SIZE);
+      const batchInputs = await loadFundamentalData(batch);
+      inputs.push(...batchInputs);
+    }
+    logger.info(
+      "Fundamental",
+      `${inputs.length}개 종목 실적 데이터 로드 완료`,
+    );
 
-  if (symbols.length === 0) {
-    logger.warn("Fundamental", "스코어링 대상 종목 없음 — 검증 생략");
-    return { scores: [], reportsPublished, totalTokens };
-  }
+    // 4. 정량 스코어링 + S등급 승격
+    scores = promoteTopToS(inputs.map(scoreFundamentals));
 
-  // 3. DB에서 분기 실적 로드 (500개씩 배치)
-  const BATCH_SIZE = 500;
-  const inputs: FundamentalInput[] = [];
-  for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-    const batch = symbols.slice(i, i + BATCH_SIZE);
-    const batchInputs = await loadFundamentalData(batch);
-    inputs.push(...batchInputs);
-  }
-  logger.info("Fundamental", `${inputs.length}개 종목 실적 데이터 로드 완료`);
+    const gradeCount = { S: 0, A: 0, B: 0, C: 0, F: 0 };
+    for (const s of scores) gradeCount[s.grade]++;
+    logger.info(
+      "Fundamental",
+      `등급 분포: S=${gradeCount.S}, A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`,
+    );
 
-  // 4. 정량 스코어링 + S등급 승격
-  const scores = promoteTopToS(inputs.map(scoreFundamentals));
-
-  const gradeCount = { S: 0, A: 0, B: 0, C: 0, F: 0 };
-  for (const s of scores) gradeCount[s.grade]++;
-  logger.info(
-    "Fundamental",
-    `등급 분포: S=${gradeCount.S}, A=${gradeCount.A}, B=${gradeCount.B}, C=${gradeCount.C}, F=${gradeCount.F}`,
-  );
-
-  // 5. DB 저장 (symbols 직접 지정 시 저장 안 함 — S등급 전체 기준 불일치 방지)
-  if (options?.symbols == null) {
-    await saveFundamentalScoresToDB(scores, scoredDate);
+    // 5. DB 저장 (symbols 직접 지정 시 저장 안 함 — S등급 전체 기준 불일치 방지)
+    if (options?.symbols == null) {
+      await saveFundamentalScoresToDB(scores, scoredDate);
+    }
   }
 
   // 6. S급 종목에 대해 LLM 분석
