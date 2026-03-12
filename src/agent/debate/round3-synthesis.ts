@@ -32,13 +32,14 @@ interface Round3Result {
 export function formatFundamentalContext(scores: FundamentalScore[]): string {
   if (scores.length === 0) return "";
 
+  const formatPercentage = (value: number | null): string => {
+    if (value == null) return "—";
+    return `${value > 0 ? "+" : ""}${value}%`;
+  };
+
   const rows = scores.map((s) => {
-    const epsYoY = s.criteria.epsGrowth.value != null
-      ? `${s.criteria.epsGrowth.value > 0 ? "+" : ""}${s.criteria.epsGrowth.value}%`
-      : "—";
-    const revenueYoY = s.criteria.revenueGrowth.value != null
-      ? `${s.criteria.revenueGrowth.value > 0 ? "+" : ""}${s.criteria.revenueGrowth.value}%`
-      : "—";
+    const epsYoY = formatPercentage(s.criteria.epsGrowth.value);
+    const revenueYoY = formatPercentage(s.criteria.revenueGrowth.value);
     const epsAccel = s.criteria.epsAcceleration.passed ? "예" : "아니오";
     const marginExp = s.criteria.marginExpansion.passed ? "예" : "아니오";
 

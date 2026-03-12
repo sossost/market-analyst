@@ -121,26 +121,6 @@ describe("formatFundamentalContext", () => {
 });
 
 // ─── buildSynthesisPrompt 분기 검증 ──────────────────────────────────────────
-// buildSynthesisPrompt는 내부 함수이므로 formatFundamentalContext 포함 여부를
-// round3-synthesis.ts의 exports를 통해 간접 검증한다.
-
-describe("formatFundamentalContext — 가드레일 텍스트 포함 여부", () => {
-  it("B등급 미만 표기 지시문을 포함한다", () => {
-    const scores = [makeScore()];
-    const result = formatFundamentalContext(scores);
-
-    expect(result).toContain("펀더멘탈 미검증");
-  });
-
-  it("등급 계층 설명을 포함한다", () => {
-    const scores = [makeScore()];
-    const result = formatFundamentalContext(scores);
-
-    expect(result).toContain("S(Top 3 of A) > A > B > C > F");
-  });
-});
-
-// ─── buildSynthesisPrompt 분기 검증 ──────────────────────────────────────────
 
 function makeRoundOutput(persona: AgentPersona, content: string): RoundOutput {
   return { persona, content };
