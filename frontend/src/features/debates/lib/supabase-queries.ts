@@ -6,8 +6,7 @@ import type {
   DebateThesis,
   MarketRegimeSummary,
 } from '../types'
-
-const ITEMS_PER_PAGE = 20
+import { ITEMS_PER_PAGE } from '../constants'
 
 interface FetchDebateSessionsResult {
   sessions: DebateSessionSummary[]

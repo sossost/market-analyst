@@ -9,8 +9,7 @@ import {
 import { DebateEmptyState } from '@/features/debates/components/DebateEmptyState'
 import { DebateListItem } from '@/features/debates/components/DebateListItem'
 import { fetchDebateSessions } from '@/features/debates/lib/supabase-queries'
-
-const ITEMS_PER_PAGE = 20
+import { ITEMS_PER_PAGE } from '@/features/debates/constants'
 
 interface DebateListProps {
   searchParams: Promise<{ page?: string }>
