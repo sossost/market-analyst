@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { validateReport } from "../reportValidator";
+import { validateReport, MIN_DAILY_MD_LENGTH } from "../reportValidator";
+
+/** 500자 이상 마크다운을 만들기 위한 패딩 생성 헬퍼 */
+function padToMinLength(base: string): string {
+  const padding = " ".repeat(Math.max(0, MIN_DAILY_MD_LENGTH - base.length));
+  return base + padding;
+}
 
 describe("validateReport", () => {
   // -------------------------------------------------------------------------
@@ -245,44 +251,91 @@ describe("validateReport", () => {
 
   it("일간 리포트에 필수 섹션 모두 포함 → 섹션 누락 경고 없음", () => {
     const result = validateReport({
-      markdown:
+      markdown: padToMinLength(
         "## 시장 온도 근거\n시장 분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n종합 전망. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const sectionError = result.errors.find((e) =>
+      e.includes("필수 섹션 누락"),
+    );
+    expect(sectionError).toBeUndefined();
+  });
+
+  it("일간 리포트에 '시장 온도' 누락 → errors에 누락 경고", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 섹터 RS 랭킹\n표.\n## 시장 흐름\n종합 전망. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const sectionError = result.errors.find((e) =>
+      e.includes("필수 섹션 누락"),
+    );
+    expect(sectionError).toBeDefined();
+    expect(sectionError).toContain("시장 온도 근거");
+  });
+
+  it("일간 리포트에 '섹터 RS'와 '시장 흐름' 누락 → errors에 두 섹션 모두 표시", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 분석\n데이터. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const sectionError = result.errors.find((e) =>
+      e.includes("필수 섹션 누락"),
+    );
+    expect(sectionError).toBeDefined();
+    expect(sectionError).toContain("섹터 RS 랭킹 표");
+    expect(sectionError).toContain("시장 흐름 및 종합 전망");
+  });
+
+  it("일간 리포트 500자 미만이면 섹션 검사 스킵", () => {
+    const shortMarkdown = "## 섹터 RS 랭킹\n표.\n리스크 주의.";
+    expect(shortMarkdown.length).toBeLessThan(MIN_DAILY_MD_LENGTH);
+
+    const result = validateReport({
+      markdown: shortMarkdown,
+      reportType: "daily",
+    });
+
+    const sectionError = result.errors.find((e) =>
+      e.includes("필수 섹션 누락"),
+    );
+    expect(sectionError).toBeUndefined();
+  });
+
+  it("'섹터별 요약' 누락 → warnings에 권장 섹션 경고", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망. 리스크 주의.",
+      ),
       reportType: "daily",
     });
 
     const sectionWarning = result.warnings.find((w) =>
-      w.includes("필수 섹션 누락"),
+      w.includes("권장 섹션 누락"),
+    );
+    expect(sectionWarning).toBeDefined();
+    expect(sectionWarning).toContain("섹터별 요약");
+  });
+
+  it("'섹터별 요약' 포함 시 권장 섹션 경고 없음", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 섹터별 요약\n요약. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const sectionWarning = result.warnings.find((w) =>
+      w.includes("권장 섹션 누락"),
     );
     expect(sectionWarning).toBeUndefined();
-  });
-
-  it("일간 리포트에 '시장 온도' 누락 → warnings에 누락 경고", () => {
-    const result = validateReport({
-      markdown:
-        "## 섹터 RS 랭킹\n표.\n## 시장 흐름\n종합 전망. 리스크 주의.",
-      reportType: "daily",
-    });
-
-    const sectionWarning = result.warnings.find((w) =>
-      w.includes("필수 섹션 누락"),
-    );
-    expect(sectionWarning).toBeDefined();
-    expect(sectionWarning).toContain("시장 온도 근거");
-  });
-
-  it("일간 리포트에 '섹터 RS'와 '시장 흐름' 누락 → warnings에 두 섹션 모두 표시", () => {
-    const result = validateReport({
-      markdown:
-        "## 시장 온도 분석\n데이터. 리스크 주의.",
-      reportType: "daily",
-    });
-
-    const sectionWarning = result.warnings.find((w) =>
-      w.includes("필수 섹션 누락"),
-    );
-    expect(sectionWarning).toBeDefined();
-    expect(sectionWarning).toContain("섹터 RS 랭킹 표");
-    expect(sectionWarning).toContain("시장 흐름 및 종합 전망");
   });
 
   it("weekly 리포트에서는 일간 필수 섹션 검증을 실행하지 않음", () => {
@@ -291,10 +344,10 @@ describe("validateReport", () => {
       reportType: "weekly",
     });
 
-    const sectionWarning = result.warnings.find((w) =>
-      w.includes("필수 섹션 누락"),
+    const sectionError = result.errors.find((e) =>
+      e.includes("필수 섹션 누락"),
     );
-    expect(sectionWarning).toBeUndefined();
+    expect(sectionError).toBeUndefined();
   });
 
   it("reportType 미지정 시 일간 필수 섹션 검증을 실행하지 않음", () => {
@@ -302,9 +355,67 @@ describe("validateReport", () => {
       markdown: "일반 리포트. 리스크 주의.",
     });
 
-    const sectionWarning = result.warnings.find((w) =>
-      w.includes("필수 섹션 누락"),
+    const sectionError = result.errors.find((e) =>
+      e.includes("필수 섹션 누락"),
     );
-    expect(sectionWarning).toBeUndefined();
+    expect(sectionError).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // F. Phase 분류 ↔ 서술 불일치 감지
+  // -------------------------------------------------------------------------
+
+  it("Phase 2와 약세 서술이 같은 줄에 등장하면 warnings에 모순 경고", () => {
+    const result = validateReport({
+      markdown:
+        "SLDB Phase 2 — 바이오테크 약세 시작. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const conflictWarning = result.warnings.find((w) =>
+      w.includes("Phase 2 분류 ↔ 약세 서술 모순"),
+    );
+    expect(conflictWarning).toBeDefined();
+    expect(conflictWarning).toContain("1건");
+  });
+
+  it("Phase 2와 약세 서술이 다른 줄에 있으면 경고 없음", () => {
+    const result = validateReport({
+      markdown:
+        "SLDB Phase 2 — 바이오테크 강세 흐름.\n다음 주 약세 가능성도 배제 못 함. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const conflictWarning = result.warnings.find((w) =>
+      w.includes("Phase 2 분류 ↔ 약세 서술 모순"),
+    );
+    expect(conflictWarning).toBeUndefined();
+  });
+
+  it("여러 Phase 2 + 약세 패턴이 있으면 건수를 정확히 표시", () => {
+    const result = validateReport({
+      markdown:
+        "SLDB Phase 2 — 약세 시작.\nNVDA Phase 2 — 하락세 지속. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const conflictWarning = result.warnings.find((w) =>
+      w.includes("Phase 2 분류 ↔ 약세 서술 모순"),
+    );
+    expect(conflictWarning).toBeDefined();
+    expect(conflictWarning).toContain("2건");
+  });
+
+  it("weekly 리포트에서는 Phase 분류 일관성 검사를 실행하지 않음", () => {
+    const result = validateReport({
+      markdown:
+        "SLDB Phase 2 — 바이오테크 약세 시작. 리스크 주의.",
+      reportType: "weekly",
+    });
+
+    const conflictWarning = result.warnings.find((w) =>
+      w.includes("Phase 2 분류 ↔ 약세 서술 모순"),
+    );
+    expect(conflictWarning).toBeUndefined();
   });
 });
