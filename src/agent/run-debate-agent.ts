@@ -12,7 +12,11 @@ import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
+import { loadFundamentalData } from "../lib/fundamental-data-loader";
+import { scoreFundamentals, promoteTopToS } from "../lib/fundamental-scorer";
+import { formatFundamentalContext } from "./debate/round3-synthesis";
 import type { DebateResult, RoundOutput } from "../types/debate";
+import type { MarketSnapshot } from "./debate/marketDataLoader";
 
 interface AlertDecision {
   send: boolean;
@@ -197,6 +201,38 @@ function buildDebateQuestion(debateDate: string): string {
    확신이 없으면 "불명확"으로 표기. 억지로 예측하지 말 것.`;
 }
 
+async function loadFundamentalContextSafely(
+  snapshot: MarketSnapshot,
+): Promise<string> {
+  const phase2Symbols = [
+    ...snapshot.newPhase2Stocks.map((s) => s.symbol),
+    ...snapshot.topPhase2Stocks.map((s) => s.symbol),
+  ];
+  const uniqueSymbols = [...new Set(phase2Symbols)];
+
+  if (uniqueSymbols.length === 0) {
+    logger.info("Fundamental", "No Phase 2 symbols to score");
+    return "";
+  }
+
+  try {
+    const fundamentalInputs = await loadFundamentalData(uniqueSymbols);
+    const rawScores = fundamentalInputs.map((input) => scoreFundamentals(input));
+    const scores = promoteTopToS(rawScores);
+    logger.info(
+      "Fundamental",
+      `${uniqueSymbols.length} symbols scored — ${scores.filter((s) => s.grade === "S" || s.grade === "A").length} A/S grade`,
+    );
+    return formatFundamentalContext(scores);
+  } catch (err) {
+    logger.warn(
+      "Fundamental",
+      `펀더멘탈 데이터 로드 실패 (토론 계속 진행): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return "";
+  }
+}
+
 function validateEnvironment(): void {
   const required = ["DATABASE_URL", "ANTHROPIC_API_KEY"];
   const missing = required.filter(
@@ -235,6 +271,9 @@ async function main() {
 
   const marketDataContext = formatMarketSnapshot(marketSnapshot);
   logger.info("MarketData", `Loaded ${marketDataContext.length} chars (${marketSnapshot.sectors.length} sectors, ${marketSnapshot.newPhase2Stocks.length} new Phase 2, ${marketSnapshot.indices.length} indices)`);
+
+  // Phase 2 종목 심볼 추출 → 펀더멘탈 데이터 로드
+  const fundamentalContext = await loadFundamentalContextSafely(marketSnapshot);
 
   // 2.5. 만료 thesis 정리
   const expiredCount = await expireStaleTheses(debateDate);
@@ -317,6 +356,7 @@ async function main() {
     memoryContext: enrichedMemory,
     marketDataContext,
     newsContext,
+    fundamentalContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);
