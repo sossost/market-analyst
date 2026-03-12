@@ -221,17 +221,14 @@ function checkDailySections(
  *
  * @remarks 주간 리포트는 섹터 전체 흐름 서술에서 false positive 가능성이 높아 일간 전용으로 제한.
  */
+const PHASE2_BEARISH_PATTERN = /Phase\s*2[^\n]*?(약세|하락세|부진|급락|손절)/gi;
+
 function checkPhaseDescriptionConsistency(
   markdown: string,
   warnings: string[],
 ): void {
-  const pattern = /Phase\s*2[^\n]*?(약세|하락세|부진|급락|손절)/gi;
-  let match: RegExpExecArray | null;
-  const conflicts: string[] = [];
-
-  while ((match = pattern.exec(markdown)) !== null) {
-    conflicts.push(match[0].slice(0, 80));
-  }
+  const conflicts = [...markdown.matchAll(PHASE2_BEARISH_PATTERN)]
+    .map((match) => match[0].slice(0, 80));
 
   if (conflicts.length > 0) {
     warnings.push(
