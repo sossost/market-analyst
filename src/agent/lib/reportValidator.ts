@@ -164,27 +164,75 @@ function checkPhase2RatioRange(
  * 일간 리포트 MD에 필수 섹션이 포함되어 있는지 검증한다.
  * 필수 키워드: "시장 온도", "섹터 RS"(RS 랭킹 표), "시장 흐름"(종합 전망)
  */
-const DAILY_REQUIRED_SECTIONS = [
-  { keyword: "시장 온도", label: "시장 온도 근거" },
-  { keyword: "섹터 RS", label: "섹터 RS 랭킹 표" },
-  { keyword: "시장 흐름", label: "시장 흐름 및 종합 전망" },
-] as const;
+type SectionSeverity = "error" | "warning";
+
+const DAILY_REQUIRED_SECTIONS: ReadonlyArray<{
+  keyword: string;
+  label: string;
+  severity: SectionSeverity;
+}> = [
+  { keyword: "시장 온도", label: "시장 온도 근거", severity: "error" },
+  { keyword: "섹터 RS", label: "섹터 RS 랭킹 표", severity: "error" },
+  { keyword: "시장 흐름", label: "시장 흐름 및 종합 전망", severity: "error" },
+  { keyword: "섹터별 요약", label: "섹터별 요약", severity: "warning" },
+];
+
+/** 특이종목이 없는 날 메시지만 전송하면 markdownContent가 빈 문자열. 실질적인 MD 파일 최소 길이. */
+export const MIN_DAILY_MD_LENGTH = 500;
 
 function checkDailySections(
   markdown: string,
   warnings: string[],
+  errors: string[],
 ): void {
-  const missingSections: string[] = [];
+  if (markdown.length < MIN_DAILY_MD_LENGTH) {
+    return;
+  }
+
+  const missingRequired: string[] = [];
+  const missingOptional: string[] = [];
 
   for (const section of DAILY_REQUIRED_SECTIONS) {
     if (!markdown.includes(section.keyword)) {
-      missingSections.push(section.label);
+      if (section.severity === "error") {
+        missingRequired.push(section.label);
+      } else {
+        missingOptional.push(section.label);
+      }
     }
   }
 
-  if (missingSections.length > 0) {
+  if (missingRequired.length > 0) {
+    errors.push(
+      `일간 리포트 필수 섹션 누락: ${missingRequired.join(", ")}`,
+    );
+  }
+
+  if (missingOptional.length > 0) {
     warnings.push(
-      `일간 리포트 필수 섹션 누락: ${missingSections.join(", ")}`,
+      `일간 리포트 권장 섹션 누락: ${missingOptional.join(", ")}`,
+    );
+  }
+}
+
+/**
+ * Phase 2 분류와 약세 서술이 같은 줄에 동시 등장하는 패턴을 감지한다.
+ * 예: "SLDB Phase 2 — 바이오테크 약세 시작"
+ *
+ * @remarks 주간 리포트는 섹터 전체 흐름 서술에서 false positive 가능성이 높아 일간 전용으로 제한.
+ */
+const PHASE2_BEARISH_PATTERN = /Phase\s*2[^\n]*?(약세|하락세|부진|급락|손절)/gi;
+
+function checkPhaseDescriptionConsistency(
+  markdown: string,
+  warnings: string[],
+): void {
+  const conflicts = [...markdown.matchAll(PHASE2_BEARISH_PATTERN)]
+    .map((match) => match[0].slice(0, 80));
+
+  if (conflicts.length > 0) {
+    warnings.push(
+      `Phase 2 분류 ↔ 약세 서술 모순 감지 (${conflicts.length}건). 서술 또는 Phase 분류를 수정하세요: ${conflicts.join(" | ")}`,
     );
   }
 }
@@ -217,9 +265,10 @@ export function validateReport(
   // D. Phase 2 비율 범위 검증 (이중 변환 방어)
   checkPhase2RatioRange(input.markdown, errors);
 
-  // E. 일간 리포트 필수 섹션 검증
+  // E. 일간 리포트 전용 검증 (필수 섹션 + Phase 분류 일관성)
   if (input.reportType === "daily") {
-    checkDailySections(input.markdown, warnings);
+    checkDailySections(input.markdown, warnings, errors);
+    checkPhaseDescriptionConsistency(input.markdown, warnings);
   }
 
   return {
