@@ -1,5 +1,7 @@
 import type { RoundOutput } from './types'
 
+export const ITEMS_PER_PAGE = 20
+
 type Persona = RoundOutput['persona']
 
 export const PERSONA_LABELS: Record<Persona, string> = {
