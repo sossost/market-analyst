@@ -19,7 +19,7 @@ import {
 const mockExecFile = vi.mocked(execFile)
 
 function mockGhResponse(stdout: string): void {
-  vi.mocked(mockExecFile).mockResolvedValueOnce({ stdout } as any)
+  vi.mocked(mockExecFile).mockResolvedValueOnce({ stdout } as unknown as import('node:child_process').ChildProcess)
 }
 
 describe('githubClient', () => {
