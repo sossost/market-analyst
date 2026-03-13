@@ -90,7 +90,12 @@ export function calculateLagObservations(
       if (lag > LAG_SEARCH_WINDOW_DAYS) break;
 
       // 정렬된 배열에서 첫 번째 유효 팔로워가 최솟값
-      if (bestMatch == null || lag < bestMatch.lagDays) {
+      if (bestMatch == null) {
+        bestMatch = { followerDate, lagDays: lag };
+        break;
+      }
+      const currentBest = bestMatch as { followerDate: string; lagDays: number };
+      if (lag < currentBest.lagDays) {
         bestMatch = { followerDate, lagDays: lag };
         break;
       }

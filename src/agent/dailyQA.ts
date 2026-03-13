@@ -171,8 +171,7 @@ export async function runDailyQA(
     };
   } catch (error) {
     logger.info("DailyQA",
-      `[DailyQA] DB 쿼리 실패 — graceful warn 반환:`,
-      error instanceof Error ? error.message : error,
+      `[DailyQA] DB 쿼리 실패 — graceful warn 반환: ${error instanceof Error ? error.message : String(error)}`,
     );
     return {
       date,
