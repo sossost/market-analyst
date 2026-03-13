@@ -3,6 +3,9 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { detectGroupPhase } from "@/lib/group-phase";
 import type { GroupBy, GroupRsConfig, GroupRsRow, Phase } from "@/types";
+import { logger } from "@/agent/logger";
+
+const TAG = "GROUP_RS";
 
 const ALLOWED_GROUP_COLS = {
   sector: { col: "s.sector", table: "sector_rs_daily", colName: "sector" },
@@ -47,11 +50,11 @@ export async function buildGroupRs(
   );
 
   if (groupAvgs.length === 0) {
-    console.log("No groups found with sufficient stock count.");
+    logger.info(TAG, "No groups found with sufficient stock count.");
     return [];
   }
 
-  console.log(`  Groups found: ${groupAvgs.length}`);
+  logger.info(TAG, `Groups found: ${groupAvgs.length}`);
 
   // Assign RS rank (1 = highest avg RS)
   const groupNames = groupAvgs.map((g) => g.group_name);

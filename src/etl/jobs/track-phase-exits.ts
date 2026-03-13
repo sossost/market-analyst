@@ -7,6 +7,9 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { collectFailureConditions } from "@/lib/marketConditionCollector";
 import { eq, sql, isNull, and } from "drizzle-orm";
+import { logger } from "@/agent/logger";
+
+const TAG = "TRACK_PHASE_EXITS";
 
 /**
  * Phase 2 회귀 추적 ETL.
@@ -66,12 +69,12 @@ async function main() {
 
   const targetDate = await getLatestTradeDate();
   if (targetDate == null) {
-    console.log("No trade date found. Skipping phase exit tracking.");
+    logger.info(TAG, "No trade date found. Skipping phase exit tracking.");
     await pool.end();
     return;
   }
 
-  console.log(`Track phase exits — date: ${targetDate}`);
+  logger.info(TAG, `Track phase exits — date: ${targetDate}`);
 
   // 1. phase2_reverted가 아직 판정되지 않은 ACTIVE 시그널 조회
   const pendingSignals = await retryDatabaseOperation(() =>
@@ -87,12 +90,12 @@ async function main() {
   );
 
   if (pendingSignals.length === 0) {
-    console.log("No pending signals to track.");
+    logger.info(TAG, "No pending signals to track.");
     await pool.end();
     return;
   }
 
-  console.log(`Pending signals: ${pendingSignals.length}`);
+  logger.info(TAG, `Pending signals: ${pendingSignals.length}`);
 
   // 2. 각 종목의 현재 phase 일괄 조회
   const symbols = pendingSignals.map((s) => s.symbol);
@@ -191,7 +194,8 @@ async function main() {
             .where(eq(signalLog.id, signal.id)),
         );
 
-        console.log(
+        logger.info(
+          TAG,
           `  REVERTED: ${signal.symbol} (${timeToRevert}d, adverse ${maxAdverseMove.toFixed(1)}%)`,
         );
       }),
@@ -235,14 +239,15 @@ async function main() {
     successCount += batch.length;
   }
 
-  console.log(
-    `\nResults: ${revertedCount} reverted, ${successCount} success-closed, ${skippedCount} skipped (no phase data)`,
+  logger.info(
+    TAG,
+    `Results: ${revertedCount} reverted, ${successCount} success-closed, ${skippedCount} skipped (no phase data)`,
   );
   await pool.end();
 }
 
 main().catch(async (err) => {
-  console.error("track-phase-exits failed:", err instanceof Error ? err.message : String(err));
+  logger.error(TAG, `track-phase-exits failed: ${err instanceof Error ? err.message : String(err)}`);
   await pool.end();
   process.exit(1);
 });

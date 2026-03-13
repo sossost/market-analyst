@@ -3,6 +3,9 @@ import { db, pool } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { lt } from "drizzle-orm";
+import { logger } from "@/agent/logger";
+
+const TAG = "CLEANUP_NEWS_ARCHIVE";
 
 const RETENTION_DAYS = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1_000;
@@ -25,20 +28,17 @@ export async function cleanupOldNews(): Promise<number> {
 async function main() {
   assertValidEnvironment();
 
-  console.log(`Cleanup news archive — removing items older than ${RETENTION_DAYS} days`);
+  logger.info(TAG, `Cleanup news archive — removing items older than ${RETENTION_DAYS} days`);
 
   const deletedCount = await cleanupOldNews();
 
-  console.log(`Cleanup news archive — done: ${deletedCount} rows deleted`);
+  logger.info(TAG, `Cleanup news archive — done: ${deletedCount} rows deleted`);
 
   await pool.end();
 }
 
 main().catch(async (err) => {
-  console.error(
-    "cleanup-news-archive failed:",
-    err instanceof Error ? err.message : String(err),
-  );
+  logger.error(TAG, `cleanup-news-archive failed: ${err instanceof Error ? err.message : String(err)}`);
   await pool.end();
   process.exit(1);
 });

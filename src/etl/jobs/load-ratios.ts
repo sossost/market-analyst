@@ -14,6 +14,9 @@ import {
   retryDatabaseOperation,
   DEFAULT_RETRY_OPTIONS,
 } from "@/etl/utils/retry";
+import { logger } from "@/agent/logger";
+
+const TAG = "LOAD_RATIOS";
 
 const API = process.env.DATA_API! + "/stable";
 const KEY = process.env.FMP_API_KEY!;
@@ -57,9 +60,9 @@ async function upsertRatios(sym: string, row: Record<string, unknown>) {
 
   const validationResult = validateRatioData(ratioData);
   if (!validationResult.isValid) {
-    console.warn(
-      `⚠️ Ratio validation warnings for ${sym} (${date}):`,
-      validationResult.errors,
+    logger.warn(
+      TAG,
+      `Ratio validation warnings for ${sym} (${date}): ${JSON.stringify(validationResult.errors)}`,
     );
   }
 
@@ -97,7 +100,7 @@ async function upsertRatios(sym: string, row: Record<string, unknown>) {
 }
 
 async function loadOne(symbol: string) {
-  console.log(`📊 Loading ratios for ${symbol}`);
+  logger.info(TAG, `Loading ratios for ${symbol}`);
 
   const rows: Record<string, unknown>[] = await retryApiCall(
     () =>
@@ -106,7 +109,7 @@ async function loadOne(symbol: string) {
       ),
     DEFAULT_RETRY_OPTIONS,
   ).catch((e) => {
-    console.error(`❌ Failed to fetch ratios for ${symbol}:`, e);
+    logger.error(TAG, `Failed to fetch ratios for ${symbol}: ${e instanceof Error ? e.message : String(e)}`);
     return [] as Record<string, unknown>[];
   });
 
@@ -120,15 +123,15 @@ async function loadOne(symbol: string) {
     await upsertRatios(symbol, r);
   }
 
-  console.log(`✅ Loaded ${rows.length} ratio records for ${symbol}`);
+  logger.info(TAG, `Loaded ${rows.length} ratio records for ${symbol}`);
 }
 
 async function main() {
-  console.log("🚀 Starting Financial Ratios ETL...");
+  logger.info(TAG, "Starting Financial Ratios ETL...");
 
   const envValidation = validateEnvironmentVariables();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
@@ -143,7 +146,7 @@ async function main() {
     throw new Error("No active symbols found. Run 'symbols' job first.");
   }
 
-  console.log(`📊 Processing ${syms.length} active symbols`);
+  logger.info(TAG, `Processing ${syms.length} active symbols`);
 
   const limit = pLimit(CONCURRENCY);
   let done = 0;
@@ -157,12 +160,12 @@ async function main() {
           await loadOne(sym);
           done++;
           if (done % 50 === 0) {
-            console.log(`📊 Progress: ${done}/${syms.length} (${sym})`);
+            logger.info(TAG, `Progress: ${done}/${syms.length} (${sym})`);
           }
         } catch (e: unknown) {
           skip++;
           const message = e instanceof Error ? e.message : String(e);
-          console.warn(`⚠️ Skipped ${sym}: ${message}`);
+          logger.warn(TAG, `Skipped ${sym}: ${message}`);
         } finally {
           await sleep(PAUSE_MS);
         }
@@ -171,7 +174,7 @@ async function main() {
   );
 
   const totalTime = Date.now() - startTime;
-  console.log(`✅ Financial Ratios ETL completed! ${done} ok, ${skip} skipped (${Math.round(totalTime / 1000)}s)`);
+  logger.info(TAG, `Financial Ratios ETL completed! ${done} ok, ${skip} skipped (${Math.round(totalTime / 1000)}s)`);
 }
 
 main()
@@ -180,7 +183,7 @@ main()
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("❌ Financial Ratios ETL failed:", error);
+    logger.error(TAG, `Financial Ratios ETL failed: ${error instanceof Error ? error.message : String(error)}`);
     await pool.end();
     process.exit(1);
   });

@@ -8,6 +8,9 @@ import {
   calculateLagStats,
 } from "@/lib/sectorLagStats";
 import { eq, and, sql } from "drizzle-orm";
+import { logger } from "@/agent/logger";
+
+const TAG = "UPDATE_SECTOR_LAG_PATTERNS";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -82,7 +85,8 @@ async function computeAndUpsertPatterns(
   const entitiesByName = await loadEventsByEntity(entityType, fromPhase, toPhase);
 
   if (entitiesByName.length < 2) {
-    console.log(
+    logger.info(
+      TAG,
       `  ${entityType}/${transition}: fewer than 2 entities with events. Skipping.`,
     );
     return 0;
@@ -172,7 +176,7 @@ export async function updateSectorLagPatterns(): Promise<{
 
   for (const entityType of ["sector", "industry"] as const) {
     for (const { fromPhase, toPhase, transition } of TRANSITION_MAP) {
-      console.log(`Computing ${entityType}/${transition} patterns...`);
+      logger.info(TAG, `Computing ${entityType}/${transition} patterns...`);
 
       const count = await computeAndUpsertPatterns(
         entityType,
@@ -181,7 +185,7 @@ export async function updateSectorLagPatterns(): Promise<{
         toPhase,
       );
 
-      console.log(`  → ${count} patterns upserted`);
+      logger.info(TAG, `  → ${count} patterns upserted`);
       totalUpserted += count;
     }
   }
@@ -193,16 +197,16 @@ export async function updateSectorLagPatterns(): Promise<{
 
 async function main() {
   assertValidEnvironment();
-  console.log("update-sector-lag-patterns — starting...");
+  logger.info(TAG, "update-sector-lag-patterns — starting...");
 
   const result = await updateSectorLagPatterns();
-  console.log(`Done. Total patterns upserted: ${result.totalUpserted}`);
+  logger.info(TAG, `Done. Total patterns upserted: ${result.totalUpserted}`);
 
   await pool.end();
 }
 
 main().catch((err) => {
-  console.error("update-sector-lag-patterns failed:", err);
+  logger.error(TAG, `update-sector-lag-patterns failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

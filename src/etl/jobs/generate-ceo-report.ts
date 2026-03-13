@@ -8,6 +8,9 @@ import { calculateSignalStats } from "@/lib/signal-performance-stats";
 import { buildCeoWeeklyReport } from "@/agent/ceo-weekly-report";
 import { sendDiscordMessage } from "@/agent/discord";
 import type { ParamChangeRow } from "@/agent/ceo-weekly-report";
+import { logger } from "@/agent/logger";
+
+const TAG = "GENERATE_CEO_REPORT";
 
 /**
  * CEO 주간 시스템 리포트 생성 스크립트.
@@ -36,7 +39,7 @@ async function main() {
   thesisStartDate.setDate(thesisStartDate.getDate() - THESIS_LOOKBACK_DAYS);
   const thesisStartStr = thesisStartDate.toISOString().slice(0, 10);
 
-  console.log(`CEO 주간 리포트 생성 — ${weekStartStr} ~ ${todayStr}`);
+  logger.info(TAG, `CEO 주간 리포트 생성 — ${weekStartStr} ~ ${todayStr}`);
 
   // 1. Theses 조회 (최근 90일)
   const thesisRows = await db
@@ -49,7 +52,7 @@ async function main() {
     .from(theses)
     .where(gte(theses.debateDate, thesisStartStr));
 
-  console.log(`  Theses (최근 ${THESIS_LOOKBACK_DAYS}일): ${thesisRows.length}건`);
+  logger.info(TAG, `  Theses (최근 ${THESIS_LOOKBACK_DAYS}일): ${thesisRows.length}건`);
 
   // 2. Signal log 전체 조회
   const signalRows = await db
@@ -65,7 +68,7 @@ async function main() {
     })
     .from(signalLog);
 
-  console.log(`  Signal log: ${signalRows.length}건`);
+  logger.info(TAG, `  Signal log: ${signalRows.length}건`);
 
   // 3. Signal params 변경 (최근 7일)
   const sevenDaysAgo = new Date(today);
@@ -82,7 +85,7 @@ async function main() {
     .from(signalParams)
     .where(gte(signalParams.changedAt, sevenDaysAgo));
 
-  console.log(`  Param changes (7일): ${paramChangeRows.length}건`);
+  logger.info(TAG, `  Param changes (7일): ${paramChangeRows.length}건`);
 
   // 4. 리포트 생성
   const agentStats = calculateAgentPerformance(thesisRows);
@@ -108,20 +111,20 @@ async function main() {
   const ceoWebhookUrl = process.env.DISCORD_SYSTEM_REPORT_WEBHOOK_URL;
   if (ceoWebhookUrl != null && ceoWebhookUrl !== "") {
     await sendDiscordMessage(report, "DISCORD_SYSTEM_REPORT_WEBHOOK_URL");
-    console.log("\nDiscord CEO 채널에 발송 완료.");
+    logger.info(TAG, "Discord CEO 채널에 발송 완료.");
   } else {
-    console.log("\nDISCORD_SYSTEM_REPORT_WEBHOOK_URL 미설정 — 콘솔 출력만 진행.");
+    logger.info(TAG, "DISCORD_SYSTEM_REPORT_WEBHOOK_URL 미설정 — 콘솔 출력만 진행.");
   }
 
-  console.log("\n" + "=".repeat(60));
-  console.log(report);
-  console.log("=".repeat(60));
+  logger.info(TAG, "=".repeat(60));
+  logger.info(TAG, report);
+  logger.info(TAG, "=".repeat(60));
 
   await pool.end();
 }
 
 main().catch(async (err) => {
-  console.error("CEO report generation failed:", err instanceof Error ? err.message : String(err));
+  logger.error(TAG, `CEO report generation failed: ${err instanceof Error ? err.message : String(err)}`);
   await pool.end();
   process.exit(1);
 });

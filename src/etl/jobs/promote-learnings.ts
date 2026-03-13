@@ -5,6 +5,9 @@ import { eq, sql, and } from "drizzle-orm";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { binomialTest } from "@/lib/statisticalTests";
 import { detectBullBias } from "@/lib/biasDetector";
+import { logger } from "@/agent/logger";
+
+const TAG = "PROMOTE_LEARNINGS";
 
 const MIN_HITS_FOR_PROMOTION = 10;
 const MIN_HIT_RATE = 0.70;
@@ -35,7 +38,7 @@ async function main() {
   assertValidEnvironment();
 
   const today = new Date().toISOString().slice(0, 10);
-  console.log(`Promote learnings — date: ${today}`);
+  logger.info(TAG, `Promote learnings — date: ${today}`);
 
   // 1. 기존 활성 learnings 조회
   const activeLearnings = await db
@@ -43,7 +46,7 @@ async function main() {
     .from(agentLearnings)
     .where(eq(agentLearnings.isActive, true));
 
-  console.log(`Active learnings: ${activeLearnings.length}/${MAX_ACTIVE_LEARNINGS}`);
+  logger.info(TAG, `Active learnings: ${activeLearnings.length}/${MAX_ACTIVE_LEARNINGS}`);
 
   // 2. 만료 강등 (6개월 초과)
   const demotedCount = await demoteExpiredLearnings(activeLearnings, today);
@@ -54,7 +57,7 @@ async function main() {
     db.select().from(theses).where(eq(theses.status, "INVALIDATED")),
   ]);
 
-  console.log(`Confirmed: ${confirmedTheses.length}, Invalidated: ${invalidatedTheses.length}`);
+  logger.info(TAG, `Confirmed: ${confirmedTheses.length}, Invalidated: ${invalidatedTheses.length}`);
 
   // 4. 기존 learnings의 hitCount/missCount 업데이트
   const updatedCount = await updateLearningStats(
@@ -91,13 +94,13 @@ async function main() {
     .where(eq(agentLearnings.isActive, true));
   const activePrinciples = latestLearnings.map((l) => l.principle);
   const bias = detectBullBias(activePrinciples);
-  console.log(`Bull-bias: ${(bias.bullRatio * 100).toFixed(0)}% (${bias.bullCount}B/${bias.bearCount}b of ${bias.totalLearnings})`);
+  logger.info(TAG, `Bull-bias: ${(bias.bullRatio * 100).toFixed(0)}% (${bias.bullCount}B/${bias.bearCount}b of ${bias.totalLearnings})`);
   if (bias.isSkewed) {
-    console.warn(`BIAS WARNING: Bull-bias ${(bias.bullRatio * 100).toFixed(0)}% > 80% 임계값`);
+    logger.warn(TAG, `BIAS WARNING: Bull-bias ${(bias.bullRatio * 100).toFixed(0)}% > 80% 임계값`);
   }
 
-  console.log(`\nResults: ${demotedCount} demoted, ${updatedCount} updated, ${promotedCount} promoted, ${cautionPromoted} caution`);
-  console.log(`Active learnings: ${latestLearnings.length}`);
+  logger.info(TAG, `Results: ${demotedCount} demoted, ${updatedCount} updated, ${promotedCount} promoted, ${cautionPromoted} caution`);
+  logger.info(TAG, `Active learnings: ${latestLearnings.length}`);
 
   await pool.end();
 }
@@ -133,7 +136,7 @@ async function demoteExpiredLearnings(
           .update(agentLearnings)
           .set({ isActive: false })
           .where(eq(agentLearnings.id, learning.id));
-        console.log(`  DEMOTED: ${learning.principle.slice(0, 60)}...`);
+        logger.info(TAG, `  DEMOTED: ${learning.principle.slice(0, 60)}...`);
       }),
     );
   }
@@ -241,7 +244,7 @@ export function buildPromotionCandidates(
       // 통계적 유의성 검증 (자기확증편향 방지)
       const test = binomialTest(g.confirmed.length, total);
       if (!test.isSignificant) {
-        console.log(`  SKIP (not significant): p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
+        logger.info(TAG, `  SKIP (not significant): p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
         return false;
       }
 
@@ -327,7 +330,7 @@ async function promoteNewLearnings(
           verificationPath,
         });
 
-        console.log(`  PROMOTED: ${principle}`);
+        logger.info(TAG, `  PROMOTED: ${principle}`);
       }),
     );
   }
@@ -440,7 +443,7 @@ export async function promoteFailurePatterns(today: string): Promise<number> {
           verificationPath: "quantitative",
         });
 
-        console.log(`  CAUTION PROMOTED: ${principle}`);
+        logger.info(TAG, `  CAUTION PROMOTED: ${principle}`);
         return true; // 신규 삽입
       }),
     );
@@ -471,7 +474,7 @@ export async function promoteFailurePatterns(today: string): Promise<number> {
           .update(agentLearnings)
           .set({ isActive: false })
           .where(eq(agentLearnings.id, learning.id));
-        console.log(`  CAUTION DEMOTED: ${learning.principle.slice(0, 60)}...`);
+        logger.info(TAG, `  CAUTION DEMOTED: ${learning.principle.slice(0, 60)}...`);
       }),
     );
   }
@@ -480,7 +483,7 @@ export async function promoteFailurePatterns(today: string): Promise<number> {
 }
 
 main().catch(async (err) => {
-  console.error("Fatal:", err instanceof Error ? err.message : String(err));
+  logger.error(TAG, `Fatal: ${err instanceof Error ? err.message : String(err)}`);
   await pool.end();
   process.exit(1);
 });

@@ -13,10 +13,12 @@ import 'dotenv/config'
 import { fetchUnprocessedIssues } from './githubClient.js'
 import { executeIssue } from './executeIssue.js'
 import { MAX_ISSUES_PER_CYCLE } from './types.js'
+import { logger } from '@/agent/logger'
+
+const TAG = 'ISSUE_PROCESSOR'
 
 function log(message: string): void {
-  const timestamp = new Date().toISOString()
-  console.log(`[${timestamp}] ${message}`)
+  logger.info(TAG, message)
 }
 
 export async function processIssues(): Promise<void> {

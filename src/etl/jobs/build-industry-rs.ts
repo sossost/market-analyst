@@ -7,6 +7,9 @@ import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { chunk } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
+import { logger } from "@/agent/logger";
+
+const TAG = "BUILD_INDUSTRY_RS";
 
 const MIN_STOCK_COUNT = 5;
 
@@ -15,11 +18,11 @@ async function main() {
 
   const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
-    console.error("No trade date found. Exiting.");
+    logger.error(TAG, "No trade date found. Exiting.");
     process.exit(1);
   }
 
-  console.log(`build-industry-rs: target date = ${targetDate}`);
+  logger.info(TAG, `build-industry-rs: target date = ${targetDate}`);
 
   const results = await buildGroupRs({
     groupBy: "industry",
@@ -27,7 +30,7 @@ async function main() {
     targetDate,
   });
 
-  console.log(`  Upserting ${results.length} industry rows...`);
+  logger.info(TAG, `  Upserting ${results.length} industry rows...`);
 
   const batches = chunk(results, 20);
   for (const batch of batches) {
@@ -84,13 +87,14 @@ async function main() {
     );
   }
 
-  console.log(`  Done. Industries: ${results.length}`);
+  logger.info(TAG, `  Done. Industries: ${results.length}`);
 
   // Print top 10 by RS rank
   const top10 = results.slice(0, 10);
-  console.log("\nTop 10 industries by RS:");
+  logger.info(TAG, "Top 10 industries by RS:");
   for (const ind of top10) {
-    console.log(
+    logger.info(
+      TAG,
       `  ${ind.rsRank}. ${ind.groupName} (${ind.parentGroup ?? "?"}): avgRS=${ind.avgRs.toFixed(1)}, stocks=${ind.stockCount}, phase2=${(ind.phase2Ratio * 100).toFixed(0)}%, groupPhase=${ind.groupPhase}`,
     );
   }
@@ -99,7 +103,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("build-industry-rs failed:", err);
+  logger.error(TAG, `build-industry-rs failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

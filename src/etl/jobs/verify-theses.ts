@@ -3,6 +3,9 @@ import { db, pool } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { assertValidEnvironment } from "@/etl/utils/validation";
+import { logger } from "@/agent/logger";
+
+const TAG = "VERIFY_THESES";
 
 /**
  * Thesis 검증 ETL.
@@ -18,7 +21,7 @@ async function main() {
   assertValidEnvironment();
 
   const today = new Date().toISOString().slice(0, 10);
-  console.log(`Verify theses — date: ${today}`);
+  logger.info(TAG, `Verify theses — date: ${today}`);
 
   // 1. ACTIVE thesis 조회
   const activeTheses = await db
@@ -27,12 +30,12 @@ async function main() {
     .where(eq(theses.status, "ACTIVE"));
 
   if (activeTheses.length === 0) {
-    console.log("No active theses. Nothing to verify.");
+    logger.info(TAG, "No active theses. Nothing to verify.");
     await pool.end();
     return;
   }
 
-  console.log(`Active theses: ${activeTheses.length}`);
+  logger.info(TAG, `Active theses: ${activeTheses.length}`);
 
   let expiredCount = 0;
 
@@ -54,18 +57,18 @@ async function main() {
         })
         .where(eq(theses.id, thesis.id));
 
-      console.log(`  EXPIRED: [${thesis.agentPersona}] ${thesis.thesis.slice(0, 60)}...`);
+      logger.info(TAG, `  EXPIRED: [${thesis.agentPersona}] ${thesis.thesis.slice(0, 60)}...`);
       expiredCount++;
     }
   }
 
-  console.log(`\nResults: ${expiredCount} expired, ${activeTheses.length - expiredCount} still active`);
+  logger.info(TAG, `Results: ${expiredCount} expired, ${activeTheses.length - expiredCount} still active`);
 
   await pool.end();
 }
 
 main().catch(async (err) => {
-  console.error("Fatal:", err instanceof Error ? err.message : String(err));
+  logger.error(TAG, `Fatal: ${err instanceof Error ? err.message : String(err)}`);
   await pool.end();
   process.exit(1);
 });

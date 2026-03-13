@@ -7,6 +7,9 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { computeSignalReturns } from "@/lib/signal-logic";
 import { eq } from "drizzle-orm";
+import { logger } from "@/agent/logger";
+
+const TAG = "UPDATE_SIGNAL_RETURNS";
 
 /**
  * 매일 ETL 후 실행: ACTIVE 시그널의 수익률을 업데이트한다.
@@ -22,12 +25,12 @@ async function main() {
 
   const targetDate = await getLatestTradeDate();
   if (targetDate == null) {
-    console.log("No trade date found. Skipping signal return update.");
+    logger.info(TAG, "No trade date found. Skipping signal return update.");
     await pool.end();
     return;
   }
 
-  console.log(`Target date: ${targetDate}`);
+  logger.info(TAG, `Target date: ${targetDate}`);
 
   // 1. ACTIVE 시그널 조회
   const activeSignals = await retryDatabaseOperation(() =>
@@ -38,12 +41,12 @@ async function main() {
   );
 
   if (activeSignals.length === 0) {
-    console.log("No active signals. Nothing to update.");
+    logger.info(TAG, "No active signals. Nothing to update.");
     await pool.end();
     return;
   }
 
-  console.log(`Active signals: ${activeSignals.length}`);
+  logger.info(TAG, `Active signals: ${activeSignals.length}`);
 
   const symbols = activeSignals.map((s) => s.symbol);
 
@@ -138,14 +141,15 @@ async function main() {
     );
   }
 
-  console.log(
+  logger.info(
+    TAG,
     `Done. Updated: ${activeSignals.length}, Closed today: ${closedCount}`,
   );
   await pool.end();
 }
 
 main().catch((err) => {
-  console.error("update-signal-returns failed:", err);
+  logger.error(TAG, `update-signal-returns failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

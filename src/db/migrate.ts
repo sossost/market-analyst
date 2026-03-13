@@ -6,6 +6,9 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
+import { logger } from "@/agent/logger";
+
+const TAG = "MIGRATE";
 
 async function migrate() {
   const connectionString = process.env.DATABASE_URL;
@@ -25,10 +28,10 @@ async function migrate() {
     .filter((f) => f.endsWith(".sql"))
     .sort();
 
-  console.log(`Found ${files.length} migration file(s)`);
+  logger.info(TAG, `Found ${files.length} migration file(s)`);
 
   for (const file of files) {
-    console.log(`Running: ${file}`);
+    logger.info(TAG, `Running: ${file}`);
     const sqlContent = readFileSync(join(migrationsDir, file), "utf-8");
 
     // Split on Drizzle's statement breakpoint marker
@@ -44,21 +47,21 @@ async function migrate() {
         const pgErr = err as { code?: string; message: string };
         // Skip "already exists" errors for idempotency
         if (pgErr.code === "42P07" || pgErr.code === "42710" || pgErr.code === "42701") {
-          console.log(`  Skipped (already exists): ${statement.slice(0, 60)}...`);
+          logger.info(TAG, `Skipped (already exists): ${statement.slice(0, 60)}...`);
           continue;
         }
         throw err;
       }
     }
 
-    console.log(`  Done: ${file}`);
+    logger.info(TAG, `Done: ${file}`);
   }
 
   await pool.end();
-  console.log("Migration complete.");
+  logger.info(TAG, "Migration complete.");
 }
 
 migrate().catch((err) => {
-  console.error("Migration failed:", err);
+  logger.error(TAG, `Migration failed: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

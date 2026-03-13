@@ -3,6 +3,9 @@ import { db, pool } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { classifyCategory, classifySentiment } from "@/lib/newsClassifier";
+import { logger } from "@/agent/logger";
+
+const TAG = "COLLECT_NEWS";
 
 const BRAVE_NEWS_URL = "https://api.search.brave.com/res/v1/news/search";
 const MAX_RESULTS_PER_QUERY = 5;
@@ -69,7 +72,7 @@ async function searchBraveNews(
     });
 
     if (!response.ok) {
-      console.warn(`  Brave API ${response.status} for query: ${query}`);
+      logger.warn(TAG, `Brave API ${response.status} for query: ${query}`);
       return [];
     }
 
@@ -81,7 +84,7 @@ async function searchBraveNews(
       .filter((r) => r.url != null && r.url !== "");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`  Brave search failed: ${msg}`);
+    logger.warn(TAG, `Brave search failed: ${msg}`);
     return [];
   }
 }
@@ -169,7 +172,7 @@ async function processQuery(
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`  Insert failed for ${result.url}: ${msg}`);
+      logger.warn(TAG, `Insert failed for ${result.url}: ${msg}`);
     }
   }
 
@@ -218,22 +221,17 @@ export async function collectAndStoreNews(): Promise<{
 async function main() {
   assertValidEnvironment();
 
-  console.log("Collect news archive — starting");
+  logger.info(TAG, "Collect news archive — starting");
 
   const { totalFetched, inserted } = await collectAndStoreNews();
 
-  console.log(
-    `Collect news archive — done: ${totalFetched} fetched, ${inserted} new inserted`,
-  );
+  logger.info(TAG, `Collect news archive — done: ${totalFetched} fetched, ${inserted} new inserted`);
 
   await pool.end();
 }
 
 main().catch(async (err) => {
-  console.error(
-    "collect-news failed:",
-    err instanceof Error ? err.message : String(err),
-  );
+  logger.error(TAG, `collect-news failed: ${err instanceof Error ? err.message : String(err)}`);
   await pool.end();
   process.exit(1);
 });
