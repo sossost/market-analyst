@@ -64,7 +64,6 @@
 
 판단 기준:
 - hasIssue = true 조건: 어느 하나라도 6점 미만이거나 totalScore ≤ 28
-- novelty가 null이면 totalScore는 나머지 4항목 합산으로만 판단 (22점 이하면 hasIssue)
 - priority = "P1": thesisBasis, bullBias, structure 중 하나라도 3점 미만인 경우
 - priority = "P2": hasIssue = true이지만 P1 조건에 해당하지 않는 경우
 - priority = null: hasIssue = false인 경우
