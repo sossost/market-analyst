@@ -2,7 +2,7 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 125 TS files · **Frontend** 85 TS/TSX files · **Tests** 1,027+ · **Open Issues** 12
+> **Backend** 130+ TS files · **Frontend** 85 TS/TSX files · **Tests** 1,137+ · **Open Issues** 5
 
 ## How It Works
 
@@ -10,13 +10,14 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 1. ETL 파이프라인 (매일 장 마감 후)
    → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석
 
-2. 애널리스트 토론 (매일 22:00 UTC)
-   → 매크로/테크/지정학/심리 4명이 3라운드 토론
+2. 멀티 모델 애널리스트 토론 (매일 22:00 UTC)
+   → 매크로(GPT-4o)/테크(Gemini)/지정학(Claude)/심리(Claude) 4명이 3라운드 토론
+   → 멀티 모델 다양성으로 확증편향 구조적 완화 + 외부 API 장애 시 Claude 자동 폴백
    → 수요-공급-병목 프레임으로 구조적 서사 도출
    → N+1 병목 예측: "현재 병목 해소 후 다음 제약은?"
    → 공급 과잉 전환 감지: 병목 해소 → 과잉 전환 조기 포착
    → 병목 체인 추적: narrative_chains 테이블에 병목 생애주기 기록
-   → 모더레이터가 thesis 구조화 + 합의도(consensus_score) 기록
+   → 모더레이터(Claude)가 thesis 구조화 + 합의도(consensus_score) 기록
 
 3. 학습 루프 (자동)
    → ACTIVE thesis를 시장 데이터로 검증 (CONFIRMED/INVALIDATED)
@@ -53,7 +54,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 - Node.js >= 20
 - Yarn (Classic 1.x)
 - PostgreSQL (Supabase) — screener DB와 공유
-- API Keys: Anthropic, Discord Webhook, Brave Search, GitHub Token
+- API Keys: Anthropic, OpenAI, Google Generative AI, Discord Webhook, Brave Search, GitHub Token
 
 ### Setup
 
@@ -69,6 +70,8 @@ cp .env.example .env  # 환경변수 설정
 ```env
 DATABASE_URL=postgresql://...               # Supabase 연결
 ANTHROPIC_API_KEY=sk-ant-...                # Claude API
+OPENAI_API_KEY=sk-...                       # GPT-4o (매크로 애널리스트)
+GOOGLE_GENERATIVE_AI_API_KEY=AI...          # Gemini 2.0 Flash (테크 애널리스트)
 DISCORD_WEBHOOK_URL=https://...             # 일간 리포트 채널
 DISCORD_WEEKLY_WEBHOOK_URL=https://...      # 주간 리포트 채널
 DISCORD_STOCK_REPORT_WEBHOOK_URL=https://...  # S등급 종목 리포트 채널
@@ -98,7 +101,7 @@ yarn fe:build               # 프로덕션 빌드
 yarn fe:test                # 프론트엔드 테스트
 
 # 테스트
-yarn test                   # 전체 테스트 (1,027+ tests)
+yarn test                   # 전체 테스트 (1,137+ tests)
 yarn test:watch             # 워치 모드
 yarn typecheck              # 타입 체크
 
@@ -111,10 +114,10 @@ yarn db:push                # 스키마 적용
 
 ```
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│     ETL      │    │   Debate     │    │    Agent     │
-│              │    │              │    │              │
-│ Stock Phases │───▶│ 4 Analysts  │───▶│Claude Sonnet │
-│ Sector RS    │    │ 3-Round Talk │    │ + 16 Tools   │
+│     ETL      │    │Multi-Model   │    │    Agent     │
+│              │    │   Debate     │    │              │
+│ Stock Phases │───▶│GPT-4o/Gemini│───▶│Claude Sonnet │
+│ Sector RS    │    │/Claude 4명   │    │ + 16 Tools   │
 │ Industry RS  │    │ + 서사 프레임 │    │ + Fundamental│
 │ Breakout/    │    └──────┬───────┘    └──────┬───────┘
 │ Noise Signal │           │                   │
@@ -265,7 +268,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Runtime | Node.js 20+ (ESM) |
 | Language | TypeScript (strict) |
 | Package Manager | Yarn (Classic 1.x) |
-| AI | Claude Sonnet 4 (Anthropic SDK) |
+| AI | Claude Sonnet 4, GPT-4o, Gemini 2.0 Flash (멀티 모델 토론) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
 | Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR |
 | Auth | Supabase Auth (Magic Link) |
@@ -284,7 +287,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [ ] ~~**F3** Industry Intelligence~~ — 폐기. F6 토론 엔진이 시장 분석 역할을 대체
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지
 - [x] **F5** Report & Delivery — Discord 발송, Gist MD, 리뷰 파이프라인
-- [x] **F6** Debate & Evolution — 애널리스트 4명 토론 + thesis 저장 + 학습 루프
+- [x] **F6** Debate & Evolution — 멀티 모델(GPT-4o/Gemini/Claude) 4명 토론 + thesis 저장 + 학습 루프
 - [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + 전체 종목 확장
 - [x] **F8** Report/Debate Archive Dashboard — Next.js 16 + Supabase Auth + 리포트/토론 아카이브 UI
 
@@ -300,6 +303,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 ### Next (진행 예정)
 
+- [ ] **멀티 모델 토론** — GPT-4o(매크로)/Gemini(테크)/Claude(지정학·심리) 확증편향 구조적 완화 + Claude 자동 폴백 (PR 대기)
 - [ ] **Phase N-2** 검증 인프라 — 홀드아웃 테스트 + 위양성 비용 리포트 (데이터 축적 대기, 3/22~)
 - [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
@@ -311,8 +315,9 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 ```
 src/
 ├── agent/
-│   ├── debate/              # 애널리스트 토론 엔진 + 학습 루프
+│   ├── debate/              # 멀티 모델 토론 엔진 + 학습 루프
 │   │   ├── debateEngine.ts  # 3라운드 토론 오케스트레이터
+│   │   ├── llm/             # LLM Provider 추상화 (Anthropic/OpenAI/Gemini + 폴백)
 │   │   ├── causalAnalyzer.ts # 원인 분석 (왜 맞았는지/틀렸는지)
 │   │   ├── thesisVerifier.ts # thesis 자동 검증
 │   │   ├── sessionStore.ts  # 세션 저장 + 유사 세션 검색
