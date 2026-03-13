@@ -12,7 +12,8 @@ interface SectorSnapshot {
   prevGroupPhase: number | null;
   change4w: number | null;
   change12w: number | null;
-  phase2Ratio: number;
+  /** 이중 변환 감지 시 null 반환 가능 (clampPercent 참조) */
+  phase2Ratio: number | null;
   phase1to2Count5d: number;
 }
 
@@ -36,7 +37,8 @@ interface Phase2Stock {
 interface MarketBreadthSnapshot {
   totalStocks: number;
   phaseDistribution: Record<string, number>;
-  phase2Ratio: number;
+  /** 이중 변환 감지 시 null 반환 가능 (clampPercent 참조) */
+  phase2Ratio: number | null;
   phase2RatioChange: number;
   marketAvgRs: number;
   advancers: number | null;

@@ -240,8 +240,9 @@ async function main() {
       const qaResult = await runDailyQA(targetDate, capturedReport.data);
       logger.info("DailyQA", `severity: ${qaResult.severity}, mismatches: ${qaResult.mismatches.length}, checked: ${qaResult.checkedItems}`);
 
-      if (qaResult.severity === "block") {
-        logger.warn("DailyQA", "BLOCK — 경고 문구를 리포트에 삽입합니다");
+      if (qaResult.severity === "block" || qaResult.severity === "warn") {
+        const level = qaResult.severity === "block" ? "BLOCK" : "WARN";
+        logger.warn("DailyQA", `${level} — 경고 문구를 리포트에 삽입합니다`);
         finalDrafts = withQAWarning(reportDrafts, qaResult);
       }
     } catch (err) {
