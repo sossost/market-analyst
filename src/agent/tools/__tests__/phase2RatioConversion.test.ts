@@ -7,7 +7,7 @@ import { clampPercent } from "../validation";
  *
  * DB: phase2_ratio는 0~1 (e.g. 0.352 = 35.2%)
  * 변환: toNum(phase2_ratio) * 100 → 35.2
- * Guard: clampPercent로 100 초과 시 클램핑
+ * Guard: clampPercent로 100 초과 시 null 반환 → QA mismatch 강제 발생
  */
 describe("Phase 2 ratio conversion", () => {
   it("converts DB ratio 0.352 to 35.2%", () => {
@@ -35,8 +35,8 @@ describe("Phase 2 ratio conversion", () => {
   });
 
   describe("double conversion detection", () => {
-    it("detects when already-percent value (35.2) is multiplied by 100 again", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("returns null when already-percent value (35.2) is multiplied by 100 again", () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       // Scenario: DB stores 0.352, first conversion gives 35.2,
       // if erroneously stored as 35.2 and converted again: 35.2 * 100 = 3520
@@ -45,16 +45,17 @@ describe("Phase 2 ratio conversion", () => {
 
       expect(doubleConverted).toBe(3520);
 
-      // Guard catches this
+      // Guard detects and returns null — forces QA mismatch
       const result = clampPercent(doubleConverted, "test:phase2Ratio");
-      expect(result).toBe(100);
-      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(result).toBeNull();
+      expect(errorSpy).toHaveBeenCalledOnce();
 
-      warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it("passes through correctly converted value without warning", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const dbValue = "0.352";
       const percent = Number((toNum(dbValue) * 100).toFixed(1));
@@ -62,12 +63,14 @@ describe("Phase 2 ratio conversion", () => {
 
       expect(result).toBe(35.2);
       expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
 
       warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
-    it("detects 3050% pattern (DB value 0.305 double-converted)", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("returns null for 3050% pattern (DB value 0.305 double-converted)", () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       // DB stores 0.305, first conversion gives 30.5,
       // if erroneously treated as ratio again: 30.5 * 100 = 3050
@@ -77,14 +80,14 @@ describe("Phase 2 ratio conversion", () => {
       expect(doubleConverted).toBe(3050);
 
       const result = clampPercent(doubleConverted, "test:phase2Ratio");
-      expect(result).toBe(100);
-      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(result).toBeNull();
+      expect(errorSpy).toHaveBeenCalledOnce();
 
-      warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
-    it("detects 10000% pattern (DB value 1.0 double-converted)", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("returns null for 10000% pattern (DB value 1.0 double-converted)", () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const alreadyPercent = 100;
       const doubleConverted = alreadyPercent * 100;
@@ -92,10 +95,10 @@ describe("Phase 2 ratio conversion", () => {
       expect(doubleConverted).toBe(10000);
 
       const result = clampPercent(doubleConverted, "test:phase2Ratio");
-      expect(result).toBe(100);
-      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(result).toBeNull();
+      expect(errorSpy).toHaveBeenCalledOnce();
 
-      warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
   });
 });

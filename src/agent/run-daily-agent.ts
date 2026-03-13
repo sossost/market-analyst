@@ -65,9 +65,10 @@ function createReportLogCaptureTool(
 }
 
 /**
- * QA block severity 시 경고 블록이 앞에 삽입된 새 drafts 배열을 반환한다.
+ * QA warn 이상 severity 시 경고 블록이 앞에 삽입된 새 drafts 배열을 반환한다.
+ * 원본 drafts는 변경하지 않는다.
  */
-function withQAWarning(drafts: ReportDraft[], qaResult: DailyQAResult): ReportDraft[] {
+export function withQAWarning(drafts: ReportDraft[], qaResult: DailyQAResult): ReportDraft[] {
   if (drafts.length === 0) return drafts;
 
   const lines = qaResult.mismatches.map((m) =>
