@@ -77,7 +77,7 @@ describe('executeIssue', () => {
     vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: '작업 완료\nhttps://github.com/sossost/market-analyst/pull/99\n',
       stderr: '',
-    })
+    } as unknown as import('node:child_process').ChildProcess)
 
     const result = await executeIssue(sampleIssue)
 
@@ -102,7 +102,7 @@ describe('executeIssue', () => {
     vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: '뭔가 했지만 PR 링크 없음',
       stderr: '',
-    })
+    } as unknown as import('node:child_process').ChildProcess)
 
     const result = await executeIssue(sampleIssue)
 
@@ -134,7 +134,7 @@ describe('executeIssue', () => {
     vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: 'https://github.com/sossost/market-analyst/pull/100',
       stderr: '',
-    })
+    } as unknown as import('node:child_process').ChildProcess)
 
     await executeIssue(sampleIssue)
 
@@ -149,7 +149,7 @@ describe('executeIssue', () => {
     vi.mocked(mockExec).mockResolvedValueOnce({
       stdout: 'https://github.com/sossost/market-analyst/pull/101',
       stderr: '',
-    })
+    } as unknown as import('node:child_process').ChildProcess)
 
     const featIssue: GitHubIssue = {
       number: 50,

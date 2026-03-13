@@ -113,7 +113,7 @@ describe("reportLog — file operations", () => {
           .fn()
           .mockRejectedValue(new Error("DB connection failed")),
       }),
-    } as ReturnType<typeof db.insert>);
+    } as unknown as ReturnType<typeof db.insert>);
 
     const { saveReportLog } = await import("@/agent/reportLog");
     const log = createTestLog("2026-03-06");
@@ -182,7 +182,7 @@ describe("reportLog — DB read operations", () => {
           limit: vi.fn().mockResolvedValue([mockRow]),
         }),
       }),
-    } as ReturnType<typeof db.select>);
+    } as unknown as ReturnType<typeof db.select>);
 
     const { readReportLogsFromDb } = await import("@/agent/reportLog");
     const logs = await readReportLogsFromDb(7);
@@ -225,7 +225,7 @@ describe("reportLog — DB read operations", () => {
           limit: vi.fn().mockResolvedValue([mockRow]),
         }),
       }),
-    } as ReturnType<typeof db.select>);
+    } as unknown as ReturnType<typeof db.select>);
 
     const { readReportLogsFromDb } = await import("@/agent/reportLog");
     const logs = await readReportLogsFromDb(7);
