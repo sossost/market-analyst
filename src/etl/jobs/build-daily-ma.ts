@@ -9,12 +9,15 @@ import {
   DEFAULT_RETRY_OPTIONS,
 } from "@/etl/utils/retry";
 import { validateMovingAverageData } from "@/etl/utils/validation";
+import { logger } from "@/agent/logger";
+
+const TAG = "BUILD_DAILY_MA";
 
 const BATCH_SIZE = 100;
 const PAUSE_MS = 50;
 
 async function calculateMAForSymbol(symbol: string, targetDate: string) {
-  console.log(`📊 Calculating MA for ${symbol} on ${targetDate}`);
+  logger.info(TAG, `Calculating MA for ${symbol} on ${targetDate}`);
 
   const prices = await retryDatabaseOperation(
     () =>
@@ -36,8 +39,9 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
   const priceRows = (prices.rows as Record<string, unknown>[]).reverse();
 
   if (priceRows.length < 200) {
-    console.log(
-      `⚠️ Insufficient data for ${symbol}: ${priceRows.length} days (need 200+)`,
+    logger.info(
+      TAG,
+      `Insufficient data for ${symbol}: ${priceRows.length} days (need 200+)`,
     );
     return null;
   }
@@ -60,14 +64,15 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
 
   const validationResult = validateMovingAverageData(maData);
   if (!validationResult.isValid) {
-    console.warn(
-      `⚠️ MA data validation warnings for ${symbol}:`,
-      validationResult.errors,
+    logger.warn(
+      TAG,
+      `MA data validation warnings for ${symbol}: ${JSON.stringify(validationResult.errors)}`,
     );
   }
 
-  console.log(
-    `✅ Calculated MA for ${symbol}: MA20=${ma20?.toFixed(2)}, MA50=${ma50?.toFixed(2)}, MA200=${ma200?.toFixed(2)}`,
+  logger.info(
+    TAG,
+    `Calculated MA for ${symbol}: MA20=${ma20?.toFixed(2)}, MA50=${ma50?.toFixed(2)}, MA200=${ma200?.toFixed(2)}`,
   );
 
   return maData;
@@ -130,7 +135,7 @@ async function processBatch(symbols: string[], targetDate: string) {
         results.push(symbol);
       }
     } catch (error) {
-      console.error(`❌ Error processing ${symbol}:`, error);
+      logger.error(TAG, `Error processing ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       errors.push({ symbol, error: errorMessage });
@@ -140,9 +145,9 @@ async function processBatch(symbols: string[], targetDate: string) {
   }
 
   if (errors.length > 0) {
-    console.warn(
-      `⚠️ ${errors.length} symbols failed:`,
-      errors.map((e) => e.symbol),
+    logger.warn(
+      TAG,
+      `${errors.length} symbols failed: ${errors.map((e) => e.symbol).join(", ")}`,
     );
   }
 
@@ -166,10 +171,10 @@ async function processDate(targetDate: string) {
   const allSymbols = (result.rows as Record<string, unknown>[]).map(
     (r) => r.symbol as string,
   );
-  console.log(`📊 Found ${allSymbols.length} symbols for date ${targetDate}`);
+  logger.info(TAG, `Found ${allSymbols.length} symbols for date ${targetDate}`);
 
   if (allSymbols.length === 0) {
-    console.warn(`⚠️ No symbols found for date ${targetDate}`);
+    logger.warn(TAG, `No symbols found for date ${targetDate}`);
     return;
   }
 
@@ -178,8 +183,9 @@ async function processDate(targetDate: string) {
 
   for (let i = 0; i < allSymbols.length; i += BATCH_SIZE) {
     const batch = allSymbols.slice(i, i + BATCH_SIZE);
-    console.log(
-      `📊 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(allSymbols.length / BATCH_SIZE)} (${batch.length} symbols)`,
+    logger.info(
+      TAG,
+      `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(allSymbols.length / BATCH_SIZE)} (${batch.length} symbols)`,
     );
 
     const processed = await processBatch(batch, targetDate);
@@ -188,22 +194,22 @@ async function processDate(targetDate: string) {
   }
 
   const totalTime = Date.now() - startTime;
-  console.log(`✅ Completed ${targetDate}: ${totalProcessed} ok, ${totalErrors} failed (${Math.round(totalTime / 1000)}s)`);
+  logger.info(TAG, `Completed ${targetDate}: ${totalProcessed} ok, ${totalErrors} failed (${Math.round(totalTime / 1000)}s)`);
 }
 
 async function main() {
-  console.log("🚀 Starting Daily MA ETL...");
+  logger.info(TAG, "Starting Daily MA ETL...");
 
   const envValidation = validateDatabaseOnlyEnvironment();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
   const isBackfill = process.argv.slice(2).includes("backfill");
 
   if (isBackfill) {
-    console.log("📊 Backfill mode — calculating MA for last 30 days");
+    logger.info(TAG, "Backfill mode — calculating MA for last 30 days");
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -223,7 +229,7 @@ async function main() {
     const dates = (result.rows as Record<string, unknown>[]).map(
       (r) => r.date as string,
     );
-    console.log(`📅 Found ${dates.length} dates to process`);
+    logger.info(TAG, `Found ${dates.length} dates to process`);
 
     for (const date of dates) {
       await processDate(date);
@@ -238,23 +244,23 @@ async function main() {
     const targetDate = (result.rows as Record<string, unknown>[])[0]
       ?.latest_date as string | undefined;
     if (targetDate == null) {
-      console.error("❌ No price data found");
+      logger.error(TAG, "No price data found");
       return;
     }
 
-    console.log(`📊 Processing latest date: ${targetDate}`);
+    logger.info(TAG, `Processing latest date: ${targetDate}`);
     await processDate(targetDate);
   }
 }
 
 main()
   .then(async () => {
-    console.log("✅ Daily MA ETL completed successfully!");
+    logger.info(TAG, "Daily MA ETL completed successfully!");
     await pool.end();
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("❌ Daily MA ETL failed:", error);
+    logger.error(TAG, `Daily MA ETL failed: ${error instanceof Error ? error.message : String(error)}`);
     await pool.end();
     process.exit(1);
   });

@@ -4,6 +4,9 @@ import { db, pool } from "@/db/client";
 import { dailyBreakoutSignals } from "@/db/schema/market";
 import { getLatestPriceDate, getPreviousTradeDate } from "@/etl/utils/date-helpers";
 import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
+import { logger } from "@/agent/logger";
+
+const TAG = "BUILD_BREAKOUT_SIGNALS";
 
 const BREAKOUT_CONFIG = {
   WINDOW_DAYS: 20,
@@ -17,29 +20,30 @@ const BREAKOUT_CONFIG = {
 } as const;
 
 export async function buildBreakoutSignals() {
-  console.log("🚀 Building daily breakout signals...");
+  logger.info(TAG, "Building daily breakout signals...");
 
   const envValidation = validateDatabaseOnlyEnvironment();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
   try {
     const latestDate = await getLatestPriceDate();
     if (latestDate == null) {
-      console.warn("⚠️ No latest trade date found");
+      logger.warn(TAG, "No latest trade date found");
       return;
     }
 
     const previousDate = await getPreviousTradeDate(latestDate);
     if (previousDate == null) {
-      console.warn("⚠️ No previous trade date found");
+      logger.warn(TAG, "No previous trade date found");
       return;
     }
 
-    console.log(
-      `📅 latest date: ${latestDate}, previous date: ${previousDate}`,
+    logger.info(
+      TAG,
+      `latest date: ${latestDate}, previous date: ${previousDate}`,
     );
 
     const result = await db.execute(sql`
@@ -208,7 +212,7 @@ export async function buildBreakoutSignals() {
     };
 
     const rows = result.rows as unknown as Row[];
-    console.log(`📊 breakout/retest signals found: ${rows.length}`);
+    logger.info(TAG, `breakout/retest signals found: ${rows.length}`);
 
     if (rows.length === 0) {
       return;
@@ -245,9 +249,9 @@ export async function buildBreakoutSignals() {
         },
       });
 
-    console.log("✅ Breakout signals upserted into daily_breakout_signals");
+    logger.info(TAG, "Breakout signals upserted into daily_breakout_signals");
   } catch (error) {
-    console.error("❌ Failed to build breakout signals:", error);
+    logger.error(TAG, `Failed to build breakout signals: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -258,7 +262,7 @@ buildBreakoutSignals()
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("Fatal error in build-breakout-signals:", error);
+    logger.error(TAG, `Fatal error in build-breakout-signals: ${error instanceof Error ? error.message : String(error)}`);
     await pool.end();
     process.exit(1);
   });

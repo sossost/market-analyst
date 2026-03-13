@@ -4,7 +4,9 @@ import { sectorPhaseEvents } from "@/db/schema/analyst";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
+import { logger } from "@/agent/logger";
 
+const TAG = "DETECT_SECTOR_PHASE_EVENTS";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -168,7 +170,8 @@ export async function detectSectorPhaseEvents(
   const sectorRows = await querySectorTransitions(mode, targetDate);
   const sectorEvents = filterValidTransitions(sectorRows, "sector");
   const sectorInserted = await upsertPhaseEvents(sectorEvents);
-  console.log(
+  logger.info(
+    TAG,
     `Sector phase events: ${sectorRows.length} transitions detected, ${sectorInserted} processed (duplicates skipped)`,
   );
 
@@ -176,7 +179,8 @@ export async function detectSectorPhaseEvents(
   const industryRows = await queryIndustryTransitions(mode, targetDate);
   const industryEvents = filterValidTransitions(industryRows, "industry");
   const industryInserted = await upsertPhaseEvents(industryEvents);
-  console.log(
+  logger.info(
+    TAG,
     `Industry phase events: ${industryRows.length} transitions detected, ${industryInserted} processed (duplicates skipped)`,
   );
 
@@ -194,22 +198,23 @@ async function main() {
   const isBackfill = process.argv.includes("--backfill");
   const mode = isBackfill ? "backfill" : "incremental";
 
-  console.log(`detect-sector-phase-events — mode: ${mode}`);
+  logger.info(TAG, `detect-sector-phase-events — mode: ${mode}`);
 
   let targetDate: string | undefined;
   if (mode === "incremental") {
     const latestDate = await getLatestTradeDate();
     if (latestDate == null) {
-      console.log("No trade date found. Skipping.");
+      logger.info(TAG, "No trade date found. Skipping.");
       await pool.end();
       return;
     }
     targetDate = latestDate;
-    console.log(`Target date: ${targetDate}`);
+    logger.info(TAG, `Target date: ${targetDate}`);
   }
 
   const result = await detectSectorPhaseEvents(mode, targetDate);
-  console.log(
+  logger.info(
+    TAG,
     `Done. Sector: ${result.sectorEvents}, Industry: ${result.industryEvents}`,
   );
 
@@ -217,7 +222,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("detect-sector-phase-events failed:", err);
+  logger.error(TAG, `detect-sector-phase-events failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

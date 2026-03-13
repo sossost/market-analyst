@@ -2,6 +2,9 @@ import "dotenv/config";
 import { db } from "@/db/client";
 import { sql } from "drizzle-orm";
 import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
+import { logger } from "@/agent/logger";
+
+const TAG = "BUILD_RS";
 
 const BACKFILL_DAYS = 365;
 const LOOKBACK_12M = 252;
@@ -13,7 +16,7 @@ const WEIGHT_6M = 0.3;
 const WEIGHT_3M = 0.5;
 
 async function computeRsForDate(targetDate: string) {
-  console.log(`📊 Computing RS for ${targetDate}...`);
+  logger.info(TAG, `Computing RS for ${targetDate}...`);
 
   try {
     const targetDateObj = new Date(targetDate);
@@ -112,22 +115,23 @@ async function computeRsForDate(targetDate: string) {
     `)) as { rows: { updated_count: number }[] };
 
     const updatedCount = result.rows?.[0]?.updated_count ?? 0;
-    console.log(
-      `✅ RS computed for ${targetDate} (rows updated: ${updatedCount})`,
+    logger.info(
+      TAG,
+      `RS computed for ${targetDate} (rows updated: ${updatedCount})`,
     );
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    console.error(`❌ Failed to compute RS for ${targetDate}:`, message);
+    logger.error(TAG, `Failed to compute RS for ${targetDate}: ${message}`);
     throw e;
   }
 }
 
 async function main() {
-  console.log("🚀 Starting RS build...");
+  logger.info(TAG, "Starting RS build...");
 
   const envValidation = validateDatabaseOnlyEnvironment();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
@@ -150,7 +154,7 @@ async function main() {
     .filter(Boolean);
 
   if (dates.length === 0) {
-    console.warn("⚠️ No dates found in daily_prices; aborting.");
+    logger.warn(TAG, "No dates found in daily_prices; aborting.");
     return;
   }
 
@@ -159,14 +163,14 @@ async function main() {
       await computeRsForDate(d);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      console.error(`❌ Failed to compute RS for ${d}:`, message);
+      logger.error(TAG, `Failed to compute RS for ${d}: ${message}`);
     }
   }
 
-  console.log("✅ RS build finished.");
+  logger.info(TAG, "RS build finished.");
 }
 
 main().catch((err) => {
-  console.error("❌ RS build failed:", err);
+  logger.error(TAG, `RS build failed: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

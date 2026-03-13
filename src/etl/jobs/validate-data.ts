@@ -2,6 +2,9 @@ import "dotenv/config";
 import { pool } from "@/db/client";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
+import { logger } from "@/agent/logger";
+
+const TAG = "VALIDATE_DATA";
 
 const MIN_EXPECTED_PHASES = 1_000;
 const MIN_SECTOR_COUNT = 10;
@@ -13,11 +16,11 @@ async function main() {
 
   const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
-    console.error("No trade date found. Exiting.");
+    logger.error(TAG, "No trade date found. Exiting.");
     process.exit(1);
   }
 
-  console.log(`Validating data for: ${targetDate}\n`);
+  logger.info(TAG, `Validating data for: ${targetDate}`);
   let hasErrors = false;
 
   // 1. Stock phases count
@@ -29,13 +32,13 @@ async function main() {
   );
 
   const totalPhases = phaseCounts.reduce((s, r) => s + Number(r.cnt), 0);
-  console.log(`Stock Phases: ${totalPhases} total`);
+  logger.info(TAG, `Stock Phases: ${totalPhases} total`);
   for (const r of phaseCounts) {
-    console.log(`  Phase ${r.phase}: ${r.cnt}`);
+    logger.info(TAG, `  Phase ${r.phase}: ${r.cnt}`);
   }
 
   if (totalPhases < MIN_EXPECTED_PHASES) {
-    console.error(`  ERROR: Expected at least ${MIN_EXPECTED_PHASES} stock phases`);
+    logger.error(TAG, `  ERROR: Expected at least ${MIN_EXPECTED_PHASES} stock phases`);
     hasErrors = true;
   }
 
@@ -45,10 +48,10 @@ async function main() {
     [targetDate],
   );
   const sectorCount = Number(sectorRows[0].cnt);
-  console.log(`\nSector RS: ${sectorCount} rows`);
+  logger.info(TAG, `Sector RS: ${sectorCount} rows`);
 
   if (sectorCount < MIN_SECTOR_COUNT) {
-    console.error(`  ERROR: Expected at least ${MIN_SECTOR_COUNT} sectors`);
+    logger.error(TAG, `  ERROR: Expected at least ${MIN_SECTOR_COUNT} sectors`);
     hasErrors = true;
   }
 
@@ -58,10 +61,10 @@ async function main() {
     [targetDate],
   );
   const industryCount = Number(industryRows[0].cnt);
-  console.log(`Industry RS: ${industryCount} rows`);
+  logger.info(TAG, `Industry RS: ${industryCount} rows`);
 
   if (industryCount < MIN_INDUSTRY_COUNT) {
-    console.error(`  ERROR: Expected at least ${MIN_INDUSTRY_COUNT} industries`);
+    logger.error(TAG, `  ERROR: Expected at least ${MIN_INDUSTRY_COUNT} industries`);
     hasErrors = true;
   }
 
@@ -83,12 +86,13 @@ async function main() {
     const min_rs50 = Number(b.min_rs50);
     const max_rs50 = Number(b.max_rs50);
 
-    console.log(
-      `\nBreadth ranges: phase2=[${min_p2.toFixed(2)}, ${max_p2.toFixed(2)}], rsAbove50=[${min_rs50.toFixed(2)}, ${max_rs50.toFixed(2)}]`,
+    logger.info(
+      TAG,
+      `Breadth ranges: phase2=[${min_p2.toFixed(2)}, ${max_p2.toFixed(2)}], rsAbove50=[${min_rs50.toFixed(2)}, ${max_rs50.toFixed(2)}]`,
     );
 
     if (min_p2 < 0 || max_p2 > 1 || min_rs50 < 0 || max_rs50 > 1) {
-      console.error("  ERROR: Breadth values out of [0, 1] range");
+      logger.error(TAG, "  ERROR: Breadth values out of [0, 1] range");
       hasErrors = true;
     }
   }
@@ -99,8 +103,9 @@ async function main() {
      WHERE is_actively_trading = true AND is_etf = false
        AND (industry IS NULL OR industry = '')`,
   );
-  console.log(
-    `\nSymbols with null/empty industry: ${nullIndustry[0].cnt}`,
+  logger.info(
+    TAG,
+    `Symbols with null/empty industry: ${nullIndustry[0].cnt}`,
   );
 
   // 6. Top sector RS sanity
@@ -110,9 +115,10 @@ async function main() {
      ORDER BY rs_rank LIMIT 3`,
     [targetDate],
   );
-  console.log("\nTop 3 sectors:");
+  logger.info(TAG, "Top 3 sectors:");
   for (const s of topSectors) {
-    console.log(
+    logger.info(
+      TAG,
       `  ${s.rs_rank}. ${s.sector}: RS=${Number(s.avg_rs).toFixed(1)}, Phase2=${(Number(s.p2) * 100).toFixed(0)}%`,
     );
   }
@@ -125,24 +131,24 @@ async function main() {
      ORDER BY symbol`,
     [targetDate, knownStocks],
   );
-  console.log("\nKnown stocks:");
+  logger.info(TAG, "Known stocks:");
   for (const r of knownResults) {
-    console.log(`  ${r.symbol}: Phase ${r.phase}, RS=${r.rs_score}`);
+    logger.info(TAG, `  ${r.symbol}: Phase ${r.phase}, RS=${r.rs_score}`);
   }
 
   if (knownResults.length < MIN_KNOWN_STOCKS_FOUND) {
-    console.error(`  ERROR: Expected at least ${MIN_KNOWN_STOCKS_FOUND} known stocks`);
+    logger.error(TAG, `  ERROR: Expected at least ${MIN_KNOWN_STOCKS_FOUND} known stocks`);
     hasErrors = true;
   }
 
-  console.log(hasErrors ? "\nValidation FAILED" : "\nValidation PASSED");
+  logger.info(TAG, hasErrors ? "Validation FAILED" : "Validation PASSED");
   await pool.end();
 
   if (hasErrors) process.exit(1);
 }
 
 main().catch((err) => {
-  console.error("Validation failed:", err);
+  logger.error(TAG, `Validation failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

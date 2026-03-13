@@ -8,6 +8,9 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { chunk, toNum, resolveVolumeConfirmed } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
 import type { PhaseInput } from "@/types";
+import { logger } from "@/agent/logger";
+
+const TAG = "BUILD_STOCK_PHASES";
 
 const BATCH_SIZE = 200;
 const CLOSE_DAYS_NEEDED = 170; // 150 for MA150 + 20 for slope
@@ -18,11 +21,11 @@ async function main() {
 
   const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
-    console.error("No trade date found in daily_prices. Exiting.");
+    logger.error(TAG, "No trade date found in daily_prices. Exiting.");
     process.exit(1);
   }
 
-  console.log(`Target date: ${targetDate}`);
+  logger.info(TAG, `Target date: ${targetDate}`);
 
   // Get all active, non-ETF symbols
   const { rows: symbolRows } = await retryDatabaseOperation(() =>
@@ -33,7 +36,7 @@ async function main() {
     ),
   );
 
-  console.log(`Active symbols: ${symbolRows.length}`);
+  logger.info(TAG, `Active symbols: ${symbolRows.length}`);
 
   // Pre-compute 52-week start date (shared across all batches)
   const { rows: startDateRows } = await retryDatabaseOperation(() =>
@@ -56,7 +59,8 @@ async function main() {
     const batch = batches[i];
     const batchSymbols = batch.map((s) => s.symbol);
 
-    console.log(
+    logger.info(
+      TAG,
       `Batch ${i + 1}/${batches.length} (${batchSymbols.length} symbols)`,
     );
 
@@ -240,7 +244,7 @@ async function main() {
     }
   }
 
-  console.log(`\nDone. Processed: ${processed}, Phase 2: ${phase2Count}`);
+  logger.info(TAG, `Done. Processed: ${processed}, Phase 2: ${phase2Count}`);
   await pool.end();
 }
 
@@ -318,7 +322,7 @@ async function batchUpsert(rows: UpsertRow[]) {
 }
 
 main().catch((err) => {
-  console.error("build-stock-phases failed:", err);
+  logger.error(TAG, `build-stock-phases failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

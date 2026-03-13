@@ -10,6 +10,9 @@ import {
   retryDatabaseOperation,
   DEFAULT_RETRY_OPTIONS,
 } from "@/etl/utils/retry";
+import { logger } from "@/agent/logger";
+
+const TAG = "CALCULATE_DAILY_RATIOS";
 
 const API = process.env.DATA_API!;
 const KEY = process.env.FMP_API_KEY!;
@@ -31,7 +34,7 @@ async function loadOne(symbol: string, targetDate: string) {
     () => fetchJson<RatiosTTM[]>(url),
     DEFAULT_RETRY_OPTIONS,
   ).catch((e) => {
-    console.error(`❌ Failed to fetch TTM ratios for ${symbol}:`, e);
+    logger.error(TAG, `Failed to fetch TTM ratios for ${symbol}: ${e instanceof Error ? e.message : String(e)}`);
     return [] as RatiosTTM[];
   });
 
@@ -84,16 +87,16 @@ async function loadOne(symbol: string, targetDate: string) {
 }
 
 async function main() {
-  console.log("🚀 Starting Daily Ratios ETL (FMP TTM API)...");
+  logger.info(TAG, "Starting Daily Ratios ETL (FMP TTM API)...");
 
   const envValidation = validateEnvironmentVariables();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
   const today = new Date().toISOString().split("T")[0];
-  console.log(`📅 Target date: ${today}`);
+  logger.info(TAG, `Target date: ${today}`);
 
   const activeSymbols = await db
     .select({ symbol: symbols.symbol })
@@ -106,7 +109,7 @@ async function main() {
     throw new Error("No active symbols found. Run 'symbols' job first.");
   }
 
-  console.log(`📊 Processing ${syms.length} active symbols`);
+  logger.info(TAG, `Processing ${syms.length} active symbols`);
 
   const limit = pLimit(CONCURRENCY);
   let ok = 0;
@@ -120,13 +123,13 @@ async function main() {
           await loadOne(sym, today);
           ok++;
           if (ok % 100 === 0) {
-            console.log(`📊 Progress: ${ok}/${syms.length}`);
+            logger.info(TAG, `Progress: ${ok}/${syms.length}`);
           }
         } catch (e: unknown) {
           skip++;
           if (skip <= 10) {
             const message = e instanceof Error ? e.message : String(e);
-            console.warn(`⚠️ Skipped ${sym}: ${message}`);
+            logger.warn(TAG, `Skipped ${sym}: ${message}`);
           }
         } finally {
           await sleep(PAUSE_MS);
@@ -136,7 +139,7 @@ async function main() {
   );
 
   const totalTime = Date.now() - startTime;
-  console.log(`✅ Daily Ratios ETL completed! ${ok} ok, ${skip} skipped (${Math.round(totalTime / 1000)}s)`);
+  logger.info(TAG, `Daily Ratios ETL completed! ${ok} ok, ${skip} skipped (${Math.round(totalTime / 1000)}s)`);
 }
 
 main()
@@ -145,7 +148,7 @@ main()
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("❌ Daily Ratios ETL failed:", error);
+    logger.error(TAG, `Daily Ratios ETL failed: ${error instanceof Error ? error.message : String(error)}`);
     await pool.end();
     process.exit(1);
   });

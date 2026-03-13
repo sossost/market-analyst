@@ -14,6 +14,9 @@ import {
   retryDatabaseOperation,
   DEFAULT_RETRY_OPTIONS,
 } from "@/etl/utils/retry";
+import { logger } from "@/agent/logger";
+
+const TAG = "LOAD_DAILY_PRICES";
 
 const API = process.env.DATA_API!;
 const KEY = process.env.FMP_API_KEY!;
@@ -24,7 +27,7 @@ const DEFAULT_DAYS = 5;
 const BACKFILL_DAYS = 250;
 
 async function loadOne(sym: string, N: number) {
-  console.log(`📊 Loading prices for ${sym} (${N} days)`);
+  logger.info(TAG, `Loading prices for ${sym} (${N} days)`);
 
   const url = `${API}/api/v3/historical-price-full/${sym}?timeseries=${N}&apikey=${KEY}`;
 
@@ -32,7 +35,7 @@ async function loadOne(sym: string, N: number) {
     () => fetchJson<{ historical?: Record<string, unknown>[] }>(url),
     DEFAULT_RETRY_OPTIONS,
   ).catch((e) => {
-    console.error(`❌ Failed to fetch prices for ${sym}:`, e);
+    logger.error(TAG, `Failed to fetch prices for ${sym}: ${e instanceof Error ? e.message : String(e)}`);
     return { historical: [] as Record<string, unknown>[] };
   });
 
@@ -41,7 +44,7 @@ async function loadOne(sym: string, N: number) {
     throw new Error(`No price data available for ${sym}`);
   }
 
-  console.log(`📈 Found ${rows.length} price records for ${sym}`);
+  logger.info(TAG, `Found ${rows.length} price records for ${sym}`);
 
   const priceDataArray = rows.map((r) => ({
     symbol: sym,
@@ -58,9 +61,9 @@ async function loadOne(sym: string, N: number) {
     validatePriceData,
   );
   if (!validationResult.isValid) {
-    console.warn(
-      `⚠️ Price data validation warnings for ${sym}:`,
-      validationResult.errors.slice(0, 3),
+    logger.warn(
+      TAG,
+      `Price data validation warnings for ${sym}: ${JSON.stringify(validationResult.errors.slice(0, 3))}`,
     );
   }
 
@@ -99,23 +102,24 @@ async function loadOne(sym: string, N: number) {
     );
   }
 
-  console.log(`✅ Loaded ${rows.length} price records for ${sym}`);
+  logger.info(TAG, `Loaded ${rows.length} price records for ${sym}`);
 }
 
 async function main() {
-  console.log("🚀 Starting Daily Prices ETL...");
+  logger.info(TAG, "Starting Daily Prices ETL...");
 
   const envValidation = validateEnvironmentVariables();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
   const isBackfill = process.argv.slice(2).includes("backfill");
   const daysToLoad = isBackfill ? BACKFILL_DAYS : DEFAULT_DAYS;
 
-  console.log(
-    `📊 Mode: ${isBackfill ? "BACKFILL" : "INCREMENTAL"} (${daysToLoad} days)`,
+  logger.info(
+    TAG,
+    `Mode: ${isBackfill ? "BACKFILL" : "INCREMENTAL"} (${daysToLoad} days)`,
   );
 
   const activeSymbols = await db
@@ -129,7 +133,7 @@ async function main() {
     throw new Error("No active symbols found. Run 'symbols' job first.");
   }
 
-  console.log(`📊 Processing ${syms.length} active symbols`);
+  logger.info(TAG, `Processing ${syms.length} active symbols`);
 
   const limit = pLimit(CONCURRENCY);
   let ok = 0;
@@ -143,12 +147,12 @@ async function main() {
           await loadOne(s, daysToLoad);
           ok++;
           if (ok % 50 === 0) {
-            console.log(`📊 Progress: ${ok}/${syms.length} (${s})`);
+            logger.info(TAG, `Progress: ${ok}/${syms.length} (${s})`);
           }
         } catch (e: unknown) {
           skip++;
           const message = e instanceof Error ? e.message : String(e);
-          console.warn(`⚠️ Skipped ${s}: ${message}`);
+          logger.warn(TAG, `Skipped ${s}: ${message}`);
         } finally {
           await sleep(PAUSE_MS);
         }
@@ -157,7 +161,7 @@ async function main() {
   );
 
   const totalTime = Date.now() - startTime;
-  console.log(`✅ Daily Prices ETL completed! ${ok} ok, ${skip} skipped (${Math.round(totalTime / 1000)}s)`);
+  logger.info(TAG, `Daily Prices ETL completed! ${ok} ok, ${skip} skipped (${Math.round(totalTime / 1000)}s)`);
 }
 
 main()
@@ -166,7 +170,7 @@ main()
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("❌ Daily Prices ETL failed:", error);
+    logger.error(TAG, `Daily Prices ETL failed: ${error instanceof Error ? error.message : String(error)}`);
     await pool.end();
     process.exit(1);
   });

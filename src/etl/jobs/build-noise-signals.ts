@@ -4,6 +4,9 @@ import { db, pool } from "@/db/client";
 import { dailyNoiseSignals } from "@/db/schema/market";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
+import { logger } from "@/agent/logger";
+
+const TAG = "BUILD_NOISE_SIGNALS";
 
 const NOISE_CONFIG = {
   VOLUME_WINDOW_DAYS: 20,
@@ -15,22 +18,22 @@ const NOISE_CONFIG = {
 } as const;
 
 export async function buildNoiseSignals() {
-  console.log("🚀 Building daily noise signals...");
+  logger.info(TAG, "Building daily noise signals...");
 
   const envValidation = validateDatabaseOnlyEnvironment();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
   try {
     const latestDate = await getLatestPriceDate();
     if (latestDate == null) {
-      console.warn("⚠️ No latest trade date found");
+      logger.warn(TAG, "No latest trade date found");
       return;
     }
 
-    console.log(`📅 latest date: ${latestDate}`);
+    logger.info(TAG, `latest date: ${latestDate}`);
 
     // date 컬럼이 text 타입이므로 INTERVAL 연산 대신 TS에서 미리 계산
     const atrStartDate = new Date(latestDate);
@@ -257,10 +260,10 @@ export async function buildNoiseSignals() {
     };
 
     const rows = result.rows as unknown as Row[];
-    console.log(`📊 noise signals found: ${rows.length}`);
+    logger.info(TAG, `noise signals found: ${rows.length}`);
 
     if (rows.length === 0) {
-      console.warn("⚠️ No noise signals found");
+      logger.warn(TAG, "No noise signals found");
       return;
     }
 
@@ -315,9 +318,9 @@ export async function buildNoiseSignals() {
         },
       });
 
-    console.log("✅ Noise signals upserted into daily_noise_signals");
+    logger.info(TAG, "Noise signals upserted into daily_noise_signals");
   } catch (error) {
-    console.error("❌ Failed to build noise signals:", error);
+    logger.error(TAG, `Failed to build noise signals: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -328,7 +331,7 @@ buildNoiseSignals()
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("Fatal error in build-noise-signals:", error);
+    logger.error(TAG, `Fatal error in build-noise-signals: ${error instanceof Error ? error.message : String(error)}`);
     await pool.end();
     process.exit(1);
   });

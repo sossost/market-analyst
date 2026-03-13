@@ -5,6 +5,9 @@ import { assertValidEnvironment } from "@/etl/utils/validation";
 import { binomialTest } from "@/lib/statisticalTests";
 import { eq, sql } from "drizzle-orm";
 import type { FailureConditions } from "@/types/failure";
+import { logger } from "@/agent/logger";
+
+const TAG = "COLLECT_FAILURE_PATTERNS";
 
 /**
  * failureConditions JSON 문자열을 파싱하고 필수 필드를 검증한다.
@@ -164,7 +167,7 @@ async function main() {
   assertValidEnvironment();
 
   const today = new Date().toISOString().slice(0, 10);
-  console.log(`Collect failure patterns — date: ${today}`);
+  logger.info(TAG, `Collect failure patterns — date: ${today}`);
 
   // 1. phase2Reverted가 판정된 레코드 로드
   const allSignals = await db
@@ -178,7 +181,7 @@ async function main() {
     .where(sql`${signalLog.phase2Reverted} IS NOT NULL`);
 
   if (allSignals.length === 0) {
-    console.log("No signals with phase2_reverted data. Skipping.");
+    logger.info(TAG, "No signals with phase2_reverted data. Skipping.");
     await pool.end();
     return;
   }
@@ -194,7 +197,7 @@ async function main() {
 
     const conditions = parseFailureConditions(signal.failureConditions);
     if (conditions == null) {
-      console.warn(`  SKIP: invalid failureConditions for signal ${signal.id}`);
+      logger.warn(TAG, `  SKIP: invalid failureConditions for signal ${signal.id}`);
       continue;
     }
 
@@ -209,10 +212,10 @@ async function main() {
     });
   }
 
-  console.log(`Parsed records: ${records.length} (from ${allSignals.length} signals)`);
+  logger.info(TAG, `Parsed records: ${records.length} (from ${allSignals.length} signals)`);
 
   if (records.length === 0) {
-    console.log("No parseable records. Skipping.");
+    logger.info(TAG, "No parseable records. Skipping.");
     await pool.end();
     return;
   }
@@ -275,7 +278,8 @@ async function main() {
 
         if (shouldBeActive) {
           activatedCount++;
-          console.log(
+          logger.info(
+            TAG,
             `  ACTIVE: ${patternName} — ${(failureRate * 100).toFixed(0)}% (${failureCount}/${totalCount}), p=${test.pValue.toFixed(4)}`,
           );
         }
@@ -296,21 +300,22 @@ async function main() {
           .update(failurePatterns)
           .set({ isActive: false, lastUpdated: today })
           .where(eq(failurePatterns.id, pattern.id));
-        console.log(`  DEACTIVATED: ${pattern.patternName}`);
+        logger.info(TAG, `  DEACTIVATED: ${pattern.patternName}`);
       }),
     );
   }
 
   const deactivatedCount = toDeactivate.length;
 
-  console.log(
-    `\nResults: ${activatedCount} active patterns, ${deactivatedCount} deactivated`,
+  logger.info(
+    TAG,
+    `Results: ${activatedCount} active patterns, ${deactivatedCount} deactivated`,
   );
   await pool.end();
 }
 
 main().catch(async (err) => {
-  console.error("collect-failure-patterns failed:", err instanceof Error ? err.message : String(err));
+  logger.error(TAG, `collect-failure-patterns failed: ${err instanceof Error ? err.message : String(err)}`);
   await pool.end();
   process.exit(1);
 });

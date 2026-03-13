@@ -12,6 +12,9 @@ import {
 } from "@/lib/signal-logic";
 import type { RawSignal } from "@/lib/signal-logic";
 import { sql } from "drizzle-orm";
+import { logger } from "@/agent/logger";
+
+const TAG = "RECORD_NEW_SIGNALS";
 
 /**
  * Phase 1→2 전환 시그널을 자동 감지하여 signal_log에 기록한다.
@@ -26,12 +29,12 @@ async function main() {
 
   const targetDate = await getLatestTradeDate();
   if (targetDate == null) {
-    console.log("No trade date found. Skipping signal recording.");
+    logger.info(TAG, "No trade date found. Skipping signal recording.");
     await pool.end();
     return;
   }
 
-  console.log(`Target date: ${targetDate}`);
+  logger.info(TAG, `Target date: ${targetDate}`);
 
   // 1. Phase 1→2 전환 시그널 조회
   const { rows: rawRows } = await retryDatabaseOperation(() =>
@@ -64,12 +67,12 @@ async function main() {
   );
 
   if (rawRows.length === 0) {
-    console.log("No Phase 1→2 transitions found.");
+    logger.info(TAG, "No Phase 1→2 transitions found.");
     await pool.end();
     return;
   }
 
-  console.log(`Phase 1→2 transitions detected: ${rawRows.length}`);
+  logger.info(TAG, `Phase 1→2 transitions detected: ${rawRows.length}`);
 
   // 2. 이미 기록된 시그널 제외
   const symbols = rawRows.map((r) => r.symbol);
@@ -96,7 +99,7 @@ async function main() {
     }));
 
   if (newRawSignals.length === 0) {
-    console.log("All transitions already recorded.");
+    logger.info(TAG, "All transitions already recorded.");
     await pool.end();
     return;
   }
@@ -121,7 +124,8 @@ async function main() {
   const filteredSignals = filterSignalsByParams(newRawSignals, params);
 
   if (filteredSignals.length === 0) {
-    console.log(
+    logger.info(
+      TAG,
       `No signals passed parameter filter (rs>=${params.rsThreshold}, vol=${params.volumeRequired}).`,
     );
     await pool.end();
@@ -150,17 +154,19 @@ async function main() {
     ),
   );
 
-  console.log(
+  logger.info(
+    TAG,
     `Recorded ${filteredSignals.length} new signals (filtered from ${newRawSignals.length} transitions).`,
   );
-  console.log(
+  logger.info(
+    TAG,
     `Params: rs>=${params.rsThreshold}, vol=${params.volumeRequired}, sectorFilter=${params.sectorFilter}`,
   );
   await pool.end();
 }
 
 main().catch((err) => {
-  console.error("record-new-signals failed:", err);
+  logger.error(TAG, `record-new-signals failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

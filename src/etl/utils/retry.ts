@@ -1,3 +1,7 @@
+import { logger } from "@/agent/logger";
+
+const TAG = "RETRY";
+
 export interface RetryOptions {
   maxAttempts: number;
   baseDelay: number;
@@ -114,7 +118,7 @@ export async function withRetry<T>(
       }
 
       const delay = calculateDelay(attempt, opts);
-      console.warn(`Attempt ${attempt} failed, retrying in ${Math.round(delay)}ms... (${lastError.message})`);
+      logger.warn(TAG, `Attempt ${attempt} failed, retrying in ${Math.round(delay)}ms... (${lastError.message})`);
       await sleep(delay);
     }
   }

@@ -6,6 +6,9 @@ import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { eq, sql } from "drizzle-orm";
+import { logger } from "@/agent/logger";
+
+const TAG = "UPDATE_RECOMMENDATION_STATUS";
 
 /**
  * 일간 ETL: ACTIVE 추천 종목의 성과를 업데이트한다.
@@ -22,12 +25,12 @@ async function main() {
 
   const targetDate = await getLatestTradeDate();
   if (targetDate == null) {
-    console.log("No trade date found. Skipping recommendation update.");
+    logger.info(TAG, "No trade date found. Skipping recommendation update.");
     await pool.end();
     return;
   }
 
-  console.log(`Target date: ${targetDate}`);
+  logger.info(TAG, `Target date: ${targetDate}`);
 
   // 1. ACTIVE 추천 조회
   const activeRecs = await retryDatabaseOperation(() =>
@@ -38,12 +41,12 @@ async function main() {
   );
 
   if (activeRecs.length === 0) {
-    console.log("No active recommendations. Nothing to update.");
+    logger.info(TAG, "No active recommendations. Nothing to update.");
     await pool.end();
     return;
   }
 
-  console.log(`Active recommendations: ${activeRecs.length}`);
+  logger.info(TAG, `Active recommendations: ${activeRecs.length}`);
 
   const symbols = activeRecs.map((r) => r.symbol);
 
@@ -117,14 +120,15 @@ async function main() {
     if (isPhaseExit) closedCount++;
   }
 
-  console.log(
+  logger.info(
+    TAG,
     `Done. Updated: ${activeRecs.length}, Closed today: ${closedCount}`,
   );
   await pool.end();
 }
 
 main().catch((err) => {
-  console.error("update-recommendation-status failed:", err);
+  logger.error(TAG, `update-recommendation-status failed: ${err instanceof Error ? err.message : String(err)}`);
   pool.end();
   process.exit(1);
 });

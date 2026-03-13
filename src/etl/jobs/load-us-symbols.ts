@@ -8,6 +8,9 @@ import {
 } from "@/etl/utils/validation";
 import { retryApiCall, DEFAULT_RETRY_OPTIONS } from "@/etl/utils/retry";
 import { fetchJson, isValidTicker } from "@/etl/utils/common";
+import { logger } from "@/agent/logger";
+
+const TAG = "LOAD_US_SYMBOLS";
 
 const API = process.env.DATA_API! + "/stable";
 const KEY = process.env.FMP_API_KEY!;
@@ -33,19 +36,19 @@ type SymbolRow = {
 const SUPPORTED_EXCHANGES = ["NASDAQ", "NYSE", "AMEX"];
 
 async function main() {
-  console.log("🚀 Starting US symbols ETL (NASDAQ, NYSE, AMEX)...");
+  logger.info(TAG, "Starting US symbols ETL (NASDAQ, NYSE, AMEX)...");
 
   const envValidation = validateEnvironmentVariables();
   if (!envValidation.isValid) {
-    console.error("❌ Environment validation failed:", envValidation.errors);
+    logger.error(TAG, `Environment validation failed: ${JSON.stringify(envValidation.errors)}`);
     process.exit(1);
   }
 
   if (envValidation.warnings.length > 0) {
-    console.warn("⚠️ Environment warnings:", envValidation.warnings);
+    logger.warn(TAG, `Environment warnings: ${JSON.stringify(envValidation.warnings)}`);
   }
 
-  console.log(`📡 Fetching symbols from ${SUPPORTED_EXCHANGES.join(", ")}...`);
+  logger.info(TAG, `Fetching symbols from ${SUPPORTED_EXCHANGES.join(", ")}...`);
 
   const results = await Promise.all(
     SUPPORTED_EXCHANGES.map(async (exchange) => {
@@ -56,13 +59,13 @@ async function main() {
           ),
         DEFAULT_RETRY_OPTIONS,
       );
-      console.log(`  → ${list.length} symbols from ${exchange}`);
+      logger.info(TAG, `  → ${list.length} symbols from ${exchange}`);
       return list;
     }),
   );
 
   const allSymbols = results.flat();
-  console.log(`📊 Fetched ${allSymbols.length} total symbols from API`);
+  logger.info(TAG, `Fetched ${allSymbols.length} total symbols from API`);
 
   const validSymbols = allSymbols
     .filter((r) => SUPPORTED_EXCHANGES.includes(r.exchangeShortName ?? ""))
@@ -75,7 +78,7 @@ async function main() {
       );
     });
 
-  console.log(`📈 Filtered to ${validSymbols.length} valid US symbols`);
+  logger.info(TAG, `Filtered to ${validSymbols.length} valid US symbols`);
 
   const validatedSymbols: SymbolRow[] = [];
   const skippedSymbols: string[] = [];
@@ -90,19 +93,20 @@ async function main() {
   }
 
   if (skippedSymbols.length > 0) {
-    console.warn(
-      `⚠️ ${skippedSymbols.length} items skipped:`,
-      skippedSymbols.slice(0, 5),
+    logger.warn(
+      TAG,
+      `${skippedSymbols.length} items skipped: ${JSON.stringify(skippedSymbols.slice(0, 5))}`,
     );
   }
 
   if (validatedSymbols.length === 0) {
-    console.error("❌ No valid symbols. Aborting.");
+    logger.error(TAG, "No valid symbols. Aborting.");
     process.exit(1);
   }
 
-  console.log(
-    `✅ ${validatedSymbols.length}/${validSymbols.length} symbols validated`,
+  logger.info(
+    TAG,
+    `${validatedSymbols.length}/${validSymbols.length} symbols validated`,
   );
 
   const batchSize = 100;
@@ -110,8 +114,9 @@ async function main() {
 
   for (let i = 0; i < validatedSymbols.length; i += batchSize) {
     const batch = validatedSymbols.slice(i, i + batchSize);
-    console.log(
-      `📊 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(validatedSymbols.length / batchSize)}`,
+    logger.info(
+      TAG,
+      `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(validatedSymbols.length / batchSize)}`,
     );
 
     const insertValues = batch.map((r) => ({
@@ -158,17 +163,17 @@ async function main() {
     processedCount += batch.length;
   }
 
-  console.log(`✅ Successfully processed ${processedCount} US symbols`);
+  logger.info(TAG, `Successfully processed ${processedCount} US symbols`);
 }
 
 main()
   .then(async () => {
-    console.log("✅ US symbols ETL completed successfully!");
+    logger.info(TAG, "US symbols ETL completed successfully!");
     await pool.end();
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error("❌ US symbols ETL failed:", error);
+    logger.error(TAG, `US symbols ETL failed: ${error instanceof Error ? error.message : String(error)}`);
     await pool.end();
     process.exit(1);
   });

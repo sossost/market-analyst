@@ -7,6 +7,9 @@ import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
 import { asQuarter } from "@/etl/utils/date";
 import { ensureSymbol } from "@/etl/utils/db";
 import { deduplicateByQuarter } from "@/etl/utils/quarter-deduplication";
+import { logger } from "@/agent/logger";
+
+const TAG = "LOAD_QUARTERLY_FINANCIALS";
 
 const API = process.env.DATA_API! + "/stable";
 const KEY = process.env.FMP_API_KEY!;
@@ -117,14 +120,14 @@ async function loadOne(symbol: string) {
 }
 
 async function main() {
-  console.log("🚀 Starting Quarterly Financials ETL...");
+  logger.info(TAG, "Starting Quarterly Financials ETL...");
 
   const rs = await db.execute(sql`SELECT symbol FROM symbols`);
   const syms: string[] = (rs.rows as Record<string, unknown>[]).map(
     (r) => r.symbol as string,
   );
 
-  console.log(`📊 Processing ${syms.length} symbols`);
+  logger.info(TAG, `Processing ${syms.length} symbols`);
 
   const limit = pLimit(CONCURRENCY);
   let done = 0;
@@ -136,11 +139,11 @@ async function main() {
         try {
           await loadOne(sym);
           done++;
-          if (done % 50 === 0) console.log(`📊 Progress: ${done}/${syms.length} (${sym})`);
+          if (done % 50 === 0) logger.info(TAG, `Progress: ${done}/${syms.length} (${sym})`);
         } catch (e: unknown) {
           skip++;
           const message = e instanceof Error ? e.message : String(e);
-          console.warn(`⚠️ Skipped ${sym}: ${message}`);
+          logger.warn(TAG, `Skipped ${sym}: ${message}`);
         } finally {
           await sleep(PAUSE_MS);
         }
@@ -148,11 +151,11 @@ async function main() {
     ),
   );
 
-  console.log(`✅ Quarterly Financials ETL completed! ${done} ok, ${skip} skipped`);
+  logger.info(TAG, `Quarterly Financials ETL completed! ${done} ok, ${skip} skipped`);
 }
 
 main().catch((e) => {
-  console.error("❌ Quarterly Financials ETL failed:", e);
+  logger.error(TAG, `Quarterly Financials ETL failed: ${e instanceof Error ? e.message : String(e)}`);
   process.exit(1);
 });
 
