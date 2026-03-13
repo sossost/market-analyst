@@ -1,4 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { createProvider } from "./llm/index.js";
+import type { LLMProvider } from "./llm/index.js";
 import { loadExpertPersonas, loadModeratorPersona } from "./personas.js";
 import { runRound1 } from "./round1-independent.js";
 import { runRound2 } from "./round2-crossfire.js";
@@ -29,20 +30,34 @@ interface DebateConfig {
  * Round 3: Moderator synthesis (single call)
  *
  * Individual agent failures are tolerated — debate continues with remaining agents.
+ * Each expert uses the LLMProvider resolved from their persona.model field.
  */
 export async function runDebate(config: DebateConfig): Promise<DebateResult> {
-  const { question, debateDate, memoryContext = "", marketDataContext = "", newsContext = {}, fundamentalContext } = config;
+  const {
+    question,
+    debateDate,
+    memoryContext = "",
+    marketDataContext = "",
+    newsContext = {},
+    fundamentalContext,
+  } = config;
   const startTime = Date.now();
 
-  const client = new Anthropic();
   const experts = loadExpertPersonas();
   const moderator = loadModeratorPersona();
   const agentErrors: DebateResult["metadata"]["agentErrors"] = [];
 
+  // provider factory: persona.model → LLMProvider (캐싱하지 않음, 모델별 인스턴스는 경량)
+  const getProvider = (model: string): LLMProvider => createProvider(model);
+
+  // 모더레이터는 Claude 고정 — JSON 구조화 안정성 이슈로 변경 보류
+  const moderatorProvider = getProvider(moderator.model);
+
   // Combine question with market data context
-  const fullQuestion = marketDataContext.length > 0
-    ? `${question}\n\n---\n\n${marketDataContext}`
-    : question;
+  const fullQuestion =
+    marketDataContext.length > 0
+      ? `${question}\n\n---\n\n${marketDataContext}`
+      : question;
 
   logger.info("Debate", `Starting debate for ${debateDate}`);
   logger.info("Debate", `Question: ${question.slice(0, 100)}...`);
@@ -53,7 +68,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
   // Round 1 — Independent Analysis
   logger.info("Debate", "=== Round 1: Independent Analysis ===");
   const round1Result = await runRound1({
-    client,
+    getProvider,
     experts,
     question: fullQuestion,
     memoryContext,
@@ -70,7 +85,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
   // Round 2 — Crossfire (market data already in Round 1 outputs, no need to repeat)
   logger.info("Debate", "=== Round 2: Crossfire ===");
   const round2Result = await runRound2({
-    client,
+    getProvider,
     experts,
     round1Outputs: round1Result.round.outputs,
     question,
@@ -87,7 +102,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
   // Round 3 — Moderator Synthesis (market data already in Round 1 outputs)
   logger.info("Debate", "=== Round 3: Moderator Synthesis ===");
   const round3Result = await runRound3({
-    client,
+    provider: moderatorProvider,
     moderator,
     round1Outputs: round1Result.round.outputs,
     round2Outputs: round2Result.round.outputs,
