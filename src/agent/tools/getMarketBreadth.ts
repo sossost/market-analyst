@@ -353,7 +353,7 @@ export const getMarketBreadth: AgentTool = {
       phase2Ratio: clampPercent(
         Number((phase2Ratio * 100).toFixed(1)),
         "daily:phase2Ratio",
-      ),
+      ) ?? 0,
       phase2RatioChange: Number(
         ((phase2Ratio - prevPhase2Ratio) * 100).toFixed(1),
       ),

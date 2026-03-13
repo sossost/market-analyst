@@ -516,7 +516,7 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
     sections.push(
       `### 시장 브레드스 (${snapshot.date} 기준, 총 ${b.totalStocks}종목)\n` +
       `- Phase 분포: ${phaseStr}\n` +
-      `- Phase 2 비율: ${b.phase2Ratio}% (전일 대비 ${changeSign}${b.phase2RatioChange}%p)\n` +
+      `- Phase 2 비율: ${b.phase2Ratio != null ? `${b.phase2Ratio}%` : 'N/A'} (전일 대비 ${changeSign}${b.phase2RatioChange}%p)\n` +
       `- 시장 평균 RS: ${b.marketAvgRs}`,
     );
   }
@@ -531,11 +531,11 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
         ? ` (Phase ${s.prevGroupPhase}->${s.groupPhase})`
         : ` (Phase ${s.groupPhase})`;
       const momentum = s.change4w != null ? `, 4주 ${s.change4w > 0 ? "+" : ""}${s.change4w}` : "";
-      return `- ${s.sector}: RS ${s.avgRs}${phaseChange}, Phase2 비율 ${s.phase2Ratio}%${momentum}, 5일 1->2 전환 ${s.phase1to2Count5d}건`;
+      return `- ${s.sector}: RS ${s.avgRs}${phaseChange}, Phase2 비율 ${s.phase2Ratio != null ? `${s.phase2Ratio}%` : 'N/A'}${momentum}, 5일 1->2 전환 ${s.phase1to2Count5d}건`;
     });
 
     const bottomLines = bottom3.map((s) =>
-      `- ${s.sector}: RS ${s.avgRs} (Phase ${s.groupPhase}), Phase2 비율 ${s.phase2Ratio}%`,
+      `- ${s.sector}: RS ${s.avgRs} (Phase ${s.groupPhase}), Phase2 비율 ${s.phase2Ratio != null ? `${s.phase2Ratio}%` : 'N/A'}`,
     );
 
     sections.push(
