@@ -2,7 +2,7 @@
 
 **Status:** Active (운영 중)
 **Created:** 2026-03-04
-**Last Updated:** 2026-03-08
+**Last Updated:** 2026-03-13
 
 ---
 
@@ -29,9 +29,9 @@
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │     ETL      │    │   Debate     │    │    Agent     │
 │              │    │              │    │              │
-│ Stock Phases │───▶│ 4 Ministers  │───▶│Claude Sonnet │
-│ Sector RS    │    │ 3-Round Talk │    │ + 17 Tools   │
-│ Industry RS  │    │ + Moderator  │    │ + Fundamental│
+│ Stock Phases │───▶│Multi-Model   │───▶│Claude Sonnet │
+│ Sector RS    │    │GPT-4o/Gemini│    │ + 17 Tools   │
+│ Industry RS  │    │/Claude 4명   │    │ + Fundamental│
 └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
        │                   │                   │
        │            ┌──────▼───────┐           │
@@ -85,7 +85,7 @@ ETL 주간:   일 UTC 07:00 (KST 16:00)
 | F2 | Agent Core | **완료** | Claude agentic loop, 16개 + 내부 유틸 1개 도구, 일간/주간 분리 |
 | F4 | Tracking System | **완료** | 추천 성과 트래킹, Phase 이탈 감지 |
 | F5 | Report & Delivery | **완료** | Discord 발송, Gist MD 첨부, 리뷰 파이프라인 |
-| F6 | Debate & Evolution | **완료 — 운영 중** | 4명 애널리스트 3라운드 토론 + thesis + 학습 루프 |
+| F6 | Debate & Evolution | **완료 — 운영 중** | 멀티 모델(GPT-4o/Gemini/Claude) 3라운드 토론 + thesis + 학습 루프 |
 | F7 | Fundamental Validation | **완료** | Minervini SEPA 스코어링 + 전체 종목 확장 |
 | Phase A | Learning Loop | **완료** | 세션 저장, few-shot 주입, 원인 분석, 패턴 승격 |
 | Phase A+ | Signal Validation | **완료** | 초입 포착 도구 유효성 검증 + 편향 감지 + QA 정상화 |
@@ -134,8 +134,8 @@ Layer 2: 에이전트 코어 (F2 + F5) — Done
 Layer 3: 추적 시스템 (F4) — Done
   추천 종목 성과 트래킹 + Phase 이탈 감지
 
-Layer 4: 애널리스트 토론 시스템 (F6) — Done
-  4명 × 3라운드 + thesis 저장 + 조건부 Discord 알림
+Layer 4: 멀티 모델 토론 시스템 (F6) — Done
+  GPT-4o(매크로)/Gemini(테크)/Claude(지정학·심리) × 3라운드 + 폴백 + thesis 저장
 
 Layer 5: Thesis 추적 + 학습 루프 (F6 확장) — Done
   LLM 자동 검증 + 원인 분석 + 패턴 승격 + 기억 주입
@@ -183,7 +183,7 @@ Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
 | 프로젝트 구조 | 별도 레포 (`market-analyst`) | 관심사 완전 분리, 독립 CI/CD |
 | DB 공유 | screener와 같은 Supabase | 기존 가격/재무 데이터 재활용, 중복 없음 |
 | 실행 환경 | Claude API + Tool Use (Node.js ESM) | 완전한 제어권, 도구 설계 자유 |
-| 모델 | Claude Sonnet 4 (Anthropic SDK) | 비용-품질 균형, 일간 다중 호출에 적합 |
+| 모델 | Claude Sonnet 4 + GPT-4o + Gemini 2.0 Flash | 멀티 모델 다양성으로 확증편향 완화, Claude 폴백으로 안정성 확보 |
 | Phase 기준 | Weinstein Stage Analysis (8개 조건) | 체계적 프레임워크, 정량 판별 가능 |
 | 섹터 시그널 | RS 가속도 + 브레드스 | 다수 종목 동반 상승 확인 |
 | 카탈리스트 | Brave Search API | 뉴스 검색 비용 합리적, 빠른 결과 |
@@ -203,7 +203,9 @@ Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
 | 의존성 | 용도 | 비용 |
 |--------|------|------|
 | Supabase (PostgreSQL) | 공유 DB — screener 기존 테이블 + 신규 테이블 | 기존 플랜 |
-| Claude API (Anthropic) | Agent 추론 엔진 (Sonnet 4) | ~$15/월 (전체) |
+| Claude API (Anthropic) | Agent 추론 + 토론 (지정학/심리/모더레이터) | ~$15/월 (전체) |
+| OpenAI API | 토론 매크로 애널리스트 (GPT-4o) | API 과금 |
+| Google Generative AI | 토론 테크 애널리스트 (Gemini 2.0 Flash) | API 과금 |
 | Discord Webhook | 리포트 발송 (일간/주간/에러 채널) | 무료 |
 | Brave Search API | 카탈리스트 뉴스 검색 | 무료 티어 (월 2,000건) |
 | GitHub Actions | 스케줄링 (ETL, 토론, 에이전트, QA) | 무료 티어 |
@@ -256,8 +258,9 @@ market-analyst/
 │   │   ├── gist.ts             # GitHub Gist 업로드
 │   │   ├── reportLog.ts        # 리포트 이력 JSON I/O
 │   │   ├── logger.ts           # 구조화된 로깅
-│   │   ├── debate/             # F6: 애널리스트 토론 + 학습 루프
+│   │   ├── debate/             # F6: 멀티 모델 토론 + 학습 루프
 │   │   │   ├── debateEngine.ts     # 3라운드 토론 오케스트레이터
+│   │   │   ├── llm/               # LLM Provider 추상화 (Anthropic/OpenAI/Gemini + 폴백)
 │   │   │   ├── thesisVerifier.ts   # LLM 기반 자동 검증
 │   │   │   ├── causalAnalyzer.ts   # 원인 분석
 │   │   │   ├── sessionStore.ts     # 세션 저장 + 유사 세션 검색

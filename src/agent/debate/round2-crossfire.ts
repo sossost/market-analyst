@@ -1,11 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { callAgent } from "./callAgent.js";
+import type { LLMProvider } from "./llm/index.js";
 import { logger } from "../logger.js";
 import type { AgentPersona, RoundOutput, DebateRound } from "../../types/debate.js";
 import type { PersonaDefinition } from "../../types/debate.js";
 
 interface Round2Input {
-  client: Anthropic;
+  /** persona.model에서 provider를 생성하는 팩토리 함수 */
+  getProvider: (model: string) => LLMProvider;
   experts: PersonaDefinition[];
   round1Outputs: RoundOutput[];
   question: string;
@@ -67,9 +67,10 @@ ${othersAnalysis}
 /**
  * Round 2 — Crossfire.
  * Each expert reads others' Round 1 analysis and provides rebuttals/supplements.
+ * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound2(input: Round2Input): Promise<Round2Result> {
-  const { client, experts, round1Outputs, question } = input;
+  const { getProvider, experts, round1Outputs, question } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -77,9 +78,7 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
 
   // Only include experts that produced Round 1 output
   const activePersonas = new Set(round1Outputs.map((o) => o.persona));
-  const activeExperts = experts.filter(
-    (e) => activePersonas.has(e.name as AgentPersona),
-  );
+  const activeExperts = experts.filter((e) => activePersonas.has(e.name as AgentPersona));
 
   // Rate limit 회피: 2명씩 배치, 배치 간 딜레이
   const BATCH_SIZE = 2;
@@ -95,8 +94,10 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
       batch.map(async (expert) => {
         const persona = expert.name as AgentPersona;
         const userMessage = buildCrossfirePrompt(persona, round1Outputs, question);
-        const result = await callAgent(client, expert.systemPrompt, userMessage, {
-          disableTools: true,
+        const provider = getProvider(expert.model);
+        const result = await provider.call({
+          systemPrompt: expert.systemPrompt,
+          userMessage,
         });
         return { persona, result };
       }),
@@ -108,11 +109,15 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
         outputs.push({ persona, content: result.content });
         totalInput += result.tokensUsed.input;
         totalOutput += result.tokensUsed.output;
-        logger.info("Round2", `${persona} completed (${result.tokensUsed.output} output tokens)`);
+        logger.info(
+          "Round2",
+          `${persona} completed (${result.tokensUsed.output} output tokens)`,
+        );
       } else {
-        const errorMsg = settled.reason instanceof Error
-          ? settled.reason.message
-          : String(settled.reason);
+        const errorMsg =
+          settled.reason instanceof Error
+            ? settled.reason.message
+            : String(settled.reason);
         logger.error("Round2", `Crossfire failed: ${errorMsg}`);
       }
     }

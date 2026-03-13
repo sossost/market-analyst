@@ -1,11 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { callAgent, type AgentCallResult } from "./callAgent.js";
+import type { LLMProvider } from "./llm/index.js";
 import { logger } from "../logger.js";
 import type { AgentPersona, RoundOutput, DebateRound } from "../../types/debate.js";
 import type { PersonaDefinition } from "../../types/debate.js";
 
 interface Round1Input {
-  client: Anthropic;
+  /** persona.model에서 provider를 생성하는 팩토리 함수 */
+  getProvider: (model: string) => LLMProvider;
   experts: PersonaDefinition[];
   question: string;
   memoryContext: string;
@@ -21,9 +21,10 @@ interface Round1Result {
 /**
  * Round 1 — Independent Analysis.
  * 4 experts answer the same question in parallel, unaware of each other's responses.
+ * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound1(input: Round1Input): Promise<Round1Result> {
-  const { client, experts, question, memoryContext, newsContext = {} } = input;
+  const { getProvider, experts, question, memoryContext, newsContext = {} } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -48,12 +49,13 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
 
         // 애널리스트별 뉴스 컨텍스트를 질문에 추가
         const personaNews = newsContext[expert.name] ?? "";
-        const fullQuestion = personaNews.length > 0
-          ? `${question}\n\n---\n\n${personaNews}`
-          : question;
+        const fullQuestion =
+          personaNews.length > 0 ? `${question}\n\n---\n\n${personaNews}` : question;
 
-        const result = await callAgent(client, systemPrompt, fullQuestion, {
-          disableTools: true,
+        const provider = getProvider(expert.model);
+        const result = await provider.call({
+          systemPrompt,
+          userMessage: fullQuestion,
         });
         return { persona: expert.name as AgentPersona, result };
       }),
@@ -66,11 +68,15 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
         outputs.push({ persona, content: result.content });
         totalInput += result.tokensUsed.input;
         totalOutput += result.tokensUsed.output;
-        logger.info("Round1", `${persona} completed (${result.tokensUsed.output} output tokens)`);
+        logger.info(
+          "Round1",
+          `${persona} completed (${result.tokensUsed.output} output tokens)`,
+        );
       } else {
-        const errorMsg = settled.reason instanceof Error
-          ? settled.reason.message
-          : String(settled.reason);
+        const errorMsg =
+          settled.reason instanceof Error
+            ? settled.reason.message
+            : String(settled.reason);
         logger.error("Round1", `${batch[index].name} failed: ${errorMsg}`);
       }
     }

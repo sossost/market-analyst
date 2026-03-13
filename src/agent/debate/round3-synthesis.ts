@@ -1,5 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { callAgent } from "./callAgent.js";
+import type { LLMProvider } from "./llm/index.js";
 import { logger } from "../logger.js";
 import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition } from "../../types/debate.js";
 import type { FundamentalScore } from "../../types/fundamental.js";
@@ -7,7 +6,7 @@ import type { FundamentalScore } from "../../types/fundamental.js";
 const MODERATOR_MAX_TOKENS = 8192;
 
 interface Round3Input {
-  client: Anthropic;
+  provider: LLMProvider;
   moderator: PersonaDefinition;
   round1Outputs: RoundOutput[];
   round2Outputs: RoundOutput[];
@@ -467,12 +466,13 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { client, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext } = input;
+  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext } = input;
 
   const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext);
-  const result = await callAgent(client, moderator.systemPrompt, userMessage, {
+  const result = await provider.call({
+    systemPrompt: moderator.systemPrompt,
+    userMessage,
     maxTokens: MODERATOR_MAX_TOKENS,
-    disableTools: true,
   });
 
   const { theses, cleanReport, marketRegime } = extractDebateOutput(result.content);

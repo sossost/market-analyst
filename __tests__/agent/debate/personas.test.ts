@@ -29,12 +29,28 @@ describe("personas", () => {
       }
     });
 
-    it("each persona has description and model", () => {
+    it("each persona has non-empty description and model", () => {
       const experts = loadExpertPersonas();
       for (const persona of experts) {
         expect(persona.description).toBeTruthy();
-        expect(persona.model).toBe("sonnet");
+        expect(persona.model.length).toBeGreaterThan(0);
       }
+    });
+
+    it("macro-economist uses gpt-4o, tech-analyst uses gemini-2.0-flash", () => {
+      const experts = loadExpertPersonas();
+      const macro = experts.find((e) => e.name === "macro");
+      const tech = experts.find((e) => e.name === "tech");
+      expect(macro?.model).toBe("gpt-4o");
+      expect(tech?.model).toBe("gemini-2.0-flash");
+    });
+
+    it("geopolitics and sentiment keep Claude (sonnet)", () => {
+      const experts = loadExpertPersonas();
+      const geopolitics = experts.find((e) => e.name === "geopolitics");
+      const sentiment = experts.find((e) => e.name === "sentiment");
+      expect(geopolitics?.model).toBe("sonnet");
+      expect(sentiment?.model).toBe("sonnet");
     });
   });
 
