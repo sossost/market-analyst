@@ -128,9 +128,12 @@ export const getMarketBreadth: AgentTool = {
       const latestTrend = weeklyTrend[weeklyTrend.length - 1];
       const firstTrend = weeklyTrend[0];
 
-      // phase2RatioChange: 주초 대비 변화
+      // phase2RatioChange: 주초 대비 변화 (null은 이중변환 감지 시 발생 — NaN으로 처리)
       const phase2RatioChange =
-        latestTrend != null && firstTrend != null
+        latestTrend != null &&
+        firstTrend != null &&
+        latestTrend.phase2Ratio != null &&
+        firstTrend.phase2Ratio != null
           ? Number((latestTrend.phase2Ratio - firstTrend.phase2Ratio).toFixed(1))
           : 0;
 
@@ -350,7 +353,7 @@ export const getMarketBreadth: AgentTool = {
       phase2Ratio: clampPercent(
         Number((phase2Ratio * 100).toFixed(1)),
         "daily:phase2Ratio",
-      ),
+      ) ?? 0,
       phase2RatioChange: Number(
         ((phase2Ratio - prevPhase2Ratio) * 100).toFixed(1),
       ),

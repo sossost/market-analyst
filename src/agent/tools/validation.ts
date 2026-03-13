@@ -51,16 +51,19 @@ export const MIN_PHASE = 2;
 export const MIN_RS_SCORE = 60;
 
 /**
- * 퍼센트 값이 0~100 범위를 벗어나면 경고 후 클램핑한다.
- * DB에서 0~1 비율을 *100 변환한 뒤 호출하여 이중 변환 방어.
+ * 퍼센트 값이 0~100 범위를 벗어나면 처리한다.
+ * - 100 초과: 이중 변환 버그 가능성 → error 로그 후 null 반환.
+ *   null을 반환하면 comparePhase2Ratio에서 mismatch가 강제 발생하여
+ *   QA 경고가 Discord에 삽입된다.
+ * - 음수: 비정상 값 → warn 로그 후 0으로 클램핑.
  */
-export function clampPercent(value: number, label: string): number {
+export function clampPercent(value: number, label: string): number | null {
   if (value > MAX_PERCENT) {
-    logger.warn(
+    logger.error(
       "clampPercent",
-      `${label} = ${value} exceeds ${MAX_PERCENT}%. Clamping to ${MAX_PERCENT}. Possible double conversion.`,
+      `${label} = ${value} exceeds ${MAX_PERCENT}%. Possible double conversion (e.g. ×100 applied twice). Returning null to force QA mismatch.`,
     );
-    return MAX_PERCENT;
+    return null;
   }
   if (value < 0) {
     logger.warn(

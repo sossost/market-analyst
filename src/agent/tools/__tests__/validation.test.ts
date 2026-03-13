@@ -13,14 +13,14 @@ describe("clampPercent", () => {
     expect(clampPercent(50.5, "test")).toBe(50.5);
   });
 
-  it("clamps to 100 when value exceeds 100 (double conversion guard)", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("returns null when value exceeds 100 — forces QA mismatch", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = clampPercent(3520.0, "phase2Ratio");
 
-    expect(result).toBe(100);
-    expect(warnSpy).toHaveBeenCalledOnce();
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(result).toBeNull();
+    expect(errorSpy).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("3520"),
     );
   });
@@ -37,31 +37,35 @@ describe("clampPercent", () => {
     );
   });
 
-  it("includes label in warning message for debugging", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("includes label in error message for debugging", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     clampPercent(200, "sector:Technology:phase2Ratio");
 
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("sector:Technology:phase2Ratio"),
     );
   });
 
-  it("does not warn for boundary value 100", () => {
+  it("does not warn or error for boundary value 100", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = clampPercent(100, "boundary");
 
     expect(result).toBe(100);
     expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it("does not warn for boundary value 0", () => {
+  it("does not warn or error for boundary value 0", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = clampPercent(0, "boundary");
 
     expect(result).toBe(0);
     expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

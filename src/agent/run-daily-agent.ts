@@ -65,9 +65,10 @@ function createReportLogCaptureTool(
 }
 
 /**
- * QA block severity 시 경고 블록이 앞에 삽입된 새 drafts 배열을 반환한다.
+ * QA warn 이상 severity 시 경고 블록이 앞에 삽입된 새 drafts 배열을 반환한다.
+ * 원본 drafts는 변경하지 않는다.
  */
-function withQAWarning(drafts: ReportDraft[], qaResult: DailyQAResult): ReportDraft[] {
+export function withQAWarning(drafts: ReportDraft[], qaResult: DailyQAResult): ReportDraft[] {
   if (drafts.length === 0) return drafts;
 
   const lines = qaResult.mismatches.map((m) =>
@@ -240,8 +241,9 @@ async function main() {
       const qaResult = await runDailyQA(targetDate, capturedReport.data);
       logger.info("DailyQA", `severity: ${qaResult.severity}, mismatches: ${qaResult.mismatches.length}, checked: ${qaResult.checkedItems}`);
 
-      if (qaResult.severity === "block") {
-        logger.warn("DailyQA", "BLOCK — 경고 문구를 리포트에 삽입합니다");
+      if (qaResult.severity === "block" || qaResult.severity === "warn") {
+        const level = qaResult.severity === "block" ? "BLOCK" : "WARN";
+        logger.warn("DailyQA", `${level} — 경고 문구를 리포트에 삽입합니다`);
         finalDrafts = withQAWarning(reportDrafts, qaResult);
       }
     } catch (err) {
