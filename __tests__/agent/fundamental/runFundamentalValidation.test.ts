@@ -101,7 +101,7 @@ function extractSql(query: unknown): string {
  * 호출 순서에 의존하지 않아 유지보수성이 높다.
  */
 function setupDbForCanSkip(existingScores: FundamentalScore[]) {
-  const dbExecute = vi.mocked(db.execute);
+  const dbExecute = vi.mocked(db.execute) as any;
 
   dbExecute.mockImplementation(async (query: unknown) => {
     const sql = extractSql(query);
@@ -151,7 +151,7 @@ function setupDbForCanSkip(existingScores: FundamentalScore[]) {
 }
 
 function setupDbForFullScoring(symbols: string[]) {
-  const dbExecute = vi.mocked(db.execute);
+  const dbExecute = vi.mocked(db.execute) as any;
 
   dbExecute.mockImplementation(async (query: unknown) => {
     const sql = extractSql(query);
@@ -207,12 +207,13 @@ describe("runFundamentalValidation", () => {
       vi.mocked(loadFundamentalData).mockResolvedValue([nvdaInput]);
 
       vi.mocked(analyzeFundamentals).mockResolvedValue({
+        symbol: "NVDA",
         narrative: "AI 인프라 사이클 핵심 수혜",
         tokensUsed: { input: 1000, output: 500 },
       });
 
       vi.mocked(generateStockReport).mockReturnValue("# NVDA 리포트");
-      vi.mocked(publishStockReport).mockResolvedValue(undefined);
+      vi.mocked(publishStockReport).mockResolvedValue({ gistUrl: null });
 
       const result = await runFundamentalValidation();
 
@@ -240,7 +241,8 @@ describe("runFundamentalValidation", () => {
       vi.mocked(loadFundamentalData).mockResolvedValue([nvdaInput]);
 
       vi.mocked(analyzeFundamentals).mockResolvedValue({
-        narrative: "분석 내용",
+        symbol: "NVDA",
+        narrative: "분析 내용",
         tokensUsed: { input: 500, output: 200 },
       });
 
@@ -286,12 +288,13 @@ describe("runFundamentalValidation", () => {
       vi.mocked(promoteTopToS).mockReturnValue([sScore, aScore]);
 
       vi.mocked(analyzeFundamentals).mockResolvedValue({
+        symbol: "NVDA",
         narrative: "GPU 수요 폭발",
         tokensUsed: { input: 800, output: 400 },
       });
 
       vi.mocked(generateStockReport).mockReturnValue("# NVDA 리포트");
-      vi.mocked(publishStockReport).mockResolvedValue(undefined);
+      vi.mocked(publishStockReport).mockResolvedValue({ gistUrl: null });
 
       const result = await runFundamentalValidation();
 
