@@ -19,16 +19,16 @@ const LOG_LEVEL_RANK: Record<LogLevel, number> = {
 const VALID_LOG_LEVELS = new Set<string>(["debug", "info", "warn", "error"]);
 const DEFAULT_LOG_LEVEL: LogLevel = "info";
 
-function resolveLogLevel(): LogLevel {
+const resolvedLogLevel = ((): LogLevel => {
   const raw = process.env["LOG_LEVEL"];
-  if (raw == null || !VALID_LOG_LEVELS.has(raw)) {
-    return DEFAULT_LOG_LEVEL;
+  if (raw != null && VALID_LOG_LEVELS.has(raw)) {
+    return raw as LogLevel;
   }
-  return raw as LogLevel;
-}
+  return DEFAULT_LOG_LEVEL;
+})();
+const configuredRank = LOG_LEVEL_RANK[resolvedLogLevel];
 
 function isLevelEnabled(level: LogLevel): boolean {
-  const configuredRank = LOG_LEVEL_RANK[resolveLogLevel()];
   const requestedRank = LOG_LEVEL_RANK[level];
   return requestedRank >= configuredRank;
 }
