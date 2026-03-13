@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { logger } from "@/agent/logger";
 
 const connectionString = process.env.DATABASE_URL;
 if (connectionString == null || connectionString === "") {
@@ -24,10 +25,7 @@ const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("Unexpected database pool error:", {
-    message: err.message,
-    code: (err as NodeJS.ErrnoException).code,
-  });
+  logger.error("DB_POOL", `Unexpected database pool error: ${err.message} (code: ${(err as NodeJS.ErrnoException).code})`);
 });
 
 export const db = drizzle(pool);

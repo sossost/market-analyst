@@ -1,3 +1,7 @@
+import { logger } from "@/agent/logger";
+
+const TAG = "VALIDATION";
+
 export interface ValidationResult {
   isValid: boolean;
   errors: string[];
@@ -81,12 +85,12 @@ export function assertValidEnvironment(): void {
   const result = validateEnvironment();
 
   for (const warning of result.warnings) {
-    console.warn(`Warning: ${warning}`);
+    logger.warn(TAG, `Warning: ${warning}`);
   }
 
   if (!result.isValid) {
     for (const error of result.errors) {
-      console.error(`Error: ${error}`);
+      logger.error(TAG, `Error: ${error}`);
     }
     process.exit(1);
   }
@@ -99,12 +103,12 @@ export function assertValidApiEnvironment(): void {
   const result = validateEnvironmentVariables();
 
   for (const warning of result.warnings) {
-    console.warn(`Warning: ${warning}`);
+    logger.warn(TAG, `Warning: ${warning}`);
   }
 
   if (!result.isValid) {
     for (const error of result.errors) {
-      console.error(`Error: ${error}`);
+      logger.error(TAG, `Error: ${error}`);
     }
     process.exit(1);
   }
