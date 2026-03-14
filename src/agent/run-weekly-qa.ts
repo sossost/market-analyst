@@ -119,7 +119,7 @@ async function collectData(): Promise<CollectedData> {
         "recent_reports",
         `SELECT report_date::text, type
          FROM daily_reports
-         WHERE report_date > NOW() - INTERVAL '7 days'
+         WHERE report_date > (NOW() - INTERVAL '7 days')::date
          ORDER BY report_date DESC`,
       ),
       queryOrNull<VerificationMethodRow>(
