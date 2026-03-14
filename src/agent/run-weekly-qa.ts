@@ -406,11 +406,11 @@ async function main() {
 
   // 3. LLM 호출 (CLI → SDK 폴백)
   logger.step("[3/5] LLM 분석 요청...");
-  const provider = new FallbackProvider(
-    new ClaudeCliProvider(),
-    new AnthropicProvider(FALLBACK_MODEL),
-    "ClaudeCLI",
-  );
+  const cli = new ClaudeCliProvider();
+  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
+  const provider = hasApiKey
+    ? new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI")
+    : cli;
   const userPrompt = buildUserPrompt(data, today);
 
   const llmResult = await provider.call({
