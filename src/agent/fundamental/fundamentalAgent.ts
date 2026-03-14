@@ -4,18 +4,27 @@
  * 정량 스코어 + 원시 실적 데이터를 받아
  * LLM이 투자 내러티브를 생성한다.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { callWithRetry } from "../debate/callAgent.js";
 import { logger } from "../logger.js";
+import { ClaudeCliProvider } from "../debate/llm/claudeCliProvider.js";
+import { AnthropicProvider } from "../debate/llm/anthropicProvider.js";
+import { FallbackProvider } from "../debate/llm/fallbackProvider.js";
+import type { LLMProvider } from "../debate/llm/types.js";
 import type { FundamentalScore, FundamentalInput, DataQualityVerdict } from "../../types/fundamental.js";
 import type { StockReportContext } from "./stockReport.js";
 
 const PERSONA_PATH = resolve(import.meta.dirname, "../../../.claude/agents/fundamental-analyst.md");
-const MODEL = "claude-sonnet-4-6-20250725";
+const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 const MAX_NARRATIVE_LENGTH = 6000;
+
+function createFundamentalProvider(): LLMProvider {
+  const cli = new ClaudeCliProvider();
+  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
+  if (!hasApiKey) return cli;
+  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
+}
 
 interface FundamentalAnalysis {
   symbol: string;
@@ -174,7 +183,6 @@ function formatLargeNumber(n: number): string {
 }
 
 export async function analyzeFundamentals(
-  client: Anthropic,
   score: FundamentalScore,
   input: FundamentalInput,
   technical?: StockReportContext["technical"],
@@ -185,19 +193,14 @@ export async function analyzeFundamentals(
 
   logger.info("Fundamental", `Analyzing ${score.symbol} (grade: ${score.grade})`);
 
-  const response = await callWithRetry(() =>
-    client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    }),
-  );
+  const provider = createFundamentalProvider();
+  const result = await provider.call({
+    systemPrompt,
+    userMessage,
+    maxTokens: MAX_TOKENS,
+  });
 
-  const rawNarrative = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+  const rawNarrative = result.content;
 
   const { verdict, reason, cleanedNarrative } = isTopGrade
     ? extractDataQualityVerdict(rawNarrative)
@@ -211,10 +214,7 @@ export async function analyzeFundamentals(
   return {
     symbol: score.symbol,
     narrative: trimmedNarrative,
-    tokensUsed: {
-      input: response.usage.input_tokens,
-      output: response.usage.output_tokens,
-    },
+    tokensUsed: result.tokensUsed,
     dataQualityVerdict: verdict,
     dataQualityReason: reason,
   };

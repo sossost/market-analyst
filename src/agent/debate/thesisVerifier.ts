@@ -1,14 +1,23 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { loadActiveTheses, resolveThesis, saveCausalAnalysis } from "./thesisStore.js";
 import { analyzeCauses } from "./causalAnalyzer.js";
-import { callWithRetry } from "./callAgent.js";
 import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
 import { logger } from "../logger.js";
+import { ClaudeCliProvider } from "./llm/claudeCliProvider.js";
+import { AnthropicProvider } from "./llm/anthropicProvider.js";
+import { FallbackProvider } from "./llm/fallbackProvider.js";
+import type { LLMProvider } from "./llm/types.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { Thesis } from "../../types/debate.js";
 
-const MODEL = "claude-sonnet-4-6-20250725";
+const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
+
+function createVerifierProvider(): LLMProvider {
+  const cli = new ClaudeCliProvider();
+  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
+  if (!hasApiKey) return cli;
+  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
+}
 
 interface VerificationJudgment {
   thesisId: number;
@@ -136,23 +145,15 @@ ${thesesText}
 
 각 thesis를 검증하고 JSON 배열로 응답하세요.`;
 
-    const client = new Anthropic();
+    const provider = createVerifierProvider();
 
-    const response = await callWithRetry(() =>
-      client.messages.create({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userMessage }],
-      }),
-    );
+    const llmResult = await provider.call({
+      systemPrompt,
+      userMessage,
+      maxTokens: MAX_TOKENS,
+    });
 
-    const textBlocks = response.content.filter(
-      (block): block is Anthropic.TextBlock => block.type === "text",
-    );
-    const rawText = textBlocks.map((b) => b.text).join("\n");
-
-    llmJudgments = parseJudgments(rawText, llmTheses.map((t) => t.id));
+    llmJudgments = parseJudgments(llmResult.content, llmTheses.map((t) => t.id));
 
     // Apply LLM judgments — resolve in DB
     type ResolvedJudgment = VerificationJudgment & { verdict: "CONFIRMED" | "INVALIDATED" };
@@ -172,10 +173,7 @@ ${thesesText}
       ),
     );
 
-    tokensUsed = {
-      input: response.usage.input_tokens,
-      output: response.usage.output_tokens,
-    };
+    tokensUsed = llmResult.tokensUsed;
   }
 
   // Combine all resolved for stats and causal analysis

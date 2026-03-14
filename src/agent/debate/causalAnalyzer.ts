@@ -1,10 +1,19 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { findSessionByDate } from "./sessionStore.js";
-import { callWithRetry } from "./callAgent.js";
 import { logger } from "../logger.js";
+import { ClaudeCliProvider } from "./llm/claudeCliProvider.js";
+import { AnthropicProvider } from "./llm/anthropicProvider.js";
+import { FallbackProvider } from "./llm/fallbackProvider.js";
+import type { LLMProvider } from "./llm/types.js";
 
-const MODEL = "claude-sonnet-4-6-20250725";
+const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
+
+function createCausalProvider(): LLMProvider {
+  const cli = new ClaudeCliProvider();
+  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
+  if (!hasApiKey) return cli;
+  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
+}
 
 export interface CausalAnalysisInput {
   resolvedTheses: {
@@ -196,32 +205,24 @@ ${thesesText}
 
 각 thesis의 원인을 분석하고 JSON 배열로 응답하세요.`;
 
-  const client = new Anthropic();
+  const provider = createCausalProvider();
 
   logger.info("CausalAnalyzer", `Analyzing ${resolvedTheses.length} resolved theses`);
 
-  const response = await callWithRetry(() =>
-    client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    }),
-  );
-
-  const textBlocks = response.content.filter(
-    (block): block is Anthropic.TextBlock => block.type === "text",
-  );
-  const rawText = textBlocks.map((b) => b.text).join("\n");
+  const llmResult = await provider.call({
+    systemPrompt,
+    userMessage,
+    maxTokens: MAX_TOKENS,
+  });
 
   const results = parseCausalAnalysis(
-    rawText,
+    llmResult.content,
     resolvedTheses.map((t) => t.id),
   );
 
   logger.info(
     "CausalAnalyzer",
-    `Analyzed ${results.length}/${resolvedTheses.length} theses (${response.usage.input_tokens} in / ${response.usage.output_tokens} out)`,
+    `Analyzed ${results.length}/${resolvedTheses.length} theses (${llmResult.tokensUsed.input} in / ${llmResult.tokensUsed.output} out)`,
   );
 
   return results;

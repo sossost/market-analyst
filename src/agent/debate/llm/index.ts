@@ -4,4 +4,5 @@ export { AnthropicProvider } from "./anthropicProvider.js";
 export { OpenAIProvider } from "./openaiProvider.js";
 export { GeminiProvider } from "./geminiProvider.js";
 export { FallbackProvider } from "./fallbackProvider.js";
+export { ClaudeCliProvider } from "./claudeCliProvider.js";
 export { createProvider } from "./providerFactory.js";
