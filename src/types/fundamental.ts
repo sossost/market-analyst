@@ -5,6 +5,9 @@
 /** 펀더멘탈 등급 — S는 A급 중 상위 3개 */
 export type FundamentalGrade = "S" | "A" | "B" | "C" | "F";
 
+/** LLM 데이터 품질 검증 결과 */
+export type DataQualityVerdict = "CLEAN" | "SUSPECT";
+
 /** SEPA 개별 기준 판정 결과 */
 export interface SEPACriteria {
   /** 필수: EPS YoY 성장률 > 25% */
@@ -35,6 +38,8 @@ export interface FundamentalScore {
   requiredMet: number; // 0~2
   bonusMet: number; // 0~2 (ROE 미확보로 실질 최대 2)
   criteria: SEPACriteria;
+  /** S급 LLM 심층 분석 시 데이터 품질 검증 결과 (비S급은 미검증) */
+  dataQualityVerdict?: DataQualityVerdict;
 }
 
 /** DB에서 로드한 분기 실적 데이터 (스코어러 입력) */

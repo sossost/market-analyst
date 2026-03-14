@@ -210,6 +210,8 @@ describe("runFundamentalValidation", () => {
         symbol: "NVDA",
         narrative: "AI 인프라 사이클 핵심 수혜",
         tokensUsed: { input: 1000, output: 500 },
+        dataQualityVerdict: "CLEAN",
+        dataQualityReason: "",
       });
 
       vi.mocked(generateStockReport).mockReturnValue("# NVDA 리포트");
@@ -244,6 +246,8 @@ describe("runFundamentalValidation", () => {
         symbol: "NVDA",
         narrative: "분析 내용",
         tokensUsed: { input: 500, output: 200 },
+        dataQualityVerdict: "CLEAN",
+        dataQualityReason: "",
       });
 
       const result = await runFundamentalValidation({ skipPublish: true });
@@ -291,6 +295,8 @@ describe("runFundamentalValidation", () => {
         symbol: "NVDA",
         narrative: "GPU 수요 폭발",
         tokensUsed: { input: 800, output: 400 },
+        dataQualityVerdict: "CLEAN",
+        dataQualityReason: "",
       });
 
       vi.mocked(generateStockReport).mockReturnValue("# NVDA 리포트");

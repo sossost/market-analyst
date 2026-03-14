@@ -9,7 +9,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { callWithRetry } from "../debate/callAgent.js";
 import { logger } from "../logger.js";
-import type { FundamentalScore, FundamentalInput } from "../../types/fundamental.js";
+import type { FundamentalScore, FundamentalInput, DataQualityVerdict } from "../../types/fundamental.js";
 import type { StockReportContext } from "./stockReport.js";
 
 const PERSONA_PATH = resolve(import.meta.dirname, "../../../.claude/agents/fundamental-analyst.md");
@@ -21,6 +21,70 @@ interface FundamentalAnalysis {
   symbol: string;
   narrative: string;
   tokensUsed: { input: number; output: number };
+  dataQualityVerdict: DataQualityVerdict;
+  dataQualityReason: string;
+}
+
+/**
+ * LLM 응답에서 데이터 품질 검증 JSON을 추출한다.
+ *
+ * JSON 형식: `{"dataQualityVerdict": "CLEAN"|"SUSPECT", "dataQualityReason": "..."}`
+ * - 코드블록(```json ... ```) 내부 또는 인라인 텍스트 모두 지원
+ * - 파싱 실패 또는 JSON 없음: 보수적 폴백 `{ verdict: "CLEAN", reason: "" }` 반환
+ */
+export function extractDataQualityVerdict(rawNarrative: string): {
+  verdict: DataQualityVerdict;
+  reason: string;
+  cleanedNarrative: string;
+} {
+  const FALLBACK = { verdict: "CLEAN" as DataQualityVerdict, reason: "", cleanedNarrative: rawNarrative };
+
+  // 코드블록 패턴: ```json\n{...}\n``` 또는 ```\n{...}\n```
+  const codeBlockPattern = /```(?:json)?\s*(\{[^`]*"dataQualityVerdict"[^`]*\})\s*```/s;
+  // 인라인 패턴: {...dataQualityVerdict...}
+  const inlinePattern = /(\{[^{}]*"dataQualityVerdict"[^{}]*\})/;
+
+  const codeBlockMatch = rawNarrative.match(codeBlockPattern);
+  const inlineMatch = rawNarrative.match(inlinePattern);
+
+  const jsonString = codeBlockMatch?.[1] ?? inlineMatch?.[1] ?? null;
+  if (jsonString == null) {
+    return FALLBACK;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch {
+    return FALLBACK;
+  }
+
+  if (
+    parsed == null ||
+    typeof parsed !== "object" ||
+    !("dataQualityVerdict" in parsed)
+  ) {
+    return FALLBACK;
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const verdict = obj["dataQualityVerdict"];
+  const reason = obj["dataQualityReason"];
+
+  if (verdict !== "CLEAN" && verdict !== "SUSPECT") {
+    return FALLBACK;
+  }
+
+  // narrative에서 JSON 블록 제거 (raw JSON 노출 방지)
+  const cleanedNarrative = codeBlockMatch != null
+    ? rawNarrative.replace(codeBlockPattern, "").trim()
+    : rawNarrative.replace(inlinePattern, "").trim();
+
+  return {
+    verdict,
+    reason: typeof reason === "string" ? reason : "",
+    cleanedNarrative,
+  };
 }
 
 function loadPersonaPrompt(): string {
@@ -82,6 +146,16 @@ export function buildUserMessage(
   if (isTopGrade === true) {
     lines.push(
       "이 종목은 S등급(Top 3 슈퍼퍼포머)입니다. 페르소나 문서의 'S등급 종목 심층 분석' 포맷에 따라 6개 섹션으로 심층 분석해주세요.",
+      "",
+      "## 데이터 품질 검증 (필수)",
+      "아래 관점에서 이 성장률이 실제 영업 성과인지 판단하라:",
+      "1. 누적 보고 의심: 매출/EPS가 특정 분기에 급격히 점프한 후 다음 분기 급락 (재무제표 재작성 패턴)",
+      "2. M&A/사업 매각: 단기 급증 후 기저가 바뀌어 YoY 비교가 무의미한 경우",
+      "3. 통화 불일치: 외화 보고 기업의 환율 효과가 성장률의 대부분을 설명하는 경우",
+      "4. 단위 변경: 특정 분기의 절댓값이 이전/이후 분기와 10배 이상 차이",
+      "",
+      '판단 결과를 반드시 아래 JSON 형식으로 분석 말미에 포함하라. dataQualityVerdict 값은 "CLEAN" 또는 "SUSPECT" 중 하나여야 한다. 예시:',
+      '{"dataQualityVerdict": "CLEAN", "dataQualityReason": "누적 보고나 단위 변경 등의 이슈 없이 일관된 성장세를 보임."}',
     );
   } else {
     lines.push("위 데이터를 바탕으로 이 종목의 펀더멘탈을 2-3문단으로 해석해주세요.");
@@ -125,17 +199,23 @@ export async function analyzeFundamentals(
     .map((b) => b.text)
     .join("\n");
 
-  const narrative =
-    rawNarrative.length > MAX_NARRATIVE_LENGTH
-      ? rawNarrative.slice(0, MAX_NARRATIVE_LENGTH) + "…"
-      : rawNarrative;
+  const { verdict, reason, cleanedNarrative } = isTopGrade
+    ? extractDataQualityVerdict(rawNarrative)
+    : { verdict: "CLEAN" as DataQualityVerdict, reason: "", cleanedNarrative: rawNarrative };
+
+  const trimmedNarrative =
+    cleanedNarrative.length > MAX_NARRATIVE_LENGTH
+      ? cleanedNarrative.slice(0, MAX_NARRATIVE_LENGTH) + "…"
+      : cleanedNarrative;
 
   return {
     symbol: score.symbol,
-    narrative,
+    narrative: trimmedNarrative,
     tokensUsed: {
       input: response.usage.input_tokens,
       output: response.usage.output_tokens,
     },
+    dataQualityVerdict: verdict,
+    dataQualityReason: reason,
   };
 }

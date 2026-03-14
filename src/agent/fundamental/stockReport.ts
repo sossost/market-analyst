@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { sendDiscordFile } from "../discord.js";
 import { createGist } from "../gist.js";
 import { logger } from "../logger.js";
-import type { FundamentalScore, FundamentalInput } from "../../types/fundamental.js";
+import type { DataQualityVerdict, FundamentalScore, FundamentalInput } from "../../types/fundamental.js";
 
 const DISCORD_WEBHOOK_ENV = "DISCORD_STOCK_REPORT_WEBHOOK_URL";
 
@@ -28,6 +28,10 @@ export interface StockReportContext {
     sector: string;
     industry: string;
   };
+  /** S급 LLM 데이터 품질 검증 결과 */
+  dataQualityVerdict?: DataQualityVerdict;
+  /** A→S 보충 승격 여부 */
+  isPromoted?: boolean;
 }
 
 export function generateStockReport(ctx: StockReportContext): string {
@@ -37,7 +41,9 @@ export function generateStockReport(ctx: StockReportContext): string {
   const lines: string[] = [
     `# [${score.symbol}] 종목 심층 분석`,
     "",
-    `> 분석일: ${date} | 펀더멘탈 등급: **${score.grade}**`,
+    ctx.dataQualityVerdict === "CLEAN"
+      ? `> 분석일: ${date} | 펀더멘탈 등급: **${ctx.isPromoted === true ? "S (보충 승격)" : score.grade}** | 데이터 품질: ✅ 검증 통과`
+      : `> 분석일: ${date} | 펀더멘탈 등급: **${score.grade}**`,
     "",
   ];
 
