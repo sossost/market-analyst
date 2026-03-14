@@ -2,7 +2,7 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 130+ TS files · **Frontend** 85 TS/TSX files · **Tests** 1,137+ · **Open Issues** 5
+> **Backend** 156 TS files · **Frontend** 110 TS/TSX files · **Tests** 1,199 · **Open Issues** 13
 
 ## How It Works
 
@@ -101,7 +101,7 @@ yarn fe:build               # 프로덕션 빌드
 yarn fe:test                # 프론트엔드 테스트
 
 # 테스트
-yarn test                   # 전체 테스트 (1,137+ tests)
+yarn test                   # 전체 테스트 (1,199 tests)
 yarn test:watch             # 워치 모드
 yarn typecheck              # 타입 체크
 
@@ -268,7 +268,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Runtime | Node.js 20+ (ESM) |
 | Language | TypeScript (strict) |
 | Package Manager | Yarn (Classic 1.x) |
-| AI | Claude Sonnet 4, GPT-4o, Gemini 2.0 Flash (멀티 모델 토론) |
+| AI | Claude Sonnet 4.6, GPT-4o, Gemini 2.0 Flash (멀티 모델 토론) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
 | Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR |
 | Auth | Supabase Auth (Magic Link) |
@@ -303,7 +303,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 ### Next (진행 예정)
 
-- [ ] **멀티 모델 토론** — GPT-4o(매크로)/Gemini(테크)/Claude(지정학·심리) 확증편향 구조적 완화 + Claude 자동 폴백 (PR 대기)
+- [x] **멀티 모델 토론** — GPT-4o(매크로)/Gemini(테크)/Claude(지정학·심리) 확증편향 구조적 완화 + Claude 자동 폴백
 - [ ] **Phase N-2** 검증 인프라 — 홀드아웃 테스트 + 위양성 비용 리포트 (데이터 축적 대기, 3/22~)
 - [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
