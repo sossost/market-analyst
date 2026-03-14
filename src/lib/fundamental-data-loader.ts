@@ -7,6 +7,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import type { FundamentalInput, QuarterlyData } from "../types/fundamental.js";
+import { parseQuarterStr } from "./quarter-utils.js";
 
 const QUARTERS_TO_LOAD = 8;
 const MAX_SYMBOLS_PER_QUERY = 500;
@@ -70,8 +71,8 @@ export function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInp
     const quarters = map.get(row.symbol)!;
     if (quarters.length >= QUARTERS_TO_LOAD) continue;
 
-    // 같은 as_of_q가 이미 존재하면 스킵 (period_end_date DESC 정렬이므로 최신이 먼저 들어옴)
-    if (quarters.some((q) => q.asOfQ === row.as_of_q)) continue;
+    // 같은 분기가 이미 존재하면 스킵 — 포맷 정규화 후 비교하여 "Q4 2024" vs "2024Q4" 중복 감지
+    if (quarters.some((q) => isSameQuarter(q.asOfQ, row.as_of_q))) continue;
 
     quarters.push({
       periodEndDate: row.period_end_date,
@@ -79,7 +80,7 @@ export function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInp
       revenue: toNumber(row.revenue),
       netIncome: toNumber(row.net_income),
       epsDiluted: toNumber(row.eps_diluted),
-      netMargin: toNumber(row.net_margin),
+      netMargin: normalizeMargin(toNumber(row.net_margin)),
     });
   }
 
@@ -93,4 +94,35 @@ function toNumber(val: string | null): number | null {
   if (val == null) return null;
   const n = Number(val);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * as_of_q 문자열을 (year, quarter) 쌍으로 파싱하여 동일 분기 여부 판단.
+ * 지원 포맷: "Q4 2025", "2025Q4"
+ * 파싱 실패 시 문자열 동일성 fallback.
+ */
+function isSameQuarter(a: string, b: string): boolean {
+  const parsedA = parseQuarterStr(a);
+  const parsedB = parseQuarterStr(b);
+
+  if (parsedA == null || parsedB == null) {
+    return a === b;
+  }
+
+  return parsedA.year === parsedB.year && parsedA.quarter === parsedB.quarter;
+}
+
+/**
+ * DB의 net_margin은 대부분 소수 단위(0~1)로 저장된다.
+ * scorer는 퍼센트 단위(0~100%)를 기대하므로, 소수 단위 값을 ×100으로 변환한다.
+ *
+ * 판단 기준: 절댓값이 MARGIN_DECIMAL_THRESHOLD 이하이면 소수 단위 → ×100.
+ * 이미 퍼센트 단위인 값(예: 57.0, -5.2)은 그대로 반환.
+ */
+const MARGIN_DECIMAL_THRESHOLD = 1; // 절댓값이 1 이하이면 소수 단위로 판단
+
+function normalizeMargin(val: number | null): number | null {
+  if (val == null) return null;
+  if (Math.abs(val) <= MARGIN_DECIMAL_THRESHOLD) return val * 100;
+  return val;
 }
