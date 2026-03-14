@@ -1,14 +1,15 @@
 import "dotenv/config";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "@/db/client";
-import { sendDiscordMessage, sendDiscordError } from "./discord";
-import { createGist } from "./gist";
+import { sendDiscordError } from "./discord";
 import { logger } from "./logger";
 
 const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOKENS = 4096;
+const SCORE_THRESHOLD_FOR_ISSUE = 6;
 
 // --- 데이터 수집 ---
 
@@ -258,16 +259,6 @@ function getToday(): string {
 }
 
 /**
- * Discord 멘션 sanitize — LLM 생성 텍스트에서 @everyone, @here 등 제거.
- */
-function sanitizeDiscordMentions(text: string): string {
-  return text
-    .replace(/@everyone/gi, "@\u200Beveryone")
-    .replace(/@here/gi, "@\u200Bhere")
-    .replace(/<@[!&]?\d+>/g, "[mention]");
-}
-
-/**
  * 리포트에서 "CEO 보고 요약" 섹션 추출.
  * 못 찾으면 첫 300자 사용.
  */
@@ -284,10 +275,111 @@ function extractCeoSummary(report: string): string {
 
 /**
  * 리포트에서 "종합 점수" 추출.
+ * 파싱 실패 시 null 반환.
  */
-function extractScore(report: string): string | null {
-  const match = report.match(/종합 점수:\s*(\d+\/\d+)/);
-  return match != null ? match[1] : null;
+function extractScore(report: string): number | null {
+  const match = report.match(/종합 점수:\s*(\d+)\/\d+/);
+  if (match == null) {
+    return null;
+  }
+  const parsed = parseInt(match[1], 10);
+  if (isNaN(parsed) || parsed < 0 || parsed > 10) {
+    return null;
+  }
+  return parsed;
+}
+
+/**
+ * 의사결정 필요 여부 판단.
+ * "의사결정 필요:" 항목이 "없음"이 아닌 내용을 포함하면 true.
+ */
+function extractNeedsDecision(report: string): boolean {
+  const match = report.match(/의사결정 필요:\s*([^\n]+)/);
+  if (match == null) {
+    return false;
+  }
+  return match[1].trim().replace(/[.。]+$/, "") !== "없음";
+}
+
+/**
+ * 주간 QA 결과를 weekly_qa_reports 테이블에 upsert.
+ */
+async function saveToDb(
+  qaDate: string,
+  report: string,
+  tokensInput: number,
+  tokensOutput: number,
+): Promise<void> {
+  const score = extractScore(report);
+  const ceoSummary = extractCeoSummary(report);
+  const needsDecision = extractNeedsDecision(report);
+
+  await pool.query(
+    `INSERT INTO weekly_qa_reports
+       (qa_date, score, full_report, ceo_summary, needs_decision, tokens_input, tokens_output)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (qa_date) DO UPDATE SET
+       score = EXCLUDED.score,
+       full_report = EXCLUDED.full_report,
+       ceo_summary = EXCLUDED.ceo_summary,
+       needs_decision = EXCLUDED.needs_decision,
+       tokens_input = EXCLUDED.tokens_input,
+       tokens_output = EXCLUDED.tokens_output`,
+    [qaDate, score, report, ceoSummary, needsDecision, tokensInput, tokensOutput],
+  );
+
+  logger.info("QA-DB", `저장 완료: qaDate=${qaDate} score=${score ?? "파싱실패"} needsDecision=${needsDecision}`);
+
+  maybeCreateGithubIssue(qaDate, score, ceoSummary, needsDecision);
+}
+
+/**
+ * score < 6 또는 needsDecision === true 시 GitHub 이슈 자동 생성.
+ * gh CLI 실패 시 warn 로그만 남기고 전체 실행을 막지 않음.
+ */
+function maybeCreateGithubIssue(
+  qaDate: string,
+  score: number | null,
+  ceoSummary: string,
+  needsDecision: boolean,
+): void {
+  const isLowScore = score != null && score < SCORE_THRESHOLD_FOR_ISSUE;
+  const shouldCreateIssue = isLowScore || needsDecision;
+
+  if (shouldCreateIssue === false) {
+    return;
+  }
+
+  const reason = isLowScore
+    ? `종합 점수 ${score}/10 (기준 ${SCORE_THRESHOLD_FOR_ISSUE} 미만)`
+    : "의사결정 필요 항목 감지";
+
+  const issueTitle = `[주간 QA] ${qaDate} — ${reason}`;
+  const issueBody = [
+    `## 주간 QA 이상 감지`,
+    ``,
+    `- **날짜**: ${qaDate}`,
+    `- **점수**: ${score != null ? `${score}/10` : "파싱 실패"}`,
+    `- **의사결정 필요**: ${needsDecision ? "예" : "아니오"}`,
+    ``,
+    `## CEO 보고 요약`,
+    ``,
+    ceoSummary,
+  ].join("\n");
+
+  try {
+    const result = spawnSync(
+      "gh",
+      ["issue", "create", "--title", issueTitle, "--body", issueBody, "--label", "qa,weekly"],
+      { encoding: "utf-8" },
+    );
+    if (result.status !== 0) {
+      throw new Error(result.stderr ?? "gh CLI 실패");
+    }
+    logger.info("QA-Issue", `GitHub 이슈 생성 완료: ${issueTitle}`);
+  } catch (err) {
+    logger.warn("QA-Issue", `GitHub 이슈 생성 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 async function main() {
@@ -328,7 +420,7 @@ async function main() {
     `토큰: ${response.usage.input_tokens} in / ${response.usage.output_tokens} out`,
   );
 
-  // 4. 리포트 파일 저장 (실패해도 Discord 발송은 계속)
+  // 4. 리포트 파일 저장 (실패해도 DB 적재는 계속)
   logger.step("[4/5] 리포트 파일 저장...");
   try {
     const reportDir = join(process.cwd(), "data", "qa-reports");
@@ -337,51 +429,22 @@ async function main() {
     writeFileSync(reportPath, report, "utf-8");
     logger.info("QA-File", `저장: ${reportPath}`);
   } catch (err) {
-    logger.warn("QA-File", `저장 실패 (Discord 발송은 계속): ${err instanceof Error ? err.message : String(err)}`);
+    logger.warn("QA-File", `저장 실패 (DB 적재는 계속): ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 5. Discord 발송
-  logger.step("[5/5] Discord 발송...");
-
-  const score = extractScore(report);
-  const ceoSummary = extractCeoSummary(report);
-  const scoreLabel = score != null ? ` (${score})` : "";
-
-  const discordSummary = [
-    `🔍 **주간 QA & 전략 점검**${scoreLabel} — ${today}`,
-    "",
-    ceoSummary,
-  ].join("\n");
-
-  const webhookVar =
-    process.env.DISCORD_DEBATE_WEBHOOK_URL
-      ? "DISCORD_DEBATE_WEBHOOK_URL"
-      : "DISCORD_WEBHOOK_URL";
-  const webhookUrl = process.env[webhookVar];
-
-  if (webhookUrl != null && webhookUrl !== "") {
-    try {
-      const gist = await createGist(
-        `qa-weekly-${today}.md`,
-        report,
-        `주간 QA 점검 ${today}`,
-      );
-      const reportLink =
-        gist != null ? `\n\n전체 리포트: ${gist.url}` : "";
-      await sendDiscordMessage(
-        sanitizeDiscordMentions(`${discordSummary}${reportLink}`),
-        webhookVar,
-      );
-    } catch (err) {
-      // Gist 링크 포함 메시지 발송 실패 시 요약만 재시도
-      logger.warn("Discord", `Gist 포함 발송 실패: ${err instanceof Error ? err.message : String(err)}`);
-      await sendDiscordMessage(
-        sanitizeDiscordMentions(discordSummary),
-        webhookVar,
-      );
-    }
-  } else {
-    logger.warn("Discord", "웹훅 미설정 — 로컬 로그만 기록");
+  // 5. DB 적재 + (조건부) GitHub 이슈 생성
+  logger.step("[5/5] DB 적재...");
+  try {
+    await saveToDb(
+      today,
+      report,
+      response.usage.input_tokens,
+      response.usage.output_tokens,
+    );
+    logger.info("QA", "[5/5] DB 적재 완료");
+  } catch (dbError) {
+    logger.error("QA", `[5/5] DB 적재 실패 — 파일 저장은 완료됨: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
+    await sendDiscordError(`주간 QA DB 적재 실패: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
   }
 
   logger.step("\n=== 주간 QA 점검 완료 ===");

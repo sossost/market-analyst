@@ -120,6 +120,13 @@
       "when": 1773052226388,
       "tag": "0016_special_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1773460036110,
+      "tag": "0017_soft_boomerang",
+      "breakpoints": true
     }
   ]
 }
