@@ -208,42 +208,6 @@ describe("runStockReportQA", () => {
     });
   });
 
-  describe("PHASE2_DROP_MISMATCH", () => {
-    it("Phase 2 언급 200자 내 '급락' 키워드 → PHASE2_DROP_MISMATCH 검출", () => {
-      const report = buildValidReport().replace(
-        "AI 인프라 수요가 지속 확대되며 매출 고성장 중.",
-        "Phase 2이나 당일 급락 — 모멘텀 훼손 여부 확인 필요.",
-      );
-      const result = runStockReportQA("NVDA", report);
-
-      const issue = result.issues.find((i) => i.checkId === "PHASE2_DROP_MISMATCH");
-      expect(issue).toBeDefined();
-      expect(issue?.severity).toBe("MEDIUM");
-    });
-
-    it("Phase 2 언급 200자 이후 '약세' 키워드 → PHASE2_DROP_MISMATCH 없음", () => {
-      // 200자 이후에 약세 키워드 배치
-      const padding = "X".repeat(250);
-      const report = buildValidReport().replace(
-        "AI 인프라 수요가 지속 확대되며 매출 고성장 중.",
-        `${padding}약세 경고.`,
-      );
-      const result = runStockReportQA("NVDA", report);
-
-      const issue = result.issues.find((i) => i.checkId === "PHASE2_DROP_MISMATCH");
-      expect(issue).toBeUndefined();
-    });
-
-    it("Phase 2 언급 없는 리포트 → PHASE2_DROP_MISMATCH 없음", () => {
-      const report = buildValidReport()
-        .replace(/Phase 2/g, "Phase 1");
-      const result = runStockReportQA("NVDA", report);
-
-      const issue = result.issues.find((i) => i.checkId === "PHASE2_DROP_MISMATCH");
-      expect(issue).toBeUndefined();
-    });
-  });
-
   describe("복합 이슈", () => {
     it("여러 이슈 동시 존재 → 모두 검출, passed: false", () => {
       const report = [

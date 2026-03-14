@@ -137,7 +137,8 @@ export const getUnusualStocks: AgentTool = {
       })
       .filter(
         (s) =>
-          s.conditions.length >= MIN_CONDITIONS && s.rsScore >= MIN_RS_SCORE,
+          (s.conditions.length >= MIN_CONDITIONS || s.phase2WithDrop === true) &&
+          s.rsScore >= MIN_RS_SCORE,
       )
       .sort((a, b) => {
         // Phase 2 우선, 같은 Phase면 RS 높은 순

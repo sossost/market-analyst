@@ -101,3 +101,45 @@ describe("getUnusualStocks — phase2WithDrop 플래그", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 });
+
+describe("getUnusualStocks — MIN_CONDITIONS 필터 우회", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("phase2WithDrop=true이고 conditions가 1개뿐이어도 필터를 통과한다", async () => {
+    // big_move 조건 하나만 충족 + phase2WithDrop=true → MIN_CONDITIONS(2) 미달이지만 우회
+    const row = makeRow({
+      phase: 2,
+      daily_return: "-0.06",  // big_move 충족 (1개), phase2WithDrop=true
+      vol_ratio: "1.5",       // high_volume 미충족
+      prev_phase: null,       // phase_change 없음
+    });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+    expect(result.stocks[0].phase2WithDrop).toBe(true);
+    expect(result.stocks[0].conditions).toHaveLength(1);
+  });
+
+  it("phase2WithDrop=false이고 conditions가 1개뿐이면 필터에서 제외된다", async () => {
+    // phase 1 종목 — conditions 1개, phase2WithDrop=false → 필터 탈락
+    const row = makeRow({
+      phase: 1,
+      daily_return: "-0.06",  // big_move 충족 (1개)
+      vol_ratio: "1.5",       // high_volume 미충족
+      prev_phase: null,       // phase_change 없음
+    });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(0);
+  });
+});

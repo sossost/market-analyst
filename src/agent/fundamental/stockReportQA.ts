@@ -14,17 +14,12 @@ const execFileAsync = promisify(execFile);
 // ─── 체크 ID 상수 ─────────────────────────────────────────────────────
 
 const CHECK_MARGIN_RAW_DECIMAL = "MARGIN_RAW_DECIMAL";
-const CHECK_PHASE2_DROP_MISMATCH = "PHASE2_DROP_MISMATCH";
 const CHECK_SECTION_MISSING = "SECTION_MISSING";
 const CHECK_NO_RISK_MENTION = "NO_RISK_MENTION";
 const CHECK_EPS_INCONSISTENCY = "EPS_INCONSISTENCY";
 
 // 섹션 누락 탐지: S등급 리포트 필수 5개 섹션
 const REQUIRED_SECTION_NUMBERS = ["1", "2", "3", "4", "5"] as const;
-
-// Phase2 서술 불일치 — Phase 2 언급 이후 200자 내 금지 키워드
-const PHASE2_DROP_FORBIDDEN_KEYWORDS = ["약세", "하락세", "급락", "부진"] as const;
-const PHASE2_DROP_CONTEXT_CHARS = 200;
 
 // 리스크 미언급 — 하나라도 있으면 통과
 const RISK_MENTION_KEYWORDS = [
@@ -63,11 +58,6 @@ export function runStockReportQA(symbol: string, reportMd: string): QAResult {
   const marginIssue = checkMarginRawDecimal(reportMd);
   if (marginIssue != null) {
     issues.push(marginIssue);
-  }
-
-  const phase2Issue = checkPhase2DropMismatch(reportMd);
-  if (phase2Issue != null) {
-    issues.push(phase2Issue);
   }
 
   const sectionIssue = checkSectionMissing(reportMd);
@@ -116,38 +106,6 @@ function checkMarginRawDecimal(reportMd: string): QAIssue | null {
     severity: "HIGH",
     description: `이익률 열에 소수점 미변환 값 발견: \`${match[0].trim()}\` — 퍼센트 변환이 적용되지 않았을 가능성`,
   };
-}
-
-/**
- * Phase 2 언급 이후 200자 내에 급락/약세 키워드가 존재하는지 탐지.
- *
- * Phase 2이면서 "약세", "하락세", "급락", "부진" 서술은 모순.
- * severity: MEDIUM — 의도적 경고 서술에서도 오탐 가능.
- */
-function checkPhase2DropMismatch(reportMd: string): QAIssue | null {
-  const phase2Pattern = /Phase\s*2/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = phase2Pattern.exec(reportMd)) !== null) {
-    const contextStart = match.index + match[0].length;
-    const contextEnd = Math.min(
-      contextStart + PHASE2_DROP_CONTEXT_CHARS,
-      reportMd.length,
-    );
-    const context = reportMd.slice(contextStart, contextEnd);
-
-    for (const keyword of PHASE2_DROP_FORBIDDEN_KEYWORDS) {
-      if (context.includes(keyword)) {
-        return {
-          checkId: CHECK_PHASE2_DROP_MISMATCH,
-          severity: "MEDIUM",
-          description: `Phase 2 언급 이후 200자 내 금지 키워드 발견: "${keyword}" — Phase 분류와 서술 일관성 확인 필요`,
-        };
-      }
-    }
-  }
-
-  return null;
 }
 
 /**

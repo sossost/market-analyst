@@ -268,9 +268,11 @@ export async function runFundamentalValidation(
         isPromoted: promotedSymbols.has(score.symbol),
       });
 
+      let published = false;
       try {
         await publishStockReport(score.symbol, reportMd);
         reportsPublished.push(score.symbol);
+        published = true;
         logger.info("Fundamental", `${score.symbol} 리포트 발행 완료`);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
@@ -280,18 +282,20 @@ export async function runFundamentalValidation(
         );
       }
 
-      // QA: 검출만, 발행 흐름에 영향 없음
-      try {
-        const qaResult = runStockReportQA(score.symbol, reportMd);
-        if (!qaResult.passed) {
-          await reportQAIssueToGitHub(qaResult);
+      // QA: 발행 성공한 리포트에 대해서만 실행. 검출만, 발행 흐름에 영향 없음.
+      if (published) {
+        try {
+          const qaResult = runStockReportQA(score.symbol, reportMd);
+          if (!qaResult.passed) {
+            await reportQAIssueToGitHub(qaResult);
+          }
+        } catch (qaErr) {
+          const reason = qaErr instanceof Error ? qaErr.message : String(qaErr);
+          logger.warn(
+            "Fundamental",
+            `${score.symbol} QA 실행 실패 (계속 진행): ${reason}`,
+          );
         }
-      } catch (qaErr) {
-        const reason = qaErr instanceof Error ? qaErr.message : String(qaErr);
-        logger.warn(
-          "Fundamental",
-          `${score.symbol} QA 실행 실패 (계속 진행): ${reason}`,
-        );
       }
     }
   }
