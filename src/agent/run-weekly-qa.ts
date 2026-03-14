@@ -13,13 +13,13 @@ const MAX_TOKENS = 4096;
 // --- 데이터 수집 ---
 
 interface ThesisWeeklyRow {
-  persona: string;
+  agent_persona: string;
   status: string;
   cnt: number;
 }
 
 interface ThesisOverallRow {
-  persona: string;
+  agent_persona: string;
   confirmed: number;
   invalidated: number;
   expired: number;
@@ -39,8 +39,8 @@ interface LearningRow {
 }
 
 interface ReportLogRow {
-  date: string;
-  report_type: string;
+  report_date: string;
+  type: string;
 }
 
 interface VerificationMethodRow {
@@ -80,29 +80,29 @@ async function collectData(): Promise<CollectedData> {
     await Promise.all([
       queryOrNull<ThesisWeeklyRow>(
         "thesis_weekly",
-        `SELECT persona, status, COUNT(*)::int as cnt
+        `SELECT agent_persona, status, COUNT(*)::int as cnt
          FROM theses
          WHERE created_at > NOW() - INTERVAL '7 days'
-         GROUP BY persona, status
-         ORDER BY persona, status`,
+         GROUP BY agent_persona, status
+         ORDER BY agent_persona, status`,
       ),
       queryOrNull<ThesisOverallRow>(
         "thesis_overall",
-        `SELECT persona,
+        `SELECT agent_persona,
            COUNT(*) FILTER (WHERE status = 'CONFIRMED')::int as confirmed,
            COUNT(*) FILTER (WHERE status = 'INVALIDATED')::int as invalidated,
            COUNT(*) FILTER (WHERE status = 'EXPIRED')::int as expired,
            COUNT(*) FILTER (WHERE status = 'ACTIVE')::int as active,
            COUNT(*)::int as total
          FROM theses
-         GROUP BY persona
-         ORDER BY persona`,
+         GROUP BY agent_persona
+         ORDER BY agent_persona`,
       ),
       queryOrNull<RecommendationRow>(
         "recommendations",
         `SELECT status,
            COUNT(*)::int as cnt,
-           ROUND(AVG(current_return_pct)::numeric, 2)::float as avg_return
+           ROUND(AVG(pnl_percent)::numeric, 2)::float as avg_return
          FROM recommendations
          GROUP BY status
          ORDER BY status`,
@@ -111,16 +111,16 @@ async function collectData(): Promise<CollectedData> {
         "learnings",
         `SELECT category, COUNT(*)::int as cnt
          FROM agent_learnings
-         WHERE status = 'active'
+         WHERE is_active = true
          GROUP BY category
          ORDER BY category`,
       ),
       queryOrNull<ReportLogRow>(
         "recent_reports",
-        `SELECT date::text, report_type
-         FROM report_logs
-         WHERE date > NOW() - INTERVAL '7 days'
-         ORDER BY date DESC`,
+        `SELECT report_date::text, type
+         FROM daily_reports
+         WHERE report_date > NOW() - INTERVAL '7 days'
+         ORDER BY report_date DESC`,
       ),
       queryOrNull<VerificationMethodRow>(
         "verification_methods",
