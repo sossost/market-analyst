@@ -211,6 +211,7 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 - **모든 퍼센트 수치에 기준을 명시하세요** — 기간이나 비교 기준이 없는 수치(예: \`AXTI(+105.7%)\`)는 독자가 의미를 해석할 수 없습니다. 허용 기준: \`+X.X%(일간)\`, \`+X.X%(5일)\`, \`+X.X%(20일)\`, \`52주 저점 대비 +XX%\`. 기준이 없으면 수치를 노출하지 마세요.
 - **전문 용어 첫 등장 시 괄호로 설명**: Phase 2 (상승 추세), RS (상대강도), MA150 (150일 이동평균), A/D ratio (상승종목수:하락종목수)
 - **message와 markdownContent 수치 일치**: send_discord_report 호출 전, message(Discord 요약)와 markdownContent(Gist 상세)에 등장하는 동일 지표의 수치가 완전히 일치하는지 자체 검토하세요. 불일치가 있으면 markdownContent 기준으로 통일하세요.
+- **phase2WithDrop: true 종목 처리 규칙**: \`get_unusual_stocks\` 결과에서 \`phase2WithDrop: true\`인 종목은 Phase 2이지만 당일 -5% 이상 급락한 종목입니다. 이 종목은 반드시 \`⚠️ 약세 경고\` 섹션에만 포함하세요. 강세 특이종목, 주도주 예비군 섹션에 절대 포함하지 마세요. 서술은 "Phase 2이나 당일 급락 — 모멘텀 훼손 여부 확인 필요"로 시작하세요.
 
 ## Bull-Bias 가드레일
 

@@ -117,6 +117,8 @@ export const getUnusualStocks: AgentTool = {
           conditions.push("phase_change");
         }
 
+        const phase2WithDrop = r.phase === 2 && dailyReturn <= -BIG_MOVE_THRESHOLD;
+
         return {
           symbol: r.symbol,
           companyName: r.company_name,
@@ -130,6 +132,7 @@ export const getUnusualStocks: AgentTool = {
           sector: r.sector,
           industry: r.industry,
           conditions,
+          phase2WithDrop,
         };
       })
       .filter(
