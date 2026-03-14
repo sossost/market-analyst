@@ -718,6 +718,32 @@ export const marketRegimes = pgTable(
 );
 
 /**
+ * weekly_qa_reports — 주간 QA 분석 결과 아카이빙.
+ * run-weekly-qa.ts가 실행일(qa_date)별로 저장.
+ * score < 6 또는 needsDecision === true 시 GitHub 이슈 자동 생성.
+ */
+export const weeklyQaReports = pgTable(
+  "weekly_qa_reports",
+  {
+    id: serial("id").primaryKey(),
+    qaDate: text("qa_date").notNull(), // YYYY-MM-DD (실행일)
+    score: integer("score"), // 종합 점수 (0~10), null이면 파싱 실패
+    fullReport: text("full_report").notNull(), // Claude 생성 전체 텍스트
+    ceoSummary: text("ceo_summary"), // "CEO 보고 요약" 섹션 추출
+    needsDecision: boolean("needs_decision").notNull().default(false), // 의사결정 필요 여부
+    tokensInput: integer("tokens_input"),
+    tokensOutput: integer("tokens_output"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqDate: unique("uq_weekly_qa_reports_date").on(t.qaDate),
+    idxDate: index("idx_weekly_qa_reports_date").on(t.qaDate),
+  }),
+);
+
+/**
  * daily_reports — 일간/주간 리포트 아카이빙.
  * 기존 data/reports/ JSON 파일을 DB로 이관.
  * report_date별 UNIQUE — 같은 날짜에 같은 타입의 리포트는 하나만 존재.
