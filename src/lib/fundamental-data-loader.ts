@@ -70,8 +70,8 @@ export function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInp
     const quarters = map.get(row.symbol)!;
     if (quarters.length >= QUARTERS_TO_LOAD) continue;
 
-    // 같은 as_of_q가 이미 존재하면 스킵 (period_end_date DESC 정렬이므로 최신이 먼저 들어옴)
-    if (quarters.some((q) => q.asOfQ === row.as_of_q)) continue;
+    // 같은 분기가 이미 존재하면 스킵 — 포맷 정규화 후 비교하여 "Q4 2024" vs "2024Q4" 중복 감지
+    if (quarters.some((q) => isSameQuarter(q.asOfQ, row.as_of_q))) continue;
 
     quarters.push({
       periodEndDate: row.period_end_date,
@@ -79,7 +79,7 @@ export function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInp
       revenue: toNumber(row.revenue),
       netIncome: toNumber(row.net_income),
       epsDiluted: toNumber(row.eps_diluted),
-      netMargin: toNumber(row.net_margin),
+      netMargin: normalizeMargin(toNumber(row.net_margin)),
     });
   }
 
@@ -93,4 +93,45 @@ function toNumber(val: string | null): number | null {
   if (val == null) return null;
   const n = Number(val);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * as_of_q 문자열을 (year, quarter) 쌍으로 파싱하여 동일 분기 여부 판단.
+ * 지원 포맷: "Q4 2025", "2025Q4"
+ * 파싱 실패 시 문자열 동일성 fallback.
+ */
+function isSameQuarter(a: string, b: string): boolean {
+  const parsedA = parseQuarterStr(a);
+  const parsedB = parseQuarterStr(b);
+
+  if (parsedA == null || parsedB == null) {
+    return a === b;
+  }
+
+  return parsedA.year === parsedB.year && parsedA.quarter === parsedB.quarter;
+}
+
+function parseQuarterStr(asOfQ: string): { quarter: number; year: number } | null {
+  // "Q4 2025" format
+  const match1 = asOfQ.match(/Q(\d)\s+(\d{4})/);
+  if (match1 != null) return { quarter: Number(match1[1]), year: Number(match1[2]) };
+
+  // "2025Q4" format (FMP DB)
+  const match2 = asOfQ.match(/(\d{4})Q(\d)/);
+  if (match2 != null) return { quarter: Number(match2[2]), year: Number(match2[1]) };
+
+  return null;
+}
+
+const MARGIN_PERCENT_THRESHOLD = 5; // 절댓값이 5(500%)를 초과하면 이미 퍼센트 단위로 판단
+
+/**
+ * net_margin 단위 정규화: 일부 DB 행은 이미 퍼센트 단위(예: 2.65)로 저장.
+ * 절댓값이 MARGIN_PERCENT_THRESHOLD 초과 시 ÷100 하여 0~1 소수로 변환.
+ * 실제 이익률이 500% 이상인 경우는 데이터 오류로 간주.
+ */
+function normalizeMargin(val: number | null): number | null {
+  if (val == null) return null;
+  if (Math.abs(val) > MARGIN_PERCENT_THRESHOLD) return val / 100;
+  return val;
 }

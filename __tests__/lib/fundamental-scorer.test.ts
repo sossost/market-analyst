@@ -430,6 +430,69 @@ describe("calcRankScore", () => {
   });
 });
 
+// ─── CYD 회귀 테스트 (이슈 #225) ────────────────────────────────────
+
+describe("checkEpsAcceleration — CYD 감속 재현", () => {
+  it("rejects clearly decelerating growth rates (311 → 66 → -17)", () => {
+    // newest-first: [-17, 66, 311] → 최신이 가장 작으므로 감속
+    // 이 입력이 true를 반환했다면 버그 — 회귀 방지
+    expect(checkEpsAcceleration([-17, 66, 311])).toBe(false);
+  });
+});
+
+describe("checkMarginExpansion — CYD 하락 재현", () => {
+  it("rejects contracting margins expressed as decimals (0.0265 → 0.0146)", () => {
+    // newest-first: [0.0146, 0.0155, 0.0200, 0.0265] → 최신이 가장 작으므로 하락
+    expect(checkMarginExpansion([0.0146, 0.0155, 0.0200, 0.0265])).toBe(false);
+  });
+});
+
+describe("evaluateEpsAcceleration — detail 수치 표시", () => {
+  it("includes growth rate numbers in detail when acceleration fails", () => {
+    // EPS 감속 시 detail에 성장률 수치가 표시돼야 함
+    const input = makeInput("CYD", [
+      q("Q4 2025", "2025-12-31", { epsDiluted: 0.08, revenue: 1_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: 0.20, revenue: 950_000_000 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: 0.35, revenue: 900_000_000 }),
+      q("Q1 2025", "2025-03-31", { epsDiluted: 0.50, revenue: 850_000_000 }),
+      q("Q4 2024", "2024-12-31", { epsDiluted: 0.10, revenue: 500_000_000 }),
+      q("Q3 2024", "2024-09-30", { epsDiluted: 0.12, revenue: 480_000_000 }),
+      q("Q2 2024", "2024-06-30", { epsDiluted: 0.14, revenue: 460_000_000 }),
+      q("Q1 2024", "2024-03-31", { epsDiluted: 0.16, revenue: 440_000_000 }),
+    ]);
+
+    const score = scoreFundamentals(input);
+
+    // epsAcceleration 미충족일 때 detail에 성장률 수치 포함
+    expect(score.criteria.epsAcceleration.passed).toBe(false);
+    expect(score.criteria.epsAcceleration.detail).toContain("%");
+    expect(score.criteria.epsAcceleration.detail).toContain("미충족");
+  });
+});
+
+describe("evaluateMarginExpansion — detail 수치 표시", () => {
+  it("includes margin numbers in detail when expansion fails", () => {
+    // 이익률 하락 시 detail에 수치가 표시돼야 함
+    const input = makeInput("CYD", [
+      q("Q4 2025", "2025-12-31", { epsDiluted: 0.50, netMargin: 0.0146 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: 0.40, netMargin: 0.0155 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: 0.30, netMargin: 0.0200 }),
+      q("Q1 2025", "2025-03-31", { epsDiluted: 0.20, netMargin: 0.0265 }),
+      q("Q4 2024", "2024-12-31", { epsDiluted: 0.10, netMargin: 0.0200 }),
+      q("Q3 2024", "2024-09-30", { epsDiluted: 0.08, netMargin: 0.0180 }),
+      q("Q2 2024", "2024-06-30", { epsDiluted: 0.06, netMargin: 0.0160 }),
+      q("Q1 2024", "2024-03-31", { epsDiluted: 0.04, netMargin: 0.0140 }),
+    ]);
+
+    const score = scoreFundamentals(input);
+
+    // marginExpansion 미충족일 때 detail에 수치 포함
+    expect(score.criteria.marginExpansion.passed).toBe(false);
+    expect(score.criteria.marginExpansion.detail).toContain("%");
+    expect(score.criteria.marginExpansion.detail).toContain("미충족");
+  });
+});
+
 // ─── promoteTopToS ──────────────────────────────────────────────────
 
 describe("promoteTopToS", () => {

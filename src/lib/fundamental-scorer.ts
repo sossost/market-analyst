@@ -167,12 +167,15 @@ function evaluateEpsAcceleration(quarters: QuarterlyData[]): CriteriaResult {
   }
 
   const passed = checkEpsAcceleration(growthRates);
+  const ratesStr = growthRates.map((r) => `${r}%`).join(" → ");
   return {
     passed,
     value: growthRates.length > 0 ? growthRates[0] : null,
     detail: passed
-      ? `EPS 가속: ${growthRates.map((r) => `${r}%`).join(" → ")}`
-      : `EPS 가속 미충족 (${growthRates.length}분기 데이터)`,
+      ? `EPS 가속: ${ratesStr}`
+      : growthRates.length > 0
+        ? `EPS 가속 미충족: ${ratesStr}`
+        : `EPS 가속 미충족 (데이터 부족)`,
   };
 }
 
@@ -183,12 +186,15 @@ function evaluateMarginExpansion(quarters: QuarterlyData[]): CriteriaResult {
     .filter((m): m is number => m != null);
 
   const passed = checkMarginExpansion(margins);
+  const chronologicalStr = [...margins].reverse().map((m) => `${m.toFixed(2)}%`).join(" → ");
   return {
     passed,
     value: margins.length > 0 ? margins[0] : null,
     detail: passed
-      ? `이익률 확대: ${[...margins].reverse().map((m) => `${m}%`).join(" → ")}`
-      : `이익률 확대 미충족 (${margins.length}분기 데이터)`,
+      ? `이익률 확대: ${chronologicalStr}`
+      : margins.length > 0
+        ? `이익률 확대 미충족: ${chronologicalStr}`
+        : `이익률 확대 미충족 (데이터 부족)`,
   };
 }
 
