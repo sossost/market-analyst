@@ -269,11 +269,11 @@ function makeAnomalyScore(symbol: string): FundamentalScore {
     requiredMet: 0,
     bonusMet: 0,
     criteria: {
-      epsGrowth: anomaly,
-      revenueGrowth: anomaly,
-      epsAcceleration: anomaly,
-      marginExpansion: anomaly,
-      roe: anomaly,
+      epsGrowth: { ...anomaly },
+      revenueGrowth: { ...anomaly },
+      epsAcceleration: { ...anomaly },
+      marginExpansion: { ...anomaly },
+      roe: { ...anomaly },
     },
   };
 }

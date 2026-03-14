@@ -505,22 +505,12 @@ describe("hasQuarterlyAnomaly", () => {
   });
 
   it("detects revenue jump over 5x between consecutive quarters", () => {
-    // SMFG 누적 보고 패턴: Q4에 9개월 누적이 단독 분기처럼 보임
+    // 15조 / 2.66조 ≈ 5.64 > 5 → true
     const quarters = [
-      q("Q4 2025", "2025-12-31", { revenue: 7_930_000_000_000 }), // 9개월 누적
-      q("Q3 2025", "2025-09-30", { revenue: 2_660_000_000_000 }), // 단독 분기
-      q("Q2 2025", "2025-06-30", { revenue: 2_400_000_000_000 }),
-      q("Q1 2025", "2025-03-31", { revenue: 2_300_000_000_000 }),
-    ];
-
-    // 7.93조 / 2.66조 ≈ 2.98 → 5배 미만이므로 false
-    // 실제로 7.93조 / 2.66조는 약 3배라 false. 더 극단 케이스로 테스트:
-    const extremeQuarters = [
       q("Q4 2025", "2025-12-31", { revenue: 15_000_000_000_000 }),
       q("Q3 2025", "2025-09-30", { revenue: 2_660_000_000_000 }),
     ];
-    // 15조 / 2.66조 ≈ 5.64 > 5 → true
-    expect(hasQuarterlyAnomaly(extremeQuarters)).toBe(true);
+    expect(hasQuarterlyAnomaly(quarters)).toBe(true);
   });
 
   it("detects revenue drop below 1/5x between consecutive quarters", () => {
