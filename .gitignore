@@ -6,7 +6,5 @@ coverage/
 .DS_Store
 *.log
 logs/
-data/fundamental-cache/
-data/fundamental-reports/
-data/report-qa/
+data/
 memory/
