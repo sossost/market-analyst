@@ -14,6 +14,7 @@ import {
 } from "../../lib/fundamental-scorer.js";
 import { analyzeFundamentals } from "./fundamentalAgent.js";
 import { generateStockReport, publishStockReport } from "./stockReport.js";
+import { runStockReportQA, reportQAIssueToGitHub } from "./stockReportQA.js";
 import { logger } from "../logger.js";
 import type { DataQualityVerdict, FundamentalInput, FundamentalScore } from "../../types/fundamental.js";
 
@@ -276,6 +277,20 @@ export async function runFundamentalValidation(
         logger.error(
           "Fundamental",
           `${score.symbol} 리포트 발행 실패: ${reason}`,
+        );
+      }
+
+      // QA: 검출만, 발행 흐름에 영향 없음
+      try {
+        const qaResult = runStockReportQA(score.symbol, reportMd);
+        if (!qaResult.passed) {
+          await reportQAIssueToGitHub(qaResult);
+        }
+      } catch (qaErr) {
+        const reason = qaErr instanceof Error ? qaErr.message : String(qaErr);
+        logger.warn(
+          "Fundamental",
+          `${score.symbol} QA 실행 실패 (계속 진행): ${reason}`,
         );
       }
     }
