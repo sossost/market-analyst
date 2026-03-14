@@ -13,6 +13,7 @@ import type {
   CriteriaResult,
   QuarterlyData,
 } from "../types/fundamental.js";
+import { parseQuarterStr } from "./quarter-utils.js";
 
 const EPS_GROWTH_THRESHOLD = 25; // YoY > 25%
 const REVENUE_GROWTH_THRESHOLD = 25; // YoY > 25%
@@ -167,7 +168,8 @@ function evaluateEpsAcceleration(quarters: QuarterlyData[]): CriteriaResult {
   }
 
   const passed = checkEpsAcceleration(growthRates);
-  const ratesStr = growthRates.map((r) => `${r}%`).join(" → ");
+  // growthRates는 newest-first — 시간순(과거→현재)으로 뒤집어 표시
+  const ratesStr = [...growthRates].reverse().map((r) => `${r}%`).join(" → ");
   return {
     passed,
     value: growthRates.length > 0 ? growthRates[0] : null,
@@ -306,26 +308,14 @@ function findYoYQuarter(
   const target = quarters[idx];
   if (target == null) return null;
 
-  const targetQ = parseQuarterLabel(target.asOfQ);
+  const targetQ = parseQuarterStr(target.asOfQ);
   if (targetQ == null) return null;
 
   const priorYear = targetQ.year - 1;
   return (
     quarters.find((q) => {
-      const parsed = parseQuarterLabel(q.asOfQ);
+      const parsed = parseQuarterStr(q.asOfQ);
       return parsed != null && parsed.quarter === targetQ.quarter && parsed.year === priorYear;
     }) ?? null
   );
-}
-
-function parseQuarterLabel(asOfQ: string): { quarter: number; year: number } | null {
-  // "Q4 2025" format
-  const match1 = asOfQ.match(/Q(\d)\s+(\d{4})/);
-  if (match1 != null) return { quarter: Number(match1[1]), year: Number(match1[2]) };
-
-  // "2025Q4" format (FMP DB)
-  const match2 = asOfQ.match(/(\d{4})Q(\d)/);
-  if (match2 != null) return { quarter: Number(match2[2]), year: Number(match2[1]) };
-
-  return null;
 }

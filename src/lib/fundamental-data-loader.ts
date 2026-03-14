@@ -7,6 +7,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import type { FundamentalInput, QuarterlyData } from "../types/fundamental.js";
+import { parseQuarterStr } from "./quarter-utils.js";
 
 const QUARTERS_TO_LOAD = 8;
 const MAX_SYMBOLS_PER_QUERY = 500;
@@ -111,27 +112,17 @@ function isSameQuarter(a: string, b: string): boolean {
   return parsedA.year === parsedB.year && parsedA.quarter === parsedB.quarter;
 }
 
-function parseQuarterStr(asOfQ: string): { quarter: number; year: number } | null {
-  // "Q4 2025" format
-  const match1 = asOfQ.match(/Q(\d)\s+(\d{4})/);
-  if (match1 != null) return { quarter: Number(match1[1]), year: Number(match1[2]) };
-
-  // "2025Q4" format (FMP DB)
-  const match2 = asOfQ.match(/(\d{4})Q(\d)/);
-  if (match2 != null) return { quarter: Number(match2[2]), year: Number(match2[1]) };
-
-  return null;
-}
-
-const MARGIN_PERCENT_THRESHOLD = 5; // 절댓값이 5(500%)를 초과하면 이미 퍼센트 단위로 판단
-
 /**
- * net_margin 단위 정규화: 일부 DB 행은 이미 퍼센트 단위(예: 2.65)로 저장.
- * 절댓값이 MARGIN_PERCENT_THRESHOLD 초과 시 ÷100 하여 0~1 소수로 변환.
- * 실제 이익률이 500% 이상인 경우는 데이터 오류로 간주.
+ * DB의 net_margin은 대부분 소수 단위(0~1)로 저장된다.
+ * scorer는 퍼센트 단위(0~100%)를 기대하므로, 소수 단위 값을 ×100으로 변환한다.
+ *
+ * 판단 기준: 절댓값이 MARGIN_DECIMAL_THRESHOLD 이하이면 소수 단위 → ×100.
+ * 이미 퍼센트 단위인 값(예: 57.0, -5.2)은 그대로 반환.
  */
+const MARGIN_DECIMAL_THRESHOLD = 1; // 절댓값이 1 이하이면 소수 단위로 판단
+
 function normalizeMargin(val: number | null): number | null {
   if (val == null) return null;
-  if (Math.abs(val) > MARGIN_PERCENT_THRESHOLD) return val / 100;
+  if (Math.abs(val) <= MARGIN_DECIMAL_THRESHOLD) return val * 100;
   return val;
 }
