@@ -51,7 +51,7 @@ ${msg}
 # claude -p 래퍼 — Max 구독 사용을 위해 ANTHROPIC_API_KEY를 임시 해제
 # API 키가 있으면 Max 인증 대신 API 과금이 우선 적용되므로 unset 필요
 run_claude_p() {
-  ANTHROPIC_API_KEY="" "$@"
+  env -u ANTHROPIC_API_KEY "$@"
 }
 
 # 단일 step 실행
