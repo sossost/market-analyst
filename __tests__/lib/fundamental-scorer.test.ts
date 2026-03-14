@@ -523,32 +523,13 @@ describe("hasQuarterlyAnomaly", () => {
     expect(hasQuarterlyAnomaly(quarters)).toBe(true);
   });
 
-  it("detects net income absolute value jump over 5x", () => {
-    // 단위 불연속: 이전엔 수십억, 갑자기 수천억
+  it("does not flag net income jumps (only revenue is checked)", () => {
+    // 순이익은 일회성 비용으로 분기 간 급변이 흔하므로 체크하지 않음
     const quarters = [
-      q("Q4 2025", "2025-12-31", { netIncome: 556_000_000_000 }),
-      q("Q3 2025", "2025-09-30", { netIncome: 1_900_000_000 }),
+      q("Q4 2025", "2025-12-31", { revenue: 10_000_000_000, netIncome: 556_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { revenue: 9_500_000_000, netIncome: 1_900_000_000 }),
     ];
-    // 556B / 1.9B ≈ 293 > 5 → true
-    expect(hasQuarterlyAnomaly(quarters)).toBe(true);
-  });
-
-  it("allows sign change in net income without triggering anomaly when absolute values are similar", () => {
-    // 적자→흑자 전환이지만 절대값이 비슷한 경우 → false
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { netIncome: 300_000_000 }),
-      q("Q3 2025", "2025-09-30", { netIncome: -250_000_000 }),
-    ];
-    // 300M / 250M = 1.2 < 5 → false
-    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
-  });
-
-  it("skips net income check when prev absolute value is 0", () => {
-    // 이전 분기 순이익이 0이면 비율 계산 스킵
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { netIncome: 1_000_000_000 }),
-      q("Q3 2025", "2025-09-30", { netIncome: 0 }),
-    ];
+    // 매출은 정상(1.05x), 순이익은 293x 급변이지만 무시
     expect(hasQuarterlyAnomaly(quarters)).toBe(false);
   });
 
@@ -568,14 +549,14 @@ describe("hasQuarterlyAnomaly", () => {
     expect(hasQuarterlyAnomaly(quarters)).toBe(false);
   });
 
-  it("scoreFundamentals returns F with anomaly detail when data anomaly detected", () => {
-    // 실제 SMFG 유사 패턴: 분기 간 순이익 단위 불연속
-    const input = makeInput("SMFG", [
-      q("Q4 2025", "2025-12-31", { epsDiluted: 362.51, revenue: 7_930_000_000_000, netIncome: 556_000_000_000 }),
-      q("Q3 2025", "2025-09-30", { epsDiluted: 180.0, revenue: 2_660_000_000_000, netIncome: 1_900_000_000 }),
-      q("Q2 2025", "2025-06-30", { epsDiluted: 90.0, revenue: 2_400_000_000_000, netIncome: 1_850_000_000 }),
-      q("Q1 2025", "2025-03-31", { epsDiluted: 45.0, revenue: 2_300_000_000_000, netIncome: 1_800_000_000 }),
-      q("Q4 2024", "2024-12-31", { epsDiluted: 30.0, revenue: 2_200_000_000_000, netIncome: 1_750_000_000 }),
+  it("scoreFundamentals returns F with anomaly detail when revenue anomaly detected", () => {
+    // 매출이 분기 간 5배 이상 급변하는 패턴
+    const input = makeInput("TEST", [
+      q("Q4 2025", "2025-12-31", { epsDiluted: 10, revenue: 15_000_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: 8, revenue: 2_660_000_000_000 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: 6, revenue: 2_400_000_000_000 }),
+      q("Q1 2025", "2025-03-31", { epsDiluted: 4, revenue: 2_300_000_000_000 }),
+      q("Q4 2024", "2024-12-31", { epsDiluted: 3, revenue: 2_200_000_000_000 }),
     ]);
 
     const score = scoreFundamentals(input);

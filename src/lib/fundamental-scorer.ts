@@ -227,28 +227,20 @@ export function determineGrade(requiredMet: number, bonusMet: number): Fundament
 }
 
 /**
- * 분기 간 매출/순이익이 5배 이상 급변하면 데이터 이상으로 판단.
+ * 분기 간 매출이 5배 이상 급변하면 데이터 이상으로 판단.
  * 누적 보고, 통화 불일치, 단위 변경 등을 포괄적으로 감지.
+ *
+ * 순이익은 일회성 비용(구조조정, 감가상각)으로 분기 간 급변이 흔하므로
+ * 매출만 체크한다. 양방향(ratio > 5 또는 < 0.2) 체크이므로 정렬 순서 무관.
  */
 export function hasQuarterlyAnomaly(quarters: QuarterlyData[]): boolean {
   for (let i = 0; i < quarters.length - 1; i++) {
     const curr = quarters[i];
     const prev = quarters[i + 1];
 
-    // 매출 급변 체크
     if (curr.revenue != null && prev.revenue != null && prev.revenue > 0) {
       const ratio = curr.revenue / prev.revenue;
       if (ratio > ANOMALY_JUMP_THRESHOLD || ratio < 1 / ANOMALY_JUMP_THRESHOLD) return true;
-    }
-
-    // 순이익 급변 체크 (부호 전환은 허용, 절대값 급변만 감지)
-    if (curr.netIncome != null && prev.netIncome != null) {
-      const absC = Math.abs(curr.netIncome);
-      const absP = Math.abs(prev.netIncome);
-      if (absP > 0) {
-        const ratio = absC / absP;
-        if (ratio > ANOMALY_JUMP_THRESHOLD || ratio < 1 / ANOMALY_JUMP_THRESHOLD) return true;
-      }
     }
   }
 
