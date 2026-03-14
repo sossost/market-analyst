@@ -122,8 +122,12 @@ async function main(): Promise<void> {
     const result: LatestReportResult = { today, prev };
     console.log(JSON.stringify(result));
   } finally {
-    await pool.end().catch(() => {
-      // pool이 이미 종료됐거나 종료 중인 경우 에러 무시
+    await pool.end().catch((err) => {
+      // pool이 이미 종료됐거나 종료 중인 경우 에러 무시 (원본 에러 전파를 막지 않기 위함)
+      console.warn(
+        "[WARN] pool.end() failed, ignoring: " +
+          (err instanceof Error ? err.message : String(err)),
+      );
     });
   }
 }
