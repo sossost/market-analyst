@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockCreate, mockFindSession } = vi.hoisted(() => ({
-  mockCreate: vi.fn(),
+const { mockExecFile, mockFindSession } = vi.hoisted(() => ({
+  mockExecFile: vi.fn(),
   mockFindSession: vi.fn(),
 }));
 
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class MockAnthropic {
-    messages = { create: mockCreate };
-  },
+vi.mock("node:child_process", () => ({
+  execFile: mockExecFile,
 }));
 
 vi.mock("../../../src/agent/debate/sessionStore.js", () => ({
@@ -20,6 +18,19 @@ import {
   parseCausalAnalysis,
   type CausalAnalysisInput,
 } from "../../../src/agent/debate/causalAnalyzer.js";
+
+/**
+ * execFile mock helper — CLI provider 성공 응답 시뮬레이션.
+ */
+function mockCliSuccess(content: string) {
+  const jsonOutput = JSON.stringify({ result: content });
+  mockExecFile.mockImplementation((_cmd: unknown, _args: unknown, _opts: unknown, cb: unknown) => {
+    const callback = cb as (error: null, stdout: string, stderr: string) => void;
+    const child = { stdin: { end: vi.fn() } };
+    process.nextTick(() => callback(null, jsonOutput, ""));
+    return child;
+  });
+}
 
 function makeResolvedThesis(overrides: Partial<CausalAnalysisInput["resolvedTheses"][0]> = {}) {
   return {
@@ -39,6 +50,8 @@ function makeResolvedThesis(overrides: Partial<CausalAnalysisInput["resolvedThes
 describe("causalAnalyzer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // AnthropicProvider(폴백) 생성 시 ConfigurationError 방지
+    process.env.ANTHROPIC_API_KEY = "test-key";
   });
 
   describe("parseCausalAnalysis", () => {
@@ -125,7 +138,7 @@ describe("causalAnalyzer", () => {
       });
 
       expect(result).toHaveLength(0);
-      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockExecFile).not.toHaveBeenCalled();
     });
 
     it("loads debate session and calls LLM for analysis", async () => {
@@ -136,23 +149,16 @@ describe("causalAnalyzer", () => {
         synthesisReport: "종합: Fed 금리 인하 예상",
       });
 
-      mockCreate.mockResolvedValue({
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify([
-              {
-                thesisId: 1,
-                causalChain: "CPI 둔화 → Fed 인하",
-                keyFactors: ["CPI 하락"],
-                reusablePattern: "CPI 둔화 시 Fed 인하 가능성 높음",
-                lessonsLearned: "물가 추세 확인 필수",
-              },
-            ]),
-          },
-        ],
-        usage: { input_tokens: 1000, output_tokens: 500 },
-      });
+      const causalContent = JSON.stringify([
+        {
+          thesisId: 1,
+          causalChain: "CPI 둔화 → Fed 인하",
+          keyFactors: ["CPI 하락"],
+          reusablePattern: "CPI 둔화 시 Fed 인하 가능성 높음",
+          lessonsLearned: "물가 추세 확인 필수",
+        },
+      ]);
+      mockCliSuccess(causalContent);
 
       const result = await analyzeCauses({
         resolvedTheses: [makeResolvedThesis()],
@@ -163,29 +169,22 @@ describe("causalAnalyzer", () => {
       expect(result).toHaveLength(1);
       expect(result[0].causalChain).toContain("CPI 둔화");
       expect(mockFindSession).toHaveBeenCalledWith("2026-02-15");
-      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
 
     it("handles missing debate session gracefully", async () => {
       mockFindSession.mockResolvedValue(null);
 
-      mockCreate.mockResolvedValue({
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify([
-              {
-                thesisId: 1,
-                causalChain: "원인 불명 — 원본 세션 없음",
-                keyFactors: ["데이터 부족"],
-                reusablePattern: "N/A",
-                lessonsLearned: "원본 세션이 없어 정확한 분석 불가",
-              },
-            ]),
-          },
-        ],
-        usage: { input_tokens: 500, output_tokens: 200 },
-      });
+      const causalContent = JSON.stringify([
+        {
+          thesisId: 1,
+          causalChain: "원인 불명 — 원본 세션 없음",
+          keyFactors: ["데이터 부족"],
+          reusablePattern: "N/A",
+          lessonsLearned: "원본 세션이 없어 정확한 분석 불가",
+        },
+      ]);
+      mockCliSuccess(causalContent);
 
       const result = await analyzeCauses({
         resolvedTheses: [makeResolvedThesis()],
@@ -195,7 +194,7 @@ describe("causalAnalyzer", () => {
 
       // Should still work, just without original session context
       expect(result).toHaveLength(1);
-      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
     });
 
     it("groups theses by debateDate to minimize session lookups", async () => {
@@ -204,30 +203,23 @@ describe("causalAnalyzer", () => {
         synthesisReport: "리포트",
       });
 
-      mockCreate.mockResolvedValue({
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify([
-              {
-                thesisId: 1,
-                causalChain: "체인1",
-                keyFactors: ["팩터"],
-                reusablePattern: "패턴1",
-                lessonsLearned: "교훈1",
-              },
-              {
-                thesisId: 2,
-                causalChain: "체인2",
-                keyFactors: ["팩터"],
-                reusablePattern: "패턴2",
-                lessonsLearned: "교훈2",
-              },
-            ]),
-          },
-        ],
-        usage: { input_tokens: 800, output_tokens: 400 },
-      });
+      const causalContent = JSON.stringify([
+        {
+          thesisId: 1,
+          causalChain: "체인1",
+          keyFactors: ["팩터"],
+          reusablePattern: "패턴1",
+          lessonsLearned: "교훈1",
+        },
+        {
+          thesisId: 2,
+          causalChain: "체인2",
+          keyFactors: ["팩터"],
+          reusablePattern: "패턴2",
+          lessonsLearned: "교훈2",
+        },
+      ]);
+      mockCliSuccess(causalContent);
 
       const result = await analyzeCauses({
         resolvedTheses: [
@@ -240,7 +232,7 @@ describe("causalAnalyzer", () => {
 
       // Same debateDate → 1 session lookup, 1 LLM call
       expect(mockFindSession).toHaveBeenCalledTimes(1);
-      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
       expect(result).toHaveLength(2);
     });
   });

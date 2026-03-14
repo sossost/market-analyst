@@ -2,12 +2,14 @@ import "dotenv/config";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "@/db/client";
 import { sendDiscordError } from "./discord";
 import { logger } from "./logger";
+import { ClaudeCliProvider } from "./debate/llm/claudeCliProvider.js";
+import { AnthropicProvider } from "./debate/llm/anthropicProvider.js";
+import { FallbackProvider } from "./debate/llm/fallbackProvider.js";
 
-const MODEL = "claude-sonnet-4-6-20250725";
+const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 const SCORE_THRESHOLD_FOR_ISSUE = 6;
 
@@ -245,12 +247,16 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 // --- 메인 ---
 
 function validateEnvironment(): void {
-  const required = ["DATABASE_URL", "ANTHROPIC_API_KEY"];
+  const required = ["DATABASE_URL"];
   const missing = required.filter(
     (key) => process.env[key] == null || process.env[key] === "",
   );
   if (missing.length > 0) {
     throw new Error(`필수 환경변수 누락: ${missing.join(", ")}`);
+  }
+  // ANTHROPIC_API_KEY는 CLI 폴백 시에만 필요 — 미설정 시 경고만 출력
+  if (process.env.ANTHROPIC_API_KEY == null || process.env.ANTHROPIC_API_KEY === "") {
+    logger.warn("QA-Env", "ANTHROPIC_API_KEY 미설정 — Claude CLI 폴백 불가");
   }
 }
 
@@ -398,26 +404,25 @@ async function main() {
   const totalCount = Object.keys(data).length;
   logger.info("QA-Data", `${successCount}/${totalCount} 쿼리 성공`);
 
-  // 3. Claude API 호출
-  logger.step("[3/5] Claude API 분석 요청...");
-  const client = new Anthropic();
+  // 3. LLM 호출 (CLI → SDK 폴백)
+  logger.step("[3/5] LLM 분석 요청...");
+  const provider = new FallbackProvider(
+    new ClaudeCliProvider(),
+    new AnthropicProvider(FALLBACK_MODEL),
+    "ClaudeCLI",
+  );
   const userPrompt = buildUserPrompt(data, today);
 
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
+  const llmResult = await provider.call({
+    systemPrompt: SYSTEM_PROMPT,
+    userMessage: userPrompt,
+    maxTokens: MAX_TOKENS,
   });
-
-  const textBlocks = response.content.filter(
-    (block): block is Anthropic.TextBlock => block.type === "text",
-  );
-  const report = textBlocks.map((b) => b.text).join("\n");
+  const report = llmResult.content;
 
   logger.info(
     "QA-LLM",
-    `토큰: ${response.usage.input_tokens} in / ${response.usage.output_tokens} out`,
+    `토큰: ${llmResult.tokensUsed.input} in / ${llmResult.tokensUsed.output} out`,
   );
 
   // 4. 리포트 파일 저장 (실패해도 DB 적재는 계속)
@@ -438,8 +443,8 @@ async function main() {
     await saveToDb(
       today,
       report,
-      response.usage.input_tokens,
-      response.usage.output_tokens,
+      llmResult.tokensUsed.input,
+      llmResult.tokensUsed.output,
     );
     logger.info("QA", "[5/5] DB 적재 완료");
   } catch (dbError) {

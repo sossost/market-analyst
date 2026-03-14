@@ -4,7 +4,6 @@
  * 전체 활성 종목 스코어링 → DB 저장 → S등급 LLM 분석 → 리포트 발행.
  * 주간 에이전트에서 호출하거나 독립 실행 가능.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { loadFundamentalData } from "../../lib/fundamental-data-loader.js";
@@ -130,7 +129,6 @@ export async function runFundamentalValidation(
   }
 
   // 6. S급 종목에 대해 LLM 분석 (기술적 데이터 선로딩)
-  const client = new Anthropic();
   const sGradeScores = scores.filter((s) => s.grade === "S");
 
   // 기술적 데이터를 LLM 분석 전에 로드하여 프롬프트에 포함
@@ -151,7 +149,7 @@ export async function runFundamentalValidation(
 
     try {
       const technical = technicalMap.get(score.symbol);
-      const analysis = await analyzeFundamentals(client, score, input, technical);
+      const analysis = await analyzeFundamentals(score, input, technical);
       analyses.set(score.symbol, {
         narrative: analysis.narrative,
         verdict: analysis.dataQualityVerdict,
@@ -215,7 +213,6 @@ export async function runFundamentalValidation(
     try {
       const promotedScore: FundamentalScore = { ...candidate, grade: "S" };
       const analysis = await analyzeFundamentals(
-        client,
         promotedScore,
         candidateInput,
         candidateTech,
