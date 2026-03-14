@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   scoreFundamentals,
-  hasQuarterlyAnomaly,
   calcEpsGrowthYoY,
   calcRevenueGrowthYoY,
   calcYoYGrowth,
@@ -489,80 +488,3 @@ describe("promoteTopToS", () => {
   });
 });
 
-// ─── hasQuarterlyAnomaly ─────────────────────────────────────────────
-
-describe("hasQuarterlyAnomaly", () => {
-  it("returns false for normal quarterly revenue progression", () => {
-    // 정상: 분기 간 매출 변동이 5배 미만
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { revenue: 35_000_000_000, netIncome: 20_000_000_000 }),
-      q("Q3 2025", "2025-09-30", { revenue: 30_000_000_000, netIncome: 16_000_000_000 }),
-      q("Q2 2025", "2025-06-30", { revenue: 26_000_000_000, netIncome: 13_000_000_000 }),
-      q("Q1 2025", "2025-03-31", { revenue: 22_000_000_000, netIncome: 10_000_000_000 }),
-    ];
-
-    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
-  });
-
-  it("detects revenue jump over 5x between consecutive quarters", () => {
-    // 15조 / 2.66조 ≈ 5.64 > 5 → true
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { revenue: 15_000_000_000_000 }),
-      q("Q3 2025", "2025-09-30", { revenue: 2_660_000_000_000 }),
-    ];
-    expect(hasQuarterlyAnomaly(quarters)).toBe(true);
-  });
-
-  it("detects revenue drop below 1/5x between consecutive quarters", () => {
-    // 반대 방향: 직전 분기 대비 1/5 이하로 급감
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { revenue: 500_000_000 }),
-      q("Q3 2025", "2025-09-30", { revenue: 3_000_000_000 }),
-    ];
-    // 500M / 3000M = 0.167 < 0.2 (1/5) → true
-    expect(hasQuarterlyAnomaly(quarters)).toBe(true);
-  });
-
-  it("does not flag net income jumps (only revenue is checked)", () => {
-    // 순이익은 일회성 비용으로 분기 간 급변이 흔하므로 체크하지 않음
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { revenue: 10_000_000_000, netIncome: 556_000_000_000 }),
-      q("Q3 2025", "2025-09-30", { revenue: 9_500_000_000, netIncome: 1_900_000_000 }),
-    ];
-    // 매출은 정상(1.05x), 순이익은 293x 급변이지만 무시
-    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
-  });
-
-  it("returns false when revenue or netIncome is null", () => {
-    // null 값은 체크 스킵 — 에러 없이 false 반환
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { revenue: null, netIncome: null }),
-      q("Q3 2025", "2025-09-30", { revenue: null, netIncome: null }),
-    ];
-    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
-  });
-
-  it("returns false for single quarter (no pairs to compare)", () => {
-    const quarters = [
-      q("Q4 2025", "2025-12-31", { revenue: 5_000_000_000 }),
-    ];
-    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
-  });
-
-  it("scoreFundamentals returns F with anomaly detail when revenue anomaly detected", () => {
-    // 매출이 분기 간 5배 이상 급변하는 패턴
-    const input = makeInput("TEST", [
-      q("Q4 2025", "2025-12-31", { epsDiluted: 10, revenue: 15_000_000_000_000 }),
-      q("Q3 2025", "2025-09-30", { epsDiluted: 8, revenue: 2_660_000_000_000 }),
-      q("Q2 2025", "2025-06-30", { epsDiluted: 6, revenue: 2_400_000_000_000 }),
-      q("Q1 2025", "2025-03-31", { epsDiluted: 4, revenue: 2_300_000_000_000 }),
-      q("Q4 2024", "2024-12-31", { epsDiluted: 3, revenue: 2_200_000_000_000 }),
-    ]);
-
-    const score = scoreFundamentals(input);
-
-    expect(score.grade).toBe("F");
-    expect(score.totalScore).toBe(0);
-    expect(score.criteria.epsGrowth.detail).toContain("데이터 이상 감지");
-  });
-});

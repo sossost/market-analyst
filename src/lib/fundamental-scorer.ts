@@ -19,8 +19,6 @@ const REVENUE_GROWTH_THRESHOLD = 25; // YoY > 25%
 const MIN_QUARTERS_REQUIRED = 5; // 최소 5분기 (YoY 비교 위해)
 const MIN_QUARTERS_FOR_ACCELERATION = 3;
 const MIN_QUARTERS_FOR_MARGIN = 3;
-const ANOMALY_JUMP_THRESHOLD = 5; // 분기 간 5배 이상 급변 → 데이터 이상
-
 // ─── Public API ─────────────────────────────────────────────────────
 
 export function scoreFundamentals(input: FundamentalInput): FundamentalScore {
@@ -28,10 +26,6 @@ export function scoreFundamentals(input: FundamentalInput): FundamentalScore {
 
   if (quarters.length < MIN_QUARTERS_REQUIRED) {
     return makeInsufficientDataScore(symbol);
-  }
-
-  if (hasQuarterlyAnomaly(quarters)) {
-    return makeAnomalyScore(symbol);
   }
 
   const epsGrowth = evaluateEpsGrowth(quarters);
@@ -224,50 +218,6 @@ export function determineGrade(requiredMet: number, bonusMet: number): Fundament
   if (requiredMet >= 1 && bonusMet >= 1) return "B";
   if (requiredMet > 0 || bonusMet > 0) return "C";
   return "F";
-}
-
-/**
- * 분기 간 매출이 5배 이상 급변하면 데이터 이상으로 판단.
- * 누적 보고, 통화 불일치, 단위 변경 등을 포괄적으로 감지.
- *
- * 순이익은 일회성 비용(구조조정, 감가상각)으로 분기 간 급변이 흔하므로
- * 매출만 체크한다. 양방향(ratio > 5 또는 < 0.2) 체크이므로 정렬 순서 무관.
- */
-export function hasQuarterlyAnomaly(quarters: QuarterlyData[]): boolean {
-  for (let i = 0; i < quarters.length - 1; i++) {
-    const curr = quarters[i];
-    const prev = quarters[i + 1];
-
-    if (curr.revenue != null && prev.revenue != null && prev.revenue > 0) {
-      const ratio = curr.revenue / prev.revenue;
-      if (ratio > ANOMALY_JUMP_THRESHOLD || ratio < 1 / ANOMALY_JUMP_THRESHOLD) return true;
-    }
-  }
-
-  return false;
-}
-
-function makeAnomalyScore(symbol: string): FundamentalScore {
-  const anomaly: CriteriaResult = {
-    passed: false,
-    value: null,
-    detail: "데이터 이상 감지: 분기 간 매출/이익 5배 이상 급변",
-  };
-  return {
-    symbol,
-    grade: "F",
-    totalScore: 0,
-    rankScore: 0,
-    requiredMet: 0,
-    bonusMet: 0,
-    criteria: {
-      epsGrowth: { ...anomaly },
-      revenueGrowth: { ...anomaly },
-      epsAcceleration: { ...anomaly },
-      marginExpansion: { ...anomaly },
-      roe: { ...anomaly },
-    },
-  };
 }
 
 function makeInsufficientDataScore(symbol: string): FundamentalScore {
