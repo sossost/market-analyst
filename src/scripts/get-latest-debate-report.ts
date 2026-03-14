@@ -65,7 +65,9 @@ async function main(): Promise<void> {
     const result: LatestDebateReportResult = { today, prev };
     console.log(JSON.stringify(result));
   } finally {
-    await pool.end();
+    await pool.end().catch(() => {
+      // pool이 이미 종료됐거나 종료 중인 경우 에러 무시
+    });
   }
 }
 
