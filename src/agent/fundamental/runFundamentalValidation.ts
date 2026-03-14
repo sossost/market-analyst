@@ -15,12 +15,40 @@ import {
 import { analyzeFundamentals } from "./fundamentalAgent.js";
 import { generateStockReport, publishStockReport } from "./stockReport.js";
 import { logger } from "../logger.js";
-import type { FundamentalInput, FundamentalScore } from "../../types/fundamental.js";
+import type { DataQualityVerdict, FundamentalInput, FundamentalScore } from "../../types/fundamental.js";
+
+interface AnalysisEntry {
+  narrative: string;
+  verdict: DataQualityVerdict;
+}
 
 export interface ValidationResult {
   scores: FundamentalScore[];
   reportsPublished: string[]; // symbols that got individual reports
   totalTokens: { input: number; output: number };
+  qualityExcluded: string[]; // 품질 게이트 제외된 종목
+}
+
+/**
+ * SUSPECT 판정된 S급 종목을 대체할 A급 후보를 선정.
+ * 순수 함수 — DB/LLM 의존 없음.
+ *
+ * @param allScores - 전체 스코어 목록
+ * @param currentSSymbols - 현재 S급 종목 심볼 집합 (이미 S급인 종목은 제외)
+ * @param neededCount - 필요한 후보 수
+ * @returns A급 중 rankScore 내림차순 상위 neededCount개
+ */
+export function selectFallbackCandidates(
+  allScores: FundamentalScore[],
+  currentSSymbols: Set<string>,
+  neededCount: number,
+): FundamentalScore[] {
+  if (neededCount === 0) return [];
+
+  return allScores
+    .filter((s) => s.grade === "A" && !currentSSymbols.has(s.symbol))
+    .sort((a, b) => b.rankScore - a.rankScore)
+    .slice(0, neededCount);
 }
 
 /**
@@ -68,7 +96,7 @@ export async function runFundamentalValidation(
 
     if (symbols.length === 0) {
       logger.warn("Fundamental", "스코어링 대상 종목 없음 — 검증 생략");
-      return { scores: [], reportsPublished, totalTokens };
+      return { scores: [], reportsPublished, totalTokens, qualityExcluded: [] };
     }
 
     // 3. DB에서 분기 실적 로드 (500개씩 배치)
@@ -113,7 +141,8 @@ export async function runFundamentalValidation(
     }
   }
 
-  const analyses = new Map<string, string>();
+  const analyses = new Map<string, AnalysisEntry>();
+  const qualityExcluded: string[] = [];
 
   for (const score of sGradeScores) {
     const input = inputs.find((i) => i.symbol === score.symbol);
@@ -122,7 +151,10 @@ export async function runFundamentalValidation(
     try {
       const technical = technicalMap.get(score.symbol);
       const analysis = await analyzeFundamentals(client, score, input, technical);
-      analyses.set(score.symbol, analysis.narrative);
+      analyses.set(score.symbol, {
+        narrative: analysis.narrative,
+        verdict: analysis.dataQualityVerdict,
+      });
       totalTokens.input += analysis.tokensUsed.input;
       totalTokens.output += analysis.tokensUsed.output;
     } catch (err) {
@@ -134,12 +166,93 @@ export async function runFundamentalValidation(
     }
   }
 
+  // 6-b. SUSPECT 판정 S급 제외 + A급 후보 보충 (1회 제한)
+  const suspectSymbols = sGradeScores
+    .filter((s) => analyses.get(s.symbol)?.verdict === "SUSPECT")
+    .map((s) => s.symbol);
+
+  // SUSPECT 종목 제거 (불변 필터)
+  let cleanSGradeScores = sGradeScores.filter(
+    (s) => !suspectSymbols.includes(s.symbol),
+  );
+  let allInputs = [...inputs];
+
+  for (const symbol of suspectSymbols) {
+    logger.warn("Fundamental", `SUSPECT 판정 — ${symbol} S급 제외`);
+    qualityExcluded.push(symbol);
+
+    // 현재 S급 심볼 집합 기준으로 후보 선정
+    const currentSSymbols = new Set(cleanSGradeScores.map((s) => s.symbol));
+    const candidates = selectFallbackCandidates(scores, currentSSymbols, 1);
+    if (candidates.length === 0) {
+      logger.warn("Fundamental", `${symbol} 보충 가능한 A급 후보 없음`);
+      continue;
+    }
+
+    const candidate = candidates[0];
+    logger.info("Fundamental", `${candidate.symbol} A→S 승격 시도 (보충)`);
+
+    // 기술적 데이터 로드
+    const candidateTech = await loadTechnicalData(candidate.symbol);
+    if (candidateTech != null) {
+      technicalMap.set(candidate.symbol, candidateTech);
+    }
+
+    // 실적 데이터 로드
+    let candidateInput = allInputs.find((i) => i.symbol === candidate.symbol);
+    if (candidateInput == null) {
+      const loaded = await loadFundamentalData([candidate.symbol]);
+      candidateInput = loaded[0];
+    }
+
+    if (candidateInput == null) {
+      logger.warn("Fundamental", `${candidate.symbol} 실적 데이터 없음 — 보충 건너뜀`);
+      continue;
+    }
+
+    try {
+      const promotedScore: FundamentalScore = { ...candidate, grade: "S" };
+      const analysis = await analyzeFundamentals(
+        client,
+        promotedScore,
+        candidateInput,
+        candidateTech,
+      );
+      totalTokens.input += analysis.tokensUsed.input;
+      totalTokens.output += analysis.tokensUsed.output;
+
+      if (analysis.dataQualityVerdict === "SUSPECT") {
+        logger.warn(
+          "Fundamental",
+          `${candidate.symbol} 보충 후보도 SUSPECT — 보충 제외 (재귀 1회 제한)`,
+        );
+        qualityExcluded.push(candidate.symbol);
+        continue;
+      }
+
+      analyses.set(candidate.symbol, {
+        narrative: analysis.narrative,
+        verdict: analysis.dataQualityVerdict,
+      });
+      allInputs = [...allInputs, candidateInput];
+      cleanSGradeScores = [...cleanSGradeScores, promotedScore];
+      logger.info("Fundamental", `${candidate.symbol} A→S 승격 (보충)`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.error(
+        "Fundamental",
+        `${candidate.symbol} 보충 LLM 분석 실패: ${reason}`,
+      );
+    }
+  }
+
   // 7. S급 종목만 리포트 발행
   if (options?.skipPublish !== true) {
-    for (const score of sGradeScores) {
-      const input = inputs.find((i) => i.symbol === score.symbol);
-      const narrative = analyses.get(score.symbol);
-      if (input == null || narrative == null) continue;
+    for (const score of cleanSGradeScores) {
+      const input = allInputs.find((i) => i.symbol === score.symbol);
+      const entry = analyses.get(score.symbol);
+      if (input == null || entry == null) continue;
+      const narrative = entry.narrative;
 
       // technicalMap에 항상 존재해야 하나, 6번 스텝에서 DB 조회 실패 시 누락될 수 있어 방어적으로 재시도
       const technical = technicalMap.get(score.symbol) ?? await loadTechnicalData(score.symbol);
@@ -148,6 +261,7 @@ export async function runFundamentalValidation(
         input,
         narrative,
         technical,
+        dataQualityVerdict: entry.verdict,
       });
 
       try {
@@ -164,7 +278,7 @@ export async function runFundamentalValidation(
     }
   }
 
-  return { scores, reportsPublished, totalTokens };
+  return { scores, reportsPublished, totalTokens, qualityExcluded };
 }
 
 /**
