@@ -7,7 +7,7 @@ import { pool } from "@/db/client";
 import { sendDiscordError } from "./discord";
 import { logger } from "./logger";
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 const SCORE_THRESHOLD_FOR_ISSUE = 6;
 

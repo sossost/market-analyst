@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { logger } from "../logger.js";
 import { DEBATE_TOOLS, executeDebateTool } from "./braveSearch.js";
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 const MAX_TOOL_ROUNDS = 3;
 const MAX_RETRIES = 3;

@@ -3,7 +3,7 @@ import { findSessionByDate } from "./sessionStore.js";
 import { callWithRetry } from "./callAgent.js";
 import { logger } from "../logger.js";
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 
 export interface CausalAnalysisInput {

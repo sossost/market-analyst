@@ -7,7 +7,7 @@ import { logger } from "../logger.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { Thesis } from "../../types/debate.js";
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 
 interface VerificationJudgment {

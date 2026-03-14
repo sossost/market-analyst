@@ -117,7 +117,7 @@ log "✓ 프롬프트 조립 완료"
 log "▶ Claude Code CLI 검증 실행 (타임아웃: ${TIMEOUT_SEC}초)"
 
 QA_RESULT=""
-if $TIMEOUT_CMD "$TIMEOUT_SEC" cat "$PROMPT_FILE" | claude -p --output-format json > "$CLAUDE_RAW_FILE" 2>>"$LOG_FILE"; then
+if $TIMEOUT_CMD "$TIMEOUT_SEC" cat "$PROMPT_FILE" | run_claude_p claude -p --output-format json > "$CLAUDE_RAW_FILE" 2>>"$LOG_FILE"; then
   # --output-format json이면 result 필드에 텍스트가 들어옴
   QA_RAW=$(jq -r '.result // .' "$CLAUDE_RAW_FILE" 2>/dev/null || cat "$CLAUDE_RAW_FILE")
 

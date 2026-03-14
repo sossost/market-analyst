@@ -56,7 +56,7 @@ export function createProvider(model: string): LLMProvider {
  */
 function resolveAnthropicModel(model: string): string {
   const ALIAS_MAP: Record<string, string> = {
-    sonnet: "claude-sonnet-4-20250514",
+    sonnet: "claude-sonnet-4-6-20250725",
     haiku: "claude-haiku-4-20250514",
     opus: "claude-opus-4-5",
   };
