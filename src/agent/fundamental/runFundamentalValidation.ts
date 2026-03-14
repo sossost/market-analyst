@@ -322,6 +322,7 @@ async function getAllScoringSymbols(): Promise<string[]> {
     FROM quarterly_financials f
     JOIN symbols s ON f.symbol = s.symbol
     WHERE s.is_actively_trading = true
+      AND (s.country = 'US' OR s.country IS NULL)
     ORDER BY f.symbol
   `);
   return (rows.rows as unknown as { symbol: string }[]).map((r) => r.symbol);

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   scoreFundamentals,
+  hasQuarterlyAnomaly,
   calcEpsGrowthYoY,
   calcRevenueGrowthYoY,
   calcYoYGrowth,
@@ -485,5 +486,102 @@ describe("promoteTopToS", () => {
     const result = promoteTopToS(scores);
 
     expect(result).toEqual(scores);
+  });
+});
+
+// ─── hasQuarterlyAnomaly ─────────────────────────────────────────────
+
+describe("hasQuarterlyAnomaly", () => {
+  it("returns false for normal quarterly revenue progression", () => {
+    // 정상: 분기 간 매출 변동이 5배 미만
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { revenue: 35_000_000_000, netIncome: 20_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { revenue: 30_000_000_000, netIncome: 16_000_000_000 }),
+      q("Q2 2025", "2025-06-30", { revenue: 26_000_000_000, netIncome: 13_000_000_000 }),
+      q("Q1 2025", "2025-03-31", { revenue: 22_000_000_000, netIncome: 10_000_000_000 }),
+    ];
+
+    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
+  });
+
+  it("detects revenue jump over 5x between consecutive quarters", () => {
+    // 15조 / 2.66조 ≈ 5.64 > 5 → true
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { revenue: 15_000_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { revenue: 2_660_000_000_000 }),
+    ];
+    expect(hasQuarterlyAnomaly(quarters)).toBe(true);
+  });
+
+  it("detects revenue drop below 1/5x between consecutive quarters", () => {
+    // 반대 방향: 직전 분기 대비 1/5 이하로 급감
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { revenue: 500_000_000 }),
+      q("Q3 2025", "2025-09-30", { revenue: 3_000_000_000 }),
+    ];
+    // 500M / 3000M = 0.167 < 0.2 (1/5) → true
+    expect(hasQuarterlyAnomaly(quarters)).toBe(true);
+  });
+
+  it("detects net income absolute value jump over 5x", () => {
+    // 단위 불연속: 이전엔 수십억, 갑자기 수천억
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { netIncome: 556_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { netIncome: 1_900_000_000 }),
+    ];
+    // 556B / 1.9B ≈ 293 > 5 → true
+    expect(hasQuarterlyAnomaly(quarters)).toBe(true);
+  });
+
+  it("allows sign change in net income without triggering anomaly when absolute values are similar", () => {
+    // 적자→흑자 전환이지만 절대값이 비슷한 경우 → false
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { netIncome: 300_000_000 }),
+      q("Q3 2025", "2025-09-30", { netIncome: -250_000_000 }),
+    ];
+    // 300M / 250M = 1.2 < 5 → false
+    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
+  });
+
+  it("skips net income check when prev absolute value is 0", () => {
+    // 이전 분기 순이익이 0이면 비율 계산 스킵
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { netIncome: 1_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { netIncome: 0 }),
+    ];
+    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
+  });
+
+  it("returns false when revenue or netIncome is null", () => {
+    // null 값은 체크 스킵 — 에러 없이 false 반환
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { revenue: null, netIncome: null }),
+      q("Q3 2025", "2025-09-30", { revenue: null, netIncome: null }),
+    ];
+    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
+  });
+
+  it("returns false for single quarter (no pairs to compare)", () => {
+    const quarters = [
+      q("Q4 2025", "2025-12-31", { revenue: 5_000_000_000 }),
+    ];
+    expect(hasQuarterlyAnomaly(quarters)).toBe(false);
+  });
+
+  it("scoreFundamentals returns F with anomaly detail when data anomaly detected", () => {
+    // 실제 SMFG 유사 패턴: 분기 간 순이익 단위 불연속
+    const input = makeInput("SMFG", [
+      q("Q4 2025", "2025-12-31", { epsDiluted: 362.51, revenue: 7_930_000_000_000, netIncome: 556_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: 180.0, revenue: 2_660_000_000_000, netIncome: 1_900_000_000 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: 90.0, revenue: 2_400_000_000_000, netIncome: 1_850_000_000 }),
+      q("Q1 2025", "2025-03-31", { epsDiluted: 45.0, revenue: 2_300_000_000_000, netIncome: 1_800_000_000 }),
+      q("Q4 2024", "2024-12-31", { epsDiluted: 30.0, revenue: 2_200_000_000_000, netIncome: 1_750_000_000 }),
+    ]);
+
+    const score = scoreFundamentals(input);
+
+    expect(score.grade).toBe("F");
+    expect(score.totalScore).toBe(0);
+    expect(score.criteria.epsGrowth.detail).toContain("데이터 이상 감지");
   });
 });
