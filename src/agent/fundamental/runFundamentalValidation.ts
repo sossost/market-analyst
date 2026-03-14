@@ -176,6 +176,7 @@ export async function runFundamentalValidation(
     (s) => !suspectSymbols.includes(s.symbol),
   );
   let allInputs = [...inputs];
+  const promotedSymbols = new Set<string>();
 
   for (const symbol of suspectSymbols) {
     logger.warn("Fundamental", `SUSPECT 판정 — ${symbol} S급 제외`);
@@ -236,6 +237,7 @@ export async function runFundamentalValidation(
       });
       allInputs = [...allInputs, candidateInput];
       cleanSGradeScores = [...cleanSGradeScores, promotedScore];
+      promotedSymbols.add(candidate.symbol);
       logger.info("Fundamental", `${candidate.symbol} A→S 승격 (보충)`);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -262,6 +264,7 @@ export async function runFundamentalValidation(
         narrative,
         technical,
         dataQualityVerdict: entry.verdict,
+        isPromoted: promotedSymbols.has(score.symbol),
       });
 
       try {

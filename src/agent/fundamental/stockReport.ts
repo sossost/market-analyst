@@ -30,6 +30,8 @@ export interface StockReportContext {
   };
   /** S급 LLM 데이터 품질 검증 결과 */
   dataQualityVerdict?: DataQualityVerdict;
+  /** A→S 보충 승격 여부 */
+  isPromoted?: boolean;
 }
 
 export function generateStockReport(ctx: StockReportContext): string {
@@ -40,7 +42,7 @@ export function generateStockReport(ctx: StockReportContext): string {
     `# [${score.symbol}] 종목 심층 분석`,
     "",
     ctx.dataQualityVerdict === "CLEAN"
-      ? `> 분석일: ${date} | 펀더멘탈 등급: **${score.grade}** | 데이터 품질: ✅ 검증 통과`
+      ? `> 분석일: ${date} | 펀더멘탈 등급: **${ctx.isPromoted === true ? "S (보충 승격)" : score.grade}** | 데이터 품질: ✅ 검증 통과`
       : `> 분석일: ${date} | 펀더멘탈 등급: **${score.grade}**`,
     "",
   ];

@@ -154,8 +154,8 @@ export function buildUserMessage(
       "3. 통화 불일치: 외화 보고 기업의 환율 효과가 성장률의 대부분을 설명하는 경우",
       "4. 단위 변경: 특정 분기의 절댓값이 이전/이후 분기와 10배 이상 차이",
       "",
-      '판단 결과를 반드시 아래 JSON 형식으로 분석 말미에 포함하라:',
-      '{"dataQualityVerdict": "CLEAN" 또는 "SUSPECT", "dataQualityReason": "판단 근거 1-2문장"}',
+      '판단 결과를 반드시 아래 JSON 형식으로 분석 말미에 포함하라. dataQualityVerdict 값은 "CLEAN" 또는 "SUSPECT" 중 하나여야 한다. 예시:',
+      '{"dataQualityVerdict": "CLEAN", "dataQualityReason": "누적 보고나 단위 변경 등의 이슈 없이 일관된 성장세를 보임."}',
     );
   } else {
     lines.push("위 데이터를 바탕으로 이 종목의 펀더멘탈을 2-3문단으로 해석해주세요.");
