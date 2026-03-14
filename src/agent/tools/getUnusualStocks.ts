@@ -117,6 +117,8 @@ export const getUnusualStocks: AgentTool = {
           conditions.push("phase_change");
         }
 
+        const phase2WithDrop = r.phase === 2 && dailyReturn <= -BIG_MOVE_THRESHOLD;
+
         return {
           symbol: r.symbol,
           companyName: r.company_name,
@@ -130,11 +132,13 @@ export const getUnusualStocks: AgentTool = {
           sector: r.sector,
           industry: r.industry,
           conditions,
+          phase2WithDrop,
         };
       })
       .filter(
         (s) =>
-          s.conditions.length >= MIN_CONDITIONS && s.rsScore >= MIN_RS_SCORE,
+          (s.conditions.length >= MIN_CONDITIONS || s.phase2WithDrop === true) &&
+          s.rsScore >= MIN_RS_SCORE,
       )
       .sort((a, b) => {
         // Phase 2 우선, 같은 Phase면 RS 높은 순
