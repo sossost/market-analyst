@@ -13,7 +13,7 @@ import type { FundamentalScore, FundamentalInput, DataQualityVerdict } from "../
 import type { StockReportContext } from "./stockReport.js";
 
 const PERSONA_PATH = resolve(import.meta.dirname, "../../../.claude/agents/fundamental-analyst.md");
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 const MAX_NARRATIVE_LENGTH = 6000;
 

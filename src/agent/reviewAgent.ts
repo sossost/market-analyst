@@ -27,7 +27,7 @@ interface ReviewResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const REVIEW_MODEL = "claude-sonnet-4-20250514";
+const REVIEW_MODEL = "claude-sonnet-4-6-20250725";
 const REVIEW_MAX_TOKENS = 2048;
 const REFINE_MAX_TOKENS = 8192;
 const RAW_PREVIEW_LENGTH = 300;

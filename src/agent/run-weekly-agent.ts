@@ -39,7 +39,7 @@ import { formatChainsSummaryForPrompt } from "../lib/narrativeChainStats";
 import { formatLeadingSectorsForPrompt } from "../lib/sectorLagStats";
 import { loadRecentRegimes, formatRegimeForPrompt } from "./debate/regimeStore";
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 8192;
 const MAX_ITERATIONS = 15;
 

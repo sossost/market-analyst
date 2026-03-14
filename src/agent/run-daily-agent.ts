@@ -33,7 +33,7 @@ import { formatChainsForDailyPrompt } from "../lib/narrativeChainStats";
 import { evaluateDailySendGate } from "./dailySendGate";
 import { buildMarketTempBlock } from "./marketTempBlock";
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 8192;
 const MAX_ITERATIONS = 15;
 
