@@ -148,4 +148,11 @@ describe("buildSynthesisPrompt", () => {
     expect(result).not.toContain("</fundamental-data>");
     expect(result).not.toContain("추천 종목 펀더멘탈 데이터");
   });
+
+  it("섹션 7에 마크다운 테이블 헤더가 포함된다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined);
+
+    expect(result).toContain("| 날짜 | 이벤트 | 위 분석에 미치는 영향 |");
+    expect(result).toContain("|------|--------|----------------------|");
+  });
 });
