@@ -82,7 +82,7 @@ export class ClaudeCliProvider implements LLMProvider {
   }
 
   async call(options: LLMCallOptions): Promise<LLMCallResult> {
-    const { systemPrompt, userMessage, maxTokens } = options;
+    const { systemPrompt, userMessage } = options;
 
     const sanitizedPrompt = sanitizeForCli(systemPrompt);
     if (Buffer.byteLength(sanitizedPrompt, "utf-8") > MAX_SYSTEM_PROMPT_BYTES) {
@@ -100,10 +100,6 @@ export class ClaudeCliProvider implements LLMProvider {
       "--output-format",
       "json",
     ];
-
-    if (maxTokens != null) {
-      args.push("--max-tokens", String(maxTokens));
-    }
 
     return new Promise<LLMCallResult>((resolve, reject) => {
       const child = execFile(
