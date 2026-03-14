@@ -25,6 +25,11 @@ vi.mock("../../../src/agent/fundamental/stockReport.js", () => ({
   publishStockReport: vi.fn(),
 }));
 
+vi.mock("../../../src/agent/fundamental/stockReportQA.js", () => ({
+  runStockReportQA: vi.fn().mockReturnValue({ passed: true, symbol: "TEST", date: "2026-01-01", issues: [] }),
+  reportQAIssueToGitHub: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     default: class MockAnthropic {},
