@@ -53,27 +53,12 @@ export interface QAResult {
  */
 export function runStockReportQA(symbol: string, reportMd: string): QAResult {
   const date = new Date().toISOString().slice(0, 10);
-  const issues: QAIssue[] = [];
-
-  const marginIssue = checkMarginRawDecimal(reportMd);
-  if (marginIssue != null) {
-    issues.push(marginIssue);
-  }
-
-  const sectionIssue = checkSectionMissing(reportMd);
-  if (sectionIssue != null) {
-    issues.push(sectionIssue);
-  }
-
-  const riskIssue = checkNoRiskMention(reportMd);
-  if (riskIssue != null) {
-    issues.push(riskIssue);
-  }
-
-  const epsIssue = checkEpsInconsistency(reportMd);
-  if (epsIssue != null) {
-    issues.push(epsIssue);
-  }
+  const issues: QAIssue[] = [
+    checkMarginRawDecimal(reportMd),
+    checkSectionMissing(reportMd),
+    checkNoRiskMention(reportMd),
+    checkEpsInconsistency(reportMd),
+  ].filter((issue): issue is QAIssue => issue != null);
 
   return {
     symbol,
