@@ -9,11 +9,10 @@ const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 
 function createCausalProvider(): LLMProvider {
-  return new FallbackProvider(
-    new ClaudeCliProvider(),
-    new AnthropicProvider(FALLBACK_MODEL),
-    "ClaudeCLI",
-  );
+  const cli = new ClaudeCliProvider();
+  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
+  if (!hasApiKey) return cli;
+  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
 }
 
 export interface CausalAnalysisInput {

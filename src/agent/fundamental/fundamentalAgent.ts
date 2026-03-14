@@ -20,11 +20,10 @@ const MAX_TOKENS = 4096;
 const MAX_NARRATIVE_LENGTH = 6000;
 
 function createFundamentalProvider(): LLMProvider {
-  return new FallbackProvider(
-    new ClaudeCliProvider(),
-    new AnthropicProvider(FALLBACK_MODEL),
-    "ClaudeCLI",
-  );
+  const cli = new ClaudeCliProvider();
+  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
+  if (!hasApiKey) return cli;
+  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
 }
 
 interface FundamentalAnalysis {

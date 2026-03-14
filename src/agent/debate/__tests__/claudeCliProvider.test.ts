@@ -110,14 +110,12 @@ describe("ClaudeCliProvider — 성공 케이스", () => {
     expect(result.tokensUsed).toEqual({ input: 0, output: 0 });
   });
 
-  it("빈 stdout이면 빈 content를 반환한다", async () => {
+  it("빈 stdout이면 LLMProviderError를 throw한다", async () => {
     mockExecFileSuccess("");
 
     const provider = new ClaudeCliProvider();
-    const result = await provider.call(CALL_OPTIONS);
 
-    expect(result.content).toBe("");
-    expect(result.tokensUsed).toEqual({ input: 0, output: 0 });
+    await expect(provider.call(CALL_OPTIONS)).rejects.toThrow("empty response");
   });
 });
 

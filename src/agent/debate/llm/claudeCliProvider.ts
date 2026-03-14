@@ -4,6 +4,7 @@ import { LLMProviderError } from "./types.js";
 
 const DEFAULT_MODEL = "claude-opus-4-5";
 const TIMEOUT_MS = 120_000;
+const MAX_SYSTEM_PROMPT_BYTES = 64 * 1024; // 64KB
 
 interface ClaudeCliJsonOutput {
   type?: string;
@@ -32,10 +33,15 @@ function extractTokensUsed(
   };
 }
 
+function sanitizeForCli(input: string): string {
+  // eslint-disable-next-line no-control-regex
+  return input.replace(/\0/g, "");
+}
+
 function parseCliOutput(stdout: string): LLMCallResult {
   const trimmed = stdout.trim();
   if (trimmed === "") {
-    return { content: "", tokensUsed: { input: 0, output: 0 } };
+    throw new LLMProviderError("Claude CLI returned empty response");
   }
 
   let parsed: unknown;
@@ -76,17 +82,28 @@ export class ClaudeCliProvider implements LLMProvider {
   }
 
   async call(options: LLMCallOptions): Promise<LLMCallResult> {
-    const { systemPrompt, userMessage } = options;
+    const { systemPrompt, userMessage, maxTokens } = options;
+
+    const sanitizedPrompt = sanitizeForCli(systemPrompt);
+    if (Buffer.byteLength(sanitizedPrompt, "utf-8") > MAX_SYSTEM_PROMPT_BYTES) {
+      throw new LLMProviderError(
+        `System prompt exceeds ${MAX_SYSTEM_PROMPT_BYTES / 1024}KB limit`,
+      );
+    }
 
     const args = [
       "--print",
       "--model",
       this.model,
       "--system-prompt",
-      systemPrompt,
+      sanitizedPrompt,
       "--output-format",
       "json",
     ];
+
+    if (maxTokens != null) {
+      args.push("--max-tokens", String(maxTokens));
+    }
 
     return new Promise<LLMCallResult>((resolve, reject) => {
       const child = execFile(
