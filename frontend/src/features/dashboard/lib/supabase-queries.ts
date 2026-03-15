@@ -100,7 +100,7 @@ export async function fetchActiveRecommendations(): Promise<RecommendationSummar
   const { data, error } = await supabase
     .from('recommendations')
     .select(
-      'id, symbol, sector, pnl_percent, max_pnl_percent, days_held, current_phase',
+      'id, symbol, sector, pnl_percent, max_pnl_percent, days_held, current_phase, recommendation_date',
     )
     .eq('status', 'ACTIVE')
     .order('pnl_percent', { ascending: false })
@@ -110,16 +110,34 @@ export async function fetchActiveRecommendations(): Promise<RecommendationSummar
     throw new Error(`활성 추천 종목 조회 실패: ${error.message}`)
   }
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    symbol: row.symbol,
-    sector: row.sector,
-    pnlPercent: row.pnl_percent != null ? Number(row.pnl_percent) : null,
-    maxPnlPercent:
-      row.max_pnl_percent != null ? Number(row.max_pnl_percent) : null,
-    daysHeld: row.days_held ?? 0,
-    currentPhase: row.current_phase,
-  }))
+  type RowWithDate = { summary: RecommendationSummary; recommendationDate: string }
+  const dedupedBySymbol = new Map<string, RowWithDate>()
+
+  for (const row of data ?? []) {
+    const existing = dedupedBySymbol.get(row.symbol)
+    const shouldReplace =
+      existing == null ||
+      (row.recommendation_date != null &&
+        row.recommendation_date > (existing.recommendationDate ?? ''))
+
+    if (shouldReplace) {
+      dedupedBySymbol.set(row.symbol, {
+        summary: {
+          id: row.id,
+          symbol: row.symbol,
+          sector: row.sector,
+          pnlPercent: row.pnl_percent != null ? Number(row.pnl_percent) : null,
+          maxPnlPercent:
+            row.max_pnl_percent != null ? Number(row.max_pnl_percent) : null,
+          daysHeld: row.days_held ?? 0,
+          currentPhase: row.current_phase,
+        },
+        recommendationDate: row.recommendation_date,
+      })
+    }
+  }
+
+  return Array.from(dedupedBySymbol.values()).map(({ summary }) => summary)
 }
 
 export function calculateRecommendationStats(

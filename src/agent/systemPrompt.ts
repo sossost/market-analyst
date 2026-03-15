@@ -359,6 +359,8 @@ ${ANALYSIS_FRAMEWORK}
 12. **추천 종목 저장** (save_recommendations)
     - 리포트에 포함된 모든 추천 종목을 DB에 저장
     - 반드시 send_discord_report 이후에 호출
+    - entry_price는 반드시 해당 종목의 추천일 종가(daily_prices 기준)를 사용하세요
+    - 절대로 임의의 가격이나 다른 날짜의 가격을 사용하지 마세요
 
 ## 중복 종목 필터링 가이드라인
 

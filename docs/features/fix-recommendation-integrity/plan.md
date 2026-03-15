@@ -92,7 +92,9 @@ DB에 DAWN ID 11, ID 13이 모두 ACTIVE이면 둘 다 반환된다.
 
 ### A. `src/agent/tools/saveRecommendations.ts`
 
-1. **진입가 검증**: 각 symbol에 대해 `daily_prices` 테이블에서 `recommendation_date`의 종가 조회. 조회 성공 시 LLM 제공값 대신 실제 종가 사용. 조회 실패 시 LLM 제공값 fallback + 경고 로그.
+1. **진입가 2중 방어**:
+   - **1차 방어 (프롬프트)**: 에이전트 프롬프트에 "entry_price는 반드시 DB daily_prices 종가를 조회하여 입력" 명시
+   - **2차 방어 (코드)**: 각 symbol에 대해 `daily_prices` 테이블에서 `recommendation_date`의 종가 조회. LLM 값과 불일치 시 DB 값으로 교체 + `logger.warn` 경고. DB에 종가 없으면 LLM 값 fallback + 경고 로그.
 2. **중복 추천 방지**: INSERT 전에 `WHERE symbol = ? AND status = 'ACTIVE'` 쿼리 실행. ACTIVE row 존재 시 skip (skippedCount++ + 경고 로그).
 
 ### B. `src/etl/jobs/update-recommendation-status.ts`
@@ -131,11 +133,11 @@ DB에 DAWN ID 11, ID 13이 모두 ACTIVE이면 둘 다 반환된다.
 
 ## 리스크
 
-- **기존 오염 데이터**: DAWN ID 11($3.77)은 이미 DB에 존재. 이번 수정은 신규 추천부터 적용. 기존 잘못된 row는 별도 수동 정정 또는 backfill 스크립트 필요 (이번 스코프 외).
+- **기존 오염 데이터**: DAWN ID 11($3.77) 등 기존 잘못된 entry_price를 마이그레이션 SQL로 정정 (daily_prices 종가 기준). 이번 PR 스코프에 포함.
 - **entry_price fallback**: daily_prices에 해당 날짜 종가가 없는 경우(신규 상장, 거래 정지 등) LLM 값으로 fallback — 이 경우 `logger.warn`으로 추적 가능하게 해야 함.
 - **프론트 dedup 기준**: symbol별 "최신 날짜" vs "최고 PnL" 중 어느 기준으로 dedup할지 — 최신 날짜(recommendation_date DESC) 기준이 직관적이므로 채택.
 
 ## 의사결정 필요
 
-- **기존 오염 데이터(DAWN $3.77 등) 정정 여부**: 이번 스코프에 포함할지, 별도 DB 수동 수정으로 처리할지. 자율 판단: 별도 처리(수동 UPDATE SQL)로 분리 권고 — 구현 로직과 혼재하면 복잡도 증가.
+- **기존 오염 데이터(DAWN $3.77 등) 정정**: 이번 PR에 마이그레이션 SQL로 포함. daily_prices에서 실제 종가를 조회하여 entry_price/pnl_percent/max_pnl_percent 재계산.
 - **Step 2 daysHeld 거래일 카운트 명시적 계산 도입 여부**: 주석만 달지, 아예 `recommendation_date`부터 `targetDate`까지의 daily_prices 거래일 수를 COUNT하여 재계산할지. 자율 판단: 주석만 달기 채택 — 현행 로직이 실질적으로 올바르고, 명시적 재계산은 N+1 쿼리 유발.

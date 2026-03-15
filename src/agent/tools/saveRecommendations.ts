@@ -3,7 +3,7 @@ import { recommendations, recommendationFactors } from "@/db/schema/analyst";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateString, validateNumber, MIN_PHASE, MIN_RS_SCORE } from "./validation";
+import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE } from "./validation";
 import { loadLatestRegime } from "../debate/regimeStore";
 import { logger } from "@/agent/logger";
 
@@ -19,6 +19,9 @@ interface RecommendationInput {
 }
 
 const SUBSTANDARD_TAG = "[기준 미달]";
+
+/** LLM 진입가와 DB 종가의 허용 괴리 비율 (10%) */
+const PRICE_DIVERGENCE_THRESHOLD = 0.1;
 
 /**
  * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
@@ -118,20 +121,71 @@ export const saveRecommendations: AgentTool = {
       logger.warn("Regime", `레짐 조회 실패, null로 저장: ${reason}`);
     }
 
+    const symbols = recs
+      .map((r) => validateSymbol(r.symbol))
+      .filter((s): s is string => s != null);
+
+    // 중복 추천 방지: 현재 ACTIVE인 symbol 목록 사전 조회
+    const { rows: activeRows } = await retryDatabaseOperation(() =>
+      pool.query<{ symbol: string }>(
+        `SELECT symbol FROM recommendations WHERE status = 'ACTIVE' AND symbol = ANY($1)`,
+        [symbols],
+      ),
+    );
+    const activeSymbols = new Set(activeRows.map((r) => r.symbol));
+
+    // 진입가 검증: 추천일 종가 사전 일괄 조회
+    const { rows: priceRows } = await retryDatabaseOperation(() =>
+      pool.query<{ symbol: string; close: string }>(
+        `SELECT symbol, close FROM daily_prices WHERE symbol = ANY($1) AND date = $2`,
+        [symbols, date],
+      ),
+    );
+    const dbPriceMap = new Map(
+      priceRows.map((r) => [r.symbol, toNum(r.close)]),
+    );
+
     let savedCount = 0;
     let skippedCount = 0;
 
     for (const rec of recs) {
-      const symbol = validateString(rec.symbol);
+      const symbol = validateSymbol(rec.symbol);
       if (symbol == null) {
         skippedCount++;
         continue;
       }
 
-      const entryPrice = toNum(rec.entry_price);
-      if (entryPrice === 0) {
+      // 중복 추천 방지: ACTIVE 상태인 symbol 스킵
+      if (activeSymbols.has(symbol)) {
+        logger.warn("Duplicate", `${symbol}: 이미 ACTIVE 추천 존재, 스킵`);
         skippedCount++;
         continue;
+      }
+
+      const llmPrice = toNum(rec.entry_price);
+      if (llmPrice === 0) {
+        skippedCount++;
+        continue;
+      }
+
+      // 진입가 2중 방어: DB 종가와 비교 후 교정
+      let entryPrice = llmPrice;
+      const dbPrice = dbPriceMap.get(symbol);
+
+      if (dbPrice == null || dbPrice === 0) {
+        logger.warn(
+          "Price",
+          `${symbol}: daily_prices에 ${date} 종가 없음, LLM 값 ${llmPrice} 사용`,
+        );
+      } else {
+        const divergence = Math.abs(llmPrice - dbPrice) / dbPrice;
+        if (divergence >= PRICE_DIVERGENCE_THRESHOLD) {
+          logger.warn(
+            "Price",
+            `${symbol}: LLM 진입가 ${llmPrice} → DB 종가 ${dbPrice}로 교정`,
+          );
+          entryPrice = dbPrice;
+        }
       }
 
       // 기준 미달 태깅 (Phase < 2 또는 RS < 60)
