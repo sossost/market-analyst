@@ -150,7 +150,6 @@ export function calculateRecommendationStats(
       activeCount: 0,
       winRate: 0,
       avgPnlPercent: 0,
-      maxPnlPercent: 0,
       avgDaysHeld: 0,
       topItems: [],
     }
@@ -171,10 +170,6 @@ export function calculateRecommendationStats(
         itemsWithPnl.length
       : 0
 
-  const allMaxPnl = items
-    .map((item) => item.maxPnlPercent ?? 0)
-  const maxPnlPercent = allMaxPnl.length > 0 ? Math.max(...allMaxPnl) : 0
-
   const avgDaysHeld =
     activeCount > 0
       ? items.reduce((sum, item) => sum + item.daysHeld, 0) / activeCount
@@ -188,7 +183,6 @@ export function calculateRecommendationStats(
     activeCount,
     winRate,
     avgPnlPercent,
-    maxPnlPercent,
     avgDaysHeld,
     topItems,
   }

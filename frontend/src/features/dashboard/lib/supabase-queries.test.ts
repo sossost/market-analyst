@@ -315,7 +315,6 @@ describe('calculateRecommendationStats', () => {
       activeCount: 0,
       winRate: 0,
       avgPnlPercent: 0,
-      maxPnlPercent: 0,
       avgDaysHeld: 0,
       topItems: [],
     })
@@ -344,18 +343,6 @@ describe('calculateRecommendationStats', () => {
     const result = calculateRecommendationStats(items)
 
     expect(result.avgPnlPercent).toBeCloseTo(15)
-  })
-
-  it('최대 수익률은 maxPnlPercent 중 최대값', () => {
-    const items = [
-      createItem({ id: 1, maxPnlPercent: 30 }),
-      createItem({ id: 2, maxPnlPercent: 50 }),
-      createItem({ id: 3, maxPnlPercent: 20 }),
-    ]
-
-    const result = calculateRecommendationStats(items)
-
-    expect(result.maxPnlPercent).toBe(50)
   })
 
   it('평균 보유일 계산', () => {

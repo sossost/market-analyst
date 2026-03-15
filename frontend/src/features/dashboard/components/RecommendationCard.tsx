@@ -43,10 +43,6 @@ export async function RecommendationCard() {
                 value={`${stats.avgPnlPercent >= 0 ? '+' : ''}${stats.avgPnlPercent.toFixed(2)}%`}
               />
               <MetricItem
-                label="최대 수익률"
-                value={`${stats.maxPnlPercent >= 0 ? '+' : ''}${stats.maxPnlPercent.toFixed(2)}%`}
-              />
-              <MetricItem
                 label="평균 보유일"
                 value={`${Math.round(stats.avgDaysHeld)}일`}
               />

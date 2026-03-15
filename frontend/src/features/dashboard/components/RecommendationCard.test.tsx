@@ -80,7 +80,6 @@ describe('RecommendationCard', () => {
       activeCount: 5,
       winRate: 60,
       avgPnlPercent: 8.5,
-      maxPnlPercent: 35.2,
       avgDaysHeld: 12,
       topItems: [],
     })
@@ -93,12 +92,10 @@ describe('RecommendationCard', () => {
 
   it('양수 평균 수익률에 + 접두어', async () => {
     mockFetchActiveRecommendations.mockResolvedValue([createRecommendation()])
-    // avgPnlPercent와 maxPnlPercent 값을 다르게 설정하여 중복 텍스트 방지
     mockCalculateRecommendationStats.mockReturnValue({
       activeCount: 1,
       winRate: 100,
       avgPnlPercent: 8.5,
-      maxPnlPercent: 20.0,
       avgDaysHeld: 10,
       topItems: [],
     })
@@ -114,7 +111,6 @@ describe('RecommendationCard', () => {
       activeCount: 1,
       winRate: 0,
       avgPnlPercent: -3.2,
-      maxPnlPercent: 5.0,
       avgDaysHeld: 10,
       topItems: [],
     })
@@ -124,53 +120,16 @@ describe('RecommendationCard', () => {
     expect(screen.getByText('-3.20%')).toBeInTheDocument()
   })
 
-  it('양수 최대 수익률에 + 접두어', async () => {
-    mockFetchActiveRecommendations.mockResolvedValue([createRecommendation()])
-    // avgPnlPercent와 maxPnlPercent 값을 다르게 설정하여 중복 텍스트 방지
-    mockCalculateRecommendationStats.mockReturnValue({
-      activeCount: 1,
-      winRate: 100,
-      avgPnlPercent: 10.0,
-      maxPnlPercent: 35.2,
-      avgDaysHeld: 10,
-      topItems: [],
-    })
-
-    await renderCard()
-
-    expect(screen.getByText('+35.20%')).toBeInTheDocument()
-  })
-
-  it('음수 최대 수익률에 +- 없이 - 접두어만', async () => {
-    mockFetchActiveRecommendations.mockResolvedValue([createRecommendation()])
-    // avgPnlPercent와 maxPnlPercent 값을 다르게 설정하여 중복 텍스트 방지
-    mockCalculateRecommendationStats.mockReturnValue({
-      activeCount: 1,
-      winRate: 0,
-      avgPnlPercent: -3.0,
-      maxPnlPercent: -5.0,
-      avgDaysHeld: 10,
-      topItems: [],
-    })
-
-    await renderCard()
-
-    expect(screen.getByText('-5.00%')).toBeInTheDocument()
-    expect(screen.queryByText('+-5.00%')).not.toBeInTheDocument()
-  })
-
   it('상위 종목 목록 렌더링', async () => {
     const topItems = [
       createRecommendation({ id: 1, symbol: 'NVDA', pnlPercent: 35.5 }),
       createRecommendation({ id: 2, symbol: 'AAPL', pnlPercent: -5 }),
     ]
     mockFetchActiveRecommendations.mockResolvedValue(topItems)
-    // maxPnlPercent를 topItems pnlPercent와 다른 값으로 설정하여 중복 텍스트 방지
     mockCalculateRecommendationStats.mockReturnValue({
       activeCount: 2,
       winRate: 50,
       avgPnlPercent: 15.25,
-      maxPnlPercent: 40.0,
       avgDaysHeld: 10,
       topItems,
     })
@@ -192,7 +151,6 @@ describe('RecommendationCard', () => {
       activeCount: 1,
       winRate: 0,
       avgPnlPercent: 0,
-      maxPnlPercent: 0,
       avgDaysHeld: 10,
       topItems,
     })

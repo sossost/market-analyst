@@ -25,7 +25,6 @@ export interface RecommendationStats {
   activeCount: number
   winRate: number
   avgPnlPercent: number
-  maxPnlPercent: number
   avgDaysHeld: number
   topItems: RecommendationSummary[]
 }
