@@ -356,14 +356,14 @@ describe('calculateRecommendationStats', () => {
     expect(result.avgDaysHeld).toBe(15)
   })
 
-  it('상위 종목은 최대 5개', () => {
+  it('topItems는 전체 종목을 포함', () => {
     const items = Array.from({ length: 8 }, (_, i) =>
       createItem({ id: i + 1, symbol: `STOCK${i}` }),
     )
 
     const result = calculateRecommendationStats(items)
 
-    expect(result.topItems).toHaveLength(5)
+    expect(result.topItems).toHaveLength(8)
   })
 
   it('topItems는 pnlPercent 내림차순으로 정렬', () => {

@@ -17,7 +17,6 @@ const CONFIDENCE_ORDER: Record<string, number> = {
 export const THESES_QUERY_LIMIT = 10
 const RECOMMENDATIONS_QUERY_LIMIT = 100
 const REGIMES_QUERY_LIMIT = 7
-const TOP_ITEMS_LIMIT = 5
 
 export async function fetchLatestDailyReport(): Promise<DashboardReport | null> {
   const supabase = await createClient()
@@ -177,7 +176,6 @@ export function calculateRecommendationStats(
 
   const topItems = [...items]
     .sort((a, b) => (b.pnlPercent ?? 0) - (a.pnlPercent ?? 0))
-    .slice(0, TOP_ITEMS_LIMIT)
 
   return {
     activeCount,
