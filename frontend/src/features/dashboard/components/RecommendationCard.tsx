@@ -54,7 +54,7 @@ export async function RecommendationCard() {
             {stats.topItems.length > 0 && (
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">
-                  상위 종목 (수익률 순)
+                  상위 {stats.topItems.length}종목 (수익률 순)
                 </span>
                 <div className="flex flex-col gap-1">
                   {stats.topItems.map((item) => (
