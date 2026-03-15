@@ -255,11 +255,11 @@ async function main() {
   const debateDate = await getLatestPriceDate();
   if (debateDate == null) {
     logger.step("거래일 데이터 없음. 토론 스킵.");
-    await sendDiscordMessage("📊 오늘은 거래일이 아닙니다. 토론을 스킵합니다.");
+    await sendDiscordMessage("📊 가격 데이터 없음 — ETL 미완료 또는 비거래일. 토론 스킵.");
     await pool.end();
     return;
   }
-  logger.step(`[2/9] Debate date: ${debateDate}`);
+  logger.info("Debate", `Using date: ${debateDate}`);
   logger.step("[2/9] Loading memory context & market data...");
 
   const [memoryContext, marketSnapshot] = await Promise.all([
