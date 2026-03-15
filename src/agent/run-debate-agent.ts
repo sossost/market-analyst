@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { pool } from "@/db/client";
+import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { runDebate } from "./debate/debateEngine";
 import { buildMemoryContext } from "./debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
@@ -243,10 +244,6 @@ function validateEnvironment(): void {
   }
 }
 
-function getDebateDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 async function main() {
   logger.step("=== Debate Agent: Daily Cabinet Discussion ===\n");
 
@@ -254,8 +251,15 @@ async function main() {
   validateEnvironment();
   logger.step("[1/9] Environment validated");
 
-  // 2. 장기 기억 + 시장 데이터 로드
-  const debateDate = getDebateDate();
+  // 2. 최신 거래일 확인
+  const debateDate = await getLatestPriceDate();
+  if (debateDate == null) {
+    logger.step("거래일 데이터 없음. 토론 스킵.");
+    await sendDiscordMessage("📊 가격 데이터 없음 — ETL 미완료 또는 비거래일. 토론 스킵.");
+    await pool.end();
+    return;
+  }
+  logger.info("Debate", `Using date: ${debateDate}`);
   logger.step("[2/9] Loading memory context & market data...");
 
   const [memoryContext, marketSnapshot] = await Promise.all([
