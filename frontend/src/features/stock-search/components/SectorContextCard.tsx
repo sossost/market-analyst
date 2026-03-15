@@ -5,45 +5,15 @@ import {
   CardTitle,
 } from '@/shared/components/ui/card'
 
+import {
+  MetricItem,
+  formatChangeArrow,
+  formatPct,
+  formatRank,
+  formatRs,
+} from '../lib/formatters'
 import type { SectorContext } from '../types'
 import { PhaseBadge } from './PhaseBadge'
-
-function formatRs(value: number | null): string {
-  if (value == null) {
-    return '-'
-  }
-  return value.toFixed(1)
-}
-
-function formatPct(value: number | null): string {
-  if (value == null) {
-    return '-'
-  }
-  return `${value.toFixed(1)}%`
-}
-
-function formatChangeArrow(change: number | null): React.ReactNode {
-  if (change == null) {
-    return <span className="text-muted-foreground">-</span>
-  }
-  const isPositive = change >= 0
-  const arrow = isPositive ? '▲' : '▼'
-  const cls = isPositive
-    ? 'text-emerald-600 dark:text-emerald-400'
-    : 'text-red-600 dark:text-red-400'
-  return (
-    <span className={`text-xs font-semibold ${cls}`}>
-      {arrow} {Math.abs(change).toFixed(1)}
-    </span>
-  )
-}
-
-function formatRank(rank: number | null, total: number | null): string {
-  if (rank == null || total == null) {
-    return '-'
-  }
-  return `${rank} / ${total}`
-}
 
 interface SectorContextCardProps {
   sector: string
@@ -85,14 +55,5 @@ export function SectorContextCard({ sector, context }: SectorContextCardProps) {
         </div>
       </CardContent>
     </Card>
-  )
-}
-
-function MetricItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium">{value}</span>
-    </div>
   )
 }

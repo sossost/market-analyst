@@ -42,8 +42,8 @@ export function BasicInfoCard({ profile }: BasicInfoCardProps) {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <MetricItem label="섹터" value={profile.sector || '-'} />
-          <MetricItem label="산업" value={profile.industry || '-'} />
+          <MetricItem label="섹터" value={profile.sector ?? '-'} />
+          <MetricItem label="산업" value={profile.industry ?? '-'} />
           <MetricItem label="시가총액" value={formatMarketCap(profile.marketCap)} />
           {profile.priceDate != null && (
             <MetricItem label="기준일" value={profile.priceDate} />

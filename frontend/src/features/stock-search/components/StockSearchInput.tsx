@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { cn } from '@/shared/lib/utils'
+
 import type { StockSearchResult } from '../types'
 
 const DEBOUNCE_MS = 300
@@ -153,7 +155,7 @@ export function StockSearchInput({
   }, [])
 
   return (
-    <div ref={containerRef} className={`relative w-full max-w-lg ${className ?? ''}`}>
+    <div ref={containerRef} className={cn('relative w-full max-w-lg', className)}>
       <div className="relative">
         <input
           ref={inputRef}

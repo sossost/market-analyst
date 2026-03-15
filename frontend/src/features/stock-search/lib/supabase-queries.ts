@@ -31,36 +31,7 @@ function isRecommendationStatus(value: unknown): value is RecommendationStatus {
   return value === 'active' || value === 'closed'
 }
 
-/** 쿼리 1: 자동완성 검색 (Route Handler용 — browser client 필요) */
-export async function searchStockSymbols(
-  query: string,
-): Promise<StockSearchResult[]> {
-  const { createClient: createBrowserClient } = await import(
-    '@/features/auth/lib/supabase-browser'
-  )
-  const supabase = createBrowserClient()
-
-  const { data, error } = await supabase
-    .from('symbols')
-    .select('symbol, company_name, sector')
-    .or(`symbol.ilike.%${query}%,company_name.ilike.%${query}%`)
-    .eq('is_etf', false)
-    .eq('is_fund', false)
-    .order('market_cap', { ascending: false })
-    .limit(10)
-
-  if (error != null) {
-    throw new Error(`종목 검색 실패: ${error.message}`)
-  }
-
-  return (data ?? []).map((row) => ({
-    symbol: row.symbol,
-    companyName: row.company_name ?? '',
-    sector: row.sector ?? null,
-  }))
-}
-
-/** 쿼리 1 (서버 측): Route Handler에서 server client로 자동완성 검색 */
+/** 쿼리 1: Route Handler에서 server client로 자동완성 검색 */
 export async function searchStockSymbolsServer(
   query: string,
 ): Promise<StockSearchResult[]> {
@@ -167,8 +138,8 @@ export async function fetchStockProfile(
   return {
     symbol: symbolData.symbol,
     companyName: symbolData.company_name ?? '',
-    sector: symbolData.sector ?? '',
-    industry: symbolData.industry ?? '',
+    sector: symbolData.sector ?? null,
+    industry: symbolData.industry ?? null,
     marketCap: symbolData.market_cap ?? null,
     phase,
     ma150Slope: phaseData?.ma150_slope ?? null,
@@ -191,15 +162,13 @@ export async function fetchSectorContext(
 ): Promise<SectorContext> {
   const supabase = await createClient()
 
-  const [sectorResult] = await Promise.all([
-    supabase
-      .from('sector_rs_daily')
-      .select('avg_rs, rs_rank, group_phase, phase2_ratio, change_4w, change_8w, change_12w, stock_count')
-      .eq('sector', sector)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ])
+  const sectorResult = await supabase
+    .from('sector_rs_daily')
+    .select('avg_rs, rs_rank, group_phase, phase2_ratio, change_4w, change_8w, change_12w, stock_count, date')
+    .eq('sector', sector)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
   if (sectorResult.error != null) {
     throw new Error(`섹터 맥락 조회 실패: ${sectorResult.error.message}`)
@@ -209,32 +178,22 @@ export async function fetchSectorContext(
   const rawPhase = sectorData?.group_phase
   const groupPhase = isStockPhase(rawPhase) ? rawPhase : null
 
-  // RPC가 없으면 직접 집계 쿼리
   let stockRsRank: number | null = null
   let stockTotalInSector: number | null = null
 
-  if (rsScore != null) {
-    const { data: allStocks, error: allError } = await supabase
+  if (rsScore != null && sectorData?.date != null) {
+    // 최신 date를 먼저 확정한 뒤 서버 사이드 필터링 — 풀스캔 방지
+    const { data: sectorStocks, error: sectorStocksError } = await supabase
       .from('stock_phases')
-      .select('symbol, rs_score, symbols!inner(sector)')
+      .select('rs_score, symbols!inner(sector)')
       .eq('symbols.sector', sector)
-      .order('date', { ascending: false })
+      .eq('date', sectorData.date)
 
-    if (allError == null && allStocks != null) {
-      // 최신 date 기준으로 필터링
-      const latestDate = allStocks[0]
-        ? (allStocks[0] as Record<string, unknown>).date as string | undefined
-        : undefined
-
-      const latestStocks = latestDate != null
-        ? allStocks.filter((s) => (s as Record<string, unknown>).date === latestDate)
-        : allStocks
-
-      stockTotalInSector = latestStocks.length
-      stockRsRank =
-        latestStocks.filter(
-          (s) => (s.rs_score ?? 0) >= rsScore,
-        ).length
+    if (sectorStocksError == null && sectorStocks != null) {
+      stockTotalInSector = sectorStocks.length
+      stockRsRank = sectorStocks.filter(
+        (s) => (s.rs_score ?? 0) >= rsScore,
+      ).length
     }
   }
 
@@ -261,7 +220,7 @@ export async function fetchIndustryContext(
 
   const { data: industryData, error: industryError } = await supabase
     .from('industry_rs_daily')
-    .select('avg_rs, rs_rank, group_phase, phase2_ratio, change_4w, change_8w')
+    .select('avg_rs, rs_rank, group_phase, phase2_ratio, change_4w, change_8w, date')
     .eq('industry', industry)
     .order('date', { ascending: false })
     .limit(1)
@@ -277,22 +236,17 @@ export async function fetchIndustryContext(
   let stockRsRank: number | null = null
   let stockTotalInIndustry: number | null = null
 
-  if (rsScore != null) {
-    const { data: allStocks, error: allError } = await supabase
+  if (rsScore != null && industryData?.date != null) {
+    // 최신 date를 먼저 확정한 뒤 서버 사이드 필터링 — 풀스캔 방지
+    const { data: industryStocks, error: industryStocksError } = await supabase
       .from('stock_phases')
-      .select('symbol, rs_score, date, symbols!inner(industry)')
+      .select('rs_score, symbols!inner(industry)')
       .eq('symbols.industry', industry)
-      .order('date', { ascending: false })
+      .eq('date', industryData.date)
 
-    if (allError == null && allStocks != null && allStocks.length > 0) {
-      const latestDate = (allStocks[0] as Record<string, unknown>).date as string | undefined
-
-      const latestStocks = latestDate != null
-        ? allStocks.filter((s) => (s as Record<string, unknown>).date === latestDate)
-        : allStocks
-
-      stockTotalInIndustry = latestStocks.length
-      stockRsRank = latestStocks.filter(
+    if (industryStocksError == null && industryStocks != null) {
+      stockTotalInIndustry = industryStocks.length
+      stockRsRank = industryStocks.filter(
         (s) => (s.rs_score ?? 0) >= rsScore,
       ).length
     }

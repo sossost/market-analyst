@@ -86,8 +86,8 @@ export function RecommendationHistoryCard({ records }: RecommendationHistoryCard
                 </tr>
               </thead>
               <tbody>
-                {records.map((record) => (
-                  <tr key={record.recommendationDate} className="border-b last:border-0">
+                {records.map((record, idx) => (
+                  <tr key={idx} className="border-b last:border-0">
                     <td className="py-2 text-xs font-mono text-muted-foreground">
                       {record.recommendationDate}
                     </td>

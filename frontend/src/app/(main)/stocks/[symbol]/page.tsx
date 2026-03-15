@@ -34,10 +34,10 @@ export default async function StockDetailPage({ params }: Props) {
   const [fundamentalData, sectorContext, industryContext, recommendations] =
     await Promise.all([
       fetchFundamentalData(uppercaseSymbol),
-      profile.sector !== ''
+      profile.sector != null
         ? fetchSectorContext(profile.sector, profile.rsScore)
         : Promise.resolve(null),
-      profile.industry !== ''
+      profile.industry != null
         ? fetchIndustryContext(profile.industry, profile.rsScore)
         : Promise.resolve(null),
       fetchRecommendationHistory(uppercaseSymbol),
@@ -66,10 +66,10 @@ export default async function StockDetailPage({ params }: Props) {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FundamentalCard data={fundamentalData} />
           <div className="flex flex-col gap-4">
-            {sectorContext != null && (
+            {sectorContext != null && profile.sector != null && (
               <SectorContextCard sector={profile.sector} context={sectorContext} />
             )}
-            {industryContext != null && (
+            {industryContext != null && profile.industry != null && (
               <IndustryContextCard industry={profile.industry} context={industryContext} />
             )}
           </div>

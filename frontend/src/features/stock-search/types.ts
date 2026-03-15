@@ -5,8 +5,8 @@ export type SepaGrade = 'S' | 'A' | 'B' | 'C' | 'F'
 export interface StockBasicInfo {
   symbol: string
   companyName: string
-  sector: string
-  industry: string
+  sector: string | null
+  industry: string | null
   marketCap: number | null
 }
 
