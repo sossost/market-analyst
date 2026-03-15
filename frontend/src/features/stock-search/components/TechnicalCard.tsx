@@ -8,7 +8,6 @@ import {
 import type { StockProfile } from '../types'
 import { PhaseBadge } from './PhaseBadge'
 
-const MA_LABELS = ['MA20', 'MA50', 'MA100', 'MA200'] as const
 
 function formatPctChange(pct: number): string {
   const sign = pct >= 0 ? '+' : ''
@@ -67,7 +66,7 @@ interface TechnicalCardProps {
 export function TechnicalCard({ profile }: TechnicalCardProps) {
   const { close, ma20, ma50, ma100, ma200, phase, pctFromHigh52w, pctFromLow52w } = profile
 
-  const maValues: Array<{ label: typeof MA_LABELS[number]; value: number | null }> = [
+  const maValues: Array<{ label: string; value: number | null }> = [
     { label: 'MA20', value: ma20 },
     { label: 'MA50', value: ma50 },
     { label: 'MA100', value: ma100 },

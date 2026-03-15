@@ -31,27 +31,6 @@ function getRsLabel(score: number): string {
   return '약세'
 }
 
-function formatChangeArrow(change: number | null): string {
-  if (change == null) {
-    return '-'
-  }
-  const arrow = change >= 0 ? '▲' : '▼'
-  const absChange = Math.abs(change).toFixed(1)
-  return `${arrow} ${absChange}`
-}
-
-function getChangeClass(change: number | null): string {
-  if (change == null) {
-    return 'text-muted-foreground'
-  }
-  if (change > 0) {
-    return 'text-emerald-600 dark:text-emerald-400'
-  }
-  if (change < 0) {
-    return 'text-red-600 dark:text-red-400'
-  }
-  return 'text-muted-foreground'
-}
 
 interface RSCardProps {
   profile: StockProfile

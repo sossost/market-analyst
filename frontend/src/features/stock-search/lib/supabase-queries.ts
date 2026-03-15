@@ -191,7 +191,7 @@ export async function fetchSectorContext(
 ): Promise<SectorContext> {
   const supabase = await createClient()
 
-  const [sectorResult, rankResult] = await Promise.all([
+  const [sectorResult] = await Promise.all([
     supabase
       .from('sector_rs_daily')
       .select('avg_rs, rs_rank, group_phase, phase2_ratio, change_4w, change_8w, change_12w, stock_count')
@@ -199,12 +199,6 @@ export async function fetchSectorContext(
       .order('date', { ascending: false })
       .limit(1)
       .maybeSingle(),
-    rsScore != null
-      ? supabase.rpc('get_sector_stock_rank', {
-          p_sector: sector,
-          p_rs_score: rsScore,
-        })
-      : Promise.resolve({ data: null, error: null }),
   ])
 
   if (sectorResult.error != null) {

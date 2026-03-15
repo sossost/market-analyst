@@ -1,14 +1,18 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { BasicInfoCard } from '@/features/stock-search/components/BasicInfoCard'
 import { FundamentalCard } from '@/features/stock-search/components/FundamentalCard'
 import { IndustryContextCard } from '@/features/stock-search/components/IndustryContextCard'
 import { RSCard } from '@/features/stock-search/components/RSCard'
+import { RecommendationHistoryCard } from '@/features/stock-search/components/RecommendationHistoryCard'
 import { SectorContextCard } from '@/features/stock-search/components/SectorContextCard'
+import { StockSearchInput } from '@/features/stock-search/components/StockSearchInput'
 import { TechnicalCard } from '@/features/stock-search/components/TechnicalCard'
 import {
   fetchFundamentalData,
   fetchIndustryContext,
+  fetchRecommendationHistory,
   fetchSectorContext,
   fetchStockProfile,
 } from '@/features/stock-search/lib/supabase-queries'
@@ -27,25 +31,28 @@ export default async function StockDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [fundamentalData, sectorContext, industryContext] = await Promise.all([
-    fetchFundamentalData(uppercaseSymbol),
-    profile.sector !== ''
-      ? fetchSectorContext(profile.sector, profile.rsScore)
-      : Promise.resolve(null),
-    profile.industry !== ''
-      ? fetchIndustryContext(profile.industry, profile.rsScore)
-      : Promise.resolve(null),
-  ])
+  const [fundamentalData, sectorContext, industryContext, recommendations] =
+    await Promise.all([
+      fetchFundamentalData(uppercaseSymbol),
+      profile.sector !== ''
+        ? fetchSectorContext(profile.sector, profile.rsScore)
+        : Promise.resolve(null),
+      profile.industry !== ''
+        ? fetchIndustryContext(profile.industry, profile.rsScore)
+        : Promise.resolve(null),
+      fetchRecommendationHistory(uppercaseSymbol),
+    ])
 
   return (
     <main className="p-6">
-      <div className="mb-6">
-        <a
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <Link
           href="/stocks"
           className="text-sm text-muted-foreground hover:text-foreground"
         >
           &larr; 종목 검색
-        </a>
+        </Link>
+        <StockSearchInput className="sm:max-w-sm" />
       </div>
 
       <div className="flex flex-col gap-4">
@@ -67,6 +74,8 @@ export default async function StockDetailPage({ params }: Props) {
             )}
           </div>
         </div>
+
+        <RecommendationHistoryCard records={recommendations} />
       </div>
     </main>
   )
