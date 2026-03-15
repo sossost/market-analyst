@@ -43,10 +43,6 @@ export async function RecommendationCard() {
                 value={`${stats.avgPnlPercent >= 0 ? '+' : ''}${stats.avgPnlPercent.toFixed(2)}%`}
               />
               <MetricItem
-                label="최대 수익률"
-                value={`${stats.maxPnlPercent >= 0 ? '+' : ''}${stats.maxPnlPercent.toFixed(2)}%`}
-              />
-              <MetricItem
                 label="평균 보유일"
                 value={`${Math.round(stats.avgDaysHeld)}일`}
               />
@@ -54,7 +50,7 @@ export async function RecommendationCard() {
             {stats.topItems.length > 0 && (
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">
-                  상위 종목 (수익률 순)
+                  활성 종목 (수익률 순)
                 </span>
                 <div className="flex flex-col gap-1">
                   {stats.topItems.map((item) => (

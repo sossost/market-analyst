@@ -315,7 +315,6 @@ describe('calculateRecommendationStats', () => {
       activeCount: 0,
       winRate: 0,
       avgPnlPercent: 0,
-      maxPnlPercent: 0,
       avgDaysHeld: 0,
       topItems: [],
     })
@@ -346,18 +345,6 @@ describe('calculateRecommendationStats', () => {
     expect(result.avgPnlPercent).toBeCloseTo(15)
   })
 
-  it('최대 수익률은 maxPnlPercent 중 최대값', () => {
-    const items = [
-      createItem({ id: 1, maxPnlPercent: 30 }),
-      createItem({ id: 2, maxPnlPercent: 50 }),
-      createItem({ id: 3, maxPnlPercent: 20 }),
-    ]
-
-    const result = calculateRecommendationStats(items)
-
-    expect(result.maxPnlPercent).toBe(50)
-  })
-
   it('평균 보유일 계산', () => {
     const items = [
       createItem({ id: 1, daysHeld: 10 }),
@@ -369,14 +356,14 @@ describe('calculateRecommendationStats', () => {
     expect(result.avgDaysHeld).toBe(15)
   })
 
-  it('상위 종목은 최대 5개', () => {
+  it('topItems는 전체 종목을 포함', () => {
     const items = Array.from({ length: 8 }, (_, i) =>
       createItem({ id: i + 1, symbol: `STOCK${i}` }),
     )
 
     const result = calculateRecommendationStats(items)
 
-    expect(result.topItems).toHaveLength(5)
+    expect(result.topItems).toHaveLength(8)
   })
 
   it('topItems는 pnlPercent 내림차순으로 정렬', () => {
