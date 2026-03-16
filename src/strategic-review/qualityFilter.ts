@@ -68,7 +68,7 @@ ${insight.body}`;
 /**
  * LLM 응답에서 품질 점수 파싱
  */
-function parseQualityScore(content: string): QualityScore {
+export function parseQualityScore(content: string): QualityScore {
   const jsonMatch = content.match(/\{[^}]+\}/);
   if (jsonMatch == null) {
     return buildFallbackScore();
@@ -95,7 +95,7 @@ function parseQualityScore(content: string): QualityScore {
   return { specificity, goalAlignment, actionability, evidenceSufficiency, total };
 }
 
-function clampScore(value: unknown): number {
+export function clampScore(value: unknown): number {
   const num = Number(value);
   if (!Number.isFinite(num)) return 1;
   return Math.max(1, Math.min(5, Math.round(num)));

@@ -15,7 +15,7 @@ const MAX_ISSUES_PER_RUN = 3;
  * 이슈 제목 생성
  * 포맷: [strategic-review/{focus}] {title}
  */
-function buildIssueTitle(insight: Insight): string {
+export function buildIssueTitle(insight: Insight): string {
   return `[strategic-review/${insight.focus}] ${insight.title}`;
 }
 

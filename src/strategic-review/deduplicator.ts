@@ -20,7 +20,7 @@ interface ExistingIssue {
 /**
  * 문자열을 토큰 집합으로 변환 (단어 단위 분리)
  */
-function tokenize(text: string): Set<string> {
+export function tokenize(text: string): Set<string> {
   return new Set(
     text
       .toLowerCase()
@@ -34,7 +34,7 @@ function tokenize(text: string): Set<string> {
  * Jaccard 유사도 계산
  * |A ∩ B| / |A ∪ B|
  */
-function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+export function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
   if (a.size === 0 && b.size === 0) return 1;
 
   const intersection = new Set([...a].filter((token) => b.has(token)));

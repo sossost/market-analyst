@@ -76,7 +76,7 @@ interface RawInsight {
   priority: string;
 }
 
-function parseInsights(content: string): RawInsight[] {
+export function parseInsights(content: string): RawInsight[] {
   const jsonMatch = content.match(/\[[\s\S]*\]/);
   if (jsonMatch == null) return [];
 
@@ -98,7 +98,7 @@ function parseInsights(content: string): RawInsight[] {
   );
 }
 
-function normalizePriority(raw: string): "P1" | "P2" | "P3" {
+export function normalizePriority(raw: string): "P1" | "P2" | "P3" {
   const upper = raw.toUpperCase();
   if (upper === "P1") return "P1";
   if (upper === "P2") return "P2";
