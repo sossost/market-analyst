@@ -4,7 +4,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE } from "./validation";
-import { loadLatestRegime } from "../debate/regimeStore";
+import { loadConfirmedRegime } from "../debate/regimeStore";
 import { logger } from "@/agent/logger";
 
 interface RecommendationInput {
@@ -19,9 +19,22 @@ interface RecommendationInput {
 }
 
 const SUBSTANDARD_TAG = "[기준 미달]";
+const PERSISTENCE_TAG = "[지속성 미확인]";
 
 /** LLM 진입가와 DB 종가의 허용 괴리 비율 (10%) */
 const PRICE_DIVERGENCE_THRESHOLD = 0.1;
+
+/** EARLY_BEAR / BEAR 레짐에서 신규 추천을 전면 차단하는 레짐 집합 */
+const BEAR_REGIMES = new Set(["EARLY_BEAR", "BEAR"]);
+
+/** 동일 symbol의 재추천을 막는 쿨다운 기간 (캘린더일) */
+const COOLDOWN_CALENDAR_DAYS = 7;
+
+/** Phase 2 지속성 판단 기준 기간 (캘린더일) */
+const PHASE2_PERSISTENCE_DAYS = 5;
+
+/** Phase 2 지속성을 충족하는 최소 데이터 포인트 수 */
+const MIN_PHASE2_PERSISTENCE_COUNT = 2;
 
 /**
  * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
@@ -49,6 +62,20 @@ export function tagSubstandardReason(
   }
 
   return `${SUBSTANDARD_TAG} ${reason}`;
+}
+
+/**
+ * Phase 2 지속성이 부족한 종목의 reason에 [지속성 미확인] 접두사를 추가한다.
+ * 이미 태그가 있으면 원본을 그대로 반환한다. 차단이 아닌 소프트 태깅.
+ */
+export function tagPersistenceReason(reason: string | null | undefined): string {
+  const base = reason ?? "";
+
+  if (base.startsWith(PERSISTENCE_TAG)) {
+    return base;
+  }
+
+  return `${PERSISTENCE_TAG} ${base}`.trim();
 }
 
 /**
@@ -111,28 +138,80 @@ export const saveRecommendations: AgentTool = {
       return JSON.stringify({ error: "recommendations must be a non-empty array" });
     }
 
-    // 현재 레짐 조회 (스냅샷용)
+    // Phase 1: 레짐 하드 게이트 — 확정 레짐만 조회 (pending 제외)
     let currentRegime: string | null = null;
     try {
-      const latest = await loadLatestRegime();
-      currentRegime = latest?.regime ?? null;
+      const confirmed = await loadConfirmedRegime();
+      currentRegime = confirmed?.regime ?? null;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      logger.warn("Regime", `레짐 조회 실패, null로 저장: ${reason}`);
+      // 의도적 fail-open: 레짐 조회 실패 시 Bear Gate를 적용하지 않고 진행.
+      // 레짐 DB 장애가 추천 저장 전체를 막지 않도록 설계.
+      logger.error("Regime", `레짐 조회 실패, Bear Gate 미적용: ${reason}`);
+    }
+
+    if (currentRegime != null && BEAR_REGIMES.has(currentRegime)) {
+      const totalCount = recs.length;
+      logger.warn(
+        "QualityGate",
+        `레짐 ${currentRegime} — 전체 추천 배치 ${totalCount}개 차단`,
+      );
+      return JSON.stringify({
+        success: false,
+        savedCount: 0,
+        skippedCount: 0,
+        blockedByRegime: totalCount,
+        blockedByCooldown: 0,
+        message: `레짐 ${currentRegime}: 전체 ${totalCount}개 추천 차단`,
+      });
     }
 
     const symbols = recs
       .map((r) => validateSymbol(r.symbol))
       .filter((s): s is string => s != null);
 
-    // 중복 추천 방지: 현재 ACTIVE인 symbol 목록 사전 조회
-    const { rows: activeRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string }>(
-        `SELECT symbol FROM recommendations WHERE status = 'ACTIVE' AND symbol = ANY($1)`,
-        [symbols],
+    // Phase 2 + Phase 3: 쿨다운·중복 방지·지속성 3가지 쿼리 병렬 조회
+    const cooldownStart = getDateOffset(date, COOLDOWN_CALENDAR_DAYS);
+    const persistenceStart = getDateOffset(date, PHASE2_PERSISTENCE_DAYS);
+
+    const [
+      { rows: activeRows },
+      { rows: cooldownRows },
+      { rows: persistenceRows },
+    ] = await Promise.all([
+      retryDatabaseOperation(() =>
+        pool.query<{ symbol: string }>(
+          `SELECT symbol FROM recommendations WHERE status = 'ACTIVE' AND symbol = ANY($1)`,
+          [symbols],
+        ),
       ),
-    );
+      retryDatabaseOperation(() =>
+        pool.query<{ symbol: string }>(
+          `SELECT DISTINCT symbol FROM recommendations
+           WHERE status IN ('CLOSED', 'CLOSED_PHASE_EXIT')
+             AND recommendation_date >= $1
+             AND symbol = ANY($2)`,
+          [cooldownStart, symbols],
+        ),
+      ),
+      retryDatabaseOperation(() =>
+        pool.query<{ symbol: string; phase2_count: string }>(
+          `SELECT symbol, COUNT(*) AS phase2_count
+           FROM stock_phases
+           WHERE symbol = ANY($1)
+             AND date >= $2
+             AND date <= $3
+             AND phase >= 2
+           GROUP BY symbol`,
+          [symbols, persistenceStart, date],
+        ),
+      ),
+    ]);
     const activeSymbols = new Set(activeRows.map((r) => r.symbol));
+    const cooldownSymbols = new Set(cooldownRows.map((r) => r.symbol));
+    const persistenceMap = new Map(
+      persistenceRows.map((r) => [r.symbol, Number(r.phase2_count)]),
+    );
 
     // 진입가 검증: 추천일 종가 사전 일괄 조회
     const { rows: priceRows } = await retryDatabaseOperation(() =>
@@ -147,6 +226,7 @@ export const saveRecommendations: AgentTool = {
 
     let savedCount = 0;
     let skippedCount = 0;
+    let blockedByCooldown = 0;
 
     for (const rec of recs) {
       const symbol = validateSymbol(rec.symbol);
@@ -159,6 +239,16 @@ export const saveRecommendations: AgentTool = {
       if (activeSymbols.has(symbol)) {
         logger.warn("Duplicate", `${symbol}: 이미 ACTIVE 추천 존재, 스킵`);
         skippedCount++;
+        continue;
+      }
+
+      // Phase 2: 쿨다운 게이트
+      if (cooldownSymbols.has(symbol)) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: 쿨다운 기간(${COOLDOWN_CALENDAR_DAYS}일) 내 CLOSED 이력, 스킵`,
+        );
+        blockedByCooldown++;
         continue;
       }
 
@@ -189,11 +279,18 @@ export const saveRecommendations: AgentTool = {
       }
 
       // 기준 미달 태깅 (Phase < 2 또는 RS < 60)
-      const taggedReason = tagSubstandardReason(
-        rec.reason,
-        rec.phase,
-        rec.rs_score,
-      );
+      let taggedReason = tagSubstandardReason(rec.reason, rec.phase, rec.rs_score);
+
+      // Phase 3: Phase 2 지속성 소프트 태깅
+      const phase2Count = persistenceMap.get(symbol) ?? 0;
+      if (phase2Count < MIN_PHASE2_PERSISTENCE_COUNT) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: Phase 2 지속성 ${phase2Count}일 (기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일 미만), [지속성 미확인] 태깅`,
+        );
+        const reasonForPersistence = taggedReason ?? rec.reason ?? '';
+        taggedReason = tagPersistenceReason(reasonForPersistence);
+      }
 
       // 1. recommendations 테이블 INSERT
       const insertResult = await retryDatabaseOperation(() =>
@@ -240,10 +337,22 @@ export const saveRecommendations: AgentTool = {
       success: true,
       savedCount,
       skippedCount,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵 (이미 존재하거나 유효하지 않음)`,
+      blockedByRegime: 0,
+      blockedByCooldown,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵 (이미 존재하거나 유효하지 않음), ${blockedByCooldown}개 쿨다운 차단`,
     });
   },
 };
+
+/**
+ * date에서 days만큼 이전 날짜를 계산한다.
+ * YYYY-MM-DD 형식으로 반환. 쿨다운·지속성 기간 계산 공용.
+ */
+function getDateOffset(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
 
 /**
  * stock_phases, sector_rs_daily, industry_rs_daily에서 팩터 스냅샷을 가져와 저장.
