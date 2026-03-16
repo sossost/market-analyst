@@ -70,7 +70,7 @@ install_agents() {
   echo "  Log Cleanup:  KST 09:00 일"
   echo "  News Collect: KST 00/06/12/18:00 매일"
   echo "  Issue Proc:   KST 09~18:00 평일 매시"
-  echo "  Strategy:     KST 06:00 매일"
+  echo "  Strategy:     KST 04:00 매일"
   echo ""
   echo "로그: $PROJECT_DIR/logs/"
 }

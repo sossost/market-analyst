@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# 전략 참모 자동 리뷰 — 매일 KST 06:00 실행
+# 전략 참모 자동 리뷰 — 매일 KST 04:00 실행
 #
 # Claude Code CLI가 프로젝트를 자율적으로 분석하고,
 # 전략적 인사이트를 GitHub 이슈로 생성한다.
@@ -28,7 +28,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/strategic-review-$(date +%Y-%m-%d).log"
 PROMPT_FILE="$PROJECT_DIR/scripts/strategic-review-prompt.md"
-TIMEOUT_SEC=600  # 10분
+TIMEOUT_SEC=1800  # 30분
 
 mkdir -p "$LOG_DIR"
 

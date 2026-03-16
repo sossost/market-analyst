@@ -13,8 +13,8 @@
 	<string>__PROJECT_DIR__</string>
 	<key>StartCalendarInterval</key>
 	<array>
-		<!-- 매일 KST 06:00 (UTC 21:00 전날) -->
-		<dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+		<!-- 매일 KST 04:00 (UTC 19:00 전날) -->
+		<dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>0</integer></dict>
 	</array>
 	<key>StandardOutPath</key>
 	<string>__PROJECT_DIR__/logs/launchd-strategic-review.log</string>
