@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPromotionCandidates, buildCautionPrinciple } from "@/etl/jobs/promote-learnings";
+import { buildPromotionCandidates, buildCautionPrinciple, getPromotionThresholds } from "@/etl/jobs/promote-learnings";
 
 /**
  * 장기 기억 승격/강등 로직의 핵심: 만료 판정 + 적중률 계산 + 승격 후보 생성.
@@ -104,165 +104,308 @@ describe("promote-learnings logic", () => {
   });
 
   describe("buildPromotionCandidates", () => {
-    it("promotes group with 10+ confirmed, 70%+ hitRate, 10+ observations", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
+    // 정상 운영 기준 (activeLearningCount >= 15): minHits=10, minHitRate=0.70, minTotal=10
+    describe("정상 운영 기준 (activeLearningCount >= 15)", () => {
+      it("promotes group with 10+ confirmed, 70%+ hitRate, 10+ observations", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(1);
+        expect(result[0].persona).toBe("macro");
+        expect(result[0].metric).toBe("Fed funds rate");
+        expect(result[0].hitCount).toBe(10);
+      });
+
+      it("excludes groups with fewer than 10 confirmed", () => {
+        const confirmed = Array.from({ length: 9 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(0);
+      });
+
+      it("excludes groups with hitRate below 70%", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+        );
+        // 10 confirmed + 5 invalidated = 66.7% hitRate < 70%
+        const invalidated = Array.from({ length: 5 }, (_, i) =>
+          makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 15);
+        expect(result).toHaveLength(0);
+      });
+
+      it("excludes groups with 71% hitRate but insufficient statistical significance (10/14)", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+        );
+        // 10 confirmed + 4 invalidated = 71.4% hitRate — 기존 기준은 통과하지만
+        // 이항분포 검정에서 p=0.09 > 0.05이므로 통계적으로 유의하지 않음
+        const invalidated = Array.from({ length: 4 }, (_, i) =>
+          makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 15);
+        expect(result).toHaveLength(0);
+      });
+
+      it("includes groups with high hitRate and statistical significance (10/0)", () => {
+        // 10 confirmed + 0 invalidated = 100% → p ≈ 0.001, Cohen's h ≈ 1.57
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(1);
+        expect(result[0].hitCount).toBe(10);
+        expect(result[0].missCount).toBe(0);
+      });
+
+      it("excludes thesis IDs already in existing learnings", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "tech", verificationMetric: "capex" }),
+        );
+
+        const existingIds = new Set(Array.from({ length: 10 }, (_, i) => i + 1));
+        const result = buildPromotionCandidates(confirmed, [], existingIds, 15);
+        expect(result).toHaveLength(0);
+      });
+
+      it("counts invalidated theses for the same group", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
+        );
+        const invalidated = [
+          makeThesis({ id: 100, agentPersona: "sentiment", verificationMetric: "VIX", status: "INVALIDATED" }),
+        ];
+
+        const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 15);
+        expect(result).toHaveLength(1);
+        expect(result[0].hitCount).toBe(10);
+        expect(result[0].missCount).toBe(1);
+        expect(result[0].invalidatedIds).toEqual([100]);
+      });
+
+      it("handles multiple groups from different personas", () => {
+        const confirmed = [
+          ...Array.from({ length: 10 }, (_, i) =>
+            makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+          ),
+          ...Array.from({ length: 10 }, (_, i) =>
+            makeThesis({ id: 100 + i, agentPersona: "tech", verificationMetric: "AI capex" }),
+          ),
+        ];
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(2);
+      });
+
+      it("returns empty for no confirmed theses", () => {
+        const result = buildPromotionCandidates([], [], new Set(), 15);
+        expect(result).toHaveLength(0);
+      });
+
+      it("collects verificationMethods from source theses", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({
+            id: i + 1,
+            agentPersona: "macro",
+            verificationMetric: "GDP",
+            verificationMethod: i < 7 ? "quantitative" : "llm",
+          }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(1);
+        expect(result[0].verificationMethods).toContain("quantitative");
+        expect(result[0].verificationMethods).toContain("llm");
+        expect(result[0].verificationMethods).toHaveLength(2);
+      });
+
+      it("returns single verificationMethod when all theses use the same method", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({
+            id: i + 1,
+            agentPersona: "macro",
+            verificationMetric: "CPI",
+            verificationMethod: "quantitative",
+          }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(1);
+        expect(result[0].verificationMethods).toEqual(["quantitative"]);
+      });
+
+      it("returns empty verificationMethods when theses have no verificationMethod", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({
+            id: i + 1,
+            agentPersona: "macro",
+            verificationMetric: "VIX",
+            verificationMethod: null,
+          }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(1);
+        expect(result[0].verificationMethods).toEqual([]);
+      });
+
+      it("does not include reusablePatterns in candidate", () => {
+        const confirmed = Array.from({ length: 10 }, (_, i) =>
+          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
+        );
+
+        const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
+        expect(result).toHaveLength(1);
+        expect(result[0]).not.toHaveProperty("reusablePatterns");
+      });
+    });
+  });
+
+  describe("getPromotionThresholds", () => {
+    it("cold start (0건) → 완화 기준 반환", () => {
+      const thresholds = getPromotionThresholds(0);
+      expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5 });
+    });
+
+    it("cold start (4건) → 완화 기준 반환", () => {
+      const thresholds = getPromotionThresholds(4);
+      expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5 });
+    });
+
+    it("경계값 4→5건 전환 — 5건은 중간 기준", () => {
+      expect(getPromotionThresholds(4)).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5 });
+      expect(getPromotionThresholds(5)).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8 });
+    });
+
+    it("성장기 (5건) → 중간 기준 반환", () => {
+      const thresholds = getPromotionThresholds(5);
+      expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8 });
+    });
+
+    it("성장기 (14건) → 중간 기준 반환", () => {
+      const thresholds = getPromotionThresholds(14);
+      expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8 });
+    });
+
+    it("경계값 14→15건 전환 — 15건은 정상 기준", () => {
+      expect(getPromotionThresholds(14)).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8 });
+      expect(getPromotionThresholds(15)).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10 });
+    });
+
+    it("정상 운영 (15건) → 엄격 기준 반환", () => {
+      const thresholds = getPromotionThresholds(15);
+      expect(thresholds).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10 });
+    });
+
+    it("정상 운영 (50건) → 엄격 기준 반환", () => {
+      const thresholds = getPromotionThresholds(50);
+      expect(thresholds).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10 });
+    });
+  });
+
+  describe("buildPromotionCandidates — graduated threshold 적용", () => {
+    it("cold start: 학습 0건 → 3건 적중으로 승격 가능 (minHits=3, minTotal=5)", () => {
+      // 3 confirmed + 0 invalidated = 100%, total=3 → minTotal=5 미달 → 미승격
+      // 5 confirmed + 0 invalidated = 100%, total=5 → 승격
+      const confirmed = Array.from({ length: 5 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
       );
 
-      const result = buildPromotionCandidates(confirmed, [], new Set());
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 0);
       expect(result).toHaveLength(1);
-      expect(result[0].persona).toBe("macro");
-      expect(result[0].metric).toBe("Fed funds rate");
-      expect(result[0].hitCount).toBe(10);
+      expect(result[0].hitCount).toBe(5);
     });
 
-    it("excludes groups with fewer than 10 confirmed", () => {
+    it("cold start: 학습 0건 → minTotal=5 미달 시 승격 불가", () => {
+      // 3 confirmed + 0 invalidated = total=3 < minTotal=5
+      const confirmed = Array.from({ length: 3 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 0);
+      expect(result).toHaveLength(0);
+    });
+
+    it("cold start: 학습 0건 → hitRate 60% 미달 시 승격 불가", () => {
+      // 3 confirmed + 3 invalidated = 50% hitRate < 60%
+      const confirmed = Array.from({ length: 3 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
+      );
+      const invalidated = Array.from({ length: 3 }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 0);
+      expect(result).toHaveLength(0);
+    });
+
+    it("성장기: 학습 5건 → minHits=5, minHitRate=0.65, minTotal=8 기준 적용", () => {
+      // 5 confirmed + 2 invalidated = 71.4% hitRate >= 65%, total=7 < 8 → 미승격
+      const confirmed = Array.from({ length: 5 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+      );
+      const invalidated = Array.from({ length: 2 }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "Fed funds rate", status: "INVALIDATED" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 5);
+      // total=7 < minTotal=8 → 승격 불가
+      expect(result).toHaveLength(0);
+    });
+
+    it("성장기: 학습 5건 → total=8 이상이고 hitRate>=65% 이면 승격", () => {
+      // 8 confirmed + 0 invalidated = 100%, total=8 >= 8 → 승격
+      const confirmed = Array.from({ length: 8 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 5);
+      expect(result).toHaveLength(1);
+      expect(result[0].hitCount).toBe(8);
+    });
+
+    it("정상 운영: 학습 15건 → 9건 적중은 minHits=10 미달로 승격 불가", () => {
       const confirmed = Array.from({ length: 9 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
       );
 
-      const result = buildPromotionCandidates(confirmed, [], new Set());
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
       expect(result).toHaveLength(0);
     });
 
-    it("excludes groups with hitRate below 70%", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
-      );
-      // 10 confirmed + 5 invalidated = 66.7% hitRate < 70%
-      const invalidated = Array.from({ length: 5 }, (_, i) =>
-        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
-      );
-
-      const result = buildPromotionCandidates(confirmed, invalidated, new Set());
-      expect(result).toHaveLength(0);
-    });
-
-    it("excludes groups with 71% hitRate but insufficient statistical significance (10/14)", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
-      );
-      // 10 confirmed + 4 invalidated = 71.4% hitRate — 기존 기준은 통과하지만
-      // 이항분포 검정에서 p=0.09 > 0.05이므로 통계적으로 유의하지 않음
-      const invalidated = Array.from({ length: 4 }, (_, i) =>
-        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
-      );
-
-      const result = buildPromotionCandidates(confirmed, invalidated, new Set());
-      expect(result).toHaveLength(0);
-    });
-
-    it("includes groups with high hitRate and statistical significance (10/0)", () => {
-      // 10 confirmed + 0 invalidated = 100% → p ≈ 0.001, Cohen's h ≈ 1.57
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
+    it("activeLearningCount 기본값 0 → cold start 기준 적용", () => {
+      // activeLearningCount 미전달 시 default=0 → cold start 기준
+      const confirmed = Array.from({ length: 5 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
       );
 
-      const result = buildPromotionCandidates(confirmed, [], new Set());
-      expect(result).toHaveLength(1);
-      expect(result[0].hitCount).toBe(10);
-      expect(result[0].missCount).toBe(0);
+      const resultDefault = buildPromotionCandidates(confirmed, [], new Set());
+      const resultExplicit = buildPromotionCandidates(confirmed, [], new Set(), 0);
+      expect(resultDefault).toHaveLength(resultExplicit.length);
     });
 
-    it("excludes thesis IDs already in existing learnings", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "tech", verificationMetric: "capex" }),
+    it("binomialTest는 cold start에서도 유지 — 통계적 비유의미 데이터는 승격 불가", () => {
+      // cold start 기준: minHits=3, minTotal=5, minHitRate=0.60
+      // 3 confirmed + 2 invalidated = 60% hitRate = 경계값, total=5
+      // binomialTest에서 p값이 크면 비유의미로 탈락
+      const confirmed = Array.from({ length: 3 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "VIX" }),
+      );
+      const invalidated = Array.from({ length: 2 }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "VIX", status: "INVALIDATED" }),
       );
 
-      const existingIds = new Set(Array.from({ length: 10 }, (_, i) => i + 1));
-      const result = buildPromotionCandidates(confirmed, [], existingIds);
+      // n=5, k=3 → p=0.5 기준 이항검정은 유의하지 않음 (p > 0.05)
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 0);
       expect(result).toHaveLength(0);
-    });
-
-    it("counts invalidated theses for the same group", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
-      );
-      const invalidated = [
-        makeThesis({ id: 100, agentPersona: "sentiment", verificationMetric: "VIX", status: "INVALIDATED" }),
-      ];
-
-      const result = buildPromotionCandidates(confirmed, invalidated, new Set());
-      expect(result).toHaveLength(1);
-      expect(result[0].hitCount).toBe(10);
-      expect(result[0].missCount).toBe(1);
-      expect(result[0].invalidatedIds).toEqual([100]);
-    });
-
-    it("handles multiple groups from different personas", () => {
-      const confirmed = [
-        ...Array.from({ length: 10 }, (_, i) =>
-          makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
-        ),
-        ...Array.from({ length: 10 }, (_, i) =>
-          makeThesis({ id: 100 + i, agentPersona: "tech", verificationMetric: "AI capex" }),
-        ),
-      ];
-
-      const result = buildPromotionCandidates(confirmed, [], new Set());
-      expect(result).toHaveLength(2);
-    });
-
-    it("returns empty for no confirmed theses", () => {
-      const result = buildPromotionCandidates([], [], new Set());
-      expect(result).toHaveLength(0);
-    });
-
-    it("collects verificationMethods from source theses", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({
-          id: i + 1,
-          agentPersona: "macro",
-          verificationMetric: "GDP",
-          verificationMethod: i < 7 ? "quantitative" : "llm",
-        }),
-      );
-
-      const result = buildPromotionCandidates(confirmed, [], new Set());
-      expect(result).toHaveLength(1);
-      expect(result[0].verificationMethods).toContain("quantitative");
-      expect(result[0].verificationMethods).toContain("llm");
-      expect(result[0].verificationMethods).toHaveLength(2);
-    });
-
-    it("returns single verificationMethod when all theses use the same method", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({
-          id: i + 1,
-          agentPersona: "macro",
-          verificationMetric: "CPI",
-          verificationMethod: "quantitative",
-        }),
-      );
-
-      const result = buildPromotionCandidates(confirmed, [], new Set());
-      expect(result).toHaveLength(1);
-      expect(result[0].verificationMethods).toEqual(["quantitative"]);
-    });
-
-    it("returns empty verificationMethods when theses have no verificationMethod", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({
-          id: i + 1,
-          agentPersona: "macro",
-          verificationMetric: "VIX",
-          verificationMethod: null,
-        }),
-      );
-
-      const result = buildPromotionCandidates(confirmed, [], new Set());
-      expect(result).toHaveLength(1);
-      expect(result[0].verificationMethods).toEqual([]);
-    });
-
-    it("does not include reusablePatterns in candidate", () => {
-      const confirmed = Array.from({ length: 10 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
-      );
-
-      const result = buildPromotionCandidates(confirmed, [], new Set());
-      expect(result).toHaveLength(1);
-      expect(result[0]).not.toHaveProperty("reusablePatterns");
     });
   });
 

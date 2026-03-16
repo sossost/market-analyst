@@ -6,7 +6,7 @@ import { buildMemoryContext } from "./debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
 import { collectNews, formatNewsForPersona } from "./debate/newsCollector";
 import { loadNewsForPersona } from "./debate/newsLoader";
-import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
+import { saveTheses, resolveOrExpireStaleTheses, getThesisStats } from "./debate/thesisStore";
 import {
   validateRegimeInput,
   saveRegimePending,
@@ -253,7 +253,7 @@ async function main() {
 
   // 1. 환경변수 검증
   validateEnvironment();
-  logger.step("[1/9] Environment validated");
+  logger.step("[1/7] Environment validated");
 
   // 2. 최신 거래일 확인
   const debateDate = await getLatestPriceDate();
@@ -264,7 +264,7 @@ async function main() {
     return;
   }
   logger.info("Debate", `Using date: ${debateDate}`);
-  logger.step("[2/9] Loading memory context & market data...");
+  logger.step("[2/7] Loading memory context & market data...");
 
   const [memoryContext, marketSnapshot] = await Promise.all([
     buildMemoryContext(),
@@ -283,16 +283,8 @@ async function main() {
   // Phase 2 종목 심볼 추출 → 펀더멘탈 데이터 로드
   const fundamentalContext = await loadFundamentalContextSafely(marketSnapshot);
 
-  // 2.5. 만료 thesis 정리
-  const expiredCount = await expireStaleTheses(debateDate);
-  if (expiredCount > 0) {
-    logger.info("Thesis", `${expiredCount}개 thesis 만료 처리`);
-  }
-  const stats = await getThesisStats();
-  logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
-
-  // 3. 기존 thesis 검증 (시장 데이터 기반)
-  logger.step("[3/9] Verifying active theses...");
+  // 2.5. 기존 ACTIVE thesis 검증 (시장 데이터 기반) — 만료 전에 먼저 검증
+  logger.step("[2.5/7] Verifying active theses...");
   try {
     const verifyResult = await verifyTheses(marketDataContext, debateDate, marketSnapshot);
     if (verifyResult.confirmed > 0 || verifyResult.invalidated > 0) {
@@ -304,8 +296,21 @@ async function main() {
     logger.warn("Verify", `Thesis verification failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 4. 뉴스 로드 (DB 우선, 폴백으로 실시간 수집)
-  logger.step("[4/9] Loading news...");
+  // 2.6. 검증 후 timeframe 초과 thesis 정리 — 만료 전 정량 판정 시도
+  // 순서 중요: verifyTheses가 먼저 실행되어야 검증 기회가 보장됨
+  logger.step("[2.6/7] Resolving or expiring stale theses...");
+  const staleResult = await resolveOrExpireStaleTheses(debateDate, marketSnapshot);
+  if (staleResult.resolved > 0 || staleResult.expired > 0) {
+    logger.info(
+      "Thesis",
+      `만료 대상 처리: ${staleResult.resolved}개 정량 판정 해소, ${staleResult.expired}개 EXPIRED`,
+    );
+  }
+  const stats = await getThesisStats();
+  logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+
+  // 3. 뉴스 로드 (DB 우선, 폴백으로 실시간 수집)
+  logger.step("[3/7] Loading news...");
   let newsContext: Record<string, string> = {};
   try {
     const personas = ["macro", "tech", "geopolitics", "sentiment"] as const;
@@ -338,8 +343,8 @@ async function main() {
     logger.warn("News", `News loading failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 5. 과거 유사 세션 로드 (few-shot)
-  logger.step("[5/9] Loading similar past sessions...");
+  // 4. 과거 유사 세션 로드 (few-shot)
+  logger.step("[4/7] Loading similar past sessions...");
   let fewShotContext = "";
   try {
     fewShotContext = await buildFewShotContext(marketSnapshot);
@@ -355,8 +360,8 @@ async function main() {
   // Combine memory + few-shot into enriched memory context
   const enrichedMemory = [memoryContext, fewShotContext].filter((s) => s.length > 0).join("\n\n");
 
-  // 6. 토론 실행
-  logger.step(`[6/9] Running debate for ${debateDate}...`);
+  // 5. 토론 실행
+  logger.step(`[5/7] Running debate for ${debateDate}...`);
 
   const result = await runDebate({
     question: buildDebateQuestion(debateDate),
@@ -379,8 +384,8 @@ async function main() {
     }
   }
 
-  // 7. Thesis 저장 + 레짐 저장 + 세션 저장
-  logger.step("[7/9] Saving theses, regime & session...");
+  // 6. Thesis 저장 + 레짐 저장 + 세션 저장
+  logger.step("[6/7] Saving theses, regime & session...");
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
@@ -418,8 +423,8 @@ async function main() {
     logger.warn("Session", `Failed to save session: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 8. 조건부 Discord 발송
-  logger.step("[8/9] Checking alert conditions...");
+  // 7. 조건부 Discord 발송
+  logger.step("[7/7] Checking alert conditions...");
   const report = result.round3.report;
   const shouldAlert = checkAlertConditions(result);
 

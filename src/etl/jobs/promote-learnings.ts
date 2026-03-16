@@ -9,11 +9,36 @@ import { logger } from "@/agent/logger";
 
 const TAG = "PROMOTE_LEARNINGS";
 
-const MIN_HITS_FOR_PROMOTION = 10;
-const MIN_HIT_RATE = 0.70;
-const MIN_TOTAL_OBSERVATIONS = 10;
 const LEARNING_EXPIRY_MONTHS = 6;
 const MAX_ACTIVE_LEARNINGS = 50;
+
+export const COLD_START_THRESHOLD = 5;
+export const GROWTH_PHASE_THRESHOLD = 15;
+
+interface PromotionThresholds {
+  minHits: number;
+  minHitRate: number;
+  minTotal: number;
+}
+
+/**
+ * 현재 활성 학습 건수에 따라 승격 기준을 동적으로 반환한다.
+ *
+ * - Cold start (0~4건): 완화 기준 — 초기 학습 진입 허용
+ * - 성장기 (5~14건): 중간 기준
+ * - 정상 운영 (15건+): 기존 엄격 기준 유지
+ *
+ * binomialTest는 모든 단계에서 유지 — 통계적 유의성은 타협하지 않는다.
+ */
+export function getPromotionThresholds(activeLearningCount: number): PromotionThresholds {
+  if (activeLearningCount < COLD_START_THRESHOLD) {
+    return { minHits: 3, minHitRate: 0.60, minTotal: 5 };
+  }
+  if (activeLearningCount < GROWTH_PHASE_THRESHOLD) {
+    return { minHits: 5, minHitRate: 0.65, minTotal: 8 };
+  }
+  return { minHits: 10, minHitRate: 0.70, minTotal: 10 };
+}
 
 interface PromotionCandidate {
   persona: string;
@@ -75,14 +100,15 @@ async function main() {
     }),
   );
 
+  const activeCountAfterDemotion = activeLearnings.length - demotedCount;
+
   const candidates = buildPromotionCandidates(
     confirmedTheses,
     invalidatedTheses,
     existingSourceIds,
+    activeCountAfterDemotion,
   );
-
-  const activeCount = activeLearnings.length - demotedCount;
-  const promotedCount = await promoteNewLearnings(candidates, activeCount, today);
+  const promotedCount = await promoteNewLearnings(candidates, activeCountAfterDemotion, today);
 
   // 6. 실패 패턴 기반 경계 학습 승격/강등
   const cautionPromoted = await promoteFailurePatterns(today);
@@ -205,12 +231,17 @@ async function updateLearningStats(
 /**
  * 검증된 thesis에서 persona + verificationMetric 기준으로
  * 반복 패턴을 그룹화하여 승격 후보 생성.
+ *
+ * activeLearningCount에 따라 graduated threshold가 적용된다.
+ * binomialTest는 모든 단계에서 유지한다.
  */
 export function buildPromotionCandidates(
   confirmedTheses: typeof theses.$inferSelect[],
   invalidatedTheses: typeof theses.$inferSelect[],
   existingSourceIds: Set<number>,
+  activeLearningCount: number = 0,
 ): PromotionCandidate[] {
+  const thresholds = getPromotionThresholds(activeLearningCount);
   // persona + metric 기준 그룹화 (기존 learning에 없는 thesis만)
   const groups = new Map<string, { confirmed: typeof theses.$inferSelect[]; invalidated: typeof theses.$inferSelect[] }>();
 
@@ -236,10 +267,10 @@ export function buildPromotionCandidates(
       const total = g.confirmed.length + g.invalidated.length;
       const hitRate = total > 0 ? g.confirmed.length / total : 0;
 
-      // 기존 기준: 최소 적중 수 + 적중률 + 최소 관측 수
-      if (g.confirmed.length < MIN_HITS_FOR_PROMOTION) return false;
-      if (hitRate < MIN_HIT_RATE) return false;
-      if (total < MIN_TOTAL_OBSERVATIONS) return false;
+      // graduated threshold: 활성 학습 건수에 따라 기준이 자동 조정됨
+      if (g.confirmed.length < thresholds.minHits) return false;
+      if (hitRate < thresholds.minHitRate) return false;
+      if (total < thresholds.minTotal) return false;
 
       // 통계적 유의성 검증 (자기확증편향 방지)
       const test = binomialTest(g.confirmed.length, total);
