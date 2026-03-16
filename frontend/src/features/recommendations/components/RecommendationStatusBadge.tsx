@@ -29,8 +29,10 @@ export function RecommendationStatusBadge({
   const tooltip = RECOMMENDATION_STATUS_TOOLTIP[status]
 
   return (
-    <Badge variant={variant} title={tooltip}>
-      {label}
-    </Badge>
+    <span title={tooltip} className="cursor-help">
+      <Badge variant={variant}>
+        {label}
+      </Badge>
+    </span>
   )
 }
