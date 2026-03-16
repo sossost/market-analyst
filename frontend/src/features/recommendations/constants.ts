@@ -5,9 +5,9 @@ export const ITEMS_PER_PAGE = 20
 export const RECOMMENDATION_STATUS_LABEL: Record<RecommendationStatus, string> =
   {
     ACTIVE: '보유 중',
-    CLOSED: '목표 달성',
+    CLOSED: '종료',
     CLOSED_PHASE_EXIT: '상승 이탈',
-    STOPPED: '손절 종료',
+    STOPPED: '손절',
   }
 
 export const RECOMMENDATION_STATUS_TOOLTIP: Record<
@@ -15,7 +15,7 @@ export const RECOMMENDATION_STATUS_TOOLTIP: Record<
   string
 > = {
   ACTIVE: '현재 보유 중인 추천 종목',
-  CLOSED: '목표가 도달 또는 전략 기준 충족으로 종료',
+  CLOSED: '재추천 또는 전략 기준에 의해 포지션 종료',
   CLOSED_PHASE_EXIT: '주가 흐름이 상승 구간을 이탈하여 자동 매도',
   STOPPED: '손절 기준에 도달하여 종료',
 }
