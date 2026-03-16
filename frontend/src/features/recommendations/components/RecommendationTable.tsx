@@ -62,6 +62,16 @@ export async function RecommendationTable({
     return `/recommendations?${params.toString()}`
   }
 
+  // 같은 심볼이 여러 번 나오면 최신(첫 등장)만 메인, 나머지는 "과거 추천" 표시
+  const seenSymbols = new Set<string>()
+  const duplicateIds = new Set<number>()
+  for (const rec of recommendations) {
+    if (seenSymbols.has(rec.symbol)) {
+      duplicateIds.add(rec.id)
+    }
+    seenSymbols.add(rec.symbol)
+  }
+
   return (
     <>
       <div className="mt-6">
@@ -71,7 +81,7 @@ export async function RecommendationTable({
               <TableHead>종목</TableHead>
               <TableHead>추천일</TableHead>
               <TableHead>진입가</TableHead>
-              <TableHead>Phase 전환</TableHead>
+              <TableHead>Phase</TableHead>
               <TableHead>RS</TableHead>
               <TableHead>현재가</TableHead>
               <TableHead>수익률</TableHead>
@@ -81,8 +91,11 @@ export async function RecommendationTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {recommendations.map((rec) => (
-              <TableRow key={rec.id}>
+            {recommendations.map((rec) => {
+              const isPastEntry = duplicateIds.has(rec.id)
+
+              return (
+              <TableRow key={rec.id} className={isPastEntry ? 'opacity-60' : undefined}>
                 <TableCell className="font-medium">
                   <Link
                     href={`/recommendations/${rec.id}`}
@@ -90,15 +103,27 @@ export async function RecommendationTable({
                   >
                     {rec.symbol}
                   </Link>
+                  {isPastEntry && (
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      과거
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>{formatDate(rec.recommendationDate)}</TableCell>
                 <TableCell className="tabular-nums">
                   ${rec.entryPrice.toFixed(2)}
                 </TableCell>
-                <TableCell>
-                  {rec.entryPrevPhase != null
+                <TableCell className="tabular-nums">
+                  {rec.entryPrevPhase != null &&
+                  rec.entryPrevPhase !== rec.entryPhase
                     ? `${rec.entryPrevPhase}→${rec.entryPhase}`
-                    : `Phase ${rec.entryPhase}`}
+                    : rec.entryPhase}
+                  {rec.currentPhase != null &&
+                    rec.currentPhase !== rec.entryPhase && (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        (현재 {rec.currentPhase})
+                      </span>
+                    )}
                 </TableCell>
                 <TableCell className="tabular-nums">
                   {rec.entryRsScore ?? '-'}
@@ -119,7 +144,8 @@ export async function RecommendationTable({
                   <RecommendationStatusBadge status={rec.status} />
                 </TableCell>
               </TableRow>
-            ))}
+              )
+            })}
           </TableBody>
         </Table>
       </div>

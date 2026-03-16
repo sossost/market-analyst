@@ -52,9 +52,10 @@ export function RecommendationDetail({
                 value={`$${entryPrice.toFixed(2)}`}
               />
               <DetailItem
-                label="Phase 전환"
+                label="진입 Phase"
                 value={
-                  entryPrevPhase != null
+                  entryPrevPhase != null &&
+                  entryPrevPhase !== entryPhase
                     ? `${entryPrevPhase}→${entryPhase}`
                     : `Phase ${entryPhase}`
                 }
