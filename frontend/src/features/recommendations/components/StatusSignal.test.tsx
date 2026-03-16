@@ -36,44 +36,44 @@ describe('StatusSignal', () => {
     })
   })
 
-  describe('정상 진행 (currentPhase >= entryPhase)', () => {
-    it('phaseDiff가 0이면 정상 진행을 표시한다', () => {
+  describe('상승 유지 (currentPhase === 2)', () => {
+    it('Phase 2 유지 시 상승 유지를 표시한다', () => {
       render(
         <StatusSignal entryPhase={2} currentPhase={2} status="ACTIVE" />,
       )
-      expect(screen.getByText('정상 진행')).toBeInTheDocument()
+      expect(screen.getByText('상승 유지')).toBeInTheDocument()
     })
+  })
 
-    it('phaseDiff가 양수이면 정상 진행을 표시한다', () => {
+  describe('고점 접근 (currentPhase === 3)', () => {
+    it('Phase 3 진입 시 고점 접근을 표시한다', () => {
       render(
         <StatusSignal entryPhase={2} currentPhase={3} status="ACTIVE" />,
       )
-      expect(screen.getByText('정상 진행')).toBeInTheDocument()
+      expect(screen.getByText('고점 접근')).toBeInTheDocument()
     })
   })
 
-  describe('둔화 주의 (phaseDiff === -1)', () => {
-    it('currentPhase가 entryPhase보다 1 낮으면 둔화 주의를 표시한다', () => {
+  describe('하락 전환 (currentPhase가 4, 5, 1)', () => {
+    it('Phase 4 진입 시 하락 전환을 표시한다', () => {
       render(
-        <StatusSignal entryPhase={3} currentPhase={2} status="ACTIVE" />,
+        <StatusSignal entryPhase={2} currentPhase={4} status="ACTIVE" />,
       )
-      expect(screen.getByText('둔화 주의')).toBeInTheDocument()
-    })
-  })
-
-  describe('이탈 위험 (phaseDiff <= -2)', () => {
-    it('currentPhase가 entryPhase보다 2 낮으면 이탈 위험을 표시한다', () => {
-      render(
-        <StatusSignal entryPhase={4} currentPhase={2} status="ACTIVE" />,
-      )
-      expect(screen.getByText('이탈 위험')).toBeInTheDocument()
+      expect(screen.getByText('하락 전환')).toBeInTheDocument()
     })
 
-    it('currentPhase가 entryPhase보다 3 낮으면 이탈 위험을 표시한다', () => {
+    it('Phase 5 진입 시 하락 전환을 표시한다', () => {
       render(
-        <StatusSignal entryPhase={5} currentPhase={2} status="ACTIVE" />,
+        <StatusSignal entryPhase={2} currentPhase={5} status="ACTIVE" />,
       )
-      expect(screen.getByText('이탈 위험')).toBeInTheDocument()
+      expect(screen.getByText('하락 전환')).toBeInTheDocument()
+    })
+
+    it('Phase 1 회귀 시 하락 전환을 표시한다', () => {
+      render(
+        <StatusSignal entryPhase={2} currentPhase={1} status="ACTIVE" />,
+      )
+      expect(screen.getByText('하락 전환')).toBeInTheDocument()
     })
   })
 })

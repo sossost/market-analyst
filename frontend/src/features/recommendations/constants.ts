@@ -21,19 +21,35 @@ export const RECOMMENDATION_STATUS_TOOLTIP: Record<
 }
 
 export const PHASE_LABEL: Record<number, string> = {
-  1: '하락 구간',
+  1: '바닥 횡보',
   2: '상승 초입',
-  3: '상승 중반',
-  4: '고점 이탈',
-  5: '하락 구간',
+  3: '고점 형성',
+  4: '하락 전환',
+  5: '본격 하락',
+}
+
+export const PHASE_TOOLTIP: Record<number, string> = {
+  1: '하락이 멈추고 바닥을 다지는 구간',
+  2: '상승 추세가 시작된 구간 — 진입 적기',
+  3: '상승 에너지가 줄고 고점을 형성하는 구간',
+  4: '고점을 지나 하락 추세로 전환',
+  5: '뚜렷한 하락 추세 진행 중',
 }
 
 export const REGIME_LABEL: Record<string, string> = {
   EARLY_BULL: '강세 초입',
   BULL: '강세',
   LATE_BULL: '강세 후반',
-  EARLY_BEAR: '약세 전환 초기',
+  EARLY_BEAR: '약세 전환',
   BEAR: '약세',
+}
+
+export const REGIME_TOOLTIP: Record<string, string> = {
+  EARLY_BULL: '시장이 강세로 전환하는 초기 단계',
+  BULL: '시장 전체가 뚜렷한 상승 추세',
+  LATE_BULL: '강세가 지속 중이나 에너지가 줄어드는 단계',
+  EARLY_BEAR: '시장이 약세로 전환하기 시작 — 신규 진입 주의',
+  BEAR: '시장 전체가 하락 추세 — 방어적 전략 필요',
 }
 
 const VALID_RECOMMENDATION_STATUSES = new Set<string>([

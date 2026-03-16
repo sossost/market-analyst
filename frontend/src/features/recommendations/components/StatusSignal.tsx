@@ -21,39 +21,45 @@ const SIGNAL_CONFIG: Record<
 > = {
   normal: {
     dotClass: 'text-green-500',
-    label: '정상 진행',
-    tooltip: '추천 시점의 상승 흐름이 유지되고 있음',
+    label: '상승 유지',
+    tooltip: '상승 구간(Phase 2)이 유지되고 있음',
   },
   caution: {
     dotClass: 'text-yellow-500',
-    label: '둔화 주의',
-    tooltip: '상승 흐름이 한 단계 하락 — 추이 모니터링 필요',
+    label: '고점 접근',
+    tooltip: '고점 형성 구간(Phase 3) 진입 — 추이 모니터링 필요',
   },
   danger: {
     dotClass: 'text-red-500',
-    label: '이탈 위험',
-    tooltip: '상승 흐름에서 크게 이탈 — 매도 검토 필요',
+    label: '하락 전환',
+    tooltip: '상승 구간을 이탈하여 하락 전환 — 매도 검토 필요',
   },
 }
 
+/**
+ * 현재 Phase 기준으로 상태 신호 산출.
+ * Phase 2(상승 초입)에서 진입하므로:
+ * - Phase 2 유지: 정상 (상승 지속)
+ * - Phase 3 진입: 주의 (고점 형성 — 상승 에너지 감소)
+ * - Phase 4/5/1 진입: 위험 (하락 전환)
+ */
 function computeSignal(
-  entryPhase: number,
+  _entryPhase: number,
   currentPhase: number | null,
 ): Signal | null {
   if (currentPhase == null) {
     return null
   }
 
-  const phaseDiff = currentPhase - entryPhase
-
-  if (phaseDiff >= 0) {
+  if (currentPhase === 2) {
     return { level: 'normal', label: SIGNAL_CONFIG.normal.label }
   }
 
-  if (phaseDiff === -1) {
+  if (currentPhase === 3) {
     return { level: 'caution', label: SIGNAL_CONFIG.caution.label }
   }
 
+  // Phase 1, 4, 5 — 상승 구간 이탈
   return { level: 'danger', label: SIGNAL_CONFIG.danger.label }
 }
 

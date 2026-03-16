@@ -6,7 +6,12 @@ import {
 } from '@/shared/components/ui/card'
 import { formatDate } from '@/shared/lib/formatDate'
 
-import { PHASE_LABEL, REGIME_LABEL } from '../constants'
+import {
+  PHASE_LABEL,
+  PHASE_TOOLTIP,
+  REGIME_LABEL,
+  REGIME_TOOLTIP,
+} from '../constants'
 import type { RecommendationDetail } from '../types'
 import { PnlCell } from './PnlCell'
 import { StatusSignal } from './StatusSignal'
@@ -114,8 +119,8 @@ export function RecommendationDetail({
               {!isActive && (
                 <>
                   <DetailItem
-                    label="종료 유형"
-                    value={closeReason ?? '-'}
+                    label="종료 사유"
+                    value={formatCloseReason(closeReason)}
                   />
                   <DetailItem
                     label="종료일"
@@ -127,6 +132,7 @@ export function RecommendationDetail({
                 <DetailItem
                   label="추천 시점 흐름"
                   value={PHASE_LABEL[entryPhase] ?? `Phase ${entryPhase}`}
+                  tooltip={PHASE_TOOLTIP[entryPhase]}
                 />
                 <DetailItem
                   label="현재 흐름"
@@ -135,14 +141,16 @@ export function RecommendationDetail({
                       ? (PHASE_LABEL[currentPhase] ?? `Phase ${currentPhase}`)
                       : '-'
                   }
+                  tooltip={currentPhase != null ? PHASE_TOOLTIP[currentPhase] : undefined}
                 />
                 <DetailItem
-                  label="시장 환경"
+                  label="시장 환경 (추천 시점)"
                   value={
                     marketRegime != null
                       ? (REGIME_LABEL[marketRegime] ?? marketRegime)
                       : '-'
                   }
+                  tooltip={marketRegime != null ? REGIME_TOOLTIP[marketRegime] : undefined}
                 />
                 <DetailItem label="섹터" value={sector ?? '-'} />
               </div>
@@ -191,11 +199,40 @@ export function RecommendationDetail({
   )
 }
 
-function DetailItem({ label, value }: { label: string; value: string }) {
+function DetailItem({
+  label,
+  value,
+  tooltip,
+}: {
+  label: string
+  value: string
+  tooltip?: string
+}) {
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium">{value}</span>
+      {tooltip != null ? (
+        <span className="text-sm font-medium cursor-help" title={tooltip}>
+          {value}
+        </span>
+      ) : (
+        <span className="text-sm font-medium">{value}</span>
+      )}
     </div>
   )
+}
+
+/** DB의 close_reason raw 텍스트를 사람이 읽을 수 있는 표현으로 번역 */
+function formatCloseReason(raw: string | null): string {
+  if (raw == null) return '-'
+  if (raw === 'DUPLICATE_CLEANUP') return '재추천으로 이전 포지션 정리'
+  // "Phase 3 이탈 (RS 93)" → "고점 형성 구간 이탈 (RS 93)"
+  const phaseExitMatch = raw.match(/^Phase (\d) 이탈(.*)$/)
+  if (phaseExitMatch != null) {
+    const phase = Number(phaseExitMatch[1])
+    const rest = phaseExitMatch[2] ?? ''
+    const phaseLabel = PHASE_LABEL[phase] ?? `Phase ${phase}`
+    return `${phaseLabel} 구간 이탈${rest}`
+  }
+  return raw
 }
