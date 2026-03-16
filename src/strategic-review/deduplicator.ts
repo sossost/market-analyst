@@ -62,17 +62,34 @@ async function fetchExistingStrategicIssues(): Promise<ExistingIssue[]> {
 
   if (raw === "") return [];
 
-  const issues: Array<{
-    number: number;
-    title: string;
-    createdAt: string;
-  }> = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
 
-  return issues.map((issue) => ({
-    number: issue.number,
-    title: issue.title,
-    createdAt: issue.createdAt,
-  }));
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed.flatMap((item): ExistingIssue[] => {
+    if (
+      item == null ||
+      typeof item !== "object" ||
+      typeof (item as Record<string, unknown>)["number"] !== "number" ||
+      typeof (item as Record<string, unknown>)["title"] !== "string" ||
+      typeof (item as Record<string, unknown>)["createdAt"] !== "string"
+    ) {
+      return [];
+    }
+    const obj = item as Record<string, unknown>;
+    return [
+      {
+        number: obj["number"] as number,
+        title: obj["title"] as string,
+        createdAt: obj["createdAt"] as string,
+      },
+    ];
+  });
 }
 
 /**
