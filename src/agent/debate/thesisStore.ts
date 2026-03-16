@@ -4,6 +4,8 @@ import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../logger.js";
 import type { Thesis, ThesisCategory, ConsensusLevel, ConsensusHitRateRow } from "../../types/debate.js";
 import { recordNarrativeChain } from "./narrativeChainService.js";
+import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
+import type { MarketSnapshot } from "./marketDataLoader.js";
 
 function parseConsensusScore(level: ConsensusLevel): number {
   const score = parseInt(level.split("/")[0], 10);
@@ -99,6 +101,113 @@ export async function expireStaleTheses(today: string): Promise<number> {
   }
 
   return result.length;
+}
+
+/**
+ * timeframe 초과 ACTIVE thesis에 대해 만료 전 정량 판정을 시도한다.
+ *
+ * 처리 순서:
+ * 1. ACTIVE thesis 중 timeframeDays 초과 항목을 DB에서 조회
+ * 2. 각 thesis에 대해 tryQuantitativeVerification() 시도 (snapshot이 있는 경우)
+ * 3. 정량 판정 가능 → CONFIRMED 또는 INVALIDATED로 해소
+ * 4. 정량 판정 불가 → EXPIRED 처리 (기존 expireStaleTheses 동작과 동일)
+ *
+ * LLM 검증은 사용하지 않는다 — 비용 없이 정량적으로 판단 가능한 thesis만 구제한다.
+ *
+ * Returns: { resolved, expired } 카운트
+ */
+export async function resolveOrExpireStaleTheses(
+  today: string,
+  snapshot?: MarketSnapshot,
+): Promise<{ resolved: number; expired: number }> {
+  // timeframe 초과 ACTIVE thesis 조회
+  const staleRows = await db
+    .select({
+      id: theses.id,
+      thesis: theses.thesis,
+      agentPersona: theses.agentPersona,
+      timeframeDays: theses.timeframeDays,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
+      invalidationCondition: theses.invalidationCondition,
+      confidence: theses.confidence,
+      consensusLevel: theses.consensusLevel,
+    })
+    .from(theses)
+    .where(
+      and(
+        eq(theses.status, "ACTIVE"),
+        sql`${theses.debateDate}::date + ${theses.timeframeDays} * interval '1 day' <= ${today}::date`,
+      ),
+    );
+
+  if (staleRows.length === 0) {
+    return { resolved: 0, expired: 0 };
+  }
+
+  // snapshot이 없으면 정량 판정 불가 → 기존 expireStaleTheses와 동일하게 일괄 처리
+  if (snapshot == null) {
+    const expiredCount = await expireStaleTheses(today);
+    return { resolved: 0, expired: expiredCount };
+  }
+
+  logger.info("ThesisStore", `만료 대상 ${staleRows.length}개 thesis — 정량 판정 시도 중`);
+
+  let resolved = 0;
+  let expired = 0;
+
+  for (const row of staleRows) {
+    // Thesis 타입으로 변환 — tryQuantitativeVerification 시그니처 충족
+    const thesisForVerification: Thesis = {
+      agentPersona: row.agentPersona as Thesis["agentPersona"],
+      thesis: row.thesis,
+      timeframeDays: row.timeframeDays as Thesis["timeframeDays"],
+      verificationMetric: row.verificationMetric,
+      targetCondition: row.targetCondition,
+      invalidationCondition: row.invalidationCondition ?? undefined,
+      confidence: row.confidence as Thesis["confidence"],
+      consensusLevel: row.consensusLevel as Thesis["consensusLevel"],
+    };
+
+    const quantResult = tryQuantitativeVerification(thesisForVerification, snapshot);
+
+    if (quantResult != null) {
+      // 정량 판정 성공 → CONFIRMED 또는 INVALIDATED
+      const closeReason = quantResult.verdict === "CONFIRMED" ? "condition_met" : "condition_failed";
+      await db
+        .update(theses)
+        .set({
+          status: quantResult.verdict,
+          verificationDate: today,
+          verificationResult: quantResult.reason,
+          closeReason,
+          verificationMethod: "quantitative",
+        })
+        .where(and(eq(theses.id, row.id), eq(theses.status, "ACTIVE")));
+
+      logger.info(
+        "ThesisStore",
+        `Thesis #${row.id} → ${quantResult.verdict} (만료 전 정량 판정): ${quantResult.reason}`,
+      );
+      resolved++;
+    } else {
+      // 정량 판정 불가 → EXPIRED
+      await db
+        .update(theses)
+        .set({ status: "EXPIRED", verificationDate: today, closeReason: "timeframe_exceeded" })
+        .where(and(eq(theses.id, row.id), eq(theses.status, "ACTIVE")));
+
+      logger.info("ThesisStore", `Thesis #${row.id} → EXPIRED (정량 판정 불가)`);
+      expired++;
+    }
+  }
+
+  logger.info(
+    "ThesisStore",
+    `만료 대상 처리 완료: ${resolved}개 CONFIRMED/INVALIDATED, ${expired}개 EXPIRED`,
+  );
+
+  return { resolved, expired };
 }
 
 /**
