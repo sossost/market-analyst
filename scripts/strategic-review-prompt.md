@@ -19,9 +19,9 @@ Phase 2 초입 포착 도구들이 정확하게 작동하는가?
 
 분석 대상 파일:
 - `src/lib/phase-detection.ts` — Phase 판정 로직, 임계값
-- `src/etl/queries/getPhase1LateStocks.ts` — MA150 기울기 양전환 조건
-- `src/etl/queries/getRisingRS.ts` — RS 범위 조건
-- `src/etl/queries/getFundamentalAcceleration.ts` — EPS 가속 조건
+- `src/agent/tools/getPhase1LateStocks.ts` — MA150 기울기 양전환 조건
+- `src/agent/tools/getRisingRS.ts` — RS 범위 조건
+- `src/agent/tools/getFundamentalAcceleration.ts` — EPS 가속 조건
 - `src/lib/fundamental-scorer.ts` — SEPA 스코어링
 
 질문:
