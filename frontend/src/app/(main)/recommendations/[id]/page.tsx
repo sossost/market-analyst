@@ -1,9 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { AnalysisReportCard } from '@/features/recommendations/components/AnalysisReportCard'
 import { RecommendationDetail } from '@/features/recommendations/components/RecommendationDetail'
 import { RecommendationStatusBadge } from '@/features/recommendations/components/RecommendationStatusBadge'
-import { fetchRecommendationById } from '@/features/recommendations/lib/supabase-queries'
+import {
+  fetchAnalysisReport,
+  fetchRecommendationById,
+} from '@/features/recommendations/lib/supabase-queries'
 import { formatDate } from '@/shared/lib/formatDate'
 
 interface Props {
@@ -24,6 +28,13 @@ export default async function RecommendationDetailPage({ params }: Props) {
     notFound()
   }
 
+  // recommendation fetch 완료 후 symbol과 date가 확정되어야 리포트 fetch 가능
+  // recommendation 자체가 없으면 notFound()로 early return되므로 직렬이 맞음
+  const analysisReport = await fetchAnalysisReport(
+    recommendation.symbol,
+    recommendation.recommendationDate,
+  )
+
   return (
     <main className="p-6">
       <div className="mb-6">
@@ -43,7 +54,10 @@ export default async function RecommendationDetailPage({ params }: Props) {
         <RecommendationStatusBadge status={recommendation.status} />
       </div>
 
-      <RecommendationDetail recommendation={recommendation} />
+      <div className="flex flex-col gap-8">
+        <RecommendationDetail recommendation={recommendation} />
+        <AnalysisReportCard report={analysisReport} />
+      </div>
     </main>
   )
 }

@@ -751,6 +751,47 @@ export const weeklyQaReports = pgTable(
 );
 
 /**
+ * stock_analysis_reports — 기업 애널리스트 에이전트가 생성하는 종목별 심층 분석 리포트.
+ * symbol + recommendation_date 조합으로 UNIQUE — 같은 날짜에 같은 종목은 하나만 존재.
+ */
+export const stockAnalysisReports = pgTable(
+  "stock_analysis_reports",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    recommendationDate: text("recommendation_date").notNull(),
+
+    // 리포트 섹션 (각 섹션은 Markdown 텍스트)
+    investmentSummary: text("investment_summary").notNull(),
+    technicalAnalysis: text("technical_analysis").notNull(),
+    fundamentalTrend: text("fundamental_trend").notNull(),
+    valuationAnalysis: text("valuation_analysis").notNull(),
+    sectorPositioning: text("sector_positioning").notNull(),
+    marketContext: text("market_context").notNull(),
+    riskFactors: text("risk_factors").notNull(),
+
+    // 메타데이터
+    modelUsed: text("model_used").notNull(),
+    tokensInput: integer("tokens_input"),
+    tokensOutput: integer("tokens_output"),
+    generatedAt: timestamp("generated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_stock_analysis_reports_symbol_date").on(
+      t.symbol,
+      t.recommendationDate,
+    ),
+    idxSymbol: index("idx_stock_analysis_reports_symbol").on(t.symbol),
+    idxDate: index("idx_stock_analysis_reports_date").on(t.recommendationDate),
+  }),
+);
+
+/**
  * daily_reports — 일간/주간 리포트 아카이빙.
  * 기존 data/reports/ JSON 파일을 DB로 이관.
  * report_date별 UNIQUE — 같은 날짜에 같은 타입의 리포트는 하나만 존재.

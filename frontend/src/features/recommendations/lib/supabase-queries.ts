@@ -2,6 +2,7 @@ import { createClient } from '@/features/auth/lib/supabase-server'
 
 import { ITEMS_PER_PAGE, isRecommendationStatus } from '../constants'
 import type {
+  AnalysisReport,
   RecommendationDetail,
   RecommendationStatus,
   RecommendationSummary,
@@ -111,5 +112,46 @@ export async function fetchRecommendationById(
     marketRegime: data.market_regime ?? null,
     lastUpdated: data.last_updated ?? null,
     reason: data.reason ?? null,
+  }
+}
+
+export async function fetchAnalysisReport(
+  symbol: string,
+  recommendationDate: string,
+): Promise<AnalysisReport | null> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('stock_analysis_reports')
+    .select(
+      'id, symbol, recommendation_date, investment_summary, technical_analysis, fundamental_trend, valuation_analysis, sector_positioning, market_context, risk_factors, generated_at',
+    )
+    .eq('symbol', symbol)
+    .eq('recommendation_date', recommendationDate)
+    .single()
+
+  if (error != null) {
+    if (error.code === 'PGRST116') {
+      return null
+    }
+    throw new Error(`기업 분석 리포트 조회 실패: ${error.message}`)
+  }
+
+  if (data == null) {
+    return null
+  }
+
+  return {
+    id: data.id,
+    symbol: data.symbol,
+    recommendationDate: data.recommendation_date,
+    investmentSummary: data.investment_summary,
+    technicalAnalysis: data.technical_analysis,
+    fundamentalTrend: data.fundamental_trend,
+    valuationAnalysis: data.valuation_analysis,
+    sectorPositioning: data.sector_positioning,
+    marketContext: data.market_context,
+    riskFactors: data.risk_factors,
+    generatedAt: data.generated_at,
   }
 }

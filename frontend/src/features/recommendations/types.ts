@@ -31,3 +31,17 @@ export interface RecommendationDetail extends RecommendationSummary {
   lastUpdated: string | null
   reason: string | null
 }
+
+export interface AnalysisReport {
+  id: number
+  symbol: string
+  recommendationDate: string
+  investmentSummary: string
+  technicalAnalysis: string
+  fundamentalTrend: string
+  valuationAnalysis: string
+  sectorPositioning: string
+  marketContext: string
+  riskFactors: string
+  generatedAt: string
+}

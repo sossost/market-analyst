@@ -6,6 +6,7 @@ import type { AgentTool } from "./types";
 import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE } from "./validation";
 import { loadConfirmedRegime } from "../debate/regimeStore";
 import { logger } from "@/agent/logger";
+import { runCorporateAnalyst } from "../corporateAnalyst/runCorporateAnalyst.js";
 
 interface RecommendationInput {
   symbol: string;
@@ -331,6 +332,24 @@ export const saveRecommendations: AgentTool = {
       // 2. 팩터 스냅샷 저장
       await saveFactorSnapshot(symbol, date);
       savedCount++;
+
+      // 3. 기업 분석 리포트 생성 (fire-and-forget)
+      // 리포트 생성 실패가 추천 저장 성공에 영향을 주지 않도록 await 없이 실행
+      runCorporateAnalyst(symbol, date, pool)
+        .then((result) => {
+          if (!result.success) {
+            logger.warn(
+              "CorporateAnalyst",
+              `${symbol} 리포트 생성 실패: ${result.error}`,
+            );
+          }
+        })
+        .catch((err) =>
+          logger.error(
+            "CorporateAnalyst",
+            `${symbol} 예상치 못한 에러: ${String(err)}`,
+          ),
+        );
     }
 
     return JSON.stringify({
