@@ -6,12 +6,14 @@ export const RECOMMENDATION_STATUS_LABEL: Record<RecommendationStatus, string> =
   {
     ACTIVE: '활성',
     CLOSED: '종료',
+    CLOSED_PHASE_EXIT: 'Phase 이탈',
     STOPPED: '중단',
   }
 
 const VALID_RECOMMENDATION_STATUSES = new Set<string>([
   'ACTIVE',
   'CLOSED',
+  'CLOSED_PHASE_EXIT',
   'STOPPED',
 ])
 

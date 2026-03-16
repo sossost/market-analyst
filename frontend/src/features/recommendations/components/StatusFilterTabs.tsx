@@ -5,9 +5,9 @@ import { useSearchParams } from 'next/navigation'
 
 import { cn } from '@/shared/lib/utils'
 
-import type { RecommendationStatus } from '../types'
+type FilterValue = 'ALL' | 'ACTIVE' | 'CLOSED' | 'STOPPED'
 
-type FilterOption = { label: string; value: RecommendationStatus | 'ALL' }
+type FilterOption = { label: string; value: FilterValue }
 
 const FILTER_OPTIONS: FilterOption[] = [
   { label: '전체', value: 'ALL' },

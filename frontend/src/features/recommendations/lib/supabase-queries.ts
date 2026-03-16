@@ -32,7 +32,12 @@ export async function fetchRecommendations(
     .range(offset, offset + ITEMS_PER_PAGE - 1)
 
   if (status != null) {
-    query = query.eq('status', status)
+    // "종료" 필터는 CLOSED + CLOSED_PHASE_EXIT 모두 포함
+    if (status === 'CLOSED') {
+      query = query.in('status', ['CLOSED', 'CLOSED_PHASE_EXIT'])
+    } else {
+      query = query.eq('status', status)
+    }
   }
 
   const { data, error, count } = await query

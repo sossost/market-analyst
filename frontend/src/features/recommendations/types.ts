@@ -1,4 +1,8 @@
-export type RecommendationStatus = 'ACTIVE' | 'CLOSED' | 'STOPPED'
+export type RecommendationStatus =
+  | 'ACTIVE'
+  | 'CLOSED'
+  | 'CLOSED_PHASE_EXIT'
+  | 'STOPPED'
 
 export interface RecommendationSummary {
   id: number

@@ -9,10 +9,11 @@ interface RecommendationStatusBadgeProps {
 
 const STATUS_VARIANT: Record<
   RecommendationStatus,
-  'default' | 'secondary' | 'destructive'
+  'default' | 'secondary' | 'destructive' | 'outline'
 > = {
   ACTIVE: 'default',
   CLOSED: 'secondary',
+  CLOSED_PHASE_EXIT: 'outline',
   STOPPED: 'destructive',
 }
 
