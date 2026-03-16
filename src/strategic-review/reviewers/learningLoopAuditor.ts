@@ -9,32 +9,15 @@
  * - 자기참조 루프 징후: LLM이 생성+검증하는 패턴 탐지
  */
 
-import { ClaudeCliProvider } from "../../agent/debate/llm/claudeCliProvider.js";
-import { AnthropicProvider } from "../../agent/debate/llm/anthropicProvider.js";
-import { FallbackProvider } from "../../agent/debate/llm/fallbackProvider.js";
-import type { LLMProvider } from "../../agent/debate/llm/types.js";
 import { db } from "../../db/client.js";
+import { createStrategicReviewProvider } from "../providerFactory.js";
 import { agentLearnings, theses } from "../../db/schema/analyst.js";
 import { eq, lte, and, sql } from "drizzle-orm";
 import type { Insight } from "../types.js";
 
-const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 const RECENT_LEARNINGS_LIMIT = 30;
 const HOLD_DAYS_THRESHOLD = 30;
-
-function createProvider(): LLMProvider {
-  const cli = new ClaudeCliProvider();
-  const hasApiKey =
-    process.env.ANTHROPIC_API_KEY != null &&
-    process.env.ANTHROPIC_API_KEY !== "";
-  if (!hasApiKey) return cli;
-  return new FallbackProvider(
-    cli,
-    new AnthropicProvider(FALLBACK_MODEL),
-    "ClaudeCLI",
-  );
-}
 
 const SYSTEM_PROMPT = `당신은 주식 시장 분석 시스템의 학습 루프 감사 전문가입니다.
 프로젝트 골: Phase 2 초입 주도주를 남들보다 먼저 포착하는 것.
@@ -226,7 +209,7 @@ export async function runLearningLoopAudit(): Promise<Insight[]> {
   ]);
 
   const analysisContext = buildAnalysisContext(learnings, longHoldTheses);
-  const provider = createProvider();
+  const provider = createStrategicReviewProvider();
 
   const userMessage = `다음 학습 루프 데이터를 감사하십시오. 학습 오염, 근거 불충분, HOLD 기간 과다 등의 문제를 찾으십시오:
 

@@ -13,13 +13,9 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ClaudeCliProvider } from "../../agent/debate/llm/claudeCliProvider.js";
-import { AnthropicProvider } from "../../agent/debate/llm/anthropicProvider.js";
-import { FallbackProvider } from "../../agent/debate/llm/fallbackProvider.js";
-import type { LLMProvider } from "../../agent/debate/llm/types.js";
 import type { Insight } from "../types.js";
+import { createStrategicReviewProvider } from "../providerFactory.js";
 
-const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 4096;
 
 /** 분석 대상 파일 경로 (프로젝트 루트 기준) */
@@ -30,19 +26,6 @@ const TARGET_FILES = [
   "src/agent/tools/getFundamentalAcceleration.ts",
   "src/lib/fundamental-scorer.ts",
 ];
-
-function createProvider(): LLMProvider {
-  const cli = new ClaudeCliProvider();
-  const hasApiKey =
-    process.env.ANTHROPIC_API_KEY != null &&
-    process.env.ANTHROPIC_API_KEY !== "";
-  if (!hasApiKey) return cli;
-  return new FallbackProvider(
-    cli,
-    new AnthropicProvider(FALLBACK_MODEL),
-    "ClaudeCLI",
-  );
-}
 
 const SYSTEM_PROMPT = `당신은 주식 시장 분석 시스템의 포착 로직 감사 전문가입니다.
 프로젝트 골: Phase 2 초입 주도주를 남들보다 먼저 포착하는 것.
@@ -122,7 +105,7 @@ export async function runCaptureLogicAudit(
   projectRoot: string,
 ): Promise<Insight[]> {
   const codeContext = await loadCodeContext(projectRoot);
-  const provider = createProvider();
+  const provider = createStrategicReviewProvider();
 
   const userMessage = `다음 포착 로직 코드들을 감사하십시오. Phase 2 초입 포착 정확도를 개선할 수 있는 구체적인 문제와 기회를 찾으십시오:
 
