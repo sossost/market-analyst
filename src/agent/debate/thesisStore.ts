@@ -1,6 +1,6 @@
 import { db } from "../../db/client.js";
 import { theses } from "../../db/schema/analyst.js";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { logger } from "../logger.js";
 import type { Thesis, ThesisCategory, ConsensusLevel, ConsensusHitRateRow } from "../../types/debate.js";
 import { recordNarrativeChain } from "./narrativeChainService.js";
@@ -153,11 +153,17 @@ export async function resolveOrExpireStaleTheses(
 
   logger.info("ThesisStore", `만료 대상 ${staleRows.length}개 thesis — 정량 판정 시도 중`);
 
-  let resolved = 0;
-  let expired = 0;
+  // 정량 판정 결과를 분류
+  type VerifiedRow = {
+    id: number;
+    verdict: "CONFIRMED" | "INVALIDATED";
+    reason: string;
+  };
+
+  const verifiedRows: VerifiedRow[] = [];
+  const toExpireIds: number[] = [];
 
   for (const row of staleRows) {
-    // Thesis 타입으로 변환 — tryQuantitativeVerification 시그니처 충족
     const thesisForVerification: Thesis = {
       agentPersona: row.agentPersona as Thesis["agentPersona"],
       thesis: row.thesis,
@@ -172,35 +178,53 @@ export async function resolveOrExpireStaleTheses(
     const quantResult = tryQuantitativeVerification(thesisForVerification, snapshot);
 
     if (quantResult != null) {
-      // 정량 판정 성공 → CONFIRMED 또는 INVALIDATED
-      const closeReason = quantResult.verdict === "CONFIRMED" ? "condition_met" : "condition_failed";
-      await db
-        .update(theses)
-        .set({
-          status: quantResult.verdict,
-          verificationDate: today,
-          verificationResult: quantResult.reason,
-          closeReason,
-          verificationMethod: "quantitative",
-        })
-        .where(and(eq(theses.id, row.id), eq(theses.status, "ACTIVE")));
-
-      logger.info(
-        "ThesisStore",
-        `Thesis #${row.id} → ${quantResult.verdict} (만료 전 정량 판정): ${quantResult.reason}`,
-      );
-      resolved++;
+      verifiedRows.push({ id: row.id, verdict: quantResult.verdict, reason: quantResult.reason });
     } else {
-      // 정량 판정 불가 → EXPIRED
-      await db
-        .update(theses)
-        .set({ status: "EXPIRED", verificationDate: today, closeReason: "timeframe_exceeded" })
-        .where(and(eq(theses.id, row.id), eq(theses.status, "ACTIVE")));
-
-      logger.info("ThesisStore", `Thesis #${row.id} → EXPIRED (정량 판정 불가)`);
-      expired++;
+      toExpireIds.push(row.id);
     }
   }
+
+  // 정량 판정 성공 → CONFIRMED/INVALIDATED 병렬 업데이트
+  const resolvedUpdates = verifiedRows.map((r) => {
+    const closeReason = r.verdict === "CONFIRMED" ? "condition_met" : "condition_failed";
+    return db
+      .update(theses)
+      .set({
+        status: r.verdict,
+        verificationDate: today,
+        verificationResult: r.reason,
+        closeReason,
+        verificationMethod: "quantitative",
+      })
+      .where(and(eq(theses.id, r.id), eq(theses.status, "ACTIVE")));
+  });
+
+  // 정량 판정 불가 → EXPIRED 배치 업데이트 (1회 쿼리)
+  const expireUpdate =
+    toExpireIds.length > 0
+      ? [
+          db
+            .update(theses)
+            .set({ status: "EXPIRED", verificationDate: today, closeReason: "timeframe_exceeded" })
+            .where(and(inArray(theses.id, toExpireIds), eq(theses.status, "ACTIVE"))),
+        ]
+      : [];
+
+  await Promise.all([...resolvedUpdates, ...expireUpdate]);
+
+  for (const r of verifiedRows) {
+    logger.info(
+      "ThesisStore",
+      `Thesis #${r.id} → ${r.verdict} (만료 전 정량 판정): ${r.reason}`,
+    );
+  }
+
+  if (toExpireIds.length > 0) {
+    logger.info("ThesisStore", `Thesis [${toExpireIds.join(", ")}] → EXPIRED (정량 판정 불가)`);
+  }
+
+  const resolved = verifiedRows.length;
+  const expired = toExpireIds.length;
 
   logger.info(
     "ThesisStore",

@@ -34,6 +34,7 @@ vi.mock("../../../db/client.js", () => {
 vi.mock("drizzle-orm", () => ({
   eq: (col: unknown, val: unknown) => ({ eq: { col, val } }),
   and: (...args: unknown[]) => ({ and: args }),
+  inArray: (col: unknown, vals: unknown) => ({ inArray: { col, vals } }),
   sql: (str: unknown) => str,
 }));
 
@@ -253,6 +254,7 @@ describe("resolveOrExpireStaleTheses", () => {
     const result = await resolveOrExpireStaleTheses("2026-03-16", makeSnapshot());
 
     expect(result).toEqual({ resolved: 1, expired: 1 });
+    // CONFIRMED 1회 + EXPIRED 배치 1회 = 총 2회
     expect(db.update).toHaveBeenCalledTimes(2);
 
     const firstSetArgs = updateSet.mock.calls[0][0] as Record<string, unknown>;
@@ -261,16 +263,17 @@ describe("resolveOrExpireStaleTheses", () => {
     const secondSetArgs = updateSet.mock.calls[1][0] as Record<string, unknown>;
     expect(secondSetArgs.status).toBe("EXPIRED");
 
-    // 각 UPDATE가 올바른 row.id를 WHERE로 전달했는지 검증
-    // WHERE 절: and(eq(theses.id, row.id), eq(theses.status, "ACTIVE"))
+    // CONFIRMED WHERE: and(eq(id, 10), eq(status, "ACTIVE"))
     // mock 구조: { and: [{ eq: { col, val } }, ...] }
-    type WhereArg = { and: Array<{ eq: { col: unknown; val: unknown } }> };
+    type WhereArg = { and: Array<{ eq?: { col: unknown; val: unknown }; inArray?: { col: unknown; vals: unknown } }> };
 
     const firstWhereArg = updateWhere.mock.calls[0][0] as WhereArg;
-    expect(firstWhereArg.and[0].eq.val).toBe(10);
+    expect(firstWhereArg.and[0].eq?.val).toBe(10);
 
+    // EXPIRED WHERE: and(inArray(id, [20]), eq(status, "ACTIVE"))
+    // 배치 처리이므로 inArray로 id 목록 전달
     const secondWhereArg = updateWhere.mock.calls[1][0] as WhereArg;
-    expect(secondWhereArg.and[0].eq.val).toBe(20);
+    expect(secondWhereArg.and[0].inArray?.vals).toEqual([20]);
   });
 
   it("tryQuantitativeVerification에 올바른 thesis 필드가 전달된다", async () => {
