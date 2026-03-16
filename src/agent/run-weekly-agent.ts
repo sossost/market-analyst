@@ -37,7 +37,11 @@ import {
 import { loadSignalPerformanceSummary } from "./signalPerformance";
 import { formatChainsSummaryForPrompt } from "../lib/narrativeChainStats";
 import { formatLeadingSectorsForPrompt } from "../lib/sectorLagStats";
-import { loadRecentRegimes, formatRegimeForPrompt } from "./debate/regimeStore";
+import {
+  loadRecentRegimes,
+  loadPendingRegimes,
+  formatRegimeForPrompt,
+} from "./debate/regimeStore";
 
 const MODEL = "claude-sonnet-4-6-20250725";
 const MAX_TOKENS = 8192;
@@ -142,11 +146,14 @@ async function main() {
     logger.error("SectorLag", `로드 실패 (에이전트는 계속 진행): ${reason}`);
   }
 
-  // 3.8. 시장 레짐 히스토리 로드
+  // 3.8. 시장 레짐 히스토리 로드 (confirmed + pending)
   let regimeContext = "";
   try {
-    const recentRegimes = await loadRecentRegimes(30);
-    regimeContext = formatRegimeForPrompt(recentRegimes);
+    const [recentRegimes, pendingRegimes] = await Promise.all([
+      loadRecentRegimes(30),
+      loadPendingRegimes(),
+    ]);
+    regimeContext = formatRegimeForPrompt(recentRegimes, pendingRegimes);
     if (regimeContext !== "") {
       logger.info("Regime", "최근 레짐 히스토리 로드 완료");
     }

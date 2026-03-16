@@ -7,7 +7,11 @@ import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoa
 import { collectNews, formatNewsForPersona } from "./debate/newsCollector";
 import { loadNewsForPersona } from "./debate/newsLoader";
 import { saveTheses, expireStaleTheses, getThesisStats } from "./debate/thesisStore";
-import { validateRegimeInput, saveRegime } from "./debate/regimeStore";
+import {
+  validateRegimeInput,
+  saveRegimePending,
+  applyHysteresis,
+} from "./debate/regimeStore";
 import { verifyTheses } from "./debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
@@ -380,12 +384,21 @@ async function main() {
   const savedCount = await saveTheses(debateDate, result.round3.theses);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
-  // 레짐 저장 (에러 격리 — 실패해도 토론 결과에 영향 없음)
+  // 레짐 저장 — pending 저장 후 히스테리시스 적용 (에러 격리)
   if (result.marketRegime != null) {
     try {
       const validated = validateRegimeInput(result.marketRegime);
       if (validated != null) {
-        await saveRegime(debateDate, validated);
+        await saveRegimePending(debateDate, validated);
+        const confirmed = await applyHysteresis(debateDate);
+        if (confirmed != null) {
+          logger.info(
+            "Regime",
+            `확정 레짐: ${confirmed.regime} (${confirmed.confidence})`,
+          );
+        } else {
+          logger.info("Regime", "레짐 pending — 확정 대기 중");
+        }
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);

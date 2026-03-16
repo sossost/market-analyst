@@ -707,6 +707,9 @@ export const marketRegimes = pgTable(
     rationale: text("rationale").notNull(), // 판정 근거 2~4줄
     confidence: text("confidence").$type<RegimeConfidence>().notNull(),
     taggedBy: text("tagged_by").notNull().default("macro"), // 향후 확장용
+    // 히스테리시스: N일 연속 동일 판정 후 확정
+    isConfirmed: boolean("is_confirmed").notNull().default(false),
+    confirmedAt: text("confirmed_at"), // 확정일 (YYYY-MM-DD), null이면 pending
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -714,6 +717,10 @@ export const marketRegimes = pgTable(
   (t) => ({
     uqDate: unique("uq_market_regimes_date").on(t.regimeDate),
     idxDate: index("idx_market_regimes_date").on(t.regimeDate),
+    idxConfirmed: index("idx_market_regimes_confirmed").on(
+      t.isConfirmed,
+      t.regimeDate,
+    ),
   }),
 );
 

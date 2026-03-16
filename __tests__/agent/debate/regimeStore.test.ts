@@ -18,9 +18,71 @@ vi.mock("../../../src/db/client.js", () => ({
 import {
   validateRegimeInput,
   formatRegimeForPrompt,
+  areDatesConsecutive,
   type MarketRegimeRow,
 } from "../../../src/agent/debate/regimeStore.js";
 import type { MarketRegimeType } from "../../../src/db/schema/analyst.js";
+
+// ─── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
+
+function makeRow(overrides: Partial<MarketRegimeRow> = {}): MarketRegimeRow {
+  return {
+    regimeDate: "2026-03-09",
+    regime: "MID_BULL",
+    rationale: "test",
+    confidence: "medium",
+    isConfirmed: true,
+    confirmedAt: "2026-03-09",
+    ...overrides,
+  };
+}
+
+// ─── areDatesConsecutive ──────────────────────────────────────────────────────
+
+describe("areDatesConsecutive", () => {
+  it("단일 날짜는 항상 연속으로 판정한다", () => {
+    expect(areDatesConsecutive(["2026-03-10"])).toBe(true);
+  });
+
+  it("빈 배열은 연속으로 판정한다", () => {
+    expect(areDatesConsecutive([])).toBe(true);
+  });
+
+  it("평일 연속(월→화, 1일 차이)을 연속으로 판정한다", () => {
+    // DESC 정렬: 화요일, 월요일
+    expect(areDatesConsecutive(["2026-03-10", "2026-03-09"])).toBe(true);
+  });
+
+  it("금요일→월요일(3일 차이)을 연속 거래일로 판정한다", () => {
+    // 2026-03-16(월) ~ 2026-03-13(금) = 3일 차이
+    expect(areDatesConsecutive(["2026-03-16", "2026-03-13"])).toBe(true);
+  });
+
+  it("공휴일+주말 조합 4일 차이를 연속 거래일로 판정한다", () => {
+    // 예: 목요일(목)이 공휴일이어서 수요일→월요일 = 5일 → 초과
+    // 공휴일 하루(금요일)로 인해 목요일→월요일 = 4일 → 허용
+    expect(areDatesConsecutive(["2026-01-05", "2026-01-01"])).toBe(true); // 4일 차이
+  });
+
+  it("5일 이상 차이는 연속이 아닌 것으로 판정한다", () => {
+    // 수요일→월요일: 수(공휴)+목(공휴)+금+토일 → 5일 차이
+    expect(areDatesConsecutive(["2026-03-16", "2026-03-11"])).toBe(false); // 5일 차이
+  });
+
+  it("CONFIRMATION_DAYS=2 기준: 금→월 두 날짜가 주말을 사이에 두고 확정된다", () => {
+    // DESC 정렬: 월요일, 금요일 — 3일 차이 → MAX_GAP_DAYS(4) 이내이므로 연속
+    expect(areDatesConsecutive(["2026-03-16", "2026-03-13"])).toBe(true);
+  });
+
+  it("중간에 5일 초과 간격이 있으면 연속이 아닌 것으로 판정한다", () => {
+    // 3개 날짜 중 한 쌍이 초과
+    expect(
+      areDatesConsecutive(["2026-03-17", "2026-03-16", "2026-03-10"]),
+    ).toBe(false);
+  });
+});
+
+// ─── validateRegimeInput ──────────────────────────────────────────────────────
 
 describe("validateRegimeInput", () => {
   it("returns valid input for correct data", () => {
@@ -149,19 +211,23 @@ describe("validateRegimeInput", () => {
   });
 });
 
+// ─── formatRegimeForPrompt ────────────────────────────────────────────────────
+
 describe("formatRegimeForPrompt", () => {
   it("returns empty string for empty array", () => {
     expect(formatRegimeForPrompt([])).toBe("");
   });
 
-  it("formats single regime without history section", () => {
+  it("formats single regime — 현재 확정 레짐 표시", () => {
     const rows: MarketRegimeRow[] = [
-      {
+      makeRow({
         regimeDate: "2026-03-09",
         regime: "EARLY_BULL",
         rationale: "바닥 돌파 시그널 감지",
         confidence: "high",
-      },
+        isConfirmed: true,
+        confirmedAt: "2026-03-09",
+      }),
     ];
 
     const result = formatRegimeForPrompt(rows);
@@ -171,40 +237,25 @@ describe("formatRegimeForPrompt", () => {
     expect(result).toContain("초기 강세");
     expect(result).toContain("high confidence");
     expect(result).toContain("바닥 돌파 시그널 감지");
-    expect(result).not.toContain("### 최근 레짐 히스토리");
+    expect(result).not.toContain("### 최근 확정 레짐 히스토리");
   });
 
   it("includes history section for multiple regimes", () => {
     const rows: MarketRegimeRow[] = [
-      {
-        regimeDate: "2026-03-09",
-        regime: "MID_BULL",
-        rationale: "정상 상승 국면",
-        confidence: "medium",
-      },
-      {
-        regimeDate: "2026-03-08",
-        regime: "EARLY_BULL",
-        rationale: "바닥 돌파",
-        confidence: "high",
-      },
+      makeRow({ regimeDate: "2026-03-09", regime: "MID_BULL", isConfirmed: true }),
+      makeRow({ regimeDate: "2026-03-08", regime: "EARLY_BULL", confidence: "high", isConfirmed: true }),
     ];
 
     const result = formatRegimeForPrompt(rows);
 
-    expect(result).toContain("### 최근 레짐 히스토리");
+    expect(result).toContain("### 최근 확정 레짐 히스토리");
     expect(result).toContain("2026-03-09: MID_BULL (medium)");
     expect(result).toContain("2026-03-08: EARLY_BULL (high)");
   });
 
   it("includes EARLY_BULL action guide", () => {
     const rows: MarketRegimeRow[] = [
-      {
-        regimeDate: "2026-03-09",
-        regime: "EARLY_BULL",
-        rationale: "test",
-        confidence: "high",
-      },
+      makeRow({ regime: "EARLY_BULL", isConfirmed: true }),
     ];
 
     const result = formatRegimeForPrompt(rows);
@@ -214,12 +265,7 @@ describe("formatRegimeForPrompt", () => {
 
   it("includes MID_BULL action guide", () => {
     const rows: MarketRegimeRow[] = [
-      {
-        regimeDate: "2026-03-09",
-        regime: "MID_BULL",
-        rationale: "test",
-        confidence: "medium",
-      },
+      makeRow({ regime: "MID_BULL", isConfirmed: true }),
     ];
 
     const result = formatRegimeForPrompt(rows);
@@ -228,12 +274,7 @@ describe("formatRegimeForPrompt", () => {
 
   it("includes LATE_BULL action guide", () => {
     const rows: MarketRegimeRow[] = [
-      {
-        regimeDate: "2026-03-09",
-        regime: "LATE_BULL",
-        rationale: "test",
-        confidence: "low",
-      },
+      makeRow({ regime: "LATE_BULL", confidence: "low", isConfirmed: true }),
     ];
 
     const result = formatRegimeForPrompt(rows);
@@ -243,12 +284,7 @@ describe("formatRegimeForPrompt", () => {
 
   it("includes EARLY_BEAR action guide", () => {
     const rows: MarketRegimeRow[] = [
-      {
-        regimeDate: "2026-03-09",
-        regime: "EARLY_BEAR",
-        rationale: "test",
-        confidence: "medium",
-      },
+      makeRow({ regime: "EARLY_BEAR", isConfirmed: true }),
     ];
 
     const result = formatRegimeForPrompt(rows);
@@ -258,12 +294,7 @@ describe("formatRegimeForPrompt", () => {
 
   it("includes BEAR action guide", () => {
     const rows: MarketRegimeRow[] = [
-      {
-        regimeDate: "2026-03-09",
-        regime: "BEAR",
-        rationale: "test",
-        confidence: "high",
-      },
+      makeRow({ regime: "BEAR", confidence: "high", isConfirmed: true }),
     ];
 
     const result = formatRegimeForPrompt(rows);
@@ -282,12 +313,7 @@ describe("formatRegimeForPrompt", () => {
 
     for (const [regime, label] of Object.entries(labelMap)) {
       const rows: MarketRegimeRow[] = [
-        {
-          regimeDate: "2026-03-09",
-          regime: regime as MarketRegimeType,
-          rationale: "test",
-          confidence: "medium",
-        },
+        makeRow({ regime: regime as MarketRegimeType, isConfirmed: true }),
       ];
 
       const result = formatRegimeForPrompt(rows);
@@ -301,6 +327,8 @@ describe("formatRegimeForPrompt", () => {
       regime: "MID_BULL" as MarketRegimeType,
       rationale: "test",
       confidence: "medium" as const,
+      isConfirmed: true,
+      confirmedAt: `2026-03-${String(20 - i).padStart(2, "0")}`,
     }));
 
     const result = formatRegimeForPrompt(rows);
@@ -309,5 +337,22 @@ describe("formatRegimeForPrompt", () => {
     expect(result).toContain("2026-03-20");
     expect(result).toContain("2026-03-07"); // 14th entry (index 13)
     expect(result).not.toContain("2026-03-06"); // 15th entry should be excluded
+  });
+
+  it("pending rows가 있으면 pending 섹션을 표시한다", () => {
+    const confirmed = [makeRow({ regime: "MID_BULL", isConfirmed: true })];
+    const pending = [
+      makeRow({
+        regimeDate: "2026-03-15",
+        regime: "EARLY_BEAR",
+        isConfirmed: false,
+        confirmedAt: null,
+      }),
+    ];
+
+    const result = formatRegimeForPrompt(confirmed, pending);
+
+    expect(result).toContain("pending 판정");
+    expect(result).toContain("EARLY_BEAR");
   });
 });
