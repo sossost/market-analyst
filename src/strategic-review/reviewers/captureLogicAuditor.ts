@@ -50,13 +50,20 @@ const SYSTEM_PROMPT = `당신은 주식 시장 분석 시스템의 포착 로직
 
 /**
  * 대상 코드 파일을 읽어 하나의 컨텍스트 문자열로 병합
+ *
+ * 개별 파일 읽기 실패 시 해당 파일을 [읽기 실패]로 표시하고 나머지는 계속 진행.
  */
 async function loadCodeContext(projectRoot: string): Promise<string> {
   const parts: string[] = [];
 
   for (const filePath of TARGET_FILES) {
     const absolutePath = join(projectRoot, filePath);
-    const content = await readFile(absolutePath, "utf-8");
+    let content: string;
+    try {
+      content = await readFile(absolutePath, "utf-8");
+    } catch {
+      content = "[읽기 실패 — 파일이 존재하지 않거나 접근 권한 없음]";
+    }
     parts.push(`\n\n### 파일: ${filePath}\n\`\`\`typescript\n${content}\n\`\`\``);
   }
 
