@@ -1,192 +1,256 @@
-# 추천 종목 디테일 페이지
+# 추천 종목 트래킹 페이지 (UX 재설계)
 
 ## 선행 맥락
-- `recommendations` 테이블은 F4(Tracking System)에서 완성됨. 진입가 검증 + 중복 방지 패치(PR #260)까지 완료.
-- `recommendation_factors` 테이블도 존재하나 "저장만" 상태 (Phase C 분석용). 이번 스코프에서는 제외.
-- 프론트엔드 F8 대시보드는 `/reports`, `/debates`, `/stocks` 3개 페이지가 동일 패턴으로 운영 중.
+- `recommendations` 테이블은 F4(Tracking System)에서 완성. 진입가 검증 + 중복 방지(PR #260) 완료.
+- PR #276에서 1차 구현 완료. 그러나 CEO가 "도메인 맥락 없이 쓸 수 없는 화면"으로 판정.
+- 근본 원인: 기획이 DB 스키마에서 출발. 화면이 DB 컬럼의 시각화에 불과.
+- 본 기획서는 **사용자 시나리오에서 출발하여** 전면 재설계.
 
 ## 골 정렬
-**ALIGNED** — 추천 종목 성과를 한눈에 확인함으로써 Phase 2 초입 포착 품질을 직접 평가할 수 있다. 어떤 종목이 언제 추천됐고, 현재 어떻게 흘러가는지 추적하는 것은 알파 검증의 핵심 피드백 루프다.
+**ALIGNED** — 추천 종목의 현재 상태를 직관적으로 파악해 Phase 2 초입 포착 품질을 실시간 검증하는 것이 알파 형성 피드백 루프의 핵심이다.
 
 ## 문제
-`recommendations` 테이블에 진입가, 목표가, 손절가, 수익률, 상태 데이터가 매일 업데이트되고 있지만 프론트엔드에서 이를 확인할 수 있는 전용 페이지가 없다. 현재는 DB를 직접 조회하거나 리포트 페이지의 추천 종목 스냅샷만 볼 수 있다.
+현재 구현은 DB 컬럼을 그대로 화면에 나열한다. "Phase 3→2", "RS 87", "EARLY_BEAR"는 도메인 지식 없이는 의미를 알 수 없다. 사용자는 자신이 뭘 봐야 하는지, 어떤 판단을 내려야 하는지 알 수 없다.
 
 ## Before → After
 
-**Before**: DB 직접 조회 없이는 추천 종목 성과를 확인 불가. 리포트 페이지의 `RecommendedStockTable`은 리포트 생성 시점 스냅샷만 보여줌 (실시간 PnL 없음).
+**Before (1차 구현의 문제)**
+- 테이블 헤더: 종목 / 추천일 / 진입가 / Phase / RS / 현재가 / 수익률 / 최대수익률 / 보유일 / 상태
+  - → DB 컬럼 나열. Phase가 좋은 건지 나쁜 건지 알 수 없음.
+- Phase 컬럼: `3→2` 또는 `(현재 1)` 같은 raw 숫자 노출
+  - → 1이 좋은지 나쁜지, 전환이 긍정인지 부정인지 알 수 없음.
+- 상태 배지: "Phase 이탈" (CLOSED_PHASE_EXIT의 직역)
+  - → "이게 매도 신호였다"는 맥락이 없음.
+- 디테일 카드: "진입 Phase", "레짐", "진입 RS" 등 전문 용어 그대로
+  - → 값을 봐도 해석이 불가능.
 
-**After**: `/recommendations` 페이지에서 전체 추천 종목 목록(상태 필터 포함)을 확인하고, 각 추천의 디테일(진입 정보, 현재 상태, 수익률 추이)을 `/recommendations/[id]` 또는 `/recommendations/[symbol]/[date]`에서 조회 가능.
-
-## 변경 사항
-
-### 1. 신규 페이지 (App Router)
-```
-frontend/src/app/(main)/recommendations/
-├── page.tsx                    # 목록 페이지 (상태 필터 + 테이블)
-└── [id]/
-    └── page.tsx                # 디테일 페이지
-```
-
-### 2. 신규 Feature 모듈
-```
-frontend/src/features/recommendations/
-├── components/
-│   ├── RecommendationTable.tsx         # 목록 테이블 (서버 컴포넌트)
-│   ├── RecommendationTableSkeleton.tsx # 로딩 스켈레톤
-│   ├── RecommendationStatusBadge.tsx   # ACTIVE/CLOSED/STOPPED 배지
-│   ├── PnlCell.tsx                     # 수익률 셀 (양수 초록/음수 빨강)
-│   └── RecommendationDetail.tsx        # 디테일 카드 묶음
-├── lib/
-│   └── supabase-queries.ts             # fetchRecommendations, fetchRecommendationById
-└── types.ts                            # RecommendationRow, RecommendationDetail 타입
-```
-
-### 3. 네비게이션 추가
-`AppLayout` 또는 `Sidebar` 컴포넌트에 `/recommendations` 링크 추가.
+**After (재설계 목표)**
+- 사용자가 페이지에서 즉시 답할 수 있는 질문:
+  1. "현재 활성 추천 중에 위험 신호가 있는가?" → 신호 컬럼으로 즉시 확인
+  2. "수익이 나고 있나, 손실이 나고 있나?" → 수익률 색상 강조
+  3. "왜 이 종목을 추천했고, 그 근거가 아직 유효한가?" → 디테일 페이지에서 확인
+- 모든 전문 용어는 사람의 언어로 번역. raw 데이터는 디테일 페이지 하단에서만 확인 가능.
 
 ---
 
-## 데이터 요구사항
+## UX 검증 체크리스트 (설계 원칙)
 
-### `recommendations` 테이블 컬럼 매핑
+### 1. 사용자 시나리오
+사용자(CEO)는 매일 아침 이 페이지를 열고 다음을 확인한다:
+- 활성 종목들이 전반적으로 잘 가고 있는가?
+- 위험 신호(Phase 하락, RS 급락, 레짐 악화)를 보내는 종목이 있는가?
+- 새로운 종목이 추가됐는가?
 
-| 화면 필드 | DB 컬럼 | 비고 |
-|-----------|---------|------|
-| 종목 | `symbol` | |
-| 추천일 | `recommendation_date` | |
-| 진입가 | `entry_price` | numeric |
-| 진입 Phase | `entry_phase` → `entry_prev_phase` | `{prev}→{curr}` 포맷 |
-| 진입 RS | `entry_rs_score` | |
-| 현재가 | `current_price` | ETL 업데이트 |
-| 현재 Phase | `current_phase` | |
-| 수익률 | `pnl_percent` | 색상 강조 |
-| 최대 수익률 | `max_pnl_percent` | |
-| 보유일 | `days_held` | |
-| 상태 | `status` | ACTIVE / CLOSED / STOPPED |
-| 종료일 | `close_date` | CLOSED일 때만 |
-| 종료 사유 | `close_reason` | |
-| 레짐 | `market_regime` | 추천 시점 레짐 |
-| 섹터 | `sector` | |
-| 추천 사유 | `reason` | 디테일에서만 표시 |
+사용자는 투자 전문가이지만, UI에서 직관적 판단을 원한다. 수치를 직접 해석하는 추가 인지 비용을 원하지 않는다.
 
-### API 패턴 (Supabase SSR — 기존 패턴 동일)
-```typescript
-// 목록: 상태 필터 + 날짜 역순 정렬 + 페이지네이션
-supabase
-  .from('recommendations')
-  .select('id, symbol, recommendation_date, entry_price, entry_phase, entry_prev_phase, entry_rs_score, current_price, current_phase, pnl_percent, max_pnl_percent, days_held, status, close_date, sector, market_regime', { count: 'exact' })
-  .eq('status', statusFilter)   // 없으면 전체
-  .order('recommendation_date', { ascending: false })
-  .range(offset, offset + ITEMS_PER_PAGE - 1)
+### 2. 도메인 번역 규칙
+| raw 데이터 | 화면 표시 |
+|-----------|---------|
+| Phase 1 | 하락 구간 |
+| Phase 2 | 상승 초입 |
+| Phase 3 | 상승 중반 |
+| Phase 4 | 고점 이탈 |
+| Phase 5 | 하락 구간 |
+| Phase 전환 (낮→높, e.g. 2→3) | 상승 지속 (긍정) |
+| Phase 전환 (높→낮, e.g. 3→2) | 상승 둔화 주의 (부정) |
+| EARLY_BULL | 강세 초입 |
+| BULL | 강세 |
+| LATE_BULL | 강세 후반 |
+| EARLY_BEAR | 약세 전환 초기 |
+| BEAR | 약세 |
+| RS 80 이상 | 섹터 강세 |
+| RS 60~79 | 섹터 보통 |
+| RS 60 미만 | 섹터 약세 |
+| ACTIVE | 보유 중 |
+| CLOSED | 목표 달성 종료 |
+| CLOSED_PHASE_EXIT | 상승 이탈 (Phase 하락으로 매도) |
+| STOPPED | 손절 종료 |
 
-// 디테일: id로 단건
-supabase
-  .from('recommendations')
-  .select('*')
-  .eq('id', id)
-  .single()
-```
+### 3. 출발점 검증
+이 기획서의 모든 화면 구성은 "사용자가 이 순간 내리려는 판단"에서 출발한다. DB 컬럼은 어떤 값이 존재하는지의 참고 자료일 뿐, 화면 구조의 기준이 아니다.
 
 ---
 
-## 페이지 구조 상세
+## 화면별 설계
 
 ### `/recommendations` — 목록 페이지
+
+**사용자 질문**: "지금 어떤 종목들이 추천돼 있고, 위험한 것이 있나?"
+
+**레이아웃**:
 ```
-<main>
-  <h1>추천 종목</h1>
-  <p className="text-muted-foreground">주간 에이전트 추천 종목 성과 트래킹</p>
+<h1>추천 종목 트래킹</h1>
+<p>주간 에이전트 추천 종목의 현재 성과와 상태</p>
 
-  <!-- 상태 필터 탭: 전체 / ACTIVE / CLOSED -->
-  <StatusFilterTabs />  ← searchParams 기반, URL 상태 유지
+[활성 중] [종료] [전체]   ← 탭 필터 (현재 디폴트: 활성 중)
 
-  <AsyncBoundary>
-    <RecommendationTable />  ← 서버 컴포넌트, searchParams 수신
-  </AsyncBoundary>
-</main>
+<테이블>
 ```
 
-**테이블 컬럼 (목록):**
-| 종목 | 추천일 | 진입가 | Phase 전환 | RS | 현재가 | 수익률 | 최대수익률 | 보유일 | 상태 |
+**테이블 컬럼 (목록에서 판단에 필요한 것만)**:
 
-- 종목 셀: 디테일 페이지 링크
-- 수익률: 양수=초록, 음수=빨강, ACTIVE만 표시 (CLOSED는 최종값)
-- Phase 전환: `1→2` 형식
+| 컬럼명 | 표시 내용 | 비고 |
+|--------|---------|------|
+| 종목 | 티커 심볼 | 디테일 링크 |
+| 추천일 | YYYY-MM-DD | |
+| 현재 상태 신호 | 아이콘 + 텍스트 (아래 설명) | 핵심 |
+| 수익률 | +X.XX% / -X.XX% | 초록/빨강 강조 |
+| 보유일 | N일 | |
+| 종목 상태 | 보유 중 / 목표 달성 / 상승 이탈 / 손절 | 배지 |
+
+**"현재 상태 신호" 컬럼 설계** (기존 Phase/RS 컬럼 대체):
+- 추천 시점 대비 현재 상태를 종합하여 3단계 신호로 표시:
+  - 정상 진행 (초록 ●): 현재 Phase가 추천 시점 이상, RS 유지
+  - 주의 (노란 ●): 현재 Phase가 추천 시점보다 1단계 하락 또는 RS 10 이상 하락
+  - 위험 (빨간 ●): 현재 Phase가 추천 시점보다 2단계 이상 하락
+- 신호 옆에 간단한 텍스트: "상승 지속", "둔화 주의", "이탈 위험"
+
+**같은 종목 중복 처리**:
+- 같은 심볼이 여러 날짜에 추천된 경우 → 기간 표시: "3/12 · 3/13 (2회)"
+- 묶어서 1행으로 표시, 디테일에서 각 회차 확인
+- 단, ACTIVE가 1개 + CLOSED가 여러 개면 활성 1개만 메인 표시
+
+**디폴트**: 탭은 "활성 중"이 기본. 전체를 보려면 "전체" 클릭.
+
+---
 
 ### `/recommendations/[id]` — 디테일 페이지
+
+**사용자 질문**: "왜 이 종목을 추천했고, 그 근거가 아직 유효한가?"
+
+**레이아웃**:
 ```
-<main>
-  <Link href="/recommendations">← 추천 목록</Link>
-  <h1>{symbol} — {recommendationDate} 추천</h1>
-  <StatusBadge status={status} />
+← 추천 목록
 
-  <div className="grid grid-cols-2 gap-6">
-    <EntryInfoCard />       # 진입 정보 (진입가, Phase, RS, 레짐, 섹터)
-    <CurrentStatusCard />   # 현재 상태 (현재가, Phase, PnL, Max PnL, 보유일)
-  </div>
+[EONR] [보유 중 배지]
+추천일: 2025-03-13 · 섹터: 에너지 · 보유 24일
 
-  {status !== 'ACTIVE' && <CloseInfoCard />}  # 종료일, 종료 사유
+┌──────────────────┬──────────────────┐
+│ 수익 현황        │ 상태 요약        │
+│ 현재 수익률: +X% │ 상태 신호: 정상 진행 ● │
+│ 최고 수익률: +Y% │ 추천 시점 흐름: 상승 초입 (Phase 2) │
+│ 진입가: $XX.XX   │ 현재 흐름: 상승 중반 (Phase 3) → 긍정 │
+│ 현재가: $YY.YY   │ 시장 환경: 강세 초입 (추천 시점) │
+└──────────────────┴──────────────────┘
 
-  <ReasonCard reason={reason} />  # 추천 사유 (text 전체)
-</main>
+추천 근거 (에이전트 판단)
+─────────────────────────
+{reason 텍스트}
+
+[전문가용 원시 데이터 펼치기 ▼]  ← 기본 접힘
+  진입 Phase: 2, 현재 Phase: 3
+  진입 RS: 87, 현재 RS: 91
+  레짐: EARLY_BULL
+  ...
+```
+
+**핵심 설계 원칙**:
+- 상단 2개 카드: 수익 현황 + 상태 요약. 모든 수치가 번역된 언어로 표시.
+- 추천 근거: LLM이 생성한 reason 텍스트 전체 표시. 이것이 "왜 추천했는가"의 핵심.
+- 원시 데이터: 기본 접힌 상태의 `<details>` 섹션. Phase 숫자, RS 숫자, 레짐 코드 등은 여기로.
+
+**종료된 종목의 디테일**:
+```
+[EONR] [상승 이탈 배지]
+추천일: 2025-03-12 · 종료일: 2025-03-28 · 보유 16일
+
+┌──────────────────┬──────────────────┐
+│ 최종 결과        │ 종료 사유        │
+│ 최종 수익률: -2.1% │ 상승 이탈 (Phase 하락) │
+│ 최고 수익률: +5.3% │ Phase 3 → Phase 4 전환 감지 │
+│ 진입가: $XX.XX   │ (고점 이탈 신호) │
+│ 종료가: $YY.YY   │                  │
+└──────────────────┴──────────────────┘
+```
+
+---
+
+## 변경 사항 (현재 구현 기준)
+
+### 수정 대상 파일
+
+**1. `RecommendationTable.tsx` — 컬럼 구조 변경**
+- 제거: Phase 컬럼 (현재 `${entryPrevPhase}→${entryPhase}` 및 `(현재 X)` 노출)
+- 제거: RS 컬럼 (`entryRsScore` 단독 표시)
+- 추가: "상태 신호" 컬럼 — `StatusSignal` 컴포넌트 (정상/주의/위험 3단계)
+- 유지: 종목, 추천일, 현재가, 수익률, 보유일, 상태
+
+**2. `RecommendationDetail.tsx` — 카드 구조 재편**
+- "진입 정보" 카드 → "수익 현황" 카드로 교체
+  - 진입가, 현재가, 수익률, 최대 수익률 중심
+- "현재 상태" 카드 → "상태 요약" 카드로 교체
+  - Phase를 번역어로 표시 ("상승 초입", "상승 중반" 등)
+  - 레짐을 번역어로 표시 ("강세 초입" 등)
+  - 상태 신호 (●) 포함
+- "추천 사유" 카드 → 위치를 상단으로 올림 (가장 중요한 정보)
+- "원시 데이터" 섹션 추가 — `<details>` 태그로 기본 접힌 상태
+
+**3. `constants.ts` — 번역 맵 추가**
+- `PHASE_LABEL: Record<number, string>` 추가
+  - `{ 1: '하락 구간', 2: '상승 초입', 3: '상승 중반', 4: '고점 이탈', 5: '하락 구간' }`
+- `REGIME_LABEL: Record<string, string>` 추가
+  - `{ EARLY_BULL: '강세 초입', BULL: '강세', LATE_BULL: '강세 후반', EARLY_BEAR: '약세 전환 초기', BEAR: '약세' }`
+- `RECOMMENDATION_STATUS_LABEL` 수정
+  - `CLOSED_PHASE_EXIT: '상승 이탈'` (기존 'Phase 이탈' → 의미 명확화)
+
+**4. `StatusFilterTabs.tsx` — 탭 레이블 + 기본값 변경**
+- 기본 탭: "전체" → "활성 중"으로 변경 (URL 기본값은 `?status=ACTIVE`)
+- 탭 레이블: "활성" → "활성 중", "종료" → "종료됨"
+
+**5. 신규 컴포넌트: `StatusSignal.tsx`**
+```
+props: { entryPhase, currentPhase, entryRsScore, currentRsScore }
+출력: ● 정상 진행 / ● 둔화 주의 / ● 이탈 위험
+로직:
+  - phaseDiff = currentPhase - entryPhase
+  - phaseDiff >= 0 AND RS 하락 < 10: 정상 진행 (초록)
+  - phaseDiff === -1 OR RS 하락 10~19: 둔화 주의 (노랑)
+  - phaseDiff <= -2 OR RS 하락 >= 20: 이탈 위험 (빨강)
+  - ACTIVE가 아닌 경우: 해당 없음 표시
 ```
 
 ---
 
 ## 작업 계획
 
-### Step 1 — 타입 + 쿼리 (백엔드 레이어)
+### Step 1 — 번역 맵 + StatusSignal 컴포넌트
 - **담당**: 구현 에이전트
-- `frontend/src/features/recommendations/types.ts` 작성
-  - `RecommendationSummary`, `RecommendationDetail` 인터페이스
-  - `RecommendationStatus = 'ACTIVE' | 'CLOSED' | 'STOPPED'` 타입
-- `frontend/src/features/recommendations/lib/supabase-queries.ts` 작성
-  - `fetchRecommendations(page, status?)` — 목록
-  - `fetchRecommendationById(id)` — 단건
-- **완료 기준**: TypeScript 에러 없음. 쿼리 함수가 올바른 타입 반환.
+- `constants.ts`에 `PHASE_LABEL`, `REGIME_LABEL` 추가
+- `RECOMMENDATION_STATUS_LABEL`의 `CLOSED_PHASE_EXIT` → `상승 이탈` 수정
+- `StatusFilterTabs.tsx` 기본값 ACTIVE로 변경 + 레이블 수정
+- `StatusSignal.tsx` 신규 작성 (로직 + 색상 + 텍스트)
+- **완료 기준**: TypeScript 에러 없음. Phase 1~5 → 한글 레이블 정확히 매핑.
 
-### Step 2 — 목록 컴포넌트
+### Step 2 — RecommendationTable 컬럼 재편
 - **담당**: 구현 에이전트
-- `RecommendationStatusBadge.tsx` — ACTIVE(파랑)/CLOSED(회색)/STOPPED(빨강)
-- `PnlCell.tsx` — 수익률 포맷 + 색상
-- `RecommendationTableSkeleton.tsx` — 로딩 스켈레톤 (기존 `ReportListSkeleton` 패턴)
-- `RecommendationTable.tsx` — 서버 컴포넌트, `searchParams` 수신하여 필터+페이지 적용
-- **완료 기준**: 목록 렌더링, 페이지네이션 작동, 스켈레톤 노출.
+- Phase 컬럼 제거, RS 컬럼 제거
+- StatusSignal 컴포넌트 삽입 (컬럼명: "상태")
+- 중복 심볼 처리: 묶기 대신 현재의 `과거` 태그 방식 유지 (이미 구현됨, 동작 확인만)
+- **완료 기준**: 목록 테이블에 Phase/RS 숫자 없음. 상태 신호 컬럼 노출.
 
-### Step 3 — 목록 페이지
+### Step 3 — RecommendationDetail 카드 재편
 - **담당**: 구현 에이전트
-- `frontend/src/app/(main)/recommendations/page.tsx`
-  - `AsyncBoundary` + `RecommendationTable` 조합
-  - `searchParams`로 `status`, `page` 수신
-- **완료 기준**: `/recommendations` 접근 시 목록 표시, 필터 전환 시 URL 반영.
+- "수익 현황" 카드: 진입가 / 현재가 / 수익률 / 최대 수익률
+- "상태 요약" 카드: 상태 신호 / 추천 시점 흐름(번역) / 현재 흐름(번역) / 시장 환경(번역)
+- "추천 근거" 카드: 기존 reason 텍스트, 위치를 카드 상단으로 올림
+- "원시 데이터" 섹션: `<details>` + `<summary>전문가용 원시 데이터</summary>` 로 Phase 숫자, RS, 레짐 코드 등 이동
+- **완료 기준**: 디테일 페이지에 Phase 숫자/레짐 코드가 상단에 노출되지 않음. 번역된 언어만 보임.
 
-### Step 4 — 디테일 컴포넌트 + 페이지
+### Step 4 — 단위 테스트
 - **담당**: 구현 에이전트
-- `RecommendationDetail.tsx` — 진입정보/현재상태/종료정보 카드
-- `frontend/src/app/(main)/recommendations/[id]/page.tsx`
-  - `fetchRecommendationById` 호출, `notFound()` 처리
-- **완료 기준**: `/recommendations/[id]` 접근 시 디테일 표시, 없는 id는 404.
-
-### Step 5 — 네비게이션 추가
-- **담당**: 구현 에이전트
-- `AppLayout` 또는 `Sidebar`에 추천 종목 메뉴 항목 추가
-- **완료 기준**: 사이드바에서 `/recommendations` 링크 클릭 이동.
-
-### Step 6 — 단위 테스트
-- **담당**: 구현 에이전트
-- `RecommendationStatusBadge.test.tsx` — 각 상태별 색상/레이블 검증
-- `PnlCell.test.tsx` — 양수/음수/null 케이스
-- `supabase-queries.test.ts` — mock 기반 쿼리 결과 매핑 검증
+- `StatusSignal.test.tsx` — Phase 차이별 신호 등급 검증 (정상/주의/위험)
+- `constants.test.ts` — PHASE_LABEL, REGIME_LABEL 매핑 검증
+- 기존 `RecommendationStatusBadge.test.tsx` — 레이블 변경 반영
 - **완료 기준**: 커버리지 80% 이상.
 
 ---
 
 ## 리스크
 
-- **`recommendation_factors` 제외**: 팩터 데이터(`rsScore`, `phase2Ratio` 등)는 이번 스코프 밖. 필요 시 추후 디테일 페이지에 탭 추가로 확장 가능.
-- **`reason` 컬럼 길이**: LLM 생성 텍스트라 길 수 있음. 목록에서는 생략하고 디테일에서만 표시. 필요 시 `line-clamp` 처리.
-- **Supabase 타입 자동생성**: `supabase gen types` 미실행 환경이라면 raw 타입 캐스팅 필요 (기존 패턴과 동일하게 수동 매핑으로 처리).
-- **`max_pnl_percent` 없는 레코드**: 오래된 레코드는 NULL 가능. UI에서 `-` fallback 처리.
+- **StatusSignal 로직의 단순화**: Phase 차이만으로 위험도를 판단하는 것은 단순화다. `currentPhase`가 null인 경우(데이터 미업데이트)가 있을 수 있음 → null이면 신호 대신 "데이터 없음" 표시.
+- **`<details>` 접근성**: 일부 스크린리더에서 `<details>` 태그가 이상하게 읽힐 수 있음. 대안으로 `useState` 기반 토글 컴포넌트 사용도 가능. 일단 `<details>`로 구현 후 필요 시 교체.
+- **레짐 번역 누락**: DB에 저장된 레짐 값이 `EARLY_BULL`, `BULL` 외 예상치 못한 값일 수 있음 → `REGIME_LABEL[regime] ?? regime` 패턴으로 fallback.
+- **기존 테스트 수정 필요**: 1차 구현 시 작성된 테스트가 있다면 컬럼 변경으로 인한 수정 필요.
 
 ## 의사결정 필요
 없음 — 바로 구현 가능
