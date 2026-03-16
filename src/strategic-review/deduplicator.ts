@@ -5,13 +5,9 @@
  * Jaccard 유사도 0.6 이상이면 중복으로 판정한다.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { Insight } from "./types.js";
+import { gh } from "./ghClient.js";
 
-const execFileAsync = promisify(execFile);
-
-const REPO = "sossost/market-analyst";
 const JACCARD_THRESHOLD = 0.6;
 const DUPLICATE_LABEL = "strategic-review";
 
@@ -19,17 +15,6 @@ interface ExistingIssue {
   number: number;
   title: string;
   createdAt: string;
-}
-
-/**
- * gh CLI 실행 헬퍼
- */
-async function gh(args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("gh", args, {
-    timeout: 30_000,
-    env: { ...process.env, GH_REPO: REPO },
-  });
-  return stdout.trim();
 }
 
 /**
