@@ -1,3 +1,10 @@
+/**
+ * Generic utils (sleep, toNum, chunk) are now in "@/lib/utils".
+ * This file re-exports them for backward compatibility and retains
+ * ETL-specific utilities that are not candidates for promotion.
+ */
+export { sleep, toNum, chunk } from "@/lib/utils";
+
 function sanitizeUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -14,26 +21,9 @@ export async function fetchJson<T = unknown>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export function toNum(v: unknown): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
 export function toStrNum(v: unknown): string | null {
   const n = Number(v);
   return Number.isFinite(n) ? String(n) : null;
-}
-
-export function chunk<T>(arr: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
 }
 
 /**
