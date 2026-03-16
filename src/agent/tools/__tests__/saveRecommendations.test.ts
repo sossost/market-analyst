@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { tagPersistenceReason } from "../saveRecommendations";
+import { tagPersistenceReason, tagSubstandardReason } from "../saveRecommendations";
 
 /**
  * saveRecommendations execute() 통합 테스트.
@@ -78,10 +78,10 @@ function makeInsertChain(rowCount: number) {
 }
 
 function setupDefaultPoolMocks() {
-  // pool.query 호출 순서:
+  // pool.query 호출 순서 (Promise.all 병렬이지만 mock은 순차 소비):
   // 1. activeRows (ACTIVE symbol)
   // 2. cooldownRows (CLOSED/CLOSED_PHASE_EXIT symbol in cooldown)
-  // 3. persistenceRows (stock_phases phase >= 2)
+  // 3. persistenceRows (stock_phases phase >= 2)  ← activeRows/cooldownRows와 병렬
   // 4. priceRows (daily_prices)
   // saveFactorSnapshot 내부 쿼리는 별도
   mockPool.query
@@ -347,5 +347,85 @@ describe("tagPersistenceReason", () => {
 
   it("빈 문자열을 받으면 [지속성 미확인] 태그만 반환한다", () => {
     expect(tagPersistenceReason("")).toBe("[지속성 미확인]");
+  });
+});
+
+// =============================================================================
+// HIGH 3: 두 태그 동시 적용 + 레짐 null 케이스
+// =============================================================================
+
+describe("두 태그 동시 적용", () => {
+  beforeEach(() => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+  });
+
+  it("Phase < 2이면서 Phase 2 지속성도 부족하면 [지속성 미확인] [기준 미달] 순서로 두 태그가 모두 붙는다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [] })  // persistenceRows: count 0 (지속성 부족)
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    let capturedReason: string | undefined;
+    let firstInsertCalled = false;
+    mockDb.insert.mockImplementation(() => ({
+      values: vi.fn((data: Record<string, unknown>) => {
+        if (!firstInsertCalled) {
+          firstInsertCalled = true;
+          capturedReason = data.reason as string | undefined;
+        }
+        return {
+          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+        };
+      }),
+    }));
+
+    await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", phase: 1, rs_score: 80, reason: "사유" })],
+    });
+
+    // tagSubstandardReason 먼저 적용: "[기준 미달] 사유"
+    // tagPersistenceReason 이후 적용: "[지속성 미확인] [기준 미달] 사유"
+    expect(capturedReason).toBe("[지속성 미확인] [기준 미달] 사유");
+  });
+});
+
+describe("레짐 조회 실패 시 fail-open", () => {
+  it("loadConfirmedRegime이 throw해도 Bear Gate 미적용으로 정상 저장을 진행한다", async () => {
+    mockLoadConfirmedRegime.mockRejectedValue(new Error("DB 연결 실패"));
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByRegime).toBe(0);
   });
 });

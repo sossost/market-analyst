@@ -145,7 +145,9 @@ export const saveRecommendations: AgentTool = {
       currentRegime = confirmed?.regime ?? null;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      logger.warn("Regime", `레짐 조회 실패, null로 저장: ${reason}`);
+      // 의도적 fail-open: 레짐 조회 실패 시 Bear Gate를 적용하지 않고 진행.
+      // 레짐 DB 장애가 추천 저장 전체를 막지 않도록 설계.
+      logger.error("Regime", `레짐 조회 실패, Bear Gate 미적용: ${reason}`);
     }
 
     if (currentRegime != null && BEAR_REGIMES.has(currentRegime)) {
@@ -168,10 +170,15 @@ export const saveRecommendations: AgentTool = {
       .map((r) => validateSymbol(r.symbol))
       .filter((s): s is string => s != null);
 
-    // Phase 2: 쿨다운 게이트 + 중복 추천 방지 병렬 조회
-    const cooldownStart = getCooldownStart(date, COOLDOWN_CALENDAR_DAYS);
+    // Phase 2 + Phase 3: 쿨다운·중복 방지·지속성 3가지 쿼리 병렬 조회
+    const cooldownStart = getDateOffset(date, COOLDOWN_CALENDAR_DAYS);
+    const persistenceStart = getDateOffset(date, PHASE2_PERSISTENCE_DAYS);
 
-    const [{ rows: activeRows }, { rows: cooldownRows }] = await Promise.all([
+    const [
+      { rows: activeRows },
+      { rows: cooldownRows },
+      { rows: persistenceRows },
+    ] = await Promise.all([
       retryDatabaseOperation(() =>
         pool.query<{ symbol: string }>(
           `SELECT symbol FROM recommendations WHERE status = 'ACTIVE' AND symbol = ANY($1)`,
@@ -187,25 +194,21 @@ export const saveRecommendations: AgentTool = {
           [cooldownStart, symbols],
         ),
       ),
+      retryDatabaseOperation(() =>
+        pool.query<{ symbol: string; phase2_count: string }>(
+          `SELECT symbol, COUNT(*) AS phase2_count
+           FROM stock_phases
+           WHERE symbol = ANY($1)
+             AND date >= $2
+             AND date <= $3
+             AND phase >= 2
+           GROUP BY symbol`,
+          [symbols, persistenceStart, date],
+        ),
+      ),
     ]);
-
     const activeSymbols = new Set(activeRows.map((r) => r.symbol));
     const cooldownSymbols = new Set(cooldownRows.map((r) => r.symbol));
-
-    // Phase 3: Phase 2 지속성 확인 — 최근 5 캘린더일 내 phase >= 2 행 수 조회
-    const persistenceStart = getPersistenceStart(date, PHASE2_PERSISTENCE_DAYS);
-    const { rows: persistenceRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; phase2_count: string }>(
-        `SELECT symbol, COUNT(*) AS phase2_count
-         FROM stock_phases
-         WHERE symbol = ANY($1)
-           AND date >= $2
-           AND date <= $3
-           AND phase >= 2
-         GROUP BY symbol`,
-        [symbols, persistenceStart, date],
-      ),
-    );
     const persistenceMap = new Map(
       persistenceRows.map((r) => [r.symbol, Number(r.phase2_count)]),
     );
@@ -285,7 +288,8 @@ export const saveRecommendations: AgentTool = {
           "QualityGate",
           `${symbol}: Phase 2 지속성 ${phase2Count}일 (기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일 미만), [지속성 미확인] 태깅`,
         );
-        taggedReason = tagPersistenceReason(taggedReason ?? rec.reason);
+        const reasonForPersistence = taggedReason ?? rec.reason ?? '';
+      taggedReason = tagPersistenceReason(reasonForPersistence);
       }
 
       // 1. recommendations 테이블 INSERT
@@ -341,22 +345,12 @@ export const saveRecommendations: AgentTool = {
 };
 
 /**
- * 쿨다운 기간 시작일 계산 (date - cooldownDays).
- * YYYY-MM-DD 형식으로 반환.
+ * date에서 days만큼 이전 날짜를 계산한다.
+ * YYYY-MM-DD 형식으로 반환. 쿨다운·지속성 기간 계산 공용.
  */
-function getCooldownStart(date: string, cooldownDays: number): string {
+function getDateOffset(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - cooldownDays);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * Phase 2 지속성 확인 시작일 계산 (date - persistenceDays).
- * YYYY-MM-DD 형식으로 반환.
- */
-function getPersistenceStart(date: string, persistenceDays: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - persistenceDays);
+  d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
 }
 
