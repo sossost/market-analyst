@@ -289,7 +289,7 @@ export const saveRecommendations: AgentTool = {
           `${symbol}: Phase 2 지속성 ${phase2Count}일 (기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일 미만), [지속성 미확인] 태깅`,
         );
         const reasonForPersistence = taggedReason ?? rec.reason ?? '';
-      taggedReason = tagPersistenceReason(reasonForPersistence);
+        taggedReason = tagPersistenceReason(reasonForPersistence);
       }
 
       // 1. recommendations 테이블 INSERT
