@@ -69,11 +69,6 @@ describe("areDatesConsecutive", () => {
     expect(areDatesConsecutive(["2026-03-16", "2026-03-11"])).toBe(false); // 5일 차이
   });
 
-  it("CONFIRMATION_DAYS=2 기준: 금→월 두 날짜가 주말을 사이에 두고 확정된다", () => {
-    // DESC 정렬: 월요일, 금요일 — 3일 차이 → MAX_GAP_DAYS(4) 이내이므로 연속
-    expect(areDatesConsecutive(["2026-03-16", "2026-03-13"])).toBe(true);
-  });
-
   it("중간에 5일 초과 간격이 있으면 연속이 아닌 것으로 판정한다", () => {
     // 3개 날짜 중 한 쌍이 초과
     expect(

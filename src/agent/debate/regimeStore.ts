@@ -401,11 +401,21 @@ export function formatRegimeForPrompt(
     const pendingDesc = pendingRows
       .map((r) => `${r.regime} (${r.regimeDate})`)
       .join(", ");
-    const daysLeft = CONFIRMATION_DAYS - pendingRows.length;
+
+    const allSameRegime =
+      pendingRows.length > 0 &&
+      pendingRows.every((r) => r.regime === pendingRows[0].regime);
+    const datesAreConsecutive = areDatesConsecutive(
+      pendingRows.map((r) => r.regimeDate),
+    );
+    const hasEnoughPending = pendingRows.length >= CONFIRMATION_DAYS;
+
     const confirmNote =
-      daysLeft <= 0
+      allSameRegime && datesAreConsecutive && hasEnoughPending
         ? "오늘 확정 예정"
-        : `${daysLeft}일 더 연속되면 확정`;
+        : allSameRegime && datesAreConsecutive
+          ? `${CONFIRMATION_DAYS - pendingRows.length}일 더 연속되면 확정`
+          : "판정 불일치 또는 비연속으로 확정 대기";
 
     lines.push(
       "",
