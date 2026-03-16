@@ -58,7 +58,8 @@ async function createIssue(
   ]);
 
   // URL에서 이슈 번호 추출 — 마지막 숫자 세그먼트
-  const issueNumber = parseInt(url.split("/").at(-1) ?? "0", 10);
+  const parsed = parseInt(url.split("/").at(-1) ?? "", 10);
+  const issueNumber = Number.isNaN(parsed) || parsed <= 0 ? 0 : parsed;
 
   return {
     issueNumber,
