@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { sleep } from "@/lib/utils";
 
 const TAG = "RETRY";
 
@@ -87,10 +88,6 @@ function isRetryableError(error: unknown): boolean {
   }
 
   return false;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function withRetry<T>(
