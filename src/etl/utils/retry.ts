@@ -93,7 +93,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function withRetry<T>(
+async function withRetry<T>(
   fn: () => Promise<T>,
   options: Partial<RetryOptions> = {},
 ): Promise<RetryResult<T>> {
@@ -161,7 +161,7 @@ export async function retryApiCall<T>(
   return result.data as T;
 }
 
-export async function retryBatchOperation<T>(
+async function retryBatchOperation<T>(
   items: T[],
   operation: (item: T) => Promise<void>,
   options: Partial<RetryOptions> = {},

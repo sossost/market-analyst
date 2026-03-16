@@ -63,7 +63,7 @@ export async function getPreviousTradeDate(
  * Get the trade date N days back from the given date.
  * Returns the Nth most recent trade date before currentDate.
  */
-export async function getTradeDate(
+async function getTradeDate(
   currentDate: string,
   daysBack: number,
 ): Promise<string | null> {
