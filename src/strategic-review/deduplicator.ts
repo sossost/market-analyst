@@ -1,0 +1,153 @@
+/**
+ * Deduplicator — 기존 GitHub 이슈 중복 체크
+ *
+ * gh CLI로 strategic-review 라벨의 오픈 이슈를 조회하고,
+ * Jaccard 유사도 0.6 이상이면 중복으로 판정한다.
+ */
+
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import type { Insight } from "./types.js";
+
+const execFileAsync = promisify(execFile);
+
+const REPO = "sossost/market-analyst";
+const JACCARD_THRESHOLD = 0.6;
+const DUPLICATE_LABEL = "strategic-review";
+
+interface ExistingIssue {
+  number: number;
+  title: string;
+  createdAt: string;
+}
+
+/**
+ * gh CLI 실행 헬퍼
+ */
+async function gh(args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("gh", args, {
+    timeout: 30_000,
+    env: { ...process.env, GH_REPO: REPO },
+  });
+  return stdout.trim();
+}
+
+/**
+ * 문자열을 토큰 집합으로 변환 (단어 단위 분리)
+ */
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9가-힣\s]/g, " ")
+      .split(/\s+/)
+      .filter((token) => token.length > 1),
+  );
+}
+
+/**
+ * Jaccard 유사도 계산
+ * |A ∩ B| / |A ∪ B|
+ */
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+
+  const intersection = new Set([...a].filter((token) => b.has(token)));
+  const union = new Set([...a, ...b]);
+
+  return intersection.size / union.size;
+}
+
+/**
+ * strategic-review 라벨이 붙은 오픈 이슈 전체 조회
+ */
+async function fetchExistingStrategicIssues(): Promise<ExistingIssue[]> {
+  const raw = await gh([
+    "issue",
+    "list",
+    "--state",
+    "open",
+    "--label",
+    DUPLICATE_LABEL,
+    "--json",
+    "number,title,createdAt",
+    "--limit",
+    "200",
+  ]);
+
+  if (raw === "") return [];
+
+  const issues: Array<{
+    number: number;
+    title: string;
+    createdAt: string;
+  }> = JSON.parse(raw);
+
+  return issues.map((issue) => ({
+    number: issue.number,
+    title: issue.title,
+    createdAt: issue.createdAt,
+  }));
+}
+
+/**
+ * 인사이트가 기존 오픈 이슈와 중복인지 판정
+ *
+ * 중복 기준:
+ * 1. 제목 Jaccard 유사도 0.6 이상
+ * 2. 같은 파일/함수 언급 + 같은 문제 유형
+ */
+export interface DuplicateCheckResult {
+  isDuplicate: boolean;
+  duplicateIssueNumber?: number;
+  similarityScore?: number;
+}
+
+export async function checkDuplicate(
+  insight: Insight,
+  existingIssues: ExistingIssue[],
+): Promise<DuplicateCheckResult> {
+  const insightTokens = tokenize(insight.title);
+
+  for (const existing of existingIssues) {
+    const existingTokens = tokenize(existing.title);
+    const similarity = jaccardSimilarity(insightTokens, existingTokens);
+
+    if (similarity >= JACCARD_THRESHOLD) {
+      return {
+        isDuplicate: true,
+        duplicateIssueNumber: existing.number,
+        similarityScore: similarity,
+      };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
+/**
+ * 인사이트 목록에서 중복을 제거한 목록과 스킵된 제목 반환
+ */
+export async function deduplicateInsights(insights: Insight[]): Promise<{
+  unique: Insight[];
+  skipped: string[];
+}> {
+  const existingIssues = await fetchExistingStrategicIssues();
+
+  const unique: Insight[] = [];
+  const skipped: string[] = [];
+
+  for (const insight of insights) {
+    const result = await checkDuplicate(insight, existingIssues);
+
+    if (result.isDuplicate) {
+      skipped.push(
+        `"${insight.title}" (기존 이슈 #${result.duplicateIssueNumber}, 유사도: ${((result.similarityScore ?? 0) * 100).toFixed(0)}%)`,
+      );
+    } else {
+      unique.push(insight);
+    }
+  }
+
+  return { unique, skipped };
+}
