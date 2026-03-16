@@ -23,6 +23,7 @@ import { fetchRecommendations } from '../lib/supabase-queries'
 import type { RecommendationStatus } from '../types'
 import { PnlCell } from './PnlCell'
 import { RecommendationStatusBadge } from './RecommendationStatusBadge'
+import { StatusSignal } from './StatusSignal'
 
 interface RecommendationTableProps {
   searchParams: Promise<{ page?: string; status?: string }>
@@ -33,11 +34,13 @@ export async function RecommendationTable({
 }: RecommendationTableProps) {
   const { page: pageParam, status: statusParam } = await searchParams
   const currentPage = Math.max(1, Math.floor(Number(pageParam) || 1))
-  const statusFilter: RecommendationStatus | undefined = isRecommendationStatus(
-    statusParam,
-  )
-    ? statusParam
-    : undefined
+  // 기본값 ACTIVE — StatusFilterTabs의 기본 탭과 동기화
+  const DEFAULT_STATUS: RecommendationStatus = 'ACTIVE'
+  const statusFilter: RecommendationStatus | undefined = statusParam === 'ALL'
+    ? undefined
+    : isRecommendationStatus(statusParam)
+      ? statusParam
+      : DEFAULT_STATUS
 
   const { recommendations, total } = await fetchRecommendations(
     currentPage,
@@ -80,14 +83,10 @@ export async function RecommendationTable({
             <TableRow>
               <TableHead>종목</TableHead>
               <TableHead>추천일</TableHead>
-              <TableHead>진입가</TableHead>
-              <TableHead>Phase</TableHead>
-              <TableHead>RS</TableHead>
-              <TableHead>현재가</TableHead>
               <TableHead>수익률</TableHead>
-              <TableHead>최대수익률</TableHead>
+              <TableHead>상태 신호</TableHead>
               <TableHead>보유일</TableHead>
-              <TableHead>상태</TableHead>
+              <TableHead>종목 상태</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -110,34 +109,15 @@ export async function RecommendationTable({
                   )}
                 </TableCell>
                 <TableCell>{formatDate(rec.recommendationDate)}</TableCell>
-                <TableCell className="tabular-nums">
-                  ${rec.entryPrice.toFixed(2)}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {rec.entryPrevPhase != null &&
-                  rec.entryPrevPhase !== rec.entryPhase
-                    ? `${rec.entryPrevPhase}→${rec.entryPhase}`
-                    : rec.entryPhase}
-                  {rec.currentPhase != null &&
-                    rec.currentPhase !== rec.entryPhase && (
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        (현재 {rec.currentPhase})
-                      </span>
-                    )}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {rec.entryRsScore ?? '-'}
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {rec.currentPrice != null
-                    ? `$${rec.currentPrice.toFixed(2)}`
-                    : '-'}
-                </TableCell>
                 <TableCell>
                   <PnlCell value={rec.pnlPercent} />
                 </TableCell>
                 <TableCell>
-                  <PnlCell value={rec.maxPnlPercent} />
+                  <StatusSignal
+                    entryPhase={rec.entryPhase}
+                    currentPhase={rec.currentPhase}
+                    status={rec.status}
+                  />
                 </TableCell>
                 <TableCell className="tabular-nums">{rec.daysHeld}일</TableCell>
                 <TableCell>
