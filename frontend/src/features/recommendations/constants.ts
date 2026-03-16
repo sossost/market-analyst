@@ -10,6 +10,16 @@ export const RECOMMENDATION_STATUS_LABEL: Record<RecommendationStatus, string> =
     STOPPED: '손절 종료',
   }
 
+export const RECOMMENDATION_STATUS_TOOLTIP: Record<
+  RecommendationStatus,
+  string
+> = {
+  ACTIVE: '현재 보유 중인 추천 종목',
+  CLOSED: '목표가 도달 또는 전략 기준 충족으로 종료',
+  CLOSED_PHASE_EXIT: '주가 흐름이 상승 구간을 이탈하여 자동 매도',
+  STOPPED: '손절 기준에 도달하여 종료',
+}
+
 export const PHASE_LABEL: Record<number, string> = {
   1: '하락 구간',
   2: '상승 초입',

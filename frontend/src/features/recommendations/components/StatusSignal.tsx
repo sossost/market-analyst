@@ -15,10 +15,25 @@ interface Signal {
   label: string
 }
 
-const SIGNAL_CONFIG: Record<SignalLevel, { dotClass: string; label: string }> = {
-  normal: { dotClass: 'text-green-500', label: '정상 진행' },
-  caution: { dotClass: 'text-yellow-500', label: '둔화 주의' },
-  danger: { dotClass: 'text-red-500', label: '이탈 위험' },
+const SIGNAL_CONFIG: Record<
+  SignalLevel,
+  { dotClass: string; label: string; tooltip: string }
+> = {
+  normal: {
+    dotClass: 'text-green-500',
+    label: '정상 진행',
+    tooltip: '추천 시점의 상승 흐름이 유지되고 있음',
+  },
+  caution: {
+    dotClass: 'text-yellow-500',
+    label: '둔화 주의',
+    tooltip: '상승 흐름이 한 단계 하락 — 추이 모니터링 필요',
+  },
+  danger: {
+    dotClass: 'text-red-500',
+    label: '이탈 위험',
+    tooltip: '상승 흐름에서 크게 이탈 — 매도 검토 필요',
+  },
 }
 
 function computeSignal(
@@ -60,7 +75,10 @@ export function StatusSignal({
   const config = SIGNAL_CONFIG[signal.level]
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-sm">
+    <span
+      className="inline-flex items-center gap-1.5 text-sm cursor-help"
+      title={config.tooltip}
+    >
       <span
         className={cn('text-base leading-none', config.dotClass)}
         aria-hidden="true"

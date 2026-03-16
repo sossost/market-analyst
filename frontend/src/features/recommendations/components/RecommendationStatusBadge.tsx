@@ -1,6 +1,9 @@
 import { Badge } from '@/shared/components/ui/badge'
 
-import { RECOMMENDATION_STATUS_LABEL } from '../constants'
+import {
+  RECOMMENDATION_STATUS_LABEL,
+  RECOMMENDATION_STATUS_TOOLTIP,
+} from '../constants'
 import type { RecommendationStatus } from '../types'
 
 interface RecommendationStatusBadgeProps {
@@ -23,5 +26,11 @@ export function RecommendationStatusBadge({
   const label = RECOMMENDATION_STATUS_LABEL[status]
   const variant = STATUS_VARIANT[status]
 
-  return <Badge variant={variant}>{label}</Badge>
+  const tooltip = RECOMMENDATION_STATUS_TOOLTIP[status]
+
+  return (
+    <Badge variant={variant} title={tooltip}>
+      {label}
+    </Badge>
+  )
 }
