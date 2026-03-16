@@ -6,10 +6,13 @@
 프로젝트 골(Phase 2 상승 초입 주도섹터/주도주를 남들보다 먼저 포착하여 알파를 형성)에 대해,
 "시스템이 이 골을 더 잘 달성하려면 무엇을 개선/추가해야 하는가?"라는 단 하나의 질문에 답해라.
 
-코드 품질, 린트, 커버리지, 의존성 감사는 네 업무가 **아니다**. CI가 할 일이다.
-너는 **전략적 인사이트**만 다룬다.
+**네 업무가 아닌 것:**
+- 코드 품질, 린트, 커버리지, 의존성 감사 — CI가 할 일
+- 개별 리포트 품질 평가 (팩트 정합성, 편향, 구조, 신규성) — `validate-*.sh` QA가 할 일. **겹치지 마라.**
 
-## 분석 영역 (6개 — 모두 실행)
+너는 **코드 레벨 + 결과물 레벨 양쪽을 종합한 전략적 인사이트**만 다룬다.
+
+## 분석 영역 (8개 — 모두 실행)
 
 ### 1. 포착 로직 감사
 Phase 2 초입 포착 도구들이 정확하게 작동하는가?
@@ -31,23 +34,16 @@ Phase 2 초입 포착 도구들이 정확하게 작동하는가?
 
 분석 방법: Supabase DB에 직접 SQL을 실행해라.
 ```sql
--- agent_learnings 최근 30개 항목 확인
-SELECT id, pattern, observation_count, hit_rate, status, created_at
-FROM agent_learnings
-WHERE status = 'ACTIVE'
-ORDER BY created_at DESC LIMIT 30;
+SELECT id, principle, category, hit_count, miss_count, hit_rate, is_active, first_confirmed, last_verified
+FROM agent_learnings WHERE is_active = true ORDER BY last_verified DESC LIMIT 30;
 
--- HOLD 상태 30일 이상 thesis
-SELECT id, title, status, verdict, created_at, updated_at
-FROM theses
-WHERE status = 'ACTIVE'
-AND verdict = 'HOLD'
-AND updated_at < NOW() - INTERVAL '30 days';
+SELECT id, thesis, status, confidence, consensus_level, verification_date, verification_result, created_at
+FROM theses WHERE status = 'ACTIVE' AND created_at < NOW() - INTERVAL '30 days';
 ```
 
 질문:
-- 근거 불충분(관측 2회 미만) 학습 항목이 있는가?
-- 판정 지연(30일+ HOLD) thesis가 있는가?
+- 근거 불충분(hit_count 2회 미만) 학습 항목이 있는가?
+- 판정 지연(30일+) ACTIVE thesis가 있는가?
 - 같은 LLM이 생성+검증하는 자기참조 루프 징후가 있는가?
 
 ### 3. 에이전트 프롬프트 맹점
@@ -78,22 +74,91 @@ AND updated_at < NOW() - INTERVAL '30 days';
 
 분석 방법: DB에서 최근 데이터를 조회해라.
 ```sql
--- 최근 시장 레짐 이력
-SELECT regime, confidence, reasoning, created_at
-FROM market_regimes
-ORDER BY created_at DESC LIMIT 10;
-
--- 최근 추천 종목 성과
-SELECT ticker, sector, entry_price, current_price, status, created_at
-FROM recommendations
-WHERE created_at > NOW() - INTERVAL '90 days'
-ORDER BY created_at DESC LIMIT 20;
+SELECT regime_date, regime, confidence, rationale, created_at
+FROM market_regimes ORDER BY regime_date DESC LIMIT 10;
 ```
+
+### 7. 추천 종목 성과 분석 (결과물 레벨)
+시스템이 내놓은 추천이 실제로 알파를 만들고 있는가?
+
+**개별 리포트 품질은 보지 마라** (QA 영역). 여기서는 **성과 패턴**만 본다.
+
+분석 방법:
+```sql
+-- 최근 90일 추천 종목 성과 요약
+SELECT symbol, sector, recommendation_date, entry_price, current_price,
+       pnl_percent, max_pnl_percent, days_held, status, entry_rs_score,
+       entry_phase, current_phase, market_regime, close_reason
+FROM recommendations
+WHERE recommendation_date > NOW() - INTERVAL '90 days'
+ORDER BY recommendation_date DESC;
+
+-- 성과 통계
+SELECT status, COUNT(*) as cnt,
+       ROUND(AVG(pnl_percent)::numeric, 2) as avg_pnl,
+       ROUND(AVG(max_pnl_percent)::numeric, 2) as avg_max_pnl,
+       ROUND(AVG(days_held)::numeric, 0) as avg_days
+FROM recommendations
+WHERE recommendation_date > NOW() - INTERVAL '90 days'
+GROUP BY status;
+```
+
+질문:
+- 승률(양수 PnL 비율)과 평균 수익이 알파를 형성하는 수준인가?
+- 특정 섹터/레짐에서 집중적으로 실패하는 패턴이 있는가?
+- entry_phase vs current_phase 변화로 보면 Phase 2 진입 정확도가 어떤가?
+- 실패 종목의 공통 특성(RS 범위, Phase, 섹터)이 있는가?
+- max_pnl_percent은 높은데 pnl_percent이 낮으면 → 청산 타이밍 문제
+
+### 8. Thesis 적중률 분석 (결과물 레벨)
+토론에서 나온 예측이 실제로 맞고 있는가?
+
+분석 방법:
+```sql
+-- Thesis 판정 결과 통계
+SELECT status, category, COUNT(*) as cnt
+FROM theses
+WHERE created_at > NOW() - INTERVAL '90 days'
+GROUP BY status, category ORDER BY category, status;
+
+-- CONFIRMED vs INVALIDATED 상세
+SELECT agent_persona, status, confidence, consensus_level, thesis,
+       verification_result, created_at, verification_date
+FROM theses
+WHERE status IN ('CONFIRMED', 'INVALIDATED')
+AND created_at > NOW() - INTERVAL '90 days'
+ORDER BY verification_date DESC LIMIT 20;
+
+-- 에이전트별 적중률
+SELECT agent_persona,
+       COUNT(*) FILTER (WHERE status = 'CONFIRMED') as confirmed,
+       COUNT(*) FILTER (WHERE status = 'INVALIDATED') as invalidated,
+       COUNT(*) FILTER (WHERE status = 'ACTIVE') as active
+FROM theses
+WHERE created_at > NOW() - INTERVAL '90 days'
+GROUP BY agent_persona;
+```
+
+질문:
+- 전체 thesis 적중률이 의미 있는 수준인가? (50% 이상이어야 가치 있음)
+- 특정 에이전트(macro/tech/geopolitics/sentiment)가 유독 틀리는가?
+- high confidence thesis의 적중률이 low보다 실제로 높은가?
+- category별(structural_narrative/sector_rotation/short_term_outlook) 적중률 차이가 있는가?
+- INVALIDATED thesis의 공통 패턴은? (프롬프트 개선 방향 도출)
+
+## 범위 구분 (중요)
+
+| 이 리뷰가 다루는 것 | QA가 다루는 것 (건드리지 마라) |
+|---|---|
+| 추천 성과 **패턴** (승률, 섹터별 실패) | 개별 리포트 **품질** (팩트, 편향, 구조) |
+| Thesis 적중률 **통계** | 개별 리포트 내용의 정확성 |
+| 시스템 설계와 결과의 **구조적 괴리** | 리포트 작성 스타일 |
+| "어떤 조건의 추천이 실패하는가" | "이 리포트가 잘 쓰여졌는가" |
 
 ## 인사이트 품질 기준
 
 **가치 있는 인사이트 조건** — 4개 모두 충족해야 함:
-1. 구체적 파일/함수/파라미터 지목
+1. 구체적 파일/함수/파라미터 또는 데이터 근거 지목
 2. 골(Phase 2 포착)과의 연결 설명
 3. 실행 가능한 개선안 제시
 4. 코드 또는 데이터 근거
@@ -102,6 +167,7 @@ ORDER BY created_at DESC LIMIT 20;
 - "프롬프트를 더 잘 작성해야 한다" 같은 모호한 제안
 - "분석 품질이 낮다" 같은 측정 불가 주장
 - 코드 스타일/린트/포매팅 지적 (범위 밖)
+- 개별 리포트 품질 지적 (QA 영역)
 
 ## 산출물
 
@@ -119,7 +185,7 @@ ORDER BY created_at DESC LIMIT 20;
 
 ## 실행 방법
 
-1. 위 6개 영역을 모두 분석 (코드 파일 읽기 + DB 쿼리)
+1. 위 8개 영역을 모두 분석 (코드 파일 읽기 + DB 쿼리)
 2. 인사이트 품질 기준으로 필터링
 3. 기존 오픈 이슈 중복 체크
 4. 가치 있는 인사이트만 `gh issue create`로 이슈 생성
