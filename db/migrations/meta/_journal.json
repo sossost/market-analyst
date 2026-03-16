@@ -127,6 +127,13 @@
       "when": 1773460036110,
       "tag": "0017_soft_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1773626365590,
+      "tag": "0018_regime_hysteresis",
+      "breakpoints": true
     }
   ]
 }
