@@ -87,10 +87,6 @@ export async function fetchRecommendationById(
     throw new Error(`추천 종목 상세 조회 실패: ${error.message}`)
   }
 
-  if (data == null) {
-    return null
-  }
-
   return {
     id: data.id,
     symbol: data.symbol,
