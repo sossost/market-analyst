@@ -11,6 +11,7 @@ import {
   smallint,
   boolean,
   timestamp,
+  date,
   jsonb,
   unique,
   index,
@@ -769,6 +770,7 @@ export const stockAnalysisReports = pgTable(
     sectorPositioning: text("sector_positioning").notNull(),
     marketContext: text("market_context").notNull(),
     riskFactors: text("risk_factors").notNull(),
+    earningsCallHighlights: text("earnings_call_highlights"), // Phase B 추가 — 어닝콜 핵심 발언 + 톤 분석
 
     // 메타데이터
     modelUsed: text("model_used").notNull(),
@@ -788,6 +790,203 @@ export const stockAnalysisReports = pgTable(
     ),
     idxSymbol: index("idx_stock_analysis_reports_symbol").on(t.symbol),
     idxDate: index("idx_stock_analysis_reports_date").on(t.recommendationDate),
+  }),
+);
+
+// ==================== Phase B: FMP API 확장 데이터 ====================
+
+/**
+ * company_profiles — 기업 프로필.
+ * FMP /stable/profile 엔드포인트에서 수집.
+ * symbol UNIQUE — 종목당 하나의 최신 프로필만 유지.
+ */
+export const companyProfiles = pgTable(
+  "company_profiles",
+  {
+    symbol: text("symbol").primaryKey(),
+    companyName: text("company_name"),
+    description: text("description"), // 사업 설명 (TEXT — 수백~수천 자)
+    ceo: text("ceo"),
+    employees: integer("employees"),
+    marketCap: numeric("market_cap"),
+    sector: text("sector"),
+    industry: text("industry"),
+    website: text("website"),
+    country: text("country"),
+    exchange: text("exchange"),
+    ipoDate: text("ipo_date"), // YYYY-MM-DD
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    idxSymbol: index("idx_company_profiles_symbol").on(t.symbol),
+  }),
+);
+
+/**
+ * annual_financials — 연간 재무제표.
+ * FMP /stable/income-statement?period=annual 엔드포인트에서 수집.
+ * (symbol, fiscal_year) UNIQUE — 종목·회계연도 조합으로 UPSERT.
+ */
+export const annualFinancials = pgTable(
+  "annual_financials",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    fiscalYear: text("fiscal_year").notNull(), // "2024", "2023", ...
+
+    // 손익계산서
+    revenue: numeric("revenue"),
+    netIncome: numeric("net_income"),
+    epsDiluted: numeric("eps_diluted"),
+    grossProfit: numeric("gross_profit"),
+    operatingIncome: numeric("operating_income"),
+    ebitda: numeric("ebitda"),
+    freeCashFlow: numeric("free_cash_flow"),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_annual_financials_symbol_fiscal_year").on(
+      t.symbol,
+      t.fiscalYear,
+    ),
+    idxSymbol: index("idx_annual_financials_symbol").on(t.symbol),
+    idxFiscalYear: index("idx_annual_financials_fiscal_year").on(t.fiscalYear),
+  }),
+);
+
+/**
+ * earning_call_transcripts — 어닝콜 트랜스크립트.
+ * FMP /stable/earning-call-transcript 엔드포인트에서 수집.
+ * (symbol, quarter, year) UNIQUE.
+ * 주의: transcript는 수만 자 원문 전체 저장. 에이전트 주입 시 3,000자 트런케이트.
+ */
+export const earningCallTranscripts = pgTable(
+  "earning_call_transcripts",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    quarter: integer("quarter").notNull(), // 1 | 2 | 3 | 4
+    year: integer("year").notNull(), // 2024, 2025, ...
+    date: text("date"), // YYYY-MM-DD (어닝콜 날짜)
+    transcript: text("transcript"), // 원문 전체 (수만 자)
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_earning_call_transcripts_symbol_quarter_year").on(
+      t.symbol,
+      t.quarter,
+      t.year,
+    ),
+    idxSymbol: index("idx_earning_call_transcripts_symbol").on(t.symbol),
+  }),
+);
+
+/**
+ * analyst_estimates — 애널리스트 EPS/매출 추정치.
+ * FMP /stable/analyst-estimates?period=quarterly 엔드포인트에서 수집.
+ * (symbol, period) UNIQUE — period는 "2026-03-31" 형식.
+ */
+export const analystEstimates = pgTable(
+  "analyst_estimates",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    period: text("period").notNull(), // "2026-03-31" 형식 (분기말 날짜)
+
+    estimatedEpsAvg: numeric("estimated_eps_avg"),
+    estimatedEpsHigh: numeric("estimated_eps_high"),
+    estimatedEpsLow: numeric("estimated_eps_low"),
+    estimatedRevenueAvg: numeric("estimated_revenue_avg"),
+    numberAnalystEstimatedEps: integer("number_analyst_estimated_eps"),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_analyst_estimates_symbol_period").on(t.symbol, t.period),
+    idxSymbol: index("idx_analyst_estimates_symbol").on(t.symbol),
+    idxPeriod: index("idx_analyst_estimates_period").on(t.period),
+  }),
+);
+
+/**
+ * eps_surprises — EPS 서프라이즈 히스토리.
+ * FMP /stable/earnings-surprises 엔드포인트에서 수집.
+ * (symbol, actual_date) UNIQUE.
+ */
+export const epsSurprises = pgTable(
+  "eps_surprises",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    actualDate: date("actual_date").notNull(), // 실제 어닝 발표일 (YYYY-MM-DD)
+
+    actualEps: numeric("actual_eps"),
+    estimatedEps: numeric("estimated_eps"),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_eps_surprises_symbol_actual_date").on(
+      t.symbol,
+      t.actualDate,
+    ),
+    idxSymbol: index("idx_eps_surprises_symbol").on(t.symbol),
+  }),
+);
+
+/**
+ * peer_groups — 동종업계 피어 그룹.
+ * FMP /api/v4/stock_peers 엔드포인트에서 수집.
+ * symbol UNIQUE — 종목당 하나의 피어 목록만 유지.
+ */
+export const peerGroups = pgTable(
+  "peer_groups",
+  {
+    symbol: text("symbol").primaryKey(),
+    peers: jsonb("peers").$type<string[]>().notNull(), // 피어 종목 심볼 배열
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    idxSymbol: index("idx_peer_groups_symbol").on(t.symbol),
+  }),
+);
+
+/**
+ * price_target_consensus — 월가 가격 목표 컨센서스.
+ * FMP /stable/price-target-consensus 엔드포인트에서 수집.
+ * symbol UNIQUE — 종목당 하나의 최신 컨센서스만 유지.
+ */
+export const priceTargetConsensus = pgTable(
+  "price_target_consensus",
+  {
+    symbol: text("symbol").primaryKey(),
+    targetHigh: numeric("target_high"),
+    targetLow: numeric("target_low"),
+    targetMean: numeric("target_mean"),
+    targetMedian: numeric("target_median"),
+    lastUpdated: timestamp("last_updated", { withTimezone: true }), // FMP 제공 최신 업데이트 일시
+
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    idxSymbol: index("idx_price_target_consensus_symbol").on(t.symbol),
   }),
 );
 

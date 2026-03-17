@@ -91,6 +91,13 @@ const MINIMAL_INPUTS: AnalysisInputs = {
   companyName: "NVIDIA Corporation",
   sector: "Technology",
   industry: "Semiconductors",
+  companyProfile: null,
+  annualFinancials: null,
+  earningsTranscript: null,
+  analystEstimates: null,
+  epsSurprises: null,
+  peerGroup: null,
+  priceTargetConsensus: null,
 };
 
 const VALID_REPORT_JSON = JSON.stringify({
@@ -224,6 +231,139 @@ describe("generateAnalysisReport", () => {
       await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
 
       expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Phase B 프롬프트 섹션 포함 여부", () => {
+    it("companyProfile이 있으면 <company_profile> 태그를 프롬프트에 포함한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const inputsWithProfile: AnalysisInputs = {
+        ...MINIMAL_INPUTS,
+        companyProfile: {
+          description: "AI chip maker",
+          ceo: "Jensen Huang",
+          employees: 30000,
+          marketCap: 2_500_000_000_000,
+          website: "https://nvidia.com",
+          country: "US",
+          exchange: "NASDAQ",
+          ipoDate: "1999-01-22",
+        },
+      };
+
+      await generateAnalysisReport("NVDA", "NVIDIA", inputsWithProfile);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).toContain("<company_profile>");
+      expect(userContent).toContain("Jensen Huang");
+    });
+
+    it("companyProfile이 null이면 <company_profile> 태그를 프롬프트에 포함하지 않는다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).not.toContain("<company_profile>");
+    });
+
+    it("earningsTranscript가 있으면 <earnings_call> 태그를 프롬프트에 포함한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const inputsWithTranscript: AnalysisInputs = {
+        ...MINIMAL_INPUTS,
+        earningsTranscript: {
+          quarter: 4,
+          year: 2024,
+          date: "2025-02-19",
+          transcript: "Revenue grew 78% year-over-year.",
+        },
+      };
+
+      await generateAnalysisReport("NVDA", "NVIDIA", inputsWithTranscript);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).toContain("<earnings_call>");
+      expect(userContent).toContain("Revenue grew 78%");
+    });
+
+    it("earningsTranscript의 transcript가 null이면 <earnings_call> 태그를 포함하지 않는다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const inputsWithNullTranscript: AnalysisInputs = {
+        ...MINIMAL_INPUTS,
+        earningsTranscript: { quarter: 4, year: 2024, date: "2025-02-19", transcript: null },
+      };
+
+      await generateAnalysisReport("NVDA", "NVIDIA", inputsWithNullTranscript);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).not.toContain("<earnings_call>");
+    });
+
+    it("peerGroup이 있으면 <peer_valuation> 태그를 프롬프트에 포함한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const inputsWithPeers: AnalysisInputs = {
+        ...MINIMAL_INPUTS,
+        peerGroup: [
+          { symbol: "AMD", peRatio: 45.0, evEbitda: 30.0, psRatio: 8.5 },
+        ],
+      };
+
+      await generateAnalysisReport("NVDA", "NVIDIA", inputsWithPeers);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).toContain("<peer_valuation>");
+      expect(userContent).toContain("AMD");
+    });
+
+    it("priceTargetConsensus가 있으면 <price_targets> 태그를 프롬프트에 포함한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const inputsWithPriceTarget: AnalysisInputs = {
+        ...MINIMAL_INPUTS,
+        priceTargetConsensus: { targetHigh: 200, targetLow: 120, targetMean: 165, targetMedian: 163 },
+      };
+
+      await generateAnalysisReport("NVDA", "NVIDIA", inputsWithPriceTarget);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).toContain("<price_targets>");
+      expect(userContent).toContain("200");
+    });
+
+    it("earningsCallHighlights 필드가 있는 JSON도 유효한 리포트로 파싱한다", async () => {
+      const reportWithEarnings = JSON.stringify({
+        investmentSummary: "요약",
+        technicalAnalysis: "기술",
+        fundamentalTrend: "실적",
+        valuationAnalysis: "밸류",
+        sectorPositioning: "섹터",
+        marketContext: "시장",
+        riskFactors: "리스크",
+        earningsCallHighlights: "경영진이 가이던스를 상향했다.",
+      });
+      mockCreate.mockResolvedValue(makeSuccessResponse(reportWithEarnings));
+
+      const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
+
+      expect(report.earningsCallHighlights).toBe("경영진이 가이던스를 상향했다.");
+    });
+
+    it("earningsCallHighlights 필드가 없어도 유효한 리포트로 파싱한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
+
+      expect(report.earningsCallHighlights).toBeUndefined();
     });
   });
 });

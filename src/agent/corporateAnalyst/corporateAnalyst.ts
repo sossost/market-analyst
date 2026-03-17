@@ -20,9 +20,15 @@ const SYSTEM_PROMPT = `당신은 15년 경력의 미국 주식 전문 기업 애
 
 출력 형식:
 - 순수 JSON 객체만 출력 (코드 펜스 없이)
-- 7개 필드: investmentSummary, technicalAnalysis, fundamentalTrend, valuationAnalysis, sectorPositioning, marketContext, riskFactors
+- 필수 7개 필드: investmentSummary, technicalAnalysis, fundamentalTrend, valuationAnalysis, sectorPositioning, marketContext, riskFactors
+- 선택 1개 필드: earningsCallHighlights (earnings_call 데이터가 있을 때만 포함)
 - 각 섹션은 마크다운 형식, 한글로 작성
-- 데이터가 없는 섹션은 해당 사실을 명시 (예: "실적 데이터 미확인")`;
+- 데이터가 없는 섹션은 해당 사실을 명시 (예: "실적 데이터 미확인")
+
+섹션별 작성 지침:
+- valuationAnalysis: peer_valuation 데이터가 있으면 피어 대비 할인/프리미엄 포지션을 구체적 수치로 명시
+- fundamentalTrend: forward_estimates 데이터가 있으면 포워드 EPS 방향성과 서프라이즈 트랙 레코드를 포함
+- earningsCallHighlights: earnings_call 데이터가 있을 때만 이 필드를 JSON에 포함 — 경영진 핵심 발언, 가이던스 변화, 톤 분석 포함`;
 
 export interface AnalysisReport {
   investmentSummary: string;
@@ -32,6 +38,8 @@ export interface AnalysisReport {
   sectorPositioning: string;
   marketContext: string;
   riskFactors: string;
+  /** 어닝콜 데이터가 있을 때만 생성되는 선택적 섹션 */
+  earningsCallHighlights?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,20 +138,123 @@ ${inputs.debateSynthesis}
 </debate_synthesis>`);
   }
 
+  // 기업 프로필 (Phase B)
+  if (inputs.companyProfile != null) {
+    const p = inputs.companyProfile;
+    const marketCapFormatted = p.marketCap != null ? fmt(p.marketCap) : "N/A";
+    sections.push(`<company_profile>
+사업 설명: ${p.description ?? "미확인"}
+CEO: ${p.ceo ?? "미확인"}
+직원수: ${p.employees != null ? p.employees.toLocaleString() : "미확인"}
+시가총액: ${marketCapFormatted}
+상장소: ${p.exchange ?? "미확인"}
+국가: ${p.country ?? "미확인"}
+IPO일: ${p.ipoDate ?? "미확인"}
+웹사이트: ${p.website ?? "미확인"}
+</company_profile>`);
+  }
+
+  // 연간 재무 트렌드 (Phase B)
+  if (inputs.annualFinancials != null && inputs.annualFinancials.length > 0) {
+    const rows = inputs.annualFinancials
+      .map((y) =>
+        `  - ${y.fiscalYear}: 매출 ${fmt(y.revenue)}, 순이익 ${fmt(y.netIncome)}, EPS ${y.epsDiluted ?? "N/A"}, 영업이익 ${fmt(y.operatingIncome)}, FCF ${fmt(y.freeCashFlow)}`,
+      )
+      .join("\n");
+    sections.push(`<annual_trend>
+${rows}
+</annual_trend>`);
+  }
+
+  // 어닝콜 트랜스크립트 (Phase B)
+  if (inputs.earningsTranscript != null && inputs.earningsTranscript.transcript != null) {
+    const ec = inputs.earningsTranscript;
+    sections.push(`<earnings_call>
+분기: ${ec.year}Q${ec.quarter}${ec.date != null ? ` (${ec.date})` : ""}
+트랜스크립트:
+${ec.transcript}
+</earnings_call>`);
+  }
+
+  // 포워드 추정치 + EPS 서프라이즈 (Phase B)
+  if (inputs.analystEstimates != null && inputs.analystEstimates.length > 0) {
+    const estimateRows = inputs.analystEstimates
+      .map((e) =>
+        `  - ${e.period}: EPS 추정 ${e.estimatedEpsAvg ?? "N/A"} (범위 ${e.estimatedEpsLow ?? "N/A"}~${e.estimatedEpsHigh ?? "N/A"}), 매출 추정 ${e.estimatedRevenueAvg != null ? fmt(e.estimatedRevenueAvg) : "N/A"}, 애널리스트 ${e.numberAnalysts ?? "N/A"}명`,
+      )
+      .join("\n");
+
+    let surpriseRows = "";
+    if (inputs.epsSurprises != null && inputs.epsSurprises.length > 0) {
+      surpriseRows =
+        "\nEPS 서프라이즈 히스토리:\n" +
+        inputs.epsSurprises
+          .map((s) => {
+            const surprise = buildSurpriseLine(s.actualEps, s.estimatedEps);
+            return `  - ${s.actualDate}: 실제 ${s.actualEps ?? "N/A"} vs 추정 ${s.estimatedEps ?? "N/A"}${surprise}`;
+          })
+          .join("\n");
+    }
+
+    sections.push(`<forward_estimates>
+컨센서스 EPS/매출 추정치:
+${estimateRows}${surpriseRows}
+</forward_estimates>`);
+  }
+
+  // 피어 밸류에이션 비교 (Phase B)
+  if (inputs.peerGroup != null && inputs.peerGroup.length > 0) {
+    const peerRows = inputs.peerGroup
+      .map((peer) =>
+        `  - ${peer.symbol}: P/E ${peer.peRatio ?? "N/A"}, EV/EBITDA ${peer.evEbitda ?? "N/A"}, P/S ${peer.psRatio ?? "N/A"}`,
+      )
+      .join("\n");
+    sections.push(`<peer_valuation>
+동종업계 피어 밸류에이션 (최신 분기 기준):
+${peerRows}
+</peer_valuation>`);
+  }
+
+  // 가격 목표 컨센서스 (Phase B)
+  if (inputs.priceTargetConsensus != null) {
+    const pt = inputs.priceTargetConsensus;
+    sections.push(`<price_targets>
+월가 목표가 컨센서스:
+  High: ${pt.targetHigh ?? "N/A"}
+  Low: ${pt.targetLow ?? "N/A"}
+  Mean: ${pt.targetMean ?? "N/A"}
+  Median: ${pt.targetMedian ?? "N/A"}
+</price_targets>`);
+  }
+
+  const hasEarningsCall =
+    inputs.earningsTranscript != null && inputs.earningsTranscript.transcript != null;
+
   sections.push(`
-위 데이터를 기반으로 아래 7개 섹션으로 구성된 종목 분석 리포트를 JSON 형식으로 작성하세요.
+위 데이터를 기반으로 종목 분석 리포트를 JSON 형식으로 작성하세요.
 데이터가 없는 섹션은 해당 사실을 명시하세요.
 
-JSON 필드:
+필수 JSON 필드 (7개):
 - investmentSummary: 핵심 투자 포인트 요약 (3~5개 bullet point)
 - technicalAnalysis: 기술적 분석 (Phase, RS, 이동평균, 거래량)
-- fundamentalTrend: 4분기 실적 트렌드 (매출/이익 성장률, 가속 여부)
-- valuationAnalysis: 밸류에이션 멀티플 분석 및 업종 대비 평가
+- fundamentalTrend: 4분기 실적 트렌드 (매출/이익 성장률, 가속 여부)${inputs.analystEstimates != null ? " + 포워드 EPS 방향성 + 서프라이즈 트랙 레코드 포함" : ""}
+- valuationAnalysis: 밸류에이션 멀티플 분석${inputs.peerGroup != null ? " + 피어 대비 할인/프리미엄 포지션을 구체적 수치로 명시" : ""}${inputs.priceTargetConsensus != null ? " + 월가 목표가 괴리율 포함" : ""}
 - sectorPositioning: 섹터·업종 내 포지셔닝 (RS 순위, Group Phase)
 - marketContext: 현재 시장 레짐 및 토론 synthesis 요약
-- riskFactors: 핵심 리스크 및 모니터링 포인트 (3~5개)`);
+- riskFactors: 핵심 리스크 및 모니터링 포인트 (3~5개)
+${hasEarningsCall ? "\n선택 JSON 필드 (반드시 포함):\n- earningsCallHighlights: 어닝콜 핵심 발언 + 가이던스 변화 + 톤 분석 (경영진이 강조한 성장 동력, 리스크, 향후 전망 포함)" : ""}`);
 
   return sections.join("\n\n");
+}
+
+/**
+ * actualEps와 estimatedEps를 받아 서프라이즈 방향을 텍스트로 반환한다.
+ */
+function buildSurpriseLine(actualEps: number | null, estimatedEps: number | null): string {
+  if (actualEps == null || estimatedEps == null || estimatedEps === 0) return "";
+  const surprise = ((actualEps - estimatedEps) / Math.abs(estimatedEps)) * 100;
+  const direction = surprise > 0 ? "Beat" : "Miss";
+  return ` (${direction} ${Math.abs(surprise).toFixed(1)}%)`;
 }
 
 /**
@@ -225,9 +336,16 @@ const REQUIRED_REPORT_FIELDS: ReadonlyArray<keyof AnalysisReport> = [
 
 function isValidReport(parsed: unknown): parsed is AnalysisReport {
   if (parsed == null || typeof parsed !== "object") return false;
-  return REQUIRED_REPORT_FIELDS.every(
-    (field) => typeof (parsed as Record<string, unknown>)[field] === "string",
+  const obj = parsed as Record<string, unknown>;
+  const hasRequiredFields = REQUIRED_REPORT_FIELDS.every(
+    (field) => typeof obj[field] === "string",
   );
+  if (!hasRequiredFields) return false;
+  // earningsCallHighlights는 선택적 — 존재하면 string이어야 한다
+  if ("earningsCallHighlights" in obj && typeof obj["earningsCallHighlights"] !== "string") {
+    return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

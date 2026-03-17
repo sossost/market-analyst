@@ -43,5 +43,6 @@ export interface AnalysisReport {
   sectorPositioning: string
   marketContext: string
   riskFactors: string
+  earningsCallHighlights: string | null
   generatedAt: string
 }

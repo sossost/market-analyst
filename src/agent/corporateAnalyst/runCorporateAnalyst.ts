@@ -47,26 +47,29 @@ export async function runCorporateAnalyst(
         symbol, recommendation_date,
         investment_summary, technical_analysis, fundamental_trend,
         valuation_analysis, sector_positioning, market_context, risk_factors,
+        earnings_call_highlights,
         model_used, tokens_input, tokens_output, generated_at
       ) VALUES (
         $1, $2,
         $3, $4, $5,
         $6, $7, $8, $9,
-        $10, $11, $12, NOW()
+        $10,
+        $11, $12, $13, NOW()
       )
       ON CONFLICT (symbol, recommendation_date)
       DO UPDATE SET
-        investment_summary  = EXCLUDED.investment_summary,
-        technical_analysis  = EXCLUDED.technical_analysis,
-        fundamental_trend   = EXCLUDED.fundamental_trend,
-        valuation_analysis  = EXCLUDED.valuation_analysis,
-        sector_positioning  = EXCLUDED.sector_positioning,
-        market_context      = EXCLUDED.market_context,
-        risk_factors        = EXCLUDED.risk_factors,
-        model_used          = EXCLUDED.model_used,
-        tokens_input        = EXCLUDED.tokens_input,
-        tokens_output       = EXCLUDED.tokens_output,
-        generated_at        = NOW()`,
+        investment_summary       = EXCLUDED.investment_summary,
+        technical_analysis       = EXCLUDED.technical_analysis,
+        fundamental_trend        = EXCLUDED.fundamental_trend,
+        valuation_analysis       = EXCLUDED.valuation_analysis,
+        sector_positioning       = EXCLUDED.sector_positioning,
+        market_context           = EXCLUDED.market_context,
+        risk_factors             = EXCLUDED.risk_factors,
+        earnings_call_highlights = EXCLUDED.earnings_call_highlights,
+        model_used               = EXCLUDED.model_used,
+        tokens_input             = EXCLUDED.tokens_input,
+        tokens_output            = EXCLUDED.tokens_output,
+        generated_at             = NOW()`,
       [
         symbol,
         recommendationDate,
@@ -77,6 +80,7 @@ export async function runCorporateAnalyst(
         report.sectorPositioning,
         report.marketContext,
         report.riskFactors,
+        report.earningsCallHighlights ?? null,
         CORPORATE_ANALYST_MODEL,
         tokensInput,
         tokensOutput,

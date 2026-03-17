@@ -50,6 +50,7 @@ describe('fetchAnalysisReport', () => {
       sector_positioning: '섹터 포지셔닝 내용',
       market_context: '시장 맥락 내용',
       risk_factors: '리스크 요인 내용',
+      earnings_call_highlights: 'CEO가 가이던스를 상향했다',
       generated_at: '2026-03-14T10:00:00+00:00',
     }
 
@@ -68,8 +69,32 @@ describe('fetchAnalysisReport', () => {
       sectorPositioning: '섹터 포지셔닝 내용',
       marketContext: '시장 맥락 내용',
       riskFactors: '리스크 요인 내용',
+      earningsCallHighlights: 'CEO가 가이던스를 상향했다',
       generatedAt: '2026-03-14T10:00:00+00:00',
     })
+  })
+
+  it('earnings_call_highlights가 null이면 earningsCallHighlights를 null로 매핑한다', async () => {
+    const mockData = {
+      id: 1,
+      symbol: 'NVDA',
+      recommendation_date: '2026-03-14',
+      investment_summary: '투자 포인트 요약 내용',
+      technical_analysis: '기술적 분석 내용',
+      fundamental_trend: '실적 트렌드 내용',
+      valuation_analysis: '밸류에이션 분석 내용',
+      sector_positioning: '섹터 포지셔닝 내용',
+      market_context: '시장 맥락 내용',
+      risk_factors: '리스크 요인 내용',
+      earnings_call_highlights: null,
+      generated_at: '2026-03-14T10:00:00+00:00',
+    }
+
+    setupMockClient({ data: mockData })
+
+    const result = await fetchAnalysisReport('NVDA', '2026-03-14')
+
+    expect(result?.earningsCallHighlights).toBeNull()
   })
 
   it('PGRST116 에러 → null 반환 (리포트 미생성 종목)', async () => {

@@ -13,8 +13,13 @@ interface AnalysisReportCardProps {
   report: AnalysisReport | null
 }
 
+type RequiredReportKey = keyof Omit<
+  AnalysisReport,
+  'id' | 'symbol' | 'recommendationDate' | 'earningsCallHighlights' | 'generatedAt'
+>
+
 interface ReportSection {
-  key: keyof Omit<AnalysisReport, 'id' | 'symbol' | 'recommendationDate' | 'generatedAt'>
+  key: RequiredReportKey
   title: string
 }
 
@@ -52,6 +57,17 @@ export function AnalysisReportCard({ report }: AnalysisReportCardProps) {
           </CardContent>
         </Card>
       ))}
+
+      {report.earningsCallHighlights != null && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">어닝콜 하이라이트</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MarkdownContent content={report.earningsCallHighlights} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

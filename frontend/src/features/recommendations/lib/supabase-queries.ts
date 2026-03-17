@@ -124,7 +124,7 @@ export async function fetchAnalysisReport(
   const { data, error } = await supabase
     .from('stock_analysis_reports')
     .select(
-      'id, symbol, recommendation_date, investment_summary, technical_analysis, fundamental_trend, valuation_analysis, sector_positioning, market_context, risk_factors, generated_at',
+      'id, symbol, recommendation_date, investment_summary, technical_analysis, fundamental_trend, valuation_analysis, sector_positioning, market_context, risk_factors, earnings_call_highlights, generated_at',
     )
     .eq('symbol', symbol)
     .eq('recommendation_date', recommendationDate)
@@ -152,6 +152,7 @@ export async function fetchAnalysisReport(
     sectorPositioning: data.sector_positioning,
     marketContext: data.market_context,
     riskFactors: data.risk_factors,
+    earningsCallHighlights: data.earnings_call_highlights ?? null,
     generatedAt: data.generated_at,
   }
 }
