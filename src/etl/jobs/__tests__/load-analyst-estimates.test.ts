@@ -56,18 +56,19 @@ const MOCK_ESTIMATE_ROWS = [
   },
 ];
 
-const MOCK_SURPRISE_ROWS = [
+// bulk API 응답 — epsActual/epsEstimated 필드명 사용
+const MOCK_BULK_SURPRISE_ROWS = [
   {
     symbol: "AAPL",
     date: "2025-11-01",
-    actualEarningResult: "1.64",
-    estimatedEarning: "1.59",
+    epsActual: "1.64",
+    epsEstimated: "1.59",
   },
   {
     symbol: "AAPL",
     date: "2025-08-01",
-    actualEarningResult: "1.40",
-    estimatedEarning: "1.35",
+    epsActual: "1.40",
+    epsEstimated: "1.35",
   },
 ];
 
@@ -90,34 +91,36 @@ describe("load-analyst-estimates", () => {
     delete process.env.FMP_API_KEY;
   });
 
-  it("analyst-estimates + earnings-surprises 두 엔드포인트를 모두 호출한다", async () => {
+  it("bulk earnings-surprises와 analyst-estimates 엔드포인트를 모두 호출한다", async () => {
+    // 호출 순서: bulk(year-1) → bulk(year) → analyst-estimates(AAPL)
     mockFetchJson
-      .mockResolvedValueOnce(MOCK_ESTIMATE_ROWS)
-      .mockResolvedValueOnce(MOCK_SURPRISE_ROWS);
+      .mockResolvedValueOnce(MOCK_BULK_SURPRISE_ROWS) // bulk year-1
+      .mockResolvedValueOnce([])                       // bulk year (중복 없음)
+      .mockResolvedValueOnce(MOCK_ESTIMATE_ROWS);      // analyst-estimates
 
     await loadAnalystEstimates();
 
-    expect(mockFetchJson).toHaveBeenCalledTimes(2);
-
     const calls = mockFetchJson.mock.calls.map((c) => c[0] as string);
     expect(calls.some((url) => url.includes("analyst-estimates"))).toBe(true);
-    expect(calls.some((url) => url.includes("earnings-surprises"))).toBe(true);
+    expect(calls.some((url) => url.includes("earnings-surprises-bulk"))).toBe(true);
   });
 
   it("추정치 2개 + 서프라이즈 2개 → 4번 insert 호출된다", async () => {
     mockFetchJson
-      .mockResolvedValueOnce(MOCK_ESTIMATE_ROWS)
-      .mockResolvedValueOnce(MOCK_SURPRISE_ROWS);
+      .mockResolvedValueOnce(MOCK_BULK_SURPRISE_ROWS) // bulk year-1
+      .mockResolvedValueOnce([])                       // bulk year
+      .mockResolvedValueOnce(MOCK_ESTIMATE_ROWS);      // analyst-estimates
 
     await loadAnalystEstimates();
 
     expect(mockInsert).toHaveBeenCalledTimes(4);
   });
 
-  it("두 엔드포인트 모두 빈 응답이면 skip 처리한다", async () => {
+  it("두 소스 모두 빈 응답이면 skip 처리한다", async () => {
     mockFetchJson
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([]) // bulk year-1
+      .mockResolvedValueOnce([]) // bulk year
+      .mockResolvedValueOnce([]); // analyst-estimates
 
     await loadAnalystEstimates();
 
@@ -126,11 +129,29 @@ describe("load-analyst-estimates", () => {
 
   it("추정치가 비어도 서프라이즈 데이터가 있으면 저장한다", async () => {
     mockFetchJson
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(MOCK_SURPRISE_ROWS);
+      .mockResolvedValueOnce(MOCK_BULK_SURPRISE_ROWS) // bulk year-1
+      .mockResolvedValueOnce([])                       // bulk year
+      .mockResolvedValueOnce([]);                      // analyst-estimates (빈 응답)
 
     await loadAnalystEstimates();
 
     expect(mockInsert).toHaveBeenCalledTimes(2);
+  });
+
+  it("bulk 응답에서 추천 종목 외 symbol은 필터링한다", async () => {
+    const bulkWithOtherSymbols = [
+      ...MOCK_BULK_SURPRISE_ROWS,
+      { symbol: "MSFT", date: "2025-11-01", epsActual: "3.00", epsEstimated: "2.90" },
+    ];
+
+    mockFetchJson
+      .mockResolvedValueOnce(bulkWithOtherSymbols) // bulk year-1
+      .mockResolvedValueOnce([])                    // bulk year
+      .mockResolvedValueOnce(MOCK_ESTIMATE_ROWS);   // analyst-estimates
+
+    await loadAnalystEstimates();
+
+    // AAPL 2 estimates + AAPL 2 surprises = 4 inserts (MSFT 제외)
+    expect(mockInsert).toHaveBeenCalledTimes(4);
   });
 });

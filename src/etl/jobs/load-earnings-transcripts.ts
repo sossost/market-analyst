@@ -35,6 +35,13 @@ function getApiConfig(): { api: string; key: string } {
   return { api: `${dataApi}/stable`, key: fmpKey };
 }
 
+interface FmpTranscriptDateRow {
+  symbol?: string;
+  quarter?: number | string;
+  year?: number | string;
+  date?: string; // YYYY-MM-DD
+}
+
 interface FmpTranscriptRow {
   symbol?: string;
   quarter?: number | string;
@@ -82,32 +89,66 @@ async function upsertTranscript(sym: string, row: FmpTranscriptRow) {
 }
 
 async function loadOne(symbol: string, api: string, key: string) {
-  const rows = await retryApiCall(
+  // Step 1: 사용 가능한 year/quarter 목록 조회
+  const dateRows = await retryApiCall(
     () =>
-      fetchJson<FmpTranscriptRow[]>(
-        `${api}/earning-call-transcript?symbol=${symbol}&apikey=${key}`,
+      fetchJson<FmpTranscriptDateRow[]>(
+        `${api}/earning-call-transcript-dates?symbol=${symbol}&apikey=${key}`,
       ),
     DEFAULT_RETRY_OPTIONS,
   ).catch((e) => {
     logger.error(
       TAG,
-      `Failed to fetch transcripts for ${symbol}: ${e instanceof Error ? e.message : String(e)}`,
+      `Failed to fetch transcript dates for ${symbol}: ${e instanceof Error ? e.message : String(e)}`,
     );
-    return [] as FmpTranscriptRow[];
+    return [] as FmpTranscriptDateRow[];
   });
 
-  if (rows.length === 0) {
+  if (dateRows.length === 0) {
     throw new Error(`No transcript data available for ${symbol}`);
   }
 
-  // 최근 2분기만 저장 — FMP API는 최신순 반환
-  const recentRows = rows.slice(0, MAX_TRANSCRIPTS);
+  // Step 2: 최신 2개의 year/quarter에 대해 개별 트랜스크립트 호출
+  const recentDates = dateRows.slice(0, MAX_TRANSCRIPTS);
+  let loadedCount = 0;
 
-  for (const row of recentRows) {
-    await upsertTranscript(symbol, row);
+  for (const dateRow of recentDates) {
+    const quarter = dateRow.quarter != null ? Number(dateRow.quarter) : null;
+    const year = dateRow.year != null ? Number(dateRow.year) : null;
+
+    if (quarter == null || !Number.isFinite(quarter) || year == null || !Number.isFinite(year)) {
+      logger.warn(TAG, `Invalid year/quarter in transcript-dates for ${symbol}: year=${dateRow.year} quarter=${dateRow.quarter}`);
+      continue;
+    }
+
+    const transcriptRows = await retryApiCall(
+      () =>
+        fetchJson<FmpTranscriptRow[]>(
+          `${api}/earning-call-transcript?symbol=${symbol}&year=${year}&quarter=${quarter}&apikey=${key}`,
+        ),
+      DEFAULT_RETRY_OPTIONS,
+    ).catch((e) => {
+      logger.error(
+        TAG,
+        `Failed to fetch transcript for ${symbol} Q${quarter}/${year}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return [] as FmpTranscriptRow[];
+    });
+
+    if (transcriptRows.length === 0) {
+      logger.warn(TAG, `Empty transcript for ${symbol} Q${quarter}/${year}`);
+      continue;
+    }
+
+    await upsertTranscript(symbol, transcriptRows[0]);
+    loadedCount++;
   }
 
-  logger.info(TAG, `Loaded ${recentRows.length} transcript(s) for ${symbol}`);
+  if (loadedCount === 0) {
+    throw new Error(`No transcript data available for ${symbol}`);
+  }
+
+  logger.info(TAG, `Loaded ${loadedCount} transcript(s) for ${symbol}`);
 }
 
 async function fetchRecommendedSymbols(): Promise<string[]> {

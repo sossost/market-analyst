@@ -42,11 +42,12 @@ interface FmpAnalystEstimateRow {
   numberAnalystEstimatedEps?: string | number;
 }
 
-interface FmpEpsSurpriseRow {
+interface FmpEpsSurpriseBulkRow {
   symbol?: string;
   date?: string; // "2024-10-31" — 어닝 발표일
-  actualEarningResult?: string | number;
-  estimatedEarning?: string | number;
+  epsActual?: string | number;
+  epsEstimated?: string | number;
+  lastUpdated?: string;
 }
 
 function toStrNum(v: unknown): string | null {
@@ -98,7 +99,7 @@ async function upsertEstimate(sym: string, row: FmpAnalystEstimateRow) {
   );
 }
 
-async function upsertEpsSurprise(sym: string, row: FmpEpsSurpriseRow) {
+async function upsertEpsSurprise(sym: string, row: FmpEpsSurpriseBulkRow) {
   const actualDate = row.date;
   if (actualDate == null || actualDate === "") {
     throw new Error(`Missing date for EPS surprise — ${sym}`);
@@ -111,14 +112,14 @@ async function upsertEpsSurprise(sym: string, row: FmpEpsSurpriseRow) {
         .values({
           symbol: sym,
           actualDate,
-          actualEps: toStrNum(row.actualEarningResult),
-          estimatedEps: toStrNum(row.estimatedEarning),
+          actualEps: toStrNum(row.epsActual),
+          estimatedEps: toStrNum(row.epsEstimated),
         })
         .onConflictDoUpdate({
           target: [epsSurprises.symbol, epsSurprises.actualDate],
           set: {
-            actualEps: toStrNum(row.actualEarningResult),
-            estimatedEps: toStrNum(row.estimatedEarning),
+            actualEps: toStrNum(row.epsActual),
+            estimatedEps: toStrNum(row.epsEstimated),
             updatedAt: new Date(),
           },
         }),
@@ -126,36 +127,67 @@ async function upsertEpsSurprise(sym: string, row: FmpEpsSurpriseRow) {
   );
 }
 
-async function loadOne(symbol: string, api: string, key: string) {
-  // 두 엔드포인트를 병렬 호출
-  const [estimateRows, surpriseRows] = await Promise.all([
-    retryApiCall(
+async function fetchBulkEpsSurprises(
+  api: string,
+  key: string,
+  symbolSet: Set<string>,
+): Promise<Map<string, FmpEpsSurpriseBulkRow[]>> {
+  const currentYear = new Date().getFullYear();
+  const years = [currentYear - 1, currentYear];
+
+  const allRows: FmpEpsSurpriseBulkRow[] = [];
+
+  for (const year of years) {
+    const rows = await retryApiCall(
       () =>
-        fetchJson<FmpAnalystEstimateRow[]>(
-          `${api}/analyst-estimates?symbol=${symbol}&period=quarterly&limit=${LIMIT_QUARTERS}&apikey=${key}`,
+        fetchJson<FmpEpsSurpriseBulkRow[]>(
+          `${api}/earnings-surprises-bulk?year=${year}&apikey=${key}`,
         ),
       DEFAULT_RETRY_OPTIONS,
     ).catch((e) => {
       logger.error(
         TAG,
-        `Failed to fetch analyst estimates for ${symbol}: ${e instanceof Error ? e.message : String(e)}`,
+        `Failed to fetch bulk EPS surprises for year ${year}: ${e instanceof Error ? e.message : String(e)}`,
       );
-      return [] as FmpAnalystEstimateRow[];
-    }),
-    retryApiCall(
-      () =>
-        fetchJson<FmpEpsSurpriseRow[]>(
-          `${api}/earnings-surprises?symbol=${symbol}&limit=${LIMIT_QUARTERS}&apikey=${key}`,
-        ),
-      DEFAULT_RETRY_OPTIONS,
-    ).catch((e) => {
-      logger.error(
-        TAG,
-        `Failed to fetch EPS surprises for ${symbol}: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      return [] as FmpEpsSurpriseRow[];
-    }),
-  ]);
+      return [] as FmpEpsSurpriseBulkRow[];
+    });
+
+    allRows.push(...rows.filter((r) => r.symbol != null && symbolSet.has(r.symbol)));
+  }
+
+  // symbol별로 그룹핑
+  const bySymbol = new Map<string, FmpEpsSurpriseBulkRow[]>();
+  for (const row of allRows) {
+    const sym = row.symbol as string;
+    const existing = bySymbol.get(sym) ?? [];
+    existing.push(row);
+    bySymbol.set(sym, existing);
+  }
+
+  return bySymbol;
+}
+
+async function loadOne(
+  symbol: string,
+  api: string,
+  key: string,
+  bulkSurprises: Map<string, FmpEpsSurpriseBulkRow[]>,
+) {
+  const estimateRows = await retryApiCall(
+    () =>
+      fetchJson<FmpAnalystEstimateRow[]>(
+        `${api}/analyst-estimates?symbol=${symbol}&period=quarterly&limit=${LIMIT_QUARTERS}&apikey=${key}`,
+      ),
+    DEFAULT_RETRY_OPTIONS,
+  ).catch((e) => {
+    logger.error(
+      TAG,
+      `Failed to fetch analyst estimates for ${symbol}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return [] as FmpAnalystEstimateRow[];
+  });
+
+  const surpriseRows = bulkSurprises.get(symbol) ?? [];
 
   if (estimateRows.length === 0 && surpriseRows.length === 0) {
     throw new Error(`No analyst estimate or EPS surprise data available for ${symbol}`);
@@ -205,6 +237,11 @@ async function main() {
 
   logger.info(TAG, `Processing ${syms.length} recommended symbols`);
 
+  // Bulk EPS surprises를 미리 가져옴 (종목별 호출 대신 연도별 bulk 2회)
+  const symbolSet = new Set(syms);
+  const bulkSurprises = await fetchBulkEpsSurprises(api, key, symbolSet);
+  logger.info(TAG, `Fetched bulk EPS surprises for ${bulkSurprises.size} symbols`);
+
   const limit = pLimit(CONCURRENCY);
   let done = 0;
   let skip = 0;
@@ -214,7 +251,7 @@ async function main() {
     syms.map((sym) =>
       limit(async () => {
         try {
-          await loadOne(sym, api, key);
+          await loadOne(sym, api, key, bulkSurprises);
           done++;
           if (done % 50 === 0) {
             logger.info(TAG, `Progress: ${done}/${syms.length} (${sym})`);

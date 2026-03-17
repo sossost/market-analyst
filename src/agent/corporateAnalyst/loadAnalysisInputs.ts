@@ -184,7 +184,7 @@ interface RecommendationFactorsRow {
 }
 
 interface SymbolRow {
-  name: string | null;
+  company_name: string | null;
   sector: string | null;
   industry: string | null;
 }
@@ -215,11 +215,11 @@ interface RatiosRow {
   pe_ratio: string | null;
   ps_ratio: string | null;
   pb_ratio: string | null;
-  enterprise_value_over_ebitda: string | null;
-  gross_profit_margin: string | null;
-  operating_profit_margin: string | null;
-  net_profit_margin: string | null;
-  debt_equity_ratio: string | null;
+  ev_ebitda: string | null;
+  gross_margin: string | null;
+  op_margin: string | null;
+  net_margin: string | null;
+  debt_equity: string | null;
 }
 
 interface MarketRegimeRow {
@@ -283,7 +283,7 @@ interface PeerGroupRow {
 interface PeerRatiosRow {
   symbol: string;
   pe_ratio: string | null;
-  enterprise_value_over_ebitda: string | null;
+  ev_ebitda: string | null;
   ps_ratio: string | null;
 }
 
@@ -371,7 +371,7 @@ export async function loadAnalysisInputs(
     safeQuery<SymbolRow>(
       () =>
         pool.query(
-          `SELECT name, sector, industry FROM symbols WHERE symbol = $1 LIMIT 1`,
+          `SELECT company_name, sector, industry FROM symbols WHERE symbol = $1 LIMIT 1`,
           [symbol],
         ),
       "symbols",
@@ -392,8 +392,8 @@ export async function loadAnalysisInputs(
     safeQuery<RatiosRow>(
       () =>
         pool.query(
-          `SELECT pe_ratio, ps_ratio, pb_ratio, enterprise_value_over_ebitda,
-                  gross_profit_margin, operating_profit_margin, net_profit_margin, debt_equity_ratio
+          `SELECT pe_ratio, ps_ratio, pb_ratio, ev_ebitda,
+                  gross_margin, op_margin, net_margin, debt_equity
            FROM quarterly_ratios
            WHERE symbol = $1
            ORDER BY period_end_date DESC
@@ -407,8 +407,7 @@ export async function loadAnalysisInputs(
         pool.query(
           `SELECT regime, rationale, confidence
            FROM market_regimes
-           WHERE is_confirmed = true
-             AND regime_date <= $1
+           WHERE regime_date <= $1
            ORDER BY regime_date DESC
            LIMIT 1`,
           [recommendationDate],
@@ -515,7 +514,7 @@ export async function loadAnalysisInputs(
 
   // 기본 종목 정보 추출
   const symbolRow = symbolRows != null && symbolRows.length > 0 ? symbolRows[0] : null;
-  const companyName = symbolRow?.name ?? null;
+  const companyName = symbolRow?.company_name ?? null;
   const sector = symbolRow?.sector ?? null;
   const industry = symbolRow?.industry ?? null;
 
@@ -585,11 +584,11 @@ export async function loadAnalysisInputs(
           peRatio: toNumOrNull(rawRatiosRow.pe_ratio),
           psRatio: toNumOrNull(rawRatiosRow.ps_ratio),
           pbRatio: toNumOrNull(rawRatiosRow.pb_ratio),
-          evEbitda: toNumOrNull(rawRatiosRow.enterprise_value_over_ebitda),
-          grossMargin: toNumOrNull(rawRatiosRow.gross_profit_margin),
-          opMargin: toNumOrNull(rawRatiosRow.operating_profit_margin),
-          netMargin: toNumOrNull(rawRatiosRow.net_profit_margin),
-          debtEquity: toNumOrNull(rawRatiosRow.debt_equity_ratio),
+          evEbitda: toNumOrNull(rawRatiosRow.ev_ebitda),
+          grossMargin: toNumOrNull(rawRatiosRow.gross_margin),
+          opMargin: toNumOrNull(rawRatiosRow.op_margin),
+          netMargin: toNumOrNull(rawRatiosRow.net_margin),
+          debtEquity: toNumOrNull(rawRatiosRow.debt_equity),
         };
 
   // market regime 조합
@@ -798,7 +797,7 @@ async function loadPeerGroupMultiples(
   const peerRatioResults = await safeQuery<PeerRatiosRow>(
     () =>
       pool.query(
-        `SELECT DISTINCT ON (symbol) symbol, pe_ratio, enterprise_value_over_ebitda, ps_ratio
+        `SELECT DISTINCT ON (symbol) symbol, pe_ratio, ev_ebitda, ps_ratio
          FROM quarterly_ratios
          WHERE symbol = ANY($1)
          ORDER BY symbol, period_end_date DESC`,
@@ -814,7 +813,7 @@ async function loadPeerGroupMultiples(
   return peerRatioResults.map((row) => ({
     symbol: row.symbol,
     peRatio: toNumOrNull(row.pe_ratio),
-    evEbitda: toNumOrNull(row.enterprise_value_over_ebitda),
+    evEbitda: toNumOrNull(row.ev_ebitda),
     psRatio: toNumOrNull(row.ps_ratio),
   }));
 }
