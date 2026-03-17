@@ -7,8 +7,8 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { AutoLabel, GitHubIssue } from './types.js'
-import { ALLOWED_AUTHORS, AUTO_LABELS } from './types.js'
+import type { AutoLabel, GitHubIssue, PriorityLabel } from './types.js'
+import { ALLOWED_AUTHORS, AUTO_LABELS, PRIORITY_ORDER } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -26,7 +26,19 @@ async function gh(args: string[]): Promise<string> {
 }
 
 /**
- * 열린 이슈 중 auto: 라벨이 없는 미처리 이슈 조회
+ * P 라벨에서 우선순위 점수를 반환한다. (낮을수록 높은 우선순위)
+ * P0=0, P1=1, P2=2, P3=3, 라벨 없음=4
+ */
+export function getPriorityScore(labels: string[]): number {
+  for (const label of labels) {
+    const priority = PRIORITY_ORDER[label as PriorityLabel]
+    if (priority != null) return priority
+  }
+  return PRIORITY_ORDER.__default
+}
+
+/**
+ * 열린 이슈 중 auto: 라벨이 없는 미처리 이슈 조회 (P 라벨 우선순위순)
  */
 export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
   const raw = await gh([
@@ -70,6 +82,7 @@ export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
       labels: issue.labels.map((l) => l.name),
       author: issue.author?.login ?? '',
     }))
+    .sort((a, b) => getPriorityScore(a.labels) - getPriorityScore(b.labels))
 }
 
 /**

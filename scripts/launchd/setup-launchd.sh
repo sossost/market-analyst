@@ -25,7 +25,6 @@ PLISTS=(
   "com.market-analyst.qa-weekly"
   "com.market-analyst.log-cleanup"
   "com.market-analyst.news-collect"
-  "com.market-analyst.issue-processor"
   "com.market-analyst.strategic-review"
 )
 
@@ -69,8 +68,8 @@ install_agents() {
   echo "  QA Weekly:    KST 12:00 토"
   echo "  Log Cleanup:  KST 09:00 일"
   echo "  News Collect: KST 00/06/12/18:00 매일"
-  echo "  Issue Proc:   KST 09~18:00 평일 매시"
   echo "  Strategy:     KST 04:00 매일"
+  echo "  (Issue Proc:  스케줄 제거 — 수동 실행만)"
   echo ""
   echo "로그: $PROJECT_DIR/logs/"
 }
