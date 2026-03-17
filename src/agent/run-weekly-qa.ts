@@ -9,7 +9,9 @@ import { ClaudeCliProvider } from "./debate/llm/claudeCliProvider.js";
 import { AnthropicProvider } from "./debate/llm/anthropicProvider.js";
 import { FallbackProvider } from "./debate/llm/fallbackProvider.js";
 
-const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
+import { CLAUDE_SONNET } from "@/lib/models.js";
+
+const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 const SCORE_THRESHOLD_FOR_ISSUE = 6;
 

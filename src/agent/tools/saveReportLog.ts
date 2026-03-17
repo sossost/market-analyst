@@ -1,3 +1,4 @@
+import { pool } from "@/db/client";
 import { saveReportLog } from "@/agent/reportLog";
 import type { DailyReportLog } from "@/types";
 import type { AgentTool } from "./types";
@@ -74,12 +75,32 @@ export const saveReportLogTool: AgentTool = {
 
     const reportData = rawData as unknown as DailyReportLog;
 
+    // phase2Ratio를 DB 실측값으로 보정 — LLM이 잘못된 값을 넘기는 경우 방지
+    try {
+      const { rows } = await pool.query<{ total: string; phase2_count: string }>(
+        `SELECT COUNT(*)::text AS total,
+                COUNT(*) FILTER (WHERE phase = 2)::text AS phase2_count
+         FROM stock_phases WHERE date = $1`,
+        [date],
+      );
+      const total = Number(rows[0]?.total ?? 0);
+      const phase2Count = Number(rows[0]?.phase2_count ?? 0);
+      if (total > 0 && reportData.marketSummary != null) {
+        reportData.marketSummary.phase2Ratio = Number(
+          ((phase2Count / total) * 100).toFixed(1),
+        );
+        reportData.marketSummary.totalAnalyzed = total;
+      }
+    } catch {
+      // DB 조회 실패 시 LLM 값 그대로 사용
+    }
+
     // metadata는 Agent loop에서 나중에 채워짐. 여기서는 플레이스홀더.
     const reportWithMetadata: DailyReportLog = {
       ...reportData,
       date,
       metadata: reportData.metadata ?? {
-        model: "claude-opus-4-6",
+        model: "claude-sonnet-4-20250514",
         tokensUsed: { input: 0, output: 0 },
         toolCalls: 0,
         executionTime: 0,

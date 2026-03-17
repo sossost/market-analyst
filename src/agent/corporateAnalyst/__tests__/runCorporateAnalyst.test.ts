@@ -5,13 +5,17 @@ import type { Pool } from "pg";
 // mock
 // ---------------------------------------------------------------------------
 
+const { CLAUDE_SONNET } = vi.hoisted(() => ({
+  CLAUDE_SONNET: "claude-sonnet-4-20250514",
+}));
+
 vi.mock("../loadAnalysisInputs.js", () => ({
   loadAnalysisInputs: vi.fn(),
 }));
 
 vi.mock("../corporateAnalyst.js", () => ({
   generateAnalysisReport: vi.fn(),
-  CORPORATE_ANALYST_MODEL: "claude-sonnet-4-6-20250725",
+  CORPORATE_ANALYST_MODEL: CLAUDE_SONNET,
 }));
 
 vi.mock("@/lib/logger.js", () => ({
@@ -127,7 +131,7 @@ describe("runCorporateAnalyst", () => {
       expect(params[0]).toBe(SYMBOL);
       expect(params[1]).toBe(DATE);
       expect(params[2]).toBe(MOCK_REPORT.investmentSummary);
-      expect(params[9]).toBe("claude-sonnet-4-6-20250725");
+      expect(params[9]).toBe("claude-sonnet-4-20250514");
       expect(params[10]).toBe(2_000);
       expect(params[11]).toBe(800);
     });

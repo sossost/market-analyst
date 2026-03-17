@@ -9,7 +9,9 @@ import type { LLMProvider } from "./llm/types.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { Thesis } from "../../types/debate.js";
 
-const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
+import { CLAUDE_SONNET } from "@/lib/models.js";
+
+const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 
 function createVerifierProvider(): LLMProvider {

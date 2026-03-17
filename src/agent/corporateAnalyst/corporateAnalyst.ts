@@ -11,7 +11,9 @@ import { logger } from "@/lib/logger.js";
 import type { AnalysisInputs } from "./loadAnalysisInputs.js";
 
 const CLIENT = new Anthropic({ maxRetries: 5 });
-export const CORPORATE_ANALYST_MODEL = "claude-sonnet-4-6-20250725";
+import { CLAUDE_SONNET } from "@/lib/models.js";
+
+export const CORPORATE_ANALYST_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4_096;
 
 const SYSTEM_PROMPT = `당신은 15년 경력의 미국 주식 전문 기업 애널리스트입니다. 제공된 데이터만을 기반으로 Seeking Alpha 수준의 종목 분석 리포트를 작성합니다. 데이터에 없는 내용은 절대 작성하지 않습니다. 추측이나 가정을 하지 않습니다.

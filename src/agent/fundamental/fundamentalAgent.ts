@@ -15,7 +15,9 @@ import type { FundamentalScore, FundamentalInput, DataQualityVerdict } from "../
 import type { StockReportContext } from "./stockReport.js";
 
 const PERSONA_PATH = resolve(import.meta.dirname, "../../../.claude/agents/fundamental-analyst.md");
-const FALLBACK_MODEL = "claude-sonnet-4-6-20250725";
+import { CLAUDE_SONNET } from "@/lib/models.js";
+
+const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 const MAX_NARRATIVE_LENGTH = 6000;
 

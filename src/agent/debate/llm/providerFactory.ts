@@ -4,6 +4,7 @@ import { GeminiProvider } from "./geminiProvider.js";
 import { FallbackProvider } from "./fallbackProvider.js";
 import type { LLMProvider } from "./types.js";
 import { ConfigurationError } from "./types.js";
+import { CLAUDE_SONNET, CLAUDE_HAIKU, CLAUDE_OPUS } from "@/lib/models.js";
 
 /**
  * model string → LLMProvider 인스턴스 매핑.
@@ -56,9 +57,9 @@ export function createProvider(model: string): LLMProvider {
  */
 function resolveAnthropicModel(model: string): string {
   const ALIAS_MAP: Record<string, string> = {
-    sonnet: "claude-sonnet-4-6-20250725",
-    haiku: "claude-haiku-4-20250514",
-    opus: "claude-opus-4-5",
+    sonnet: CLAUDE_SONNET,
+    haiku: CLAUDE_HAIKU,
+    opus: CLAUDE_OPUS,
   };
   return ALIAS_MAP[model.toLowerCase()] ?? model;
 }
