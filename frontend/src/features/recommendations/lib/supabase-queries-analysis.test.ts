@@ -1,6 +1,6 @@
 import { createClient } from '@/features/auth/lib/supabase-server'
 
-import { fetchAnalysisReport } from './supabase-queries'
+import { fetchAnalysisReport, fetchLatestAnalysisReport } from './supabase-queries'
 
 vi.mock('@/features/auth/lib/supabase-server', () => ({
   createClient: vi.fn(),
@@ -21,7 +21,10 @@ function createMockChainable(response: {
 
   chainable.select = vi.fn().mockReturnValue(chainable)
   chainable.eq = vi.fn().mockReturnValue(chainable)
+  chainable.order = vi.fn().mockReturnValue(chainable)
+  chainable.limit = vi.fn().mockReturnValue(chainable)
   chainable.single = vi.fn().mockResolvedValue(terminal)
+  chainable.maybeSingle = vi.fn().mockResolvedValue(terminal)
 
   return chainable
 }
@@ -132,5 +135,77 @@ describe('fetchAnalysisReport', () => {
 
     expect(chainable.eq).toHaveBeenCalledWith('symbol', 'AAPL')
     expect(chainable.eq).toHaveBeenCalledWith('recommendation_date', '2026-01-10')
+  })
+})
+
+const mockReportData = {
+  id: 2,
+  symbol: 'AAPL',
+  recommendation_date: '2026-03-10',
+  investment_summary: '투자 요약',
+  technical_analysis: '기술 분석',
+  fundamental_trend: '실적 트렌드',
+  valuation_analysis: '밸류에이션',
+  sector_positioning: '섹터 포지셔닝',
+  market_context: '시장 맥락',
+  risk_factors: '리스크',
+  earnings_call_highlights: null,
+  generated_at: '2026-03-10T09:00:00+00:00',
+}
+
+describe('fetchLatestAnalysisReport', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('최신 리포트를 정상 매핑하여 반환한다', async () => {
+    setupMockClient({ data: mockReportData })
+
+    const result = await fetchLatestAnalysisReport('AAPL')
+
+    expect(result).toEqual({
+      id: 2,
+      symbol: 'AAPL',
+      recommendationDate: '2026-03-10',
+      investmentSummary: '투자 요약',
+      technicalAnalysis: '기술 분석',
+      fundamentalTrend: '실적 트렌드',
+      valuationAnalysis: '밸류에이션',
+      sectorPositioning: '섹터 포지셔닝',
+      marketContext: '시장 맥락',
+      riskFactors: '리스크',
+      earningsCallHighlights: null,
+      generatedAt: '2026-03-10T09:00:00+00:00',
+    })
+  })
+
+  it('리포트가 없으면 null 반환', async () => {
+    setupMockClient({ data: null, error: null })
+
+    const result = await fetchLatestAnalysisReport('UNKNOWN')
+
+    expect(result).toBeNull()
+  })
+
+  it('DB 에러 → Error throw', async () => {
+    setupMockClient({
+      error: { code: 'PGRST000', message: 'connection refused' },
+    })
+
+    await expect(fetchLatestAnalysisReport('AAPL')).rejects.toThrow(
+      '기업 분석 리포트 조회 실패: connection refused',
+    )
+  })
+
+  it('symbol로 eq 쿼리 호출하고 recommendation_date DESC 정렬', async () => {
+    const { chainable } = setupMockClient({ data: null, error: null })
+
+    await fetchLatestAnalysisReport('TSLA')
+
+    expect(chainable.eq).toHaveBeenCalledWith('symbol', 'TSLA')
+    expect(chainable.order).toHaveBeenCalledWith('recommendation_date', {
+      ascending: false,
+    })
+    expect(chainable.limit).toHaveBeenCalledWith(1)
   })
 })

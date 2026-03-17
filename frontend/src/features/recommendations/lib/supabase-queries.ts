@@ -115,6 +115,27 @@ export async function fetchRecommendationById(
   }
 }
 
+const ANALYSIS_REPORT_COLUMNS =
+  'id, symbol, recommendation_date, investment_summary, technical_analysis, fundamental_trend, valuation_analysis, sector_positioning, market_context, risk_factors, earnings_call_highlights, generated_at'
+
+function mapAnalysisReport(data: Record<string, unknown>): AnalysisReport {
+  return {
+    id: data.id as number,
+    symbol: data.symbol as string,
+    recommendationDate: data.recommendation_date as string,
+    investmentSummary: data.investment_summary as string,
+    technicalAnalysis: data.technical_analysis as string,
+    fundamentalTrend: data.fundamental_trend as string,
+    valuationAnalysis: data.valuation_analysis as string,
+    sectorPositioning: data.sector_positioning as string,
+    marketContext: data.market_context as string,
+    riskFactors: data.risk_factors as string,
+    earningsCallHighlights:
+      (data.earnings_call_highlights as string | null) ?? null,
+    generatedAt: data.generated_at as string,
+  }
+}
+
 export async function fetchAnalysisReport(
   symbol: string,
   recommendationDate: string,
@@ -123,9 +144,7 @@ export async function fetchAnalysisReport(
 
   const { data, error } = await supabase
     .from('stock_analysis_reports')
-    .select(
-      'id, symbol, recommendation_date, investment_summary, technical_analysis, fundamental_trend, valuation_analysis, sector_positioning, market_context, risk_factors, earnings_call_highlights, generated_at',
-    )
+    .select(ANALYSIS_REPORT_COLUMNS)
     .eq('symbol', symbol)
     .eq('recommendation_date', recommendationDate)
     .single()
@@ -141,18 +160,29 @@ export async function fetchAnalysisReport(
     return null
   }
 
-  return {
-    id: data.id,
-    symbol: data.symbol,
-    recommendationDate: data.recommendation_date,
-    investmentSummary: data.investment_summary,
-    technicalAnalysis: data.technical_analysis,
-    fundamentalTrend: data.fundamental_trend,
-    valuationAnalysis: data.valuation_analysis,
-    sectorPositioning: data.sector_positioning,
-    marketContext: data.market_context,
-    riskFactors: data.risk_factors,
-    earningsCallHighlights: data.earnings_call_highlights ?? null,
-    generatedAt: data.generated_at,
+  return mapAnalysisReport(data as Record<string, unknown>)
+}
+
+export async function fetchLatestAnalysisReport(
+  symbol: string,
+): Promise<AnalysisReport | null> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('stock_analysis_reports')
+    .select(ANALYSIS_REPORT_COLUMNS)
+    .eq('symbol', symbol)
+    .order('recommendation_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error != null) {
+    throw new Error(`기업 분석 리포트 조회 실패: ${error.message}`)
   }
+
+  if (data == null) {
+    return null
+  }
+
+  return mapAnalysisReport(data as Record<string, unknown>)
 }

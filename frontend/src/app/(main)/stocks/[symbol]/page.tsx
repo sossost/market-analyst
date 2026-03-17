@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { AnalysisReportCard } from '@/features/recommendations/components/AnalysisReportCard'
+import { fetchLatestAnalysisReport } from '@/features/recommendations/lib/supabase-queries'
 import { BasicInfoCard } from '@/features/stock-search/components/BasicInfoCard'
 import { FundamentalCard } from '@/features/stock-search/components/FundamentalCard'
 import { IndustryContextCard } from '@/features/stock-search/components/IndustryContextCard'
@@ -31,7 +33,7 @@ export default async function StockDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [fundamentalData, sectorContext, industryContext, recommendations] =
+  const [fundamentalData, sectorContext, industryContext, recommendations, analysisReport] =
     await Promise.all([
       fetchFundamentalData(uppercaseSymbol),
       profile.sector != null
@@ -41,6 +43,7 @@ export default async function StockDetailPage({ params }: Props) {
         ? fetchIndustryContext(profile.industry, profile.rsScore)
         : Promise.resolve(null),
       fetchRecommendationHistory(uppercaseSymbol),
+      fetchLatestAnalysisReport(uppercaseSymbol),
     ])
 
   return (
@@ -76,6 +79,7 @@ export default async function StockDetailPage({ params }: Props) {
         </div>
 
         <RecommendationHistoryCard records={recommendations} />
+        <AnalysisReportCard report={analysisReport} />
       </div>
     </main>
   )
