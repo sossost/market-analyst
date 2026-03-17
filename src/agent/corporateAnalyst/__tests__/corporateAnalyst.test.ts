@@ -108,7 +108,7 @@ function makeSuccessResponse(content: string): Anthropic.Message {
     type: "message",
     role: "assistant",
     content: [{ type: "text", text: content }],
-    model: "claude-sonnet-4-6-20250725",
+    model: "claude-sonnet-4-20250514",
     stop_reason: "end_turn",
     stop_sequence: null,
     usage: {

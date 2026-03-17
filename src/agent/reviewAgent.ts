@@ -27,7 +27,9 @@ interface ReviewResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const REVIEW_MODEL = "claude-sonnet-4-6-20250725";
+import { CLAUDE_SONNET } from "@/lib/models.js";
+
+const REVIEW_MODEL = CLAUDE_SONNET;
 const REVIEW_MAX_TOKENS = 2048;
 const REFINE_MAX_TOKENS = 8192;
 const RAW_PREVIEW_LENGTH = 300;

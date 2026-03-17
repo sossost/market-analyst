@@ -179,7 +179,7 @@ interface AnalysisInputs {
 툴 없이 순수 LLM 생성으로 구성. 입력 → 프롬프트 조립 → 단일 API 호출 → 구조화 파싱 → 저장.
 
 ```typescript
-// 모델 선택: claude-sonnet-4-6-20250725 (run-weekly-agent와 동일)
+// 모델 선택: claude-sonnet-4-20250514 (run-weekly-agent와 동일)
 // max_tokens: 4096 (섹션 7개 × 약 500토큰)
 // temperature: 0 (재현성)
 

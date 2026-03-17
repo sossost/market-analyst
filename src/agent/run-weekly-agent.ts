@@ -43,7 +43,9 @@ import {
   formatRegimeForPrompt,
 } from "./debate/regimeStore";
 
-const MODEL = "claude-sonnet-4-6-20250725";
+import { CLAUDE_SONNET } from "@/lib/models.js";
+
+const MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 8192;
 const MAX_ITERATIONS = 15;
 

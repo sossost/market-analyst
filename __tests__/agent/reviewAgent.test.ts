@@ -329,7 +329,7 @@ describe("reviewReport", () => {
     await reviewReport([makeDraft()]);
 
     const call = mockCreate.mock.calls[0][0];
-    expect(call.model).toBe("claude-sonnet-4-6-20250725");
+    expect(call.model).toBe("claude-sonnet-4-20250514");
   });
 
   it("includes numeric basis verification item in reviewer system prompt", async () => {
@@ -454,7 +454,7 @@ describe("refineReport", () => {
     await refineReport([makeDraft()], "Feedback here.");
 
     const call = mockCreate.mock.calls[0][0];
-    expect(call.model).toBe("claude-sonnet-4-6-20250725");
+    expect(call.model).toBe("claude-sonnet-4-20250514");
   });
 
   it("includes the feedback in the prompt sent to Claude", async () => {
