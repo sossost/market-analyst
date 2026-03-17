@@ -13,6 +13,9 @@
 
 set -euo pipefail
 
+# PATH 설정 (launchd 환경에서 homebrew 바이너리 접근)
+export PATH="/opt/homebrew/bin:/opt/homebrew/opt/node@20/bin:$PATH"
+
 # macOS 호환: GNU timeout
 if command -v timeout >/dev/null 2>&1; then
   TIMEOUT_CMD="timeout"
