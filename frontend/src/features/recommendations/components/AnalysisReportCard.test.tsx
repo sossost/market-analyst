@@ -18,6 +18,7 @@ function createAnalysisReport(
     sectorPositioning: '섹터·업종 포지셔닝 내용',
     marketContext: '시장 맥락 내용',
     riskFactors: '리스크 요인 내용',
+    earningsCallHighlights: null,
     generatedAt: '2026-03-14T10:00:00+00:00',
     ...overrides,
   }
@@ -47,6 +48,23 @@ describe('AnalysisReportCard', () => {
       expect(screen.getByText('섹터·업종 포지셔닝')).toBeInTheDocument()
       expect(screen.getByText('시장 맥락')).toBeInTheDocument()
       expect(screen.getByText('리스크 요인')).toBeInTheDocument()
+    })
+
+    it('earningsCallHighlights가 null이면 어닝콜 섹션을 렌더링하지 않는다', () => {
+      render(<AnalysisReportCard report={createAnalysisReport({ earningsCallHighlights: null })} />)
+
+      expect(screen.queryByText('어닝콜 하이라이트')).not.toBeInTheDocument()
+    })
+
+    it('earningsCallHighlights가 있으면 어닝콜 섹션을 렌더링한다', () => {
+      render(
+        <AnalysisReportCard
+          report={createAnalysisReport({ earningsCallHighlights: 'CEO가 가이던스를 상향했다' })}
+        />,
+      )
+
+      expect(screen.getByText('어닝콜 하이라이트')).toBeInTheDocument()
+      expect(screen.getByText('CEO가 가이던스를 상향했다')).toBeInTheDocument()
     })
 
     it('generatedAt 날짜를 한국어 형식으로 표시한다', () => {

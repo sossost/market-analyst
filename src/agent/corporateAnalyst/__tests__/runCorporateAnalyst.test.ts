@@ -51,6 +51,13 @@ const MOCK_INPUTS: AnalysisInputs = {
   companyName: "NVIDIA Corporation",
   sector: "Technology",
   industry: "Semiconductors",
+  companyProfile: null,
+  annualFinancials: null,
+  earningsTranscript: null,
+  analystEstimates: null,
+  epsSurprises: null,
+  peerGroup: null,
+  priceTargetConsensus: null,
 };
 
 const MOCK_REPORT = {
@@ -127,13 +134,15 @@ describe("runCorporateAnalyst", () => {
       const queryCall = (pool.query as ReturnType<typeof vi.fn>).mock.calls[0];
       const params = queryCall[1] as unknown[];
 
-      // $1=symbol, $2=date, $3...$9=report sections, $10=model_used, $11=tokensInput, $12=tokensOutput
+      // $1=symbol, $2=date, $3...$9=report sections, $10=earningsCallHighlights (null),
+      // $11=model_used, $12=tokensInput, $13=tokensOutput
       expect(params[0]).toBe(SYMBOL);
       expect(params[1]).toBe(DATE);
       expect(params[2]).toBe(MOCK_REPORT.investmentSummary);
-      expect(params[9]).toBe("claude-sonnet-4-20250514");
-      expect(params[10]).toBe(2_000);
-      expect(params[11]).toBe(800);
+      expect(params[9]).toBeNull(); // earningsCallHighlights (MOCK_REPORT에 없으므로 null)
+      expect(params[10]).toBe("claude-sonnet-4-20250514");
+      expect(params[11]).toBe(2_000);
+      expect(params[12]).toBe(800);
     });
   });
 

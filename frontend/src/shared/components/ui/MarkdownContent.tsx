@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 
 interface MarkdownContentProps {
@@ -10,7 +11,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
   return (
     <div className={className}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           h1: ({ children }) => (
             <h1 className="mb-3 mt-5 text-base font-bold leading-tight text-foreground first:mt-0">
