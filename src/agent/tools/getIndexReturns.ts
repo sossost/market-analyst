@@ -58,12 +58,13 @@ async function fetchIndexQuote(symbol: string): Promise<IndexQuote | null> {
   const result = data?.chart?.result?.[0];
   if (result == null) return null;
 
-  const closes = result.indicators?.quote?.[0]?.close;
-  if (closes == null || closes.length < 2) return null;
+  const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
+  const closes = rawCloses.filter((c): c is number => c != null);
+  if (closes.length < 2) return null;
 
   const prevClose = closes[closes.length - 2];
   const lastClose = closes[closes.length - 1];
-  if (prevClose == null || lastClose == null || prevClose === 0) return null;
+  if (prevClose === 0) return null;
 
   const change = lastClose - prevClose;
   const changePercent = (change / prevClose) * 100;
