@@ -173,9 +173,9 @@ export function computeMedianPeerMultiples(peers: PeerMultiples[]): MedianMultip
     };
   }
 
-  const peValues = peers.map((p) => p.peRatio).filter((v): v is number => v != null);
-  const evValues = peers.map((p) => p.evEbitda).filter((v): v is number => v != null);
-  const psValues = peers.map((p) => p.psRatio).filter((v): v is number => v != null);
+  const peValues = peers.map((p) => p.peRatio).filter((v): v is number => v != null && v > 0);
+  const evValues = peers.map((p) => p.evEbitda).filter((v): v is number => v != null && v > 0);
+  const psValues = peers.map((p) => p.psRatio).filter((v): v is number => v != null && v > 0);
 
   const filteredPe = removeOutliers(peValues);
   const filteredEv = removeOutliers(evValues);
