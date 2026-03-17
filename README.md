@@ -2,7 +2,7 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 156 TS files · **Frontend** 110 TS/TSX files · **Tests** 1,199 · **Open Issues** 13
+> **Backend** 153 TS files · **Frontend** 145 TS/TSX files · **Tests** 1,420 · **Open Issues** 10
 
 ## How It Works
 
@@ -37,12 +37,18 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 조건부 발송 게이트: 품질 미달 시 발송 차단
    → bull-bias 감지 + Phase 2 ratio 이중 변환 방어
 
-6. 에이전트 리포트
+6. 기업 애널리스트 (추천 종목별 자동 생성)
+   → 피어 멀티플(P/E·EV/EBITDA·P/S) 가중 평균 기반 정량 목표주가 산출
+   → 월가 컨센서스 교차 검증 (ALIGNED/DIVERGENT/LARGE_DIVERGENT)
+   → LLM은 정량 결과를 해석만 — 숫자를 만들어내지 않음
+   → 어닝콜 핵심 발언, 포워드 EPS, 피어 비교 등 Seeking Alpha 수준 리포트
+
+7. 에이전트 리포트
    → 일간: 시장 온도 + 특이종목 브리핑 (조건부 발송)
    → 주간: Phase 2 주도주 심층 분석 + 펀더멘탈 검증 (SEPA)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
 
-7. 자율 운영
+8. 자율 운영
    → Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
    → 맥미니 서버 launchd 기반 스케줄링
 ```
@@ -219,7 +225,7 @@ yarn db:push                # 스키마 적용
 
 | 지표 | 현재 | 목표 (6개월) | 비고 |
 |------|------|-------------|------|
-| 테스트 | 1,027+ (90 files) | 유지 | Backend + Frontend |
+| 테스트 | 1,420 (97 files) | 유지 | Backend + Frontend |
 | 토론 세션 | 운영 중 | — | 평일 매일 자동 실행 |
 | Thesis 총 건수 | 축적 중 | 200건+ | 서사 카테고리 분리 적용 |
 | 학습 승격 | 축적 중 | 10건+ | 3회+ 적중 패턴 필요 |
@@ -290,6 +296,8 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **F6** Debate & Evolution — 멀티 모델(GPT-4o/Gemini/Claude) 4명 토론 + thesis 저장 + 학습 루프
 - [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + 전체 종목 확장
 - [x] **F8** Report/Debate Archive Dashboard — Next.js 16 + Supabase Auth + 리포트/토론 아카이브 UI
+- [x] **F9** Strategic Auto-Review — Claude Code CLI 기반 전략 참모 자동 리뷰
+- [x] **F10** Corporate Analyst — 종목별 심층 분석 리포트 + 정량 목표주가 산출 (피어 멀티플 + 컨센서스 교차 검증)
 
 ### Enhancement Phases (완료)
 
@@ -323,6 +331,7 @@ src/
 │   │   ├── sessionStore.ts  # 세션 저장 + 유사 세션 검색
 │   │   ├── memoryLoader.ts  # 학습 → 프롬프트 주입
 │   │   └── narrativeChainService.ts  # 병목 체인 추적
+│   ├── corporateAnalyst/    # 기업 애널리스트 (종목 심층 분석 + 정량 목표주가)
 │   ├── fundamental/         # SEPA 펀더멘탈 검증
 │   ├── tools/               # 에이전트 도구 (16개 + 내부 유틸 1개)
 │   └── reviewAgent.ts       # 리포트 품질 검증 + 조건부 발송
