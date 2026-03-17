@@ -22,7 +22,7 @@ const SYSTEM_PROMPT = `당신은 15년 경력의 미국 주식 전문 기업 애
 - 순수 JSON 객체만 출력 (코드 펜스 없이)
 - 필수 7개 필드: investmentSummary, technicalAnalysis, fundamentalTrend, valuationAnalysis, sectorPositioning, marketContext, riskFactors
 - 선택 1개 필드: earningsCallHighlights (earnings_call 데이터가 있을 때만 포함)
-- 각 섹션은 마크다운 형식, 한글로 작성
+- 각 섹션은 마크다운 형식, 한글로 작성. 불릿은 반드시 "- " (하이픈+공백) 사용. "•" 유니코드 불릿 사용 금지
 - 데이터가 없는 섹션은 해당 사실을 명시 (예: "실적 데이터 미확인")
 
 섹션별 작성 지침:
