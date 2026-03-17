@@ -35,7 +35,7 @@ export async function runCorporateAnalyst(
     const inputs = await loadAnalysisInputs(symbol, recommendationDate, pool);
 
     // 2. LLM 리포트 생성
-    const { report, tokensInput, tokensOutput } = await generateAnalysisReport(
+    const { report, tokensInput, tokensOutput, priceTargetResult } = await generateAnalysisReport(
       symbol,
       inputs.companyName,
       inputs,
@@ -48,13 +48,15 @@ export async function runCorporateAnalyst(
         investment_summary, technical_analysis, fundamental_trend,
         valuation_analysis, sector_positioning, market_context, risk_factors,
         earnings_call_highlights,
+        price_target, price_target_upside, price_target_data, price_target_analysis,
         model_used, tokens_input, tokens_output, generated_at
       ) VALUES (
         $1, $2,
         $3, $4, $5,
         $6, $7, $8, $9,
         $10,
-        $11, $12, $13, NOW()
+        $11, $12, $13, $14,
+        $15, $16, $17, NOW()
       )
       ON CONFLICT (symbol, recommendation_date)
       DO UPDATE SET
@@ -66,24 +68,32 @@ export async function runCorporateAnalyst(
         market_context           = EXCLUDED.market_context,
         risk_factors             = EXCLUDED.risk_factors,
         earnings_call_highlights = EXCLUDED.earnings_call_highlights,
+        price_target             = EXCLUDED.price_target,
+        price_target_upside      = EXCLUDED.price_target_upside,
+        price_target_data        = EXCLUDED.price_target_data,
+        price_target_analysis    = EXCLUDED.price_target_analysis,
         model_used               = EXCLUDED.model_used,
         tokens_input             = EXCLUDED.tokens_input,
         tokens_output            = EXCLUDED.tokens_output,
         generated_at             = NOW()`,
       [
-        symbol,
-        recommendationDate,
-        report.investmentSummary,
-        report.technicalAnalysis,
-        report.fundamentalTrend,
-        report.valuationAnalysis,
-        report.sectorPositioning,
-        report.marketContext,
-        report.riskFactors,
-        report.earningsCallHighlights ?? null,
-        CORPORATE_ANALYST_MODEL,
-        tokensInput,
-        tokensOutput,
+        symbol,                                                                          // $1
+        recommendationDate,                                                              // $2
+        report.investmentSummary,                                                        // $3
+        report.technicalAnalysis,                                                        // $4
+        report.fundamentalTrend,                                                         // $5
+        report.valuationAnalysis,                                                        // $6
+        report.sectorPositioning,                                                        // $7
+        report.marketContext,                                                            // $8
+        report.riskFactors,                                                              // $9
+        report.earningsCallHighlights ?? null,                                           // $10
+        priceTargetResult?.finalTarget ?? null,                                          // $11
+        priceTargetResult?.finalUpside ?? null,                                          // $12
+        priceTargetResult != null ? JSON.stringify(priceTargetResult) : null,            // $13
+        report.priceTargetAnalysis ?? null,                                              // $14
+        CORPORATE_ANALYST_MODEL,                                                         // $15
+        tokensInput,                                                                     // $16
+        tokensOutput,                                                                    // $17
       ],
     );
 

@@ -148,6 +148,13 @@
       "when": 1773731103070,
       "tag": "0020_nebulous_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1773740974958,
+      "tag": "0021_white_loa",
+      "breakpoints": true
     }
   ]
 }

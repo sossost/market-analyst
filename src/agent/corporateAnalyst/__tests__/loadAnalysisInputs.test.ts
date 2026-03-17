@@ -38,7 +38,7 @@ const FACTORS_ROW = {
 };
 
 const SYMBOL_ROW = {
-  name: "Apple Inc.",
+  company_name: "Apple Inc.",
   sector: "Technology",
   industry: "Consumer Electronics",
 };
@@ -80,11 +80,11 @@ const RATIOS_ROW = {
   pe_ratio: "28.5",
   ps_ratio: "7.2",
   pb_ratio: "45.3",
-  enterprise_value_over_ebitda: "22.1",
-  gross_profit_margin: "43.5",
-  operating_profit_margin: "30.1",
-  net_profit_margin: "25.3",
-  debt_equity_ratio: "1.8",
+  ev_ebitda: "22.1",
+  gross_margin: "43.5",
+  op_margin: "30.1",
+  net_margin: "25.3",
+  debt_equity: "1.8",
 };
 
 const REGIME_ROW = {
@@ -155,13 +155,13 @@ const PEER_RATIOS_ROWS = [
   {
     symbol: "AMD",
     pe_ratio: "45.0",
-    enterprise_value_over_ebitda: "30.0",
+    ev_ebitda: "30.0",
     ps_ratio: "8.5",
   },
   {
     symbol: "INTC",
     pe_ratio: "15.0",
-    enterprise_value_over_ebitda: "10.0",
+    ev_ebitda: "10.0",
     ps_ratio: "2.5",
   },
 ];
@@ -176,7 +176,7 @@ const PRICE_TARGET_ROW = {
 // ---------------------------------------------------------------------------
 // 헬퍼: 전체 데이터가 있는 Pool 생성
 // pool.query 호출 순서 (safeQuery 패턴):
-// Phase 1 (Promise.all 13개, 병렬이지만 mock은 순서대로 소비):
+// Phase 1 (Promise.all 14개, 병렬이지만 mock은 순서대로 소비):
 //   1. recommendation_factors
 //   2. symbols
 //   3. quarterly_financials
@@ -190,12 +190,17 @@ const PRICE_TARGET_ROW = {
 //  11. eps_surprises
 //  12. peer_groups
 //  13. price_target_consensus
+//  14. stock_phases (currentPrice)
 // Phase 2 (symbolRow 의존, 직렬):
-//  14. sector_rs_daily (sector != null)
-//  15. industry_rs_daily (industry != null)
+//  15. sector_rs_daily (sector != null)
+//  16. industry_rs_daily (industry != null)
 // Phase 3 (peerGroupRow 의존, 직렬):
-//  16. quarterly_ratios (peers)
+//  17. quarterly_ratios (peers)
 // ---------------------------------------------------------------------------
+
+const CURRENT_PRICE_ROW = {
+  close: "175.50",
+};
 
 function makeFullPool(): Pool {
   return makePool([
@@ -212,9 +217,10 @@ function makeFullPool(): Pool {
     { rows: EPS_SURPRISES_ROWS },         // 11. eps_surprises
     { rows: [PEER_GROUP_ROW] },           // 12. peer_groups
     { rows: [PRICE_TARGET_ROW] },         // 13. price_target_consensus
-    { rows: [SECTOR_RS_ROW] },            // 14. sector_rs_daily
-    { rows: [INDUSTRY_RS_ROW] },          // 15. industry_rs_daily
-    { rows: PEER_RATIOS_ROWS },           // 16. quarterly_ratios (peers)
+    { rows: [CURRENT_PRICE_ROW] },        // 14. stock_phases (currentPrice)
+    { rows: [SECTOR_RS_ROW] },            // 15. sector_rs_daily
+    { rows: [INDUSTRY_RS_ROW] },          // 16. industry_rs_daily
+    { rows: PEER_RATIOS_ROWS },           // 17. quarterly_ratios (peers)
   ]);
 }
 
@@ -304,8 +310,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
-        { rows: [] },             // 14. sector_rs
-        { rows: [] },             // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -330,8 +337,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
-        { rows: [SECTOR_RS_ROW] }, // 14. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
+        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -354,8 +362,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },              // 11. eps_surprises
         { rows: [] },              // 12. peer_groups
         { rows: [] },              // 13. price_target_consensus
-        { rows: [SECTOR_RS_ROW] }, // 14. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 15. industry_rs
+        { rows: [] },              // 14. stock_phases (currentPrice)
+        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
+        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -378,8 +387,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },              // 11. eps_surprises
         { rows: [] },              // 12. peer_groups
         { rows: [] },              // 13. price_target_consensus
-        { rows: [SECTOR_RS_ROW] }, // 14. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 15. industry_rs
+        { rows: [] },              // 14. stock_phases (currentPrice)
+        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
+        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -402,8 +412,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },              // 11. eps_surprises
         { rows: [] },              // 12. peer_groups
         { rows: [] },              // 13. price_target_consensus
-        { rows: [SECTOR_RS_ROW] }, // 14. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 15. industry_rs
+        { rows: [] },              // 14. stock_phases (currentPrice)
+        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
+        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -413,7 +424,7 @@ describe("loadAnalysisInputs", () => {
 
     it("symbols 테이블에 종목이 없으면 companyName/sector/industry가 null이고 sector_rs 쿼리는 실행되지 않는다", async () => {
       // symbols가 없으면 sector/industry가 null → sector_rs/industry_rs 쿼리 미실행
-      // Phase 1 (13개) + Phase 2 미실행 = 총 13번 호출
+      // Phase 1 (14개) + Phase 2 미실행 = 총 14번 호출
       // peer_groups도 비어있으므로 peer_ratios도 미실행
       const pool = makePool([
         { rows: [FACTORS_ROW] },  //  1. factors
@@ -429,7 +440,8 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
-        // 14, 15번 sector_rs/industry_rs 쿼리는 실행되지 않아야 함
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        // 15, 16번 sector_rs/industry_rs 쿼리는 실행되지 않아야 함
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -437,8 +449,8 @@ describe("loadAnalysisInputs", () => {
       expect(result.companyName).toBeNull();
       expect(result.sector).toBeNull();
       expect(result.industry).toBeNull();
-      // sector_rs/industry_rs 쿼리가 실행되지 않으므로 총 13번 호출
-      expect((pool.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(13);
+      // sector_rs/industry_rs 쿼리가 실행되지 않으므로 총 14번 호출
+      expect((pool.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(14);
     });
 
     it("모든 데이터 소스가 없어도 에러 없이 null 필드 구조를 반환한다", async () => {
@@ -456,7 +468,8 @@ describe("loadAnalysisInputs", () => {
         { rows: [] }, // 11. eps_surprises
         { rows: [] }, // 12. peer_groups
         { rows: [] }, // 13. price_target_consensus
-        // 14, 15번 sector_rs/industry_rs 쿼리는 symbols 없으므로 미실행
+        { rows: [] }, // 14. stock_phases (currentPrice)
+        // 15, 16번 sector_rs/industry_rs 쿼리는 symbols 없으므로 미실행
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -486,8 +499,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },                                       // 11. eps_surprises
         { rows: [] },                                       // 12. peer_groups
         { rows: [] },                                       // 13. price_target_consensus
-        { rows: [] },                                       // 14. sector_rs
-        { rows: [] },                                       // 15. industry_rs
+        { rows: [] },                                       // 14. stock_phases (currentPrice)
+        { rows: [] },                                       // 15. sector_rs
+        { rows: [] },                                       // 16. industry_rs
       ]);
     }
 
@@ -538,8 +552,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
-        { rows: [] },             // 14. sector_rs
-        { rows: [] },             // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -572,8 +587,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
-        { rows: [] },             // 14. sector_rs
-        { rows: [] },             // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -607,8 +623,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
-        { rows: [] },             // 14. sector_rs
-        { rows: [] },             // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -633,8 +650,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
-        { rows: [] },             // 14. sector_rs
-        { rows: [] },             // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -690,8 +708,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups (없음)
         { rows: [] },             // 13. price_target_consensus
-        { rows: [] },             // 14. sector_rs
-        { rows: [] },             // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -724,13 +743,48 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 11. eps_surprises
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus (없음)
-        { rows: [] },             // 14. sector_rs
-        { rows: [] },             // 15. industry_rs
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
 
       expect(result.priceTargetConsensus).toBeNull();
+    });
+  });
+
+  describe("Phase C: currentPrice 로딩", () => {
+    it("stock_phases에서 currentPrice를 올바르게 조회한다", async () => {
+      const pool = makeFullPool();
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.currentPrice).toBe(175.5);
+    });
+
+    it("stock_phases 쿼리가 실패하면 currentPrice가 null이다", async () => {
+      const pool = makePool([
+        { rows: [FACTORS_ROW] },  //  1. factors
+        { rows: [SYMBOL_ROW] },   //  2. symbols
+        { rows: [] },             //  3. financials
+        { rows: [] },             //  4. ratios
+        { rows: [] },             //  5. regime
+        { rows: [] },             //  6. debate
+        { rows: [] },             //  7. company_profiles
+        { rows: [] },             //  8. annual_financials
+        { rows: [] },             //  9. earning_call_transcripts
+        { rows: [] },             // 10. analyst_estimates
+        { rows: [] },             // 11. eps_surprises
+        { rows: [] },             // 12. peer_groups
+        { rows: [] },             // 13. price_target_consensus
+        { rows: [] },             // 14. stock_phases (결과 없음)
+        { rows: [] },             // 15. sector_rs
+        { rows: [] },             // 16. industry_rs
+      ]);
+
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.currentPrice).toBeNull();
     });
   });
 });

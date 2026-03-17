@@ -162,6 +162,9 @@ export interface AnalysisInputs {
     targetMean: number | null;
     targetMedian: number | null;
   } | null;
+
+  /** Phase C: 정량 모델 입력용 현재가 (stock_phases.close, recommendationDate 이하 최신) */
+  currentPrice: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +297,10 @@ interface PriceTargetConsensusRow {
   target_median: string | null;
 }
 
+interface StockPhasesCloseRow {
+  close: string;
+}
+
 // ---------------------------------------------------------------------------
 // 개별 쿼리 함수 (에러 시 null 반환하는 safe wrapper)
 // ---------------------------------------------------------------------------
@@ -339,7 +346,7 @@ export async function loadAnalysisInputs(
 ): Promise<AnalysisInputs> {
   const debateCutoff = getDateOffset(recommendationDate, DEBATE_LOOKBACK_DAYS);
 
-  // Phase 1: 심볼 독립 쿼리 병렬 실행 (13개)
+  // Phase 1: 심볼 독립 쿼리 병렬 실행 (14개)
   const [
     factorsRows,
     symbolRows,
@@ -354,6 +361,7 @@ export async function loadAnalysisInputs(
     epsSurprisesRows,
     peerGroupRows,
     priceTargetRows,
+    currentPriceRows,
   ] = await Promise.all([
     safeQuery<RecommendationFactorsRow>(
       () =>
@@ -509,6 +517,18 @@ export async function loadAnalysisInputs(
           [symbol],
         ),
       "price_target_consensus",
+    ),
+    safeQuery<StockPhasesCloseRow>(
+      () =>
+        pool.query(
+          `SELECT close
+           FROM stock_phases
+           WHERE symbol = $1 AND date <= $2
+           ORDER BY date DESC
+           LIMIT 1`,
+          [symbol, recommendationDate],
+        ),
+      "stock_phases (currentPrice)",
     ),
   ]);
 
@@ -707,6 +727,12 @@ export async function loadAnalysisInputs(
   // peer_groups: 피어 목록을 얻은 후 각 피어의 quarterly_ratios 조회
   const peerGroup = await loadPeerGroupMultiples(peerGroupRows, pool);
 
+  // currentPrice: stock_phases 최신 close
+  const currentPrice =
+    currentPriceRows != null && currentPriceRows.length > 0
+      ? toNumOrNull(currentPriceRows[0].close)
+      : null;
+
   return {
     technical: {
       rsScore: factorsRow?.rs_score ?? null,
@@ -749,6 +775,7 @@ export async function loadAnalysisInputs(
     epsSurprises,
     peerGroup,
     priceTargetConsensus,
+    currentPrice,
   };
 }
 

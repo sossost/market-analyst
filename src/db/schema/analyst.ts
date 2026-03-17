@@ -772,6 +772,12 @@ export const stockAnalysisReports = pgTable(
     riskFactors: text("risk_factors").notNull(),
     earningsCallHighlights: text("earnings_call_highlights"), // Phase B 추가 — 어닝콜 핵심 발언 + 톤 분석
 
+    // Phase C: 정량 목표주가
+    priceTarget: numeric("price_target"), // 정량 모델 적정가 ($)
+    priceTargetUpside: numeric("price_target_upside"), // 상승여력 (%)
+    priceTargetData: text("price_target_data"), // JSON: PriceTargetResult 전체
+    priceTargetAnalysis: text("price_target_analysis"), // LLM 해석 텍스트 (마크다운)
+
     // 메타데이터
     modelUsed: text("model_used").notNull(),
     tokensInput: integer("tokens_input"),
