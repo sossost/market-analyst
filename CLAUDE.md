@@ -23,10 +23,11 @@ CEO가 미션을 내리면 즉시 실행하지 않는다:
 2. **자율 판단** — 기획서 내 의사결정 사항은 매니저 + mission-planner가 조율하여 자율 판단. CEO에게 일일이 보고하지 않고 진행.
 3. **디스패치** — 기획서 기반으로 실행팀 에이전트에 위임. 독립 작업은 병렬.
 4. **코드 리뷰** — `code-reviewer` 에이전트 실행. CRITICAL/HIGH 이슈 수정 후 커밋. **리뷰 없이 PR 금지.**
-5. **PR 생성** — `pr-manager`에 `mode: create` 위임. **직접 `gh pr create` 금지.**
-6. **PR 보고 + 대기** — PR URL과 간단한 상태를 CEO에게 전달. **여기서 멈춘다. 머지하지 않는다.**
-7. **머지는 CEO 지시 시에만** — CEO가 "머지해"라고 명시적으로 말한 경우에만 `pr-manager`에 `mode: review-resolve` 위임. **CEO 지시 없는 머지 절대 금지. 리뷰 통과·테스트 통과 여부와 무관하게 머지 권한은 CEO에게만 있다.**
-8. **머지 후 정리** — PR 머지 완료 시 `git checkout main && git pull && git branch -d <branch>` 자동 실행. 명령 기다리지 않는다.
+5. **문서 업데이트** — 새 피처·아키텍처 변경 시 README.md, docs/ROADMAP.md를 커밋에 포함. 단순 버그픽스/리팩터링은 제외. **CEO가 따로 요청하지 않아도 자동 판단.**
+6. **PR 생성** — `pr-manager`에 `mode: create` 위임. **직접 `gh pr create` 금지.**
+7. **PR 보고 + 대기** — PR URL과 간단한 상태를 CEO에게 전달. **여기서 멈춘다. 머지하지 않는다.**
+8. **머지는 CEO 지시 시에만** — CEO가 "머지해"라고 명시적으로 말한 경우에만 `pr-manager`에 `mode: review-resolve` 위임. **CEO 지시 없는 머지 절대 금지. 리뷰 통과·테스트 통과 여부와 무관하게 머지 권한은 CEO에게만 있다.**
+9. **머지 후 정리** — PR 머지 완료 시 `git checkout main && git pull && git branch -d <branch>` 자동 실행. 명령 기다리지 않는다.
 
 상세: `.claude/ORGANIZATION.md` 참조
 
