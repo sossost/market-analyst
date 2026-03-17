@@ -8,26 +8,16 @@ vi.mock('@/issue-processor/githubClient', () => ({
   addComment: vi.fn(),
 }))
 
-// child_process 모킹 — exec (셸 경유)
+// child_process 모킹 — execFile (직접 호출)
 vi.mock('node:child_process', () => ({
-  exec: vi.fn(),
+  execFile: vi.fn(),
 }))
 
-vi.mock('node:util', () => ({
-  promisify: (fn: unknown) => fn,
-}))
-
-// fs/promises 모킹
-vi.mock('node:fs/promises', () => ({
-  writeFile: vi.fn().mockResolvedValue(undefined),
-  unlink: vi.fn().mockResolvedValue(undefined),
-}))
-
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { addLabel, removeLabel, addComment } from '@/issue-processor/githubClient'
 import { executeIssue, extractBranchType } from '@/issue-processor/executeIssue'
 
-const mockExec = vi.mocked(exec)
+const mockExecFile = vi.mocked(execFile)
 const mockAddLabel = vi.mocked(addLabel)
 const mockRemoveLabel = vi.mocked(removeLabel)
 const mockAddComment = vi.mocked(addComment)
@@ -38,6 +28,39 @@ const sampleIssue: GitHubIssue = {
   body: '타입 에러 수정 필요',
   labels: ['bug'],
   author: 'sossost',
+}
+
+/**
+ * execFile 모킹 헬퍼 — callback 기반 + stdin mock
+ */
+function mockExecFileCall(
+  stdout: string,
+  stderr: string = '',
+  error: Error | null = null,
+): void {
+  mockExecFile.mockImplementationOnce(
+    (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+      const cb = callback as (error: Error | null, stdout: string, stderr: string) => void
+      process.nextTick(() => cb(error, stdout, stderr))
+
+      // stdin mock 반환
+      return { stdin: { end: vi.fn() } } as never
+    },
+  )
+}
+
+function mockExecFileError(
+  error: Error & { code?: string; killed?: boolean },
+  stderr: string = '',
+): void {
+  mockExecFile.mockImplementationOnce(
+    (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+      const cb = callback as (error: Error | null, stdout: string, stderr: string) => void
+      process.nextTick(() => cb(error, '', stderr))
+
+      return { stdin: { end: vi.fn() } } as never
+    },
+  )
 }
 
 describe('extractBranchType', () => {
@@ -74,10 +97,9 @@ describe('executeIssue', () => {
   })
 
   it('성공 시 auto:done 라벨과 PR 링크 코멘트를 남긴다', async () => {
-    vi.mocked(mockExec).mockResolvedValueOnce({
-      stdout: '작업 완료\nhttps://github.com/sossost/market-analyst/pull/99\n',
-      stderr: '',
-    } as unknown as import('node:child_process').ChildProcess)
+    mockExecFileCall(
+      '작업 완료\nhttps://github.com/sossost/market-analyst/pull/99\n',
+    )
 
     const result = await executeIssue(sampleIssue)
 
@@ -99,10 +121,7 @@ describe('executeIssue', () => {
   })
 
   it('PR URL을 못 찾으면 실패 처리하고 코멘트를 남긴다', async () => {
-    vi.mocked(mockExec).mockResolvedValueOnce({
-      stdout: '뭔가 했지만 PR 링크 없음',
-      stderr: '',
-    } as unknown as import('node:child_process').ChildProcess)
+    mockExecFileCall('뭔가 했지만 PR 링크 없음')
 
     const result = await executeIssue(sampleIssue)
 
@@ -114,42 +133,81 @@ describe('executeIssue', () => {
     )
   })
 
-  it('CLI 실행 실패 시 에러 코멘트를 남긴다', async () => {
-    const error = new Error('Command timed out') as Error & { stderr?: string }
-    error.stderr = 'timeout exceeded'
-    vi.mocked(mockExec).mockRejectedValueOnce(error)
+  it('ENOENT 에러 시 Claude CLI 미설치 메시지를 남긴다', async () => {
+    const error = new Error('spawn claude ENOENT') as Error & { code?: string }
+    error.code = 'ENOENT'
+    mockExecFileError(error)
 
     const result = await executeIssue(sampleIssue)
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('timeout')
-    expect(mockRemoveLabel).toHaveBeenCalledWith(42, 'auto:in-progress')
+    expect(result.error).toContain('Claude CLI를 찾을 수 없음')
     expect(mockAddComment).toHaveBeenCalledWith(
       42,
-      expect.stringContaining('timeout'),
+      expect.stringContaining('Claude CLI를 찾을 수 없음'),
     )
   })
 
-  it('Claude Code CLI에 올바른 명령을 실행한다', async () => {
-    vi.mocked(mockExec).mockResolvedValueOnce({
-      stdout: 'https://github.com/sossost/market-analyst/pull/100',
-      stderr: '',
-    } as unknown as import('node:child_process').ChildProcess)
+  it('타임아웃 시 분류된 에러 메시지를 남긴다', async () => {
+    const error = new Error('Command timed out') as Error & { killed?: boolean }
+    error.killed = true
+    mockExecFileError(error)
+
+    const result = await executeIssue(sampleIssue)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('타임아웃')
+  })
+
+  it('stderr가 있으면 에러 메시지에 포함한다', async () => {
+    const error = new Error('Command failed')
+    mockExecFileError(error, 'authentication failed: token expired')
+
+    const result = await executeIssue(sampleIssue)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('authentication failed')
+  })
+
+  it('Claude CLI를 execFile로 직접 호출한다 (bash 경유 X)', async () => {
+    mockExecFileCall(
+      'https://github.com/sossost/market-analyst/pull/100',
+    )
 
     await executeIssue(sampleIssue)
 
-    const callArgs = (mockExec as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
-    const command = callArgs[0] as string
-    expect(command).toContain('claude -p')
-    expect(command).toContain('--output-format text')
-    expect(command).toContain('--dangerously-skip-permissions')
+    // execFile 첫 번째 인자가 'claude'인지 확인
+    const callArgs = mockExecFile.mock.calls[0]
+    expect(callArgs[0]).toBe('claude')
+
+    // args에 --print, --dangerously-skip-permissions 포함
+    const args = callArgs[1] as string[]
+    expect(args).toContain('--print')
+    expect(args).toContain('--dangerously-skip-permissions')
+    expect(args).toContain('--output-format')
+    expect(args).toContain('text')
   })
 
-  it('이슈 타이틀에서 브랜치 타입을 추출하여 사용한다', async () => {
-    vi.mocked(mockExec).mockResolvedValueOnce({
-      stdout: 'https://github.com/sossost/market-analyst/pull/101',
-      stderr: '',
-    } as unknown as import('node:child_process').ChildProcess)
+  it('ANTHROPIC_API_KEY를 제거한 환경으로 실행한다', async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-key'
+
+    mockExecFileCall(
+      'https://github.com/sossost/market-analyst/pull/101',
+    )
+
+    await executeIssue(sampleIssue)
+
+    const callArgs = mockExecFile.mock.calls[0]
+    const opts = callArgs[2] as { env?: NodeJS.ProcessEnv }
+    expect(opts.env?.ANTHROPIC_API_KEY).toBeUndefined()
+
+    delete process.env.ANTHROPIC_API_KEY
+  })
+
+  it('stdin으로 프롬프트를 전달한다', async () => {
+    mockExecFileCall(
+      'https://github.com/sossost/market-analyst/pull/102',
+    )
 
     const featIssue: GitHubIssue = {
       number: 50,
@@ -161,10 +219,11 @@ describe('executeIssue', () => {
 
     await executeIssue(featIssue)
 
-    // writeFile로 프롬프트에 feat/issue-50이 포함됐는지 확인
-    const { writeFile } = await import('node:fs/promises')
-    const writeCall = vi.mocked(writeFile).mock.calls[0]
-    const promptContent = writeCall[1] as string
-    expect(promptContent).toContain('feat/issue-50')
+    // stdin.end가 프롬프트와 함께 호출됐는지 확인
+    const child = mockExecFile.mock.results[0].value as { stdin: { end: ReturnType<typeof vi.fn> } }
+    expect(child.stdin.end).toHaveBeenCalledWith(
+      expect.stringContaining('feat/issue-50'),
+      'utf-8',
+    )
   })
 })

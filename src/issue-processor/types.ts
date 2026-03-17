@@ -22,4 +22,14 @@ export const AUTO_LABELS: readonly AutoLabel[] = [
 
 export type BranchType = 'fix' | 'feat' | 'refactor' | 'chore'
 
+export type PriorityLabel = 'P0: critical' | 'P1: high' | 'P2: medium' | 'P3: low'
+
+export const PRIORITY_ORDER: Record<PriorityLabel | '__default', number> = {
+  'P0: critical': 0,
+  'P1: high': 1,
+  'P2: medium': 2,
+  'P3: low': 3,
+  __default: 4,
+} as const
+
 export const MAX_ISSUES_PER_CYCLE = 1
