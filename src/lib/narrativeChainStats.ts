@@ -21,6 +21,8 @@ export interface ActiveChainSummary {
   status: NarrativeChainStatus;
   nextBottleneck: string | null;
   linkedThesisCount: number;
+  beneficiarySectors: string[];
+  beneficiaryTickers: string[];
 }
 
 /**
@@ -84,6 +86,8 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
       status: narrativeChains.status,
       nextBottleneck: narrativeChains.nextBottleneck,
       linkedThesisIds: narrativeChains.linkedThesisIds,
+      beneficiarySectors: narrativeChains.beneficiarySectors,
+      beneficiaryTickers: narrativeChains.beneficiaryTickers,
     })
     .from(narrativeChains)
     .where(inArray(narrativeChains.status, activeStatuses));
@@ -104,6 +108,12 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
     linkedThesisCount: Array.isArray(chain.linkedThesisIds)
       ? chain.linkedThesisIds.length
       : 0,
+    beneficiarySectors: Array.isArray(chain.beneficiarySectors)
+      ? (chain.beneficiarySectors as string[])
+      : [],
+    beneficiaryTickers: Array.isArray(chain.beneficiaryTickers)
+      ? (chain.beneficiaryTickers as string[])
+      : [],
   }));
 }
 
@@ -151,20 +161,28 @@ export async function formatChainsSummaryForPrompt(): Promise<string> {
 
   const lines: string[] = [
     "## 현재 추적 중인 병목 체인\n",
-    "| 병목 노드 | 메가트렌드 | 식별일 | 경과일 | 상태 | 참고 해소 기간 |",
-    "|----------|----------|--------|-------|------|-------------|",
+    "| 병목 노드 | 메가트렌드 | 식별일 | 경과일 | 상태 | N+1 병목 | 수혜 섹터 | 수혜 종목 | 참고 해소 기간 |",
+    "|----------|----------|--------|-------|------|---------|----------|----------|-------------|",
   ];
 
   for (const chain of chains) {
     const dateStr = chain.identifiedAt.toISOString().slice(0, 10);
+    const nextBn = chain.nextBottleneck ?? "—";
+    const sectors = chain.beneficiarySectors.length > 0
+      ? chain.beneficiarySectors.join(", ")
+      : "—";
+    const tickers = chain.beneficiaryTickers.length > 0
+      ? chain.beneficiaryTickers.join(", ")
+      : "—";
     lines.push(
-      `| ${chain.bottleneck} | ${chain.megatrend} | ${dateStr} | ${chain.daysSinceIdentified}일 | ${chain.status} | ${refResolution} |`,
+      `| ${chain.bottleneck} | ${chain.megatrend} | ${dateStr} | ${chain.daysSinceIdentified}일 | ${chain.status} | ${nextBn} | ${sectors} | ${tickers} | ${refResolution} |`,
     );
   }
 
   lines.push(
     "",
     "※ 해소된 체인이 3개 이상 쌓이면 \"참고 해소 기간\"에 평균 기간이 표시됩니다.",
+    "※ 수혜 종목은 N+1 병목 해소 시 구조적 수혜가 예상되는 종목입니다. 현재 Phase/RS 기준 미달이어도 서사적 워치리스트로 활용하세요.",
   );
 
   return lines.join("\n");

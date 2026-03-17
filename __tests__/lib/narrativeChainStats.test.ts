@@ -128,6 +128,8 @@ describe("narrativeChainStats", () => {
           status: "ACTIVE",
           nextBottleneck: "전력 인프라",
           linkedThesisIds: [10, 20, 30],
+          beneficiarySectors: ["Power Infrastructure"],
+          beneficiaryTickers: ["VRT", "ETN"],
         },
       ]);
 
@@ -141,6 +143,8 @@ describe("narrativeChainStats", () => {
       expect(summary[0].status).toBe("ACTIVE");
       expect(summary[0].nextBottleneck).toBe("전력 인프라");
       expect(summary[0].linkedThesisCount).toBe(3);
+      expect(summary[0].beneficiarySectors).toEqual(["Power Infrastructure"]);
+      expect(summary[0].beneficiaryTickers).toEqual(["VRT", "ETN"]);
     });
 
     it("returns empty array when no active chains", async () => {
@@ -150,7 +154,7 @@ describe("narrativeChainStats", () => {
       expect(summary).toEqual([]);
     });
 
-    it("handles null linkedThesisIds", async () => {
+    it("handles null linkedThesisIds and null beneficiary fields", async () => {
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
@@ -160,11 +164,15 @@ describe("narrativeChainStats", () => {
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: null,
+          beneficiarySectors: null,
+          beneficiaryTickers: null,
         },
       ]);
 
       const summary = await getActiveChainsSummary();
       expect(summary[0].linkedThesisCount).toBe(0);
+      expect(summary[0].beneficiarySectors).toEqual([]);
+      expect(summary[0].beneficiaryTickers).toEqual([]);
     });
   });
 
@@ -188,6 +196,8 @@ describe("narrativeChainStats", () => {
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [10],
+          beneficiarySectors: null,
+          beneficiaryTickers: null,
         },
       ]);
 
@@ -210,6 +220,8 @@ describe("narrativeChainStats", () => {
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [10],
+          beneficiarySectors: null,
+          beneficiaryTickers: null,
         },
         {
           id: 2,
@@ -219,6 +231,8 @@ describe("narrativeChainStats", () => {
           status: "RESOLVING",
           nextBottleneck: null,
           linkedThesisIds: [20, 30],
+          beneficiarySectors: null,
+          beneficiaryTickers: null,
         },
       ]);
 
@@ -241,6 +255,8 @@ describe("narrativeChainStats", () => {
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [],
+          beneficiarySectors: null,
+          beneficiaryTickers: null,
         },
       ]);
 
@@ -278,8 +294,10 @@ describe("narrativeChainStats", () => {
           bottleneck: "광트랜시버 공급 부족",
           bottleneckIdentifiedAt: identifiedAt,
           status: "ACTIVE",
-          nextBottleneck: null,
+          nextBottleneck: "전력 인프라 부족",
           linkedThesisIds: [1, 2],
+          beneficiarySectors: ["Power Infrastructure"],
+          beneficiaryTickers: ["VRT", "ETN"],
         },
       ]);
 
@@ -298,6 +316,10 @@ describe("narrativeChainStats", () => {
       expect(result).toContain("2026-01-15");
       expect(result).toContain("ACTIVE");
       expect(result).toContain("데이터 축적 중");
+      expect(result).toContain("전력 인프라 부족");
+      expect(result).toContain("Power Infrastructure");
+      expect(result).toContain("VRT, ETN");
+      expect(result).toContain("서사적 워치리스트");
     });
 
     it("shows average resolution days when 3+ resolved chains", async () => {
@@ -313,6 +335,8 @@ describe("narrativeChainStats", () => {
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [1],
+          beneficiarySectors: null,
+          beneficiaryTickers: null,
         },
       ]);
 
