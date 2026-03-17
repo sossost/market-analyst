@@ -5,13 +5,17 @@ import type { Pool } from "pg";
 // mock
 // ---------------------------------------------------------------------------
 
+const { CLAUDE_SONNET } = vi.hoisted(() => ({
+  CLAUDE_SONNET: "claude-sonnet-4-20250514",
+}));
+
 vi.mock("../loadAnalysisInputs.js", () => ({
   loadAnalysisInputs: vi.fn(),
 }));
 
 vi.mock("../corporateAnalyst.js", () => ({
   generateAnalysisReport: vi.fn(),
-  CORPORATE_ANALYST_MODEL: "claude-sonnet-4-20250514",
+  CORPORATE_ANALYST_MODEL: CLAUDE_SONNET,
 }));
 
 vi.mock("@/lib/logger.js", () => ({

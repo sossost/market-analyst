@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { CLAUDE_SONNET } from "@/lib/models.js";
 
 // ---------------------------------------------------------------------------
 // vi.hoisted: mock 콜백 내부에서 참조 가능한 변수
@@ -108,7 +109,7 @@ function makeSuccessResponse(content: string): Anthropic.Message {
     type: "message",
     role: "assistant",
     content: [{ type: "text", text: content }],
-    model: "claude-sonnet-4-20250514",
+    model: CLAUDE_SONNET,
     stop_reason: "end_turn",
     stop_sequence: null,
     usage: {
