@@ -65,7 +65,7 @@ Phase A 리포트의 `valuationAnalysis` 섹션은 종목 자체 멀티플(P/E, 
 - 기존 `quarterly_financials`와 동일한 스키마 구조, period 컬럼 추가
 - 핵심 필드: symbol, fiscalYear, revenue, netIncome, epsDiluted, grossProfit, operatingIncome
 
-#### 1-c. `load-earnings-calendar.ts`
+#### 1-c. `load-earnings-transcripts.ts`
 - 엔드포인트: `/stable/earning-call-transcript?symbol={symbol}&apikey={key}`
 - 저장 테이블: `earning_call_transcripts` (신규)
 - 최근 2분기 트랜스크립트 저장 (토큰 비용 통제)
@@ -78,7 +78,7 @@ Phase A 리포트의 `valuationAnalysis` 섹션은 종목 자체 멀티플(P/E, 
 - 핵심 필드: symbol, period, estimatedEpsAvg, estimatedEpsHigh, estimatedEpsLow, estimatedRevenueAvg, numberAnalystEstimatedEps
 - EPS 서프라이즈: `/stable/earnings-surprises?symbol={symbol}&limit=4&apikey={key}` → 동일 테이블 또는 별도 `eps_surprises` 테이블에 저장
 
-#### 1-e. `load-peer-comparisons.ts`
+#### 1-e. `load-peer-groups.ts`
 - 엔드포인트: `/api/v4/stock_peers?symbol={symbol}&apikey={key}`로 피어 목록 조회 후
   각 피어의 밸류에이션 멀티플을 `quarterly_ratios`에서 조회 (추가 API 호출 없음)
 - 저장 방식: `peer_groups` 테이블에 (symbol, peers: string[]) 저장
@@ -91,7 +91,7 @@ Phase A 리포트의 `valuationAnalysis` 섹션은 종목 자체 멀티플(P/E, 
 
 ### 2. DB 마이그레이션
 
-새 테이블 6개 추가 (Drizzle schema → migrate):
+새 테이블 7개 추가 (Drizzle schema → migrate):
 
 | 테이블 | 인덱스 | UNIQUE |
 |--------|--------|--------|
@@ -105,7 +105,7 @@ Phase A 리포트의 `valuationAnalysis` 섹션은 종목 자체 멀티플(P/E, 
 
 ### 3. `loadAnalysisInputs.ts` 확장
 
-기존 6개 병렬 쿼리에 5개 추가 (총 11개 병렬):
+기존 6개 병렬 쿼리에 7개 추가 (총 13개 병렬):
 - `companyProfile` — company_profiles 조회
 - `annualFinancials` — annual_financials 최근 3년
 - `earningsCallHighlights` — earning_call_transcripts 최근 1개, 3,000자 트런케이트
