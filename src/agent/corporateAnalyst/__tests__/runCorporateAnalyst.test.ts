@@ -58,6 +58,7 @@ const MOCK_INPUTS: AnalysisInputs = {
   epsSurprises: null,
   peerGroup: null,
   priceTargetConsensus: null,
+  currentPrice: null,
 };
 
 const MOCK_REPORT = {
@@ -68,6 +69,7 @@ const MOCK_REPORT = {
   sectorPositioning: "## 섹터 포지셔닝\nTechnology",
   marketContext: "## 시장 맥락\n데이터 미확인",
   riskFactors: "## 리스크\n- 시장 변동성",
+  priceTargetAnalysis: "## 정량 모델\n목표가 산출 불가",
 };
 
 function makePool(queryResult: { rowCount: number } = { rowCount: 1 }): Pool {
@@ -92,6 +94,7 @@ describe("runCorporateAnalyst", () => {
         report: MOCK_REPORT,
         tokensInput: 1_000,
         tokensOutput: 500,
+        priceTargetResult: null,
       });
       const pool = makePool();
 
@@ -108,6 +111,7 @@ describe("runCorporateAnalyst", () => {
         report: MOCK_REPORT,
         tokensInput: 1_000,
         tokensOutput: 500,
+        priceTargetResult: null,
       });
       const pool = makePool();
 
@@ -120,12 +124,13 @@ describe("runCorporateAnalyst", () => {
       expect(queryCall[0]).toContain("DO UPDATE SET");
     });
 
-    it("UPSERT에 올바른 파라미터를 전달한다", async () => {
+    it("UPSERT에 올바른 파라미터를 전달한다 (priceTargetResult=null인 경우)", async () => {
       mockLoadAnalysisInputs.mockResolvedValue(MOCK_INPUTS);
       mockGenerateAnalysisReport.mockResolvedValue({
         report: MOCK_REPORT,
         tokensInput: 2_000,
         tokensOutput: 800,
+        priceTargetResult: null,
       });
       const pool = makePool();
 
@@ -134,15 +139,65 @@ describe("runCorporateAnalyst", () => {
       const queryCall = (pool.query as ReturnType<typeof vi.fn>).mock.calls[0];
       const params = queryCall[1] as unknown[];
 
-      // $1=symbol, $2=date, $3...$9=report sections, $10=earningsCallHighlights (null),
-      // $11=model_used, $12=tokensInput, $13=tokensOutput
+      // $1=symbol, $2=date, $3...$9=report sections, $10=earningsCallHighlights,
+      // $11=price_target, $12=price_target_upside, $13=price_target_data, $14=price_target_analysis,
+      // $15=model_used, $16=tokensInput, $17=tokensOutput
       expect(params[0]).toBe(SYMBOL);
       expect(params[1]).toBe(DATE);
       expect(params[2]).toBe(MOCK_REPORT.investmentSummary);
-      expect(params[9]).toBeNull(); // earningsCallHighlights (MOCK_REPORT에 없으므로 null)
-      expect(params[10]).toBe("claude-sonnet-4-20250514");
-      expect(params[11]).toBe(2_000);
-      expect(params[12]).toBe(800);
+      expect(params[9]).toBeNull();  // earningsCallHighlights (MOCK_REPORT에 없으므로 null)
+      expect(params[10]).toBeNull(); // price_target (priceTargetResult=null)
+      expect(params[11]).toBeNull(); // price_target_upside (priceTargetResult=null)
+      expect(params[12]).toBeNull(); // price_target_data (priceTargetResult=null)
+      expect(params[13]).toBe(MOCK_REPORT.priceTargetAnalysis); // price_target_analysis
+      expect(params[14]).toBe("claude-sonnet-4-20250514");      // model_used
+      expect(params[15]).toBe(2_000);  // tokensInput
+      expect(params[16]).toBe(800);    // tokensOutput
+    });
+
+    it("priceTargetResult가 있으면 4개 신규 컬럼을 올바르게 저장한다", async () => {
+      const mockPriceTargetResult = {
+        multipleModel: {
+          targetPrice: 250.0,
+          upside: 42.86,
+          peerMedianPe: 30.0,
+          peerMedianEvEbitda: 20.0,
+          peerMedianPs: 8.0,
+          multiplesUsed: ["P/E", "EV/EBITDA"],
+          confidence: "MEDIUM" as const,
+          note: null,
+        },
+        consensus: {
+          consensusMedian: 240.0,
+          consensusHigh: 280.0,
+          consensusLow: 180.0,
+          modelTarget: 250.0,
+          deviationPct: 4.17,
+          alignment: "ALIGNED" as const,
+        },
+        finalTarget: 250.0,
+        finalUpside: 42.86,
+        generatedAt: "2026-03-10T00:00:00.000Z",
+      };
+
+      mockLoadAnalysisInputs.mockResolvedValue(MOCK_INPUTS);
+      mockGenerateAnalysisReport.mockResolvedValue({
+        report: MOCK_REPORT,
+        tokensInput: 1_000,
+        tokensOutput: 500,
+        priceTargetResult: mockPriceTargetResult,
+      });
+      const pool = makePool();
+
+      await runCorporateAnalyst(SYMBOL, DATE, pool);
+
+      const queryCall = (pool.query as ReturnType<typeof vi.fn>).mock.calls[0];
+      const params = queryCall[1] as unknown[];
+
+      expect(params[10]).toBe(250.0);  // price_target
+      expect(params[11]).toBe(42.86);  // price_target_upside
+      expect(params[12]).toBe(JSON.stringify(mockPriceTargetResult)); // price_target_data
+      expect(params[13]).toBe(MOCK_REPORT.priceTargetAnalysis);       // price_target_analysis
     });
   });
 
@@ -175,6 +230,7 @@ describe("runCorporateAnalyst", () => {
         report: MOCK_REPORT,
         tokensInput: 1_000,
         tokensOutput: 500,
+        priceTargetResult: null,
       });
       const pool = {
         query: vi.fn().mockRejectedValue(new Error("DB UPSERT 실패")),

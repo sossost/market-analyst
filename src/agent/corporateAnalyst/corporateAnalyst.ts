@@ -9,6 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { callWithRetry } from "../debate/callAgent.js";
 import { logger } from "@/lib/logger.js";
 import type { AnalysisInputs } from "./loadAnalysisInputs.js";
+import { computePriceTarget, type PriceTargetResult, type CompanyMetrics, type PeerMultiples } from "./pricingModel.js";
 
 const CLIENT = new Anthropic({ maxRetries: 5 });
 import { CLAUDE_SONNET } from "@/lib/models.js";
@@ -28,7 +29,8 @@ const SYSTEM_PROMPT = `당신은 15년 경력의 미국 주식 전문 기업 애
 섹션별 작성 지침:
 - valuationAnalysis: peer_valuation 데이터가 있으면 피어 대비 할인/프리미엄 포지션을 구체적 수치로 명시
 - fundamentalTrend: forward_estimates 데이터가 있으면 포워드 EPS 방향성과 서프라이즈 트랙 레코드를 포함
-- earningsCallHighlights: earnings_call 데이터가 있을 때만 이 필드를 JSON에 포함 — 경영진 핵심 발언, 가이던스 변화, 톤 분석 포함`;
+- earningsCallHighlights: earnings_call 데이터가 있을 때만 이 필드를 JSON에 포함 — 경영진 핵심 발언, 가이던스 변화, 톤 분석 포함
+- priceTargetAnalysis: price_target_model 데이터를 기반으로 작성. 적정가 산출 근거(어떤 멀티플, 피어 몇 개), 상승여력 해석, 월가 컨센서스와의 비교, 모델의 한계(데이터 부재·가정)를 명시. 데이터 불충분 시 "정량 모델 산출 불가 — [이유]" 형식. valuationAnalysis와 내용 중복 최소화.`;
 
 export interface AnalysisReport {
   investmentSummary: string;
@@ -40,13 +42,20 @@ export interface AnalysisReport {
   riskFactors: string;
   /** 어닝콜 데이터가 있을 때만 생성되는 선택적 섹션 */
   earningsCallHighlights?: string;
+  /** Phase C: 정량 모델 기반 목표주가 해석 (currentPrice + peerGroup이 있을 때만 생성) */
+  priceTargetAnalysis?: string;
 }
 
 // ---------------------------------------------------------------------------
 // 프롬프트 조립
 // ---------------------------------------------------------------------------
 
-function buildUserPrompt(symbol: string, companyName: string | null, inputs: AnalysisInputs): string {
+function buildUserPrompt(
+  symbol: string,
+  companyName: string | null,
+  inputs: AnalysisInputs,
+  priceTargetResult: PriceTargetResult | null,
+): string {
   const displayName = companyName != null ? `${companyName} (${symbol})` : symbol;
   const sections: string[] = [`종목: ${displayName}\n`];
 
@@ -227,8 +236,17 @@ ${peerRows}
 </price_targets>`);
   }
 
+  // 정량 모델 결과 (Phase C)
+  if (priceTargetResult != null) {
+    sections.push(`<price_target_model>
+정량 모델 산출 결과 (멀티플 기반):
+${JSON.stringify(priceTargetResult, null, 2)}
+</price_target_model>`);
+  }
+
   const hasEarningsCall =
     inputs.earningsTranscript != null && inputs.earningsTranscript.transcript != null;
+  const hasPriceTargetModel = priceTargetResult != null;
 
   sections.push(`
 위 데이터를 기반으로 종목 분석 리포트를 JSON 형식으로 작성하세요.
@@ -242,9 +260,51 @@ ${peerRows}
 - sectorPositioning: 섹터·업종 내 포지셔닝 (RS 순위, Group Phase)
 - marketContext: 현재 시장 레짐 및 토론 synthesis 요약
 - riskFactors: 핵심 리스크 및 모니터링 포인트 (3~5개)
-${hasEarningsCall ? "\n선택 JSON 필드 (반드시 포함):\n- earningsCallHighlights: 어닝콜 핵심 발언 + 가이던스 변화 + 톤 분석 (경영진이 강조한 성장 동력, 리스크, 향후 전망 포함)" : ""}`);
+${hasEarningsCall ? "\n선택 JSON 필드 (반드시 포함):\n- earningsCallHighlights: 어닝콜 핵심 발언 + 가이던스 변화 + 톤 분석 (경영진이 강조한 성장 동력, 리스크, 향후 전망 포함)" : ""}${hasPriceTargetModel ? "\n선택 JSON 필드 (반드시 포함):\n- priceTargetAnalysis: 정량 모델 결과 해석 — 적정가 산출 근거(피어 멀티플, 가중치), 상승여력 의미, 월가 컨센서스 비교, 한계점 명시. valuationAnalysis와 중복 최소화." : ""}`);
 
   return sections.join("\n\n");
+}
+
+/**
+ * financials 배열에서 특정 필드의 TTM(Trailing Twelve Months) 합산값을 계산한다.
+ * 4분기 미만이면 부분 TTM으로 목표가가 왜곡되므로 null을 반환한다.
+ */
+function computeTtmSum(
+  financials: AnalysisInputs['financials'],
+  field: 'epsDiluted' | 'ebitda' | 'revenue',
+): number | null {
+  const REQUIRED_QUARTERS = 4;
+  const quarters = financials.slice(0, REQUIRED_QUARTERS);
+  if (quarters.length < REQUIRED_QUARTERS) return null;
+  const values = quarters.map((q) => q[field]);
+  if (values.every((v) => v == null)) return null;
+  return values.reduce<number>((sum, v) => sum + (v ?? 0), 0);
+}
+
+/**
+ * AnalysisInputs에서 PriceTargetResult를 산출한다.
+ * currentPrice가 null이면 null을 반환한다.
+ */
+function computePriceTargetFromInputs(inputs: AnalysisInputs): PriceTargetResult | null {
+  if (inputs.currentPrice == null) return null;
+
+  const companyMetrics: CompanyMetrics = {
+    currentPrice: inputs.currentPrice,
+    ttmEps: computeTtmSum(inputs.financials, 'epsDiluted'),
+    ttmEbitda: computeTtmSum(inputs.financials, 'ebitda'),
+    ttmRevenue: computeTtmSum(inputs.financials, 'revenue'),
+    marketCap: inputs.companyProfile?.marketCap ?? null,
+    sharesOutstanding: null,
+  };
+
+  const peerMultiples: PeerMultiples[] = (inputs.peerGroup ?? []).map((p) => ({
+    symbol: p.symbol,
+    peRatio: p.peRatio,
+    evEbitda: p.evEbitda,
+    psRatio: p.psRatio,
+  }));
+
+  return computePriceTarget(companyMetrics, peerMultiples, inputs.priceTargetConsensus);
 }
 
 /**
@@ -345,6 +405,10 @@ function isValidReport(parsed: unknown): parsed is AnalysisReport {
   if ("earningsCallHighlights" in obj && typeof obj["earningsCallHighlights"] !== "string") {
     return false;
   }
+  // priceTargetAnalysis는 선택적 — 존재하면 string이어야 한다
+  if ("priceTargetAnalysis" in obj && typeof obj["priceTargetAnalysis"] !== "string") {
+    return false;
+  }
   return true;
 }
 
@@ -355,15 +419,16 @@ function isValidReport(parsed: unknown): parsed is AnalysisReport {
 /**
  * 종목 분석 리포트를 LLM으로 생성한다.
  *
- * @returns report + 토큰 사용량
+ * @returns report + 토큰 사용량 + 정량 모델 결과
  * @throws JSON 파싱 실패 또는 필드 누락 시 에러
  */
 export async function generateAnalysisReport(
   symbol: string,
   companyName: string | null,
   inputs: AnalysisInputs,
-): Promise<{ report: AnalysisReport; tokensInput: number; tokensOutput: number }> {
-  const userPrompt = buildUserPrompt(symbol, companyName, inputs);
+): Promise<{ report: AnalysisReport; tokensInput: number; tokensOutput: number; priceTargetResult: PriceTargetResult | null }> {
+  const priceTargetResult = computePriceTargetFromInputs(inputs);
+  const userPrompt = buildUserPrompt(symbol, companyName, inputs, priceTargetResult);
 
   logger.info("CorporateAnalyst", `${symbol} 리포트 생성 시작`);
 
@@ -408,5 +473,5 @@ export async function generateAnalysisReport(
     `${symbol} 리포트 생성 완료 (input: ${tokensInput}, output: ${tokensOutput})`,
   );
 
-  return { report: parsed, tokensInput, tokensOutput };
+  return { report: parsed, tokensInput, tokensOutput, priceTargetResult };
 }

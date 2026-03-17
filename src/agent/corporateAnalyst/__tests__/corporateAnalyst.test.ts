@@ -13,9 +13,9 @@ const { mockCreate } = vi.hoisted(() => ({ mockCreate: vi.fn() }));
 
 vi.mock("@anthropic-ai/sdk", () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
-      messages: { create: mockCreate },
-    })),
+    default: function MockAnthropic() {
+      return { messages: { create: mockCreate } };
+    },
   };
 });
 
@@ -98,6 +98,7 @@ const MINIMAL_INPUTS: AnalysisInputs = {
   epsSurprises: null,
   peerGroup: null,
   priceTargetConsensus: null,
+  currentPrice: null,
 };
 
 const VALID_REPORT_JSON = JSON.stringify({
@@ -340,6 +341,45 @@ describe("generateAnalysisReport", () => {
       expect(userContent).toContain("200");
     });
 
+    it("currentPrice가 있고 peerGroup이 있으면 <price_target_model> 태그를 프롬프트에 포함한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const inputsWithPriceModel: AnalysisInputs = {
+        ...MINIMAL_INPUTS,
+        currentPrice: 175.5,
+        peerGroup: [
+          { symbol: "AMD", peRatio: 45.0, evEbitda: 30.0, psRatio: 8.5 },
+        ],
+        financials: [
+          {
+            periodEndDate: "2025-12-31",
+            revenue: 124_300_000_000,
+            netIncome: 36_330_000_000,
+            epsDiluted: 2.4,
+            ebitda: 43_000_000_000,
+            freeCashFlow: 29_000_000_000,
+            grossProfit: 54_000_000_000,
+          },
+        ],
+      };
+
+      await generateAnalysisReport("NVDA", "NVIDIA", inputsWithPriceModel);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).toContain("<price_target_model>");
+    });
+
+    it("currentPrice가 null이면 <price_target_model> 태그를 프롬프트에 포함하지 않는다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content as string;
+      expect(userContent).not.toContain("<price_target_model>");
+    });
+
     it("earningsCallHighlights 필드가 있는 JSON도 유효한 리포트로 파싱한다", async () => {
       const reportWithEarnings = JSON.stringify({
         investmentSummary: "요약",
@@ -364,6 +404,59 @@ describe("generateAnalysisReport", () => {
       const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
 
       expect(report.earningsCallHighlights).toBeUndefined();
+    });
+
+    it("priceTargetAnalysis 필드가 있는 JSON도 유효한 리포트로 파싱한다", async () => {
+      const reportWithPriceTarget = JSON.stringify({
+        investmentSummary: "요약",
+        technicalAnalysis: "기술",
+        fundamentalTrend: "실적",
+        valuationAnalysis: "밸류",
+        sectorPositioning: "섹터",
+        marketContext: "시장",
+        riskFactors: "리스크",
+        priceTargetAnalysis: "P/E 멀티플 기반 목표가 $250, 상승여력 42%.",
+      });
+      mockCreate.mockResolvedValue(makeSuccessResponse(reportWithPriceTarget));
+
+      const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
+
+      expect(report.priceTargetAnalysis).toBe("P/E 멀티플 기반 목표가 $250, 상승여력 42%.");
+    });
+
+    it("priceTargetAnalysis 필드가 없어도 유효한 리포트로 파싱한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
+
+      expect(report.priceTargetAnalysis).toBeUndefined();
+    });
+
+    it("priceTargetAnalysis 필드가 string이 아니면 리포트 필드 누락 에러를 throw한다", async () => {
+      const reportWithInvalidPriceTarget = JSON.stringify({
+        investmentSummary: "요약",
+        technicalAnalysis: "기술",
+        fundamentalTrend: "실적",
+        valuationAnalysis: "밸류",
+        sectorPositioning: "섹터",
+        marketContext: "시장",
+        riskFactors: "리스크",
+        priceTargetAnalysis: 12345,  // 숫자 — 유효하지 않음
+      });
+      mockCreate.mockResolvedValue(makeSuccessResponse(reportWithInvalidPriceTarget));
+
+      await expect(
+        generateAnalysisReport("NVDA", null, MINIMAL_INPUTS),
+      ).rejects.toThrow("리포트 필드 누락");
+    });
+
+    it("generateAnalysisReport가 priceTargetResult를 반환 객체에 포함한다", async () => {
+      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+
+      const result = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
+
+      // currentPrice가 null이므로 priceTargetResult는 null
+      expect(result.priceTargetResult).toBeNull();
     });
   });
 });
