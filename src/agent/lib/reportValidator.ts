@@ -12,7 +12,7 @@ const BEAR_KEYWORDS = [
 
 import { MIN_PHASE, MIN_RS_SCORE } from "@/agent/tools/validation";
 
-const BULL_BIAS_THRESHOLD = 0.8;
+const BULL_BIAS_THRESHOLD = 0.7;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,26 +113,29 @@ function checkSubstandardStocks(
     phase?: number;
   }>,
   warnings: string[],
+  errors: string[],
 ): void {
-  const substandard: string[] = [];
+  const substandardPhase: string[] = [];
+  const substandardRs: string[] = [];
 
   for (const rec of recommendations) {
-    const failReasons: string[] = [];
-
-    if (rec.phase != null && rec.phase < MIN_PHASE) {
-      failReasons.push(`Phase ${rec.phase}`);
-    }
-    if (rec.rsScore != null && rec.rsScore < MIN_RS_SCORE) {
-      failReasons.push(`RS ${rec.rsScore}`);
-    }
-
-    if (failReasons.length > 0) {
-      substandard.push(`${rec.symbol} (${failReasons.join(", ")})`);
+    const isPhase1 = rec.phase != null && rec.phase < MIN_PHASE;
+    if (isPhase1) {
+      // Phase 1 종목은 RS 수치와 무관하게 항상 ERROR — RS 경고를 중복 발행하지 않음
+      substandardPhase.push(`${rec.symbol} (Phase ${rec.phase})`);
+    } else if (rec.rsScore != null && rec.rsScore < MIN_RS_SCORE) {
+      substandardRs.push(`${rec.symbol} (RS ${rec.rsScore})`);
     }
   }
 
-  if (substandard.length > 0) {
-    warnings.push(`기준 미달 종목: ${substandard.join(", ")}`);
+  if (substandardPhase.length > 0) {
+    errors.push(
+      `Phase 1 종목 추천 감지: ${substandardPhase.join(", ")} — 추천 목록에서 제외하세요`,
+    );
+  }
+
+  if (substandardRs.length > 0) {
+    warnings.push(`RS 기준 미달 종목: ${substandardRs.join(", ")}`);
   }
 }
 
@@ -175,6 +178,7 @@ const DAILY_REQUIRED_SECTIONS: ReadonlyArray<{
   { keyword: "섹터 RS", label: "섹터 RS 랭킹 표", severity: "error" },
   { keyword: "시장 흐름", label: "시장 흐름 및 종합 전망", severity: "error" },
   { keyword: "섹터별 요약", label: "섹터별 요약", severity: "warning" },
+  { keyword: "전일 대비", label: "전일 대비 변화 요약", severity: "warning" },
 ];
 
 /** 특이종목이 없는 날 메시지만 전송하면 markdownContent가 빈 문자열. 실질적인 MD 파일 최소 길이. */
@@ -259,7 +263,7 @@ export function validateReport(
 
   // C. 기준 미달 종목 태깅
   if (input.recommendations != null && input.recommendations.length > 0) {
-    checkSubstandardStocks(input.recommendations, warnings);
+    checkSubstandardStocks(input.recommendations, warnings, errors);
   }
 
   // D. Phase 2 비율 범위 검증 (이중 변환 방어)

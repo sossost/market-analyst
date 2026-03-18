@@ -66,14 +66,18 @@ export const getMarketBreadth: AgentTool = {
           avg_rs: string;
         }>(
           `SELECT
-             date::text,
+             sp.date::text,
              COUNT(*)::text AS total,
-             COUNT(*) FILTER (WHERE phase = 2)::text AS phase2_count,
-             AVG(rs_score)::numeric(10,2)::text AS avg_rs
-           FROM stock_phases
-           WHERE date = ANY($1::date[])
-           GROUP BY date
-           ORDER BY date ASC`,
+             COUNT(*) FILTER (WHERE sp.phase = 2)::text AS phase2_count,
+             AVG(sp.rs_score)::numeric(10,2)::text AS avg_rs
+           FROM stock_phases sp
+           JOIN symbols s ON sp.symbol = s.symbol
+           WHERE sp.date = ANY($1::date[])
+             AND s.is_actively_trading = true
+             AND s.is_etf = false
+             AND s.is_fund = false
+           GROUP BY sp.date
+           ORDER BY sp.date ASC`,
           [dates],
         ),
       );
@@ -94,10 +98,14 @@ export const getMarketBreadth: AgentTool = {
       const { rows: transRows } = await retryDatabaseOperation(() =>
         pool.query<{ transitions: string }>(
           `SELECT COUNT(*)::text AS transitions
-           FROM stock_phases
-           WHERE date = ANY($1::date[])
-             AND phase = 2
-             AND prev_phase = 1`,
+           FROM stock_phases sp
+           JOIN symbols s ON sp.symbol = s.symbol
+           WHERE sp.date = ANY($1::date[])
+             AND sp.phase = 2
+             AND sp.prev_phase = 1
+             AND s.is_actively_trading = true
+             AND s.is_etf = false
+             AND s.is_fund = false`,
           [dates],
         ),
       );
@@ -110,11 +118,15 @@ export const getMarketBreadth: AgentTool = {
       // Phase 분포
       const { rows: phaseRows } = await retryDatabaseOperation(() =>
         pool.query<{ phase: number; count: string }>(
-          `SELECT phase, COUNT(*)::text AS count
-           FROM stock_phases
-           WHERE date = $1
-           GROUP BY phase
-           ORDER BY phase`,
+          `SELECT sp.phase, COUNT(*)::text AS count
+           FROM stock_phases sp
+           JOIN symbols s ON sp.symbol = s.symbol
+           WHERE sp.date = $1
+             AND s.is_actively_trading = true
+             AND s.is_etf = false
+             AND s.is_fund = false
+           GROUP BY sp.phase
+           ORDER BY sp.phase`,
           [latestDate],
         ),
       );
@@ -240,11 +252,15 @@ export const getMarketBreadth: AgentTool = {
     // Phase 분포
     const { rows: phaseRows } = await retryDatabaseOperation(() =>
       pool.query<{ phase: number; count: string }>(
-        `SELECT phase, COUNT(*)::text AS count
-         FROM stock_phases
-         WHERE date = $1
-         GROUP BY phase
-         ORDER BY phase`,
+        `SELECT sp.phase, COUNT(*)::text AS count
+         FROM stock_phases sp
+         JOIN symbols s ON sp.symbol = s.symbol
+         WHERE sp.date = $1
+           AND s.is_actively_trading = true
+           AND s.is_etf = false
+           AND s.is_fund = false
+         GROUP BY sp.phase
+         ORDER BY sp.phase`,
         [date],
       ),
     );
@@ -260,10 +276,14 @@ export const getMarketBreadth: AgentTool = {
     const { rows: prevRows } = await retryDatabaseOperation(() =>
       pool.query<{ phase2_count: string; total_count: string }>(
         `SELECT
-           COUNT(*) FILTER (WHERE phase = 2)::text AS phase2_count,
+           COUNT(*) FILTER (WHERE sp.phase = 2)::text AS phase2_count,
            COUNT(*)::text AS total_count
-         FROM stock_phases
-         WHERE date = (SELECT MAX(date) FROM stock_phases WHERE date < $1)`,
+         FROM stock_phases sp
+         JOIN symbols s ON sp.symbol = s.symbol
+         WHERE sp.date = (SELECT MAX(date) FROM stock_phases WHERE date < $1)
+           AND s.is_actively_trading = true
+           AND s.is_etf = false
+           AND s.is_fund = false`,
         [date],
       ),
     );
@@ -275,8 +295,13 @@ export const getMarketBreadth: AgentTool = {
     // 시장 평균 RS
     const { rows: rsRows } = await retryDatabaseOperation(() =>
       pool.query<{ avg_rs: string }>(
-        `SELECT AVG(rs_score)::numeric(10,2)::text AS avg_rs
-         FROM stock_phases WHERE date = $1`,
+        `SELECT AVG(sp.rs_score)::numeric(10,2)::text AS avg_rs
+         FROM stock_phases sp
+         JOIN symbols s ON sp.symbol = s.symbol
+         WHERE sp.date = $1
+           AND s.is_actively_trading = true
+           AND s.is_etf = false
+           AND s.is_fund = false`,
         [date],
       ),
     );

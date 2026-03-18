@@ -47,14 +47,35 @@ describe("validateReport", () => {
     expect(result.warnings.some((w) => w.includes("90%"))).toBe(true);
   });
 
-  it("bull-bias 80% 이하면 bias 경고 없음", () => {
-    // bull 4개, bear 1개 → 80% (threshold 초과가 아니므로 경고 없음)
+  it("bull-bias 70% 이하면 bias 경고 없음", () => {
+    // bull 2개, bear 1개 → 66.7% (threshold 미초과이므로 경고 없음)
     const result = validateReport({
-      markdown: "상승 돌파 강세 성장 — 하락 위험도 있다.",
+      markdown: "상승 돌파 — 하락 위험도 있다.",
     });
 
     const biasWarning = result.warnings.find((w) => w.includes("Bull-bias"));
     expect(biasWarning).toBeUndefined();
+  });
+
+  it("bull-bias 정확히 70%이면 bias 경고 없음 (경계값)", () => {
+    // bull 7개, bear 3개 → 70% (threshold와 동일, 초과 아님 → 경고 없음)
+    const result = validateReport({
+      markdown: "상승 급등 돌파 신고가 강세 긍정 호재 — 리스크 주의 경고.",
+    });
+
+    const biasWarning = result.warnings.find((w) => w.includes("Bull-bias"));
+    expect(biasWarning).toBeUndefined();
+  });
+
+  it("bull-bias 80% 리포트 → 70% 임계값 초과이므로 warnings에 bias 경고 포함", () => {
+    // bull 4개(상승, 돌파, 강세, 성장), bear 1개(리스크) → 80%
+    const result = validateReport({
+      markdown: "상승 돌파 강세 성장 — 리스크 있다.",
+    });
+
+    const biasWarning = result.warnings.find((w) => w.includes("Bull-bias"));
+    expect(biasWarning).toBeDefined();
+    expect(biasWarning).toContain("80%");
   });
 
   // -------------------------------------------------------------------------
@@ -106,27 +127,60 @@ describe("validateReport", () => {
   // C. 기준 미달 종목 태깅
   // -------------------------------------------------------------------------
 
-  it("기준 미달 종목 (Phase 1, RS < 60) → warnings에 기준 미달 종목 목록", () => {
+  it("Phase 1 종목이 recommendations에 포함되면 errors에 감지 메시지 포함", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의 필요.",
+      recommendations: [
+        { symbol: "PBFS", rsScore: 65, phase: 1 },
+        { symbol: "NVDA", rsScore: 85, phase: 2 },
+      ],
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 감지"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("PBFS"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("Phase 1"))).toBe(true);
+    // NVDA는 Phase 2이므로 errors에 포함되지 않아야 함
+    expect(result.errors.some((e) => e.includes("NVDA"))).toBe(false);
+  });
+
+  it("Phase 1 종목이 없고 RS만 미달인 종목은 warnings에만 포함 (errors 아님)", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의 필요.",
+      recommendations: [
+        { symbol: "AAPL", rsScore: 45, phase: 3 },
+        { symbol: "NVDA", rsScore: 85, phase: 2 },
+      ],
+    });
+
+    // Phase 1이 없으므로 isValid는 에러 기준으로만 판단
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 감지"))).toBe(false);
+    // RS 미달은 warnings
+    expect(result.warnings.some((w) => w.includes("RS 기준 미달 종목"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("AAPL"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("RS 45"))).toBe(true);
+  });
+
+  it("Phase 1 + RS 미달이 동시인 종목은 Phase 우선으로 errors에 포함", () => {
     const result = validateReport({
       markdown: "시장 분석 리포트. 리스크 주의 필요.",
       recommendations: [
         { symbol: "AVGO", rsScore: 56, phase: 1 },
-        { symbol: "NVDA", rsScore: 85, phase: 2 },
         { symbol: "AAPL", rsScore: 45, phase: 3 },
+        { symbol: "NVDA", rsScore: 85, phase: 2 },
       ],
     });
 
-    const substandardWarning = result.warnings.find((w) =>
-      w.includes("기준 미달"),
-    );
-    expect(substandardWarning).toBeDefined();
-    expect(substandardWarning).toContain("AVGO");
-    expect(substandardWarning).toContain("Phase 1");
-    expect(substandardWarning).toContain("RS 56");
-    expect(substandardWarning).toContain("AAPL");
-    expect(substandardWarning).toContain("RS 45");
-    // NVDA는 기준 충족이므로 포함되지 않아야 함
-    expect(substandardWarning).not.toContain("NVDA");
+    expect(result.isValid).toBe(false);
+    // AVGO는 Phase 1이므로 errors
+    expect(result.errors.some((e) => e.includes("AVGO"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 감지"))).toBe(true);
+    // AAPL은 Phase 3 + RS 미달 → warnings
+    expect(result.warnings.some((w) => w.includes("AAPL"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("RS 45"))).toBe(true);
+    // NVDA는 기준 충족 → 어디에도 포함되지 않음
+    const allMessages = [...result.errors, ...result.warnings];
+    expect(allMessages.some((m) => m.includes("NVDA"))).toBe(false);
   });
 
   it("빈 recommendations → 기준 미달 체크 스킵", () => {
@@ -135,10 +189,8 @@ describe("validateReport", () => {
       recommendations: [],
     });
 
-    const substandardWarning = result.warnings.find((w) =>
-      w.includes("기준 미달"),
-    );
-    expect(substandardWarning).toBeUndefined();
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 감지"))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("RS 기준 미달 종목"))).toBe(false);
   });
 
   it("recommendations 없으면 기준 미달 체크 스킵", () => {
@@ -146,10 +198,8 @@ describe("validateReport", () => {
       markdown: "시장 분석 리포트. 리스크 주의 필요.",
     });
 
-    const substandardWarning = result.warnings.find((w) =>
-      w.includes("기준 미달"),
-    );
-    expect(substandardWarning).toBeUndefined();
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 감지"))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("RS 기준 미달 종목"))).toBe(false);
   });
 
   it("rsScore와 phase가 모두 없는 종목은 기준 미달에 포함되지 않음", () => {
@@ -158,10 +208,8 @@ describe("validateReport", () => {
       recommendations: [{ symbol: "TSLA" }],
     });
 
-    const substandardWarning = result.warnings.find((w) =>
-      w.includes("기준 미달"),
-    );
-    expect(substandardWarning).toBeUndefined();
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 감지"))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("RS 기준 미달 종목"))).toBe(false);
   });
 
   // -------------------------------------------------------------------------
@@ -324,10 +372,10 @@ describe("validateReport", () => {
     expect(sectionWarning).toContain("섹터별 요약");
   });
 
-  it("'섹터별 요약' 포함 시 권장 섹션 경고 없음", () => {
+  it("권장 섹션 모두 포함 시 권장 섹션 경고 없음", () => {
     const result = validateReport({
       markdown: padToMinLength(
-        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 섹터별 요약\n요약. 리스크 주의.",
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 섹터별 요약\n요약.\n## 전일 대비 변화 요약\n변화. 리스크 주의.",
       ),
       reportType: "daily",
     });
@@ -359,6 +407,38 @@ describe("validateReport", () => {
       e.includes("필수 섹션 누락"),
     );
     expect(sectionError).toBeUndefined();
+  });
+
+  it("일간 리포트에 '전일 대비' 없으면 권장 섹션 경고 포함", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 섹터별 요약\n요약. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const sectionWarning = result.warnings.find((w) =>
+      w.includes("권장 섹션 누락"),
+    );
+    expect(sectionWarning).toBeDefined();
+    expect(sectionWarning).toContain("전일 대비 변화 요약");
+  });
+
+  it("일간 리포트에 '전일 대비' 포함 시 해당 권장 섹션 경고 없음", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 섹터별 요약\n요약.\n## 전일 대비 변화 요약\n변화 내용. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const sectionWarnings = result.warnings.filter((w) =>
+      w.includes("권장 섹션 누락"),
+    );
+    const hasDailyChangeWarning = sectionWarnings.some((w) =>
+      w.includes("전일 대비 변화 요약"),
+    );
+    expect(hasDailyChangeWarning).toBe(false);
   });
 
   // -------------------------------------------------------------------------

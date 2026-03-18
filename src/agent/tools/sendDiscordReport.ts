@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
+import { sendDiscordError, sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
 import { createGist } from "@/agent/gist";
 import { validateReport } from "@/agent/lib/reportValidator";
 import type { AgentTool } from "./types";
@@ -38,6 +38,8 @@ export const SEND_DISCORD_REPORT_SCHEMA: Anthropic.Tool = {
 /**
  * 마크다운 리포트에 자동 품질 검증 결과를 삽입한다.
  * warnings/errors가 없으면 원본을 그대로 반환한다.
+ *
+ * @remarks errors가 있어도 이 함수는 삽입만 한다. 발송 차단은 execute에서 담당한다.
  */
 export function appendValidationWarnings(markdown: string): string {
   const result = validateReport({ markdown });
@@ -49,6 +51,20 @@ export function appendValidationWarnings(markdown: string): string {
 
   const warningSection = messages.map((msg) => `- ${msg}`).join("\n");
   return `${markdown}\n\n---\n**[자동 품질 검증 결과]**\n${warningSection}`;
+}
+
+/**
+ * errors가 있을 때 에러 채널로 발송하고 차단 메시지를 반환한다.
+ * 내부 전용 — execute에서만 호출.
+ */
+async function blockAndNotify(errors: string[]): Promise<string> {
+  const errorSummary = errors.map((e) => `- ${e}`).join("\n");
+  const notice = `리포트 품질 검증 실패로 발송이 차단되었습니다.\n\n${errorSummary}`;
+  await sendDiscordError(notice);
+  return JSON.stringify({
+    success: false,
+    error: `리포트 품질 검증 실패: ${errors.join(" | ")}. 발송 차단됨`,
+  });
 }
 
 /**
@@ -76,6 +92,16 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
       }
 
       const rawMdContent = validateString(input.markdownContent);
+
+      // 품질 게이트: markdownContent가 있는 경우에만 검증.
+      // message 단독 발송(특이종목 없는 날 등)은 리포트가 아니므로 검증 대상 외.
+      if (rawMdContent != null) {
+        const validationResult = validateReport({ markdown: rawMdContent });
+        if (validationResult.errors.length > 0) {
+          return blockAndNotify(validationResult.errors);
+        }
+      }
+
       const mdContent =
         rawMdContent != null ? appendValidationWarnings(rawMdContent) : null;
       const filename = validateString(input.filename) ?? "report.md";
