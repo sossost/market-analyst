@@ -25,6 +25,7 @@ vi.mock("@/etl/utils/retry", () => ({
 
 vi.mock("../../../agent/debate/regimeStore", () => ({
   loadConfirmedRegime: vi.fn(),
+  loadPendingRegimes: vi.fn(),
 }));
 
 vi.mock("@/agent/logger", () => ({
@@ -40,11 +41,18 @@ vi.mock("@/agent/logger", () => ({
 import { saveRecommendations } from "../saveRecommendations";
 import { pool } from "@/db/client";
 import { db } from "@/db/client";
-import { loadConfirmedRegime } from "../../../agent/debate/regimeStore";
+import { loadConfirmedRegime, loadPendingRegimes } from "../../../agent/debate/regimeStore";
+import { logger } from "@/agent/logger";
 
 const mockPool = pool as unknown as { query: ReturnType<typeof vi.fn> };
 const mockDb = db as unknown as { insert: ReturnType<typeof vi.fn> };
 const mockLoadConfirmedRegime = loadConfirmedRegime as ReturnType<typeof vi.fn>;
+const mockLoadPendingRegimes = loadPendingRegimes as ReturnType<typeof vi.fn>;
+const mockLogger = logger as unknown as {
+  warn: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+  info: ReturnType<typeof vi.fn>;
+};
 
 // --- 헬퍼 ---
 
@@ -174,6 +182,69 @@ describe("Phase 1: 레짐 하드 게이트", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(1);
     expect(parsed.blockedByRegime).toBe(0);
+  });
+});
+
+// =============================================================================
+// HIGH #1: pending fallback이 Bear Gate를 의도치 않게 활성화하지 않아야 한다
+// =============================================================================
+
+describe("HIGH #1: pending fallback Bear Gate 분리", () => {
+  it("confirmed 없고 pending EARLY_BEAR일 때 Bear Gate가 발동하지 않고 market_regime=EARLY_BEAR로 저장한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue(null);
+    mockLoadPendingRegimes.mockResolvedValue([
+      {
+        regime: "EARLY_BEAR",
+        regimeDate: "2026-03-10",
+        rationale: "약세 초입 pending",
+        confidence: "medium",
+        isConfirmed: false,
+        confirmedAt: null,
+      },
+    ]);
+
+    setupDefaultPoolMocks();
+    // saveFactorSnapshot 내부 쿼리 3개
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    let capturedRegime: string | null | undefined;
+    let firstInsertCalled = false;
+    mockDb.insert.mockImplementation(() => ({
+      values: vi.fn((data: Record<string, unknown>) => {
+        if (!firstInsertCalled) {
+          firstInsertCalled = true;
+          capturedRegime = data.marketRegime as string | null | undefined;
+        }
+        return {
+          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+        };
+      }),
+    }));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" })],
+    });
+
+    const parsed = JSON.parse(result);
+    // Bear Gate 미발동 — success: true이어야 한다
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByRegime).toBe(0);
+    // 저장된 market_regime은 pending 레짐값이어야 한다
+    expect(capturedRegime).toBe("EARLY_BEAR");
+    // pending 레짐으로 Bear Gate 발동 경고가 없어야 한다
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "Regime",
+      expect.stringContaining("pending 레짐 fallback 적용"),
+    );
+    expect(mockLogger.warn).not.toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("차단"),
+    );
   });
 });
 
@@ -399,6 +470,137 @@ describe("두 태그 동시 적용", () => {
     // tagSubstandardReason 먼저 적용: "[기준 미달] 사유"
     // tagPersistenceReason 이후 적용: "[지속성 미확인] [기준 미달] 사유"
     expect(capturedReason).toBe("[지속성 미확인] [기준 미달] 사유");
+  });
+});
+
+// =============================================================================
+// T3: market_regime null 방지 — confirmed / pending / 둘다없음 3개 케이스
+// =============================================================================
+
+describe("T3: market_regime null 방지 — 레짐 fallback 로직", () => {
+  it("confirmed 레짐이 있으면 market_regime = confirmed.regime으로 저장한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+
+    setupDefaultPoolMocks();
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    let capturedRegime: string | null | undefined;
+    let firstInsertCalled = false;
+    mockDb.insert.mockImplementation(() => ({
+      values: vi.fn((data: Record<string, unknown>) => {
+        if (!firstInsertCalled) {
+          firstInsertCalled = true;
+          capturedRegime = data.marketRegime as string | null | undefined;
+        }
+        return {
+          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+        };
+      }),
+    }));
+
+    await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", phase: 2, rs_score: 80 })],
+    });
+
+    expect(capturedRegime).toBe("MID_BULL");
+    // pending 조회를 아예 하지 않아야 한다
+    expect(mockLoadPendingRegimes).not.toHaveBeenCalled();
+  });
+
+  it("confirmed 레짐 없고 pending 있으면 market_regime = pending.regime으로 저장하고 경고 로그를 출력한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue(null);
+    mockLoadPendingRegimes.mockResolvedValue([
+      {
+        regime: "EARLY_BULL",
+        regimeDate: "2026-03-10",
+        rationale: "초기 강세 진입",
+        confidence: "medium",
+        isConfirmed: false,
+        confirmedAt: null,
+      },
+    ]);
+
+    setupDefaultPoolMocks();
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    let capturedRegime: string | null | undefined;
+    let firstInsertCalled = false;
+    mockDb.insert.mockImplementation(() => ({
+      values: vi.fn((data: Record<string, unknown>) => {
+        if (!firstInsertCalled) {
+          firstInsertCalled = true;
+          capturedRegime = data.marketRegime as string | null | undefined;
+        }
+        return {
+          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+        };
+      }),
+    }));
+
+    await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", phase: 2, rs_score: 80 })],
+    });
+
+    expect(capturedRegime).toBe("EARLY_BULL");
+    expect(mockLoadPendingRegimes).toHaveBeenCalledWith(1);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "Regime",
+      expect.stringContaining("pending 레짐 fallback 적용"),
+    );
+  });
+
+  it("confirmed·pending 레짐 모두 없으면 market_regime = null로 저장하고 경고 로그를 출력한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue(null);
+    mockLoadPendingRegimes.mockResolvedValue([]);
+
+    setupDefaultPoolMocks();
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    let capturedRegime: string | null | undefined;
+    let firstInsertCalled = false;
+    mockDb.insert.mockImplementation(() => ({
+      values: vi.fn((data: Record<string, unknown>) => {
+        if (!firstInsertCalled) {
+          firstInsertCalled = true;
+          capturedRegime = data.marketRegime as string | null | undefined;
+        }
+        return {
+          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+        };
+      }),
+    }));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", phase: 2, rs_score: 80 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(capturedRegime).toBeNull();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "Regime",
+      expect.stringContaining("market_regime=null"),
+    );
   });
 });
 

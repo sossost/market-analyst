@@ -4,7 +4,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE } from "./validation";
-import { loadConfirmedRegime } from "../debate/regimeStore";
+import { loadConfirmedRegime, loadPendingRegimes } from "../debate/regimeStore";
 import { logger } from "@/agent/logger";
 import { runCorporateAnalyst } from "../corporateAnalyst/runCorporateAnalyst.js";
 
@@ -139,11 +139,36 @@ export const saveRecommendations: AgentTool = {
       return JSON.stringify({ error: "recommendations must be a non-empty array" });
     }
 
-    // Phase 1: 레짐 하드 게이트 — 확정 레짐만 조회 (pending 제외)
-    let currentRegime: string | null = null;
+    // Phase 1: 레짐 하드 게이트 — confirmed 우선, 없으면 pending fallback
+    // marketRegimeForRecord: 추천 레코드 market_regime 컬럼 저장용 (confirmed + pending fallback)
+    // regimeForGate: Bear Gate 판정 전용 (confirmed만 사용, 미확정 pending으로 추천 차단 금지)
+    let marketRegimeForRecord: string | null = null;
+    let regimeForGate: string | null = null;
     try {
       const confirmed = await loadConfirmedRegime();
-      currentRegime = confirmed?.regime ?? null;
+
+      if (confirmed != null) {
+        marketRegimeForRecord = confirmed.regime;
+        regimeForGate = confirmed.regime;
+      } else {
+        // confirmed 레짐 없음 — 가장 최근 pending으로 fallback
+        const pendingRows = await loadPendingRegimes(1);
+        const latestPending = pendingRows[0] ?? null;
+
+        if (latestPending != null) {
+          marketRegimeForRecord = latestPending.regime;
+          // regimeForGate는 null 유지 — 미확정 레짐으로 Bear Gate 발동 금지
+          logger.warn(
+            "Regime",
+            `확정 레짐 없음 — pending 레짐 fallback 적용: ${latestPending.regime} (${latestPending.regimeDate})`,
+          );
+        } else {
+          logger.warn(
+            "Regime",
+            "확정·pending 레짐 모두 없음 — market_regime=null로 저장 (레짐 시스템 초기화 상태)",
+          );
+        }
+      }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       // 의도적 fail-open: 레짐 조회 실패 시 Bear Gate를 적용하지 않고 진행.
@@ -151,11 +176,11 @@ export const saveRecommendations: AgentTool = {
       logger.error("Regime", `레짐 조회 실패, Bear Gate 미적용: ${reason}`);
     }
 
-    if (currentRegime != null && BEAR_REGIMES.has(currentRegime)) {
+    if (regimeForGate != null && BEAR_REGIMES.has(regimeForGate)) {
       const totalCount = recs.length;
       logger.warn(
         "QualityGate",
-        `레짐 ${currentRegime} — 전체 추천 배치 ${totalCount}개 차단`,
+        `레짐 ${regimeForGate} — 전체 추천 배치 ${totalCount}개 차단`,
       );
       return JSON.stringify({
         success: false,
@@ -163,7 +188,7 @@ export const saveRecommendations: AgentTool = {
         skippedCount: 0,
         blockedByRegime: totalCount,
         blockedByCooldown: 0,
-        message: `레짐 ${currentRegime}: 전체 ${totalCount}개 추천 차단`,
+        message: `레짐 ${regimeForGate}: 전체 ${totalCount}개 추천 차단`,
       });
     }
 
@@ -307,7 +332,7 @@ export const saveRecommendations: AgentTool = {
             sector: rec.sector ?? null,
             industry: rec.industry ?? null,
             reason: taggedReason,
-            marketRegime: currentRegime,
+            marketRegime: marketRegimeForRecord,
             status: "ACTIVE",
             currentPrice: String(entryPrice),
             currentPhase: rec.phase ?? 2,

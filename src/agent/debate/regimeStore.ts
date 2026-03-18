@@ -21,7 +21,27 @@ const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
  * 동일 레짐이 연속으로 판정되어야 확정되는 일수.
  * 너무 작으면 노이즈 제거 효과 없음, 너무 크면 실제 전환도 과도하게 지연됨.
  */
-const CONFIRMATION_DAYS = 2;
+const CONFIRMATION_DAYS = 3;
+
+/**
+ * 허용된 레짐 전환 맵.
+ * 확정된 레짐(confirmed)에서 전환 가능한 레짐 목록을 정의한다.
+ * 이 맵에 없는 전환은 CONFIRMATION_DAYS를 채워도 확정되지 않는다.
+ *
+ * 설계 원칙:
+ * - EARLY_BULL ↔ MID_BULL: 강세장 내 인접 단계 전환만 허용
+ * - 강세 → 약세 진입점: *_BULL → EARLY_BEAR
+ * - 약세 심화: EARLY_BEAR → BEAR
+ * - 약세 회복: BEAR → EARLY_BEAR (단계적)
+ * - LATE_BULL → EARLY_BULL 건너뜀: 실제로 발생 불가능한 경로 차단
+ */
+const ALLOWED_TRANSITIONS: Readonly<Record<MarketRegimeType, ReadonlySet<MarketRegimeType>>> = {
+  EARLY_BULL: new Set<MarketRegimeType>(["MID_BULL", "EARLY_BEAR"]),
+  MID_BULL: new Set<MarketRegimeType>(["LATE_BULL", "EARLY_BULL", "EARLY_BEAR"]),
+  LATE_BULL: new Set<MarketRegimeType>(["MID_BULL", "EARLY_BEAR"]),
+  EARLY_BEAR: new Set<MarketRegimeType>(["BEAR", "LATE_BULL"]),
+  BEAR: new Set<MarketRegimeType>(["EARLY_BEAR"]),
+};
 
 /**
  * 인접 거래일로 허용하는 최대 달력일 간격.
@@ -197,15 +217,27 @@ export async function applyHysteresis(
   );
   const hasEnoughPending = pendingRows.length >= CONFIRMATION_DAYS;
 
+  // 전환 허용 여부 검증 — 초기 상태(confirmed 없음)이면 제약 미적용
+  const latestPendingRegime = pendingRows[0].regime;
+  const isTransitionAllowed =
+    confirmedRegime == null ||
+    confirmedRegime.regime === latestPendingRegime ||
+    ALLOWED_TRANSITIONS[confirmedRegime.regime].has(latestPendingRegime);
+
   const canConfirm =
-    shouldConfirmImmediately ||
-    (allSameRegime && datesConsecutive && hasEnoughPending);
+    (shouldConfirmImmediately ||
+      (allSameRegime && datesConsecutive && hasEnoughPending)) &&
+    isTransitionAllowed;
 
   if (!canConfirm) {
-    // 연속 판정 불충족 — 기존 확정 레짐 유지
+    // 연속 판정 불충족 또는 허용되지 않은 전환 — 기존 확정 레짐 유지
+    const transitionNote =
+      !isTransitionAllowed
+        ? ` 허용되지 않은 전환: ${confirmedRegime?.regime} → ${latestPendingRegime}`
+        : "";
     logger.info(
       "RegimeStore",
-      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${CONFIRMATION_DAYS}). 확정 대기 중.`,
+      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${CONFIRMATION_DAYS}${transitionNote}). 확정 대기 중.`,
     );
     return confirmedRegime;
   }
