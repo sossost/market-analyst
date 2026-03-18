@@ -161,16 +161,34 @@ describe("detectPhase", () => {
 
       expect(result.phase).toBe(4);
     });
+
+    it("classifies as Phase 4 when price slightly below ma150 with weak negative slope", () => {
+      // slope가 flat 범위(-0.015)이고 price가 ma150 아주 살짝 아래인 경우
+      // Phase 4 조건(price < ma150, ma150 < ma200, slope < 0)을 모두 충족하므로 Phase 4
+      const input: PhaseInput = {
+        price: 99,
+        ma50: 95,
+        ma150: 100,
+        ma200: 105,
+        ma150_20dAgo: 101.5, // slope ≈ -0.0148
+        rsScore: 49,
+        high52w: 150,
+        low52w: 80,
+      };
+      const result = detectPhase(input);
+      expect(result.phase).toBe(4);
+    });
   });
 
   describe("Phase 1 detection (base/accumulation)", () => {
-    it("returns Phase 1 when MA150 is flat and price near MA150", () => {
+    it("returns Phase 1 when MA150 is flat and price near MA150 (price above MA150)", () => {
+      // price > ma150 → Phase 4의 price < ma150 조건 불충족 → Phase 1로 판정
       const result = detectPhase({
-        price: 100,
+        price: 102,
         ma50: 99,
         ma150: 101,
         ma200: 103,
-        ma150_20dAgo: 101.5, // nearly flat slope
+        ma150_20dAgo: 101.5, // nearly flat slope: (101 - 101.5) / 101.5 = -0.0049 (flat 범위)
         rsScore: 45,
         high52w: 130,
         low52w: 85,
@@ -185,12 +203,48 @@ describe("detectPhase", () => {
         ma50: 100,
         ma150: 101,
         ma200: 102,
-        ma150_20dAgo: 100.5, // very slight rise
+        ma150_20dAgo: 100.5, // very slight rise: slope positive → Phase 4 조건 slope < 0 불충족
         rsScore: 48,
         high52w: 125,
         low52w: 88,
       });
 
+      expect(result.phase).toBe(1);
+    });
+  });
+
+  describe("Phase 4 priority over Phase 1", () => {
+    it("classifies as Phase 4 when both Phase 1 and Phase 4 conditions overlap", () => {
+      // MA150 slope가 flat(-0.02 이내)이면서 가격이 MA150 근처(5% 이내)이지만,
+      // 동시에 price < MA150, MA150 < MA200, slope < 0, RS < 50인 경우 Phase 4 우선
+      const input: PhaseInput = {
+        price: 98, // MA150(100)의 2% 이내 → priceNearMa150 충족
+        ma50: 95,
+        ma150: 100,
+        ma200: 105, // MA150 < MA200 → Phase 4 조건 충족
+        ma150_20dAgo: 101.5, // slope = (100 - 101.5) / 101.5 = -0.0148: flat 범위이면서 음수 → slopeFlat 충족 + slope < 0
+        rsScore: 35, // RS < 50 → Phase 4 조건 충족
+        high52w: 150,
+        low52w: 80,
+      };
+      const result = detectPhase(input);
+      // Phase 1 조건(slopeFlat + priceNearMa150)도 충족하지만 Phase 4가 우선
+      expect(result.phase).toBe(4);
+    });
+
+    it("classifies as Phase 1 when Phase 4 price condition is not met (price above MA150)", () => {
+      // price > MA150 이면 Phase 4 조건(price < MA150) 불충족 → Phase 1로 분류
+      const input: PhaseInput = {
+        price: 103, // price > MA150(100) → Phase 4 price 조건 불충족
+        ma50: 100,
+        ma150: 100,
+        ma200: 105,
+        ma150_20dAgo: 101.5, // slope: -0.0148 (flat 범위)
+        rsScore: 35,
+        high52w: 150,
+        low52w: 80,
+      };
+      const result = detectPhase(input);
       expect(result.phase).toBe(1);
     });
   });

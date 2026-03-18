@@ -10,6 +10,31 @@ import { logger } from "@/agent/logger";
 
 const TAG = "UPDATE_RECOMMENDATION_STATUS";
 
+/** maxPnL 대비 되돌림 비율이 이 값 이상이면 trailing stop 발동 */
+export const TRAILING_STOP_THRESHOLD = 0.5;
+
+/** trailing stop이 활성화되려면 maxPnL이 이 값(%) 이상이어야 함 */
+export const MIN_MAX_PNL_FOR_TRAILING = 10;
+
+/**
+ * Trailing stop 발동 여부를 판정하는 순수 함수.
+ *
+ * - currentPhase == null: ETL 미완료를 의미하므로 미발동
+ * - maxPnlPercent < MIN_MAX_PNL_FOR_TRAILING: 충분한 수익 미달성 시 미발동
+ * - pnlPercent < maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD): 고점 대비 50% 이상 되돌림 시 발동
+ */
+export function shouldTriggerTrailingStop(params: {
+  currentPhase: number | null;
+  maxPnlPercent: number;
+  pnlPercent: number;
+}): boolean {
+  return (
+    params.currentPhase != null &&
+    params.maxPnlPercent >= MIN_MAX_PNL_FOR_TRAILING &&
+    params.pnlPercent < params.maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD)
+  );
+}
+
 /**
  * 일간 ETL: ACTIVE 추천 종목의 성과를 업데이트한다.
  *
@@ -19,6 +44,7 @@ const TAG = "UPDATE_RECOMMENDATION_STATUS";
  * 3. 각 종목의 현재 종가/Phase/RS 조회
  * 4. PnL, maxPnl, daysHeld 계산
  * 5. Phase 2 이탈 시 CLOSED_PHASE_EXIT 처리
+ * 6. Trailing stop 조건 충족 시 CLOSED_TRAILING_STOP 처리 (Phase 이탈보다 후순위)
  */
 async function main() {
   assertValidEnvironment();
@@ -94,6 +120,13 @@ async function main() {
     // Phase 2 이탈 체크
     const isPhaseExit = currentPhase != null && currentPhase !== 2;
 
+    // Trailing stop 체크 (Phase 이탈보다 후순위)
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase,
+      maxPnlPercent,
+      pnlPercent,
+    });
+
     await retryDatabaseOperation(() =>
       db
         .update(recommendations)
@@ -113,11 +146,19 @@ async function main() {
                 closeReason: `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`,
               }
             : {}),
+          ...(isTrailingStop && !isPhaseExit
+            ? {
+                status: "CLOSED_TRAILING_STOP",
+                closeDate: targetDate,
+                closePrice: String(currentPrice),
+                closeReason: `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`,
+              }
+            : {}),
         })
         .where(eq(recommendations.id, rec.id)),
     );
 
-    if (isPhaseExit) closedCount++;
+    if (isPhaseExit || isTrailingStop) closedCount++;
   }
 
   logger.info(

@@ -136,6 +136,52 @@ describe("readRecommendationPerformance", () => {
     expect(parsed.summary.avgDaysHeld).toBe(9);
   });
 
+  it("includes closedByReason breakdown in summary", async () => {
+    const phaseExit = makeRec({
+      status: "CLOSED_PHASE_EXIT",
+      pnlPercent: "10",
+      closeDate: "2026-03-04",
+      closePrice: "110",
+    });
+    const trailingStop = makeRec({
+      id: 2,
+      symbol: "MSFT",
+      status: "CLOSED_TRAILING_STOP",
+      pnlPercent: "15",
+      closeDate: "2026-03-05",
+      closePrice: "115",
+    });
+
+    mockLimit.mockResolvedValueOnce([]);
+    mockLimit.mockResolvedValueOnce([phaseExit, trailingStop]);
+
+    const result = await readRecommendationPerformance.execute({});
+    const parsed = JSON.parse(result);
+
+    expect(parsed.summary.closedByReason.phaseExit).toBe(1);
+    expect(parsed.summary.closedByReason.trailingStop).toBe(1);
+    expect(parsed.summary.closedByReason.other).toBe(0);
+  });
+
+  it("closedByReason.other counts non-standard close reasons", async () => {
+    const unknown = makeRec({
+      status: "CLOSED_MANUAL",
+      pnlPercent: "5",
+      closeDate: "2026-03-04",
+      closePrice: "105",
+    });
+
+    mockLimit.mockResolvedValueOnce([]);
+    mockLimit.mockResolvedValueOnce([unknown]);
+
+    const result = await readRecommendationPerformance.execute({});
+    const parsed = JSON.parse(result);
+
+    expect(parsed.summary.closedByReason.phaseExit).toBe(0);
+    expect(parsed.summary.closedByReason.trailingStop).toBe(0);
+    expect(parsed.summary.closedByReason.other).toBe(1);
+  });
+
   it("filters to ACTIVE only when status=ACTIVE", async () => {
     const activeRec = makeRec();
     mockLimit.mockResolvedValueOnce([activeRec]);
@@ -324,6 +370,33 @@ describe("readRecommendationPerformance", () => {
       expect(parsed.newThisWeek).toEqual([]);
       expect(parsed.closedThisWeek).toEqual([]);
       expect(parsed.phaseExits).toEqual([]);
+    });
+
+    it("this_week 모드에서 closedByReason 구분 포함", async () => {
+      const phaseExit = makeRec({
+        symbol: "AAPL",
+        status: "CLOSED_PHASE_EXIT",
+        pnlPercent: "10",
+        closeDate: "2026-03-06",
+      });
+      const trailingStop = makeRec({
+        symbol: "NVDA",
+        id: 2,
+        status: "CLOSED_TRAILING_STOP",
+        pnlPercent: "18",
+        closeDate: "2026-03-07",
+      });
+      setupWeeklyMocks([], [phaseExit, trailingStop], []);
+
+      const result = await readRecommendationPerformance.execute({
+        period: "this_week",
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.weeklySummary.closedByReason).toBeDefined();
+      expect(parsed.weeklySummary.closedByReason.phaseExit).toBe(1);
+      expect(parsed.weeklySummary.closedByReason.trailingStop).toBe(1);
+      expect(parsed.weeklySummary.closedByReason.other).toBe(0);
     });
   });
 });

@@ -39,8 +39,8 @@ export const getPhase1LateStocks: AgentTool = {
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
     // Phase 1 종목 중 MA150 기울기가 양전환 조짐 (기울기 > -0.001, 즉 거의 0이거나 양수)
-    // + 거래량 비율 1.2x 이상 (평균 대비 거래량 증가)
-    // + RS 20 이상 (바닥 탈출 시작)
+    // + 거래량 비율 1.5x 이상 (의미 있는 거래량 증가는 1.5배 이상)
+    // + RS 30 이상 (false positive 감소: 20은 너무 관대)
     const { rows } = await retryDatabaseOperation(() =>
       pool.query<{
         symbol: string;
@@ -71,8 +71,8 @@ export const getPhase1LateStocks: AgentTool = {
            AND sp.phase = 1
            AND (sp.prev_phase IS NULL OR sp.prev_phase = 1)
            AND sp.ma150_slope::numeric > -0.001
-           AND sp.rs_score >= 20
-           AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.2
+           AND sp.rs_score >= 30
+           AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.5
          ORDER BY sp.ma150_slope::numeric DESC, sp.rs_score DESC
          LIMIT $2`,
         [date, limit],
@@ -84,31 +84,31 @@ export const getPhase1LateStocks: AgentTool = {
         r.pct_from_low_52w != null ? toNum(r.pct_from_low_52w) * 100 : null;
 
       return {
-      symbol: r.symbol,
-      phase: r.phase,
-      prevPhase: r.prev_phase,
-      rsScore: r.rs_score,
-      ma150Slope: r.ma150_slope != null ? toNum(r.ma150_slope) : null,
-      pctFromHigh52w:
-        r.pct_from_high_52w != null
-          ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
-          : null,
-      pctFromLow52w:
-        pctFromLowRaw != null ? Number(pctFromLowRaw.toFixed(1)) : null,
-      isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
-      conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
-      volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
-      sector: r.sector,
-      industry: r.industry,
-      sectorGroupPhase: r.sector_group_phase,
-      sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
-    };
+        symbol: r.symbol,
+        phase: r.phase,
+        prevPhase: r.prev_phase,
+        rsScore: r.rs_score,
+        ma150Slope: r.ma150_slope != null ? toNum(r.ma150_slope) : null,
+        pctFromHigh52w:
+          r.pct_from_high_52w != null
+            ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
+            : null,
+        pctFromLow52w:
+          pctFromLowRaw != null ? Number(pctFromLowRaw.toFixed(1)) : null,
+        isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
+        conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
+        volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
+        sector: r.sector,
+        industry: r.industry,
+        sectorGroupPhase: r.sector_group_phase,
+        sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
+      };
     });
 
     return JSON.stringify({
       date,
       totalFound: stocks.length,
-      description: "Phase 1 후기 — MA150 기울기 양전환 조짐 + 거래량 증가 + RS 20+",
+      description: "Phase 1 후기 — MA150 기울기 양전환 조짐 + 거래량 증가(1.5x+) + RS 30+",
       stocks,
     });
   },

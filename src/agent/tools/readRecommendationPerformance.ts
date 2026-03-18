@@ -114,6 +114,13 @@ export const readRecommendationPerformance: AgentTool = {
           closedWithPnl.length
         : 0;
 
+    const trailingStopCount = allClosed.filter(
+      (r) => r.status === "CLOSED_TRAILING_STOP",
+    ).length;
+    const phaseExitCount = allClosed.filter(
+      (r) => r.status === "CLOSED_PHASE_EXIT",
+    ).length;
+
     const summary = {
       totalCount: activeRecs.length + closedRecs.length,
       activeCount: activeRecs.length,
@@ -125,6 +132,11 @@ export const readRecommendationPerformance: AgentTool = {
       avgPnlPercent: Math.round(avgPnl * 100) / 100,
       avgMaxPnl: Math.round(avgMaxPnl * 100) / 100,
       avgDaysHeld: Math.round(avgDaysHeld),
+      closedByReason: {
+        phaseExit: phaseExitCount,
+        trailingStop: trailingStopCount,
+        other: closedRecs.length - phaseExitCount - trailingStopCount,
+      },
     };
 
     // 필터링
@@ -199,6 +211,13 @@ async function executeThisWeek(): Promise<string> {
         closedWithPnl.length
       : 0;
 
+  const weekTrailingStopCount = closedThisWeek.filter(
+    (r) => r.status === "CLOSED_TRAILING_STOP",
+  ).length;
+  const weekPhaseExitCount = closedThisWeek.filter(
+    (r) => r.status === "CLOSED_PHASE_EXIT",
+  ).length;
+
   return JSON.stringify({
     period: "this_week",
     weekStart,
@@ -210,6 +229,11 @@ async function executeThisWeek(): Promise<string> {
           ? Math.round((winners.length / closedWithPnl.length) * 100)
           : 0,
       weekAvgPnl: Math.round(weekAvgPnl * 100) / 100,
+      closedByReason: {
+        phaseExit: weekPhaseExitCount,
+        trailingStop: weekTrailingStopCount,
+        other: closedThisWeek.length - weekPhaseExitCount - weekTrailingStopCount,
+      },
     },
     phaseExits: phaseExits.map((r) => ({
       symbol: r.symbol,
