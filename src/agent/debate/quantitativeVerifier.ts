@@ -42,6 +42,88 @@ const INDEX_ALIASES: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Sector alias mapping
+//
+// LLM이 생성하는 섹터 이름(약칭·GICS 공식명 포함)을 DB의 실제 섹터 이름으로 매핑.
+// DB 실제 섹터 목록 (sector_rs_daily.sector):
+//   Basic Materials, Communication Services, Consumer Cyclical,
+//   Consumer Defensive, Energy, Financial Services, Healthcare,
+//   Industrials, Real Estate, Technology, Utilities
+// ---------------------------------------------------------------------------
+
+const SECTOR_ALIASES: Record<string, string> = {
+  // Technology
+  tech: "Technology",
+  it: "Technology",
+  "information technology": "Technology",
+  "info tech": "Technology",
+
+  // Communication Services
+  "comm services": "Communication Services",
+  "communication svc": "Communication Services",
+  "communications services": "Communication Services",
+  communications: "Communication Services",
+  telecom: "Communication Services",
+
+  // Consumer Cyclical
+  "consumer discretionary": "Consumer Cyclical",
+  "cons cyclical": "Consumer Cyclical",
+  "consumer cyc": "Consumer Cyclical",
+  discretionary: "Consumer Cyclical",
+
+  // Consumer Defensive
+  "consumer staples": "Consumer Defensive",
+  "cons defensive": "Consumer Defensive",
+  staples: "Consumer Defensive",
+
+  // Financial Services
+  financials: "Financial Services",
+  finance: "Financial Services",
+  financial: "Financial Services",
+
+  // Basic Materials
+  materials: "Basic Materials",
+  "basic material": "Basic Materials",
+
+  // Healthcare
+  health: "Healthcare",
+  "health care": "Healthcare",
+
+  // Industrials
+  industrial: "Industrials",
+
+  // Real Estate
+  realestate: "Real Estate",
+  reit: "Real Estate",
+  reits: "Real Estate",
+
+  // Utilities
+  utility: "Utilities",
+};
+
+/**
+ * Normalize a raw sector name from LLM output to the canonical DB sector name.
+ * Returns the canonical name if found, otherwise returns the original name.
+ */
+function normalizeSectorName(rawSectorName: string): string {
+  const lower = rawSectorName.toLowerCase().trim();
+  return SECTOR_ALIASES[lower] ?? rawSectorName;
+}
+
+// ---------------------------------------------------------------------------
+// Sector RS metric pattern
+//
+// Matches forms like:
+//   "Technology RS"
+//   "Technology sector RS"
+//   "Tech RS"
+//   "Information Technology RS"
+//   "Technology RS score"
+// ---------------------------------------------------------------------------
+
+const SECTOR_RS_PATTERN = /^(.+?)\s*(?:sector\s+)?RS(?:\s+score)?$/i;
+
+// ---------------------------------------------------------------------------
 // Condition regex
 // ---------------------------------------------------------------------------
 
@@ -100,11 +182,12 @@ function resolveMetricValue(
   const normalized = INDEX_ALIASES[metric] ?? metric;
 
   // Check if it's a sector RS metric
-  const sectorRsMatch = /^(.+?)\s*(?:sector\s+)?RS$/i.exec(normalized);
+  const sectorRsMatch = SECTOR_RS_PATTERN.exec(normalized);
   if (sectorRsMatch != null) {
-    const sectorName = sectorRsMatch[1].trim();
+    const rawSectorName = sectorRsMatch[1].trim();
+    const canonicalName = normalizeSectorName(rawSectorName);
     const sector = snapshot.sectors.find(
-      (s) => s.sector.toLowerCase() === sectorName.toLowerCase(),
+      (s) => s.sector.toLowerCase() === canonicalName.toLowerCase(),
     );
     if (sector != null) {
       return sector.avgRs;

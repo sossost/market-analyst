@@ -13,6 +13,7 @@ import { CLAUDE_SONNET } from "@/lib/models.js";
 
 const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
+const MS_PER_DAY = 86_400_000;
 
 function createVerifierProvider(): LLMProvider {
   const cli = new ClaudeCliProvider();
@@ -98,6 +99,10 @@ export async function verifyTheses(
     const sanitize = (s: string) => s.replace(/<\/thesis>/gi, "");
     const thesesText = llmTheses
       .map((t) => {
+        const elapsedDays = calcElapsedDays(t.debateDate, debateDate);
+        const progressPct = t.timeframeDays > 0
+          ? Math.min(100, Math.round((elapsedDays / t.timeframeDays) * 100))
+          : 0;
         const lines = [
           `[ID: ${t.id}] (${t.agentPersona}, ${t.debateDate})`,
           `  전망: ${sanitize(t.thesis)}`,
@@ -107,7 +112,9 @@ export async function verifyTheses(
         if (t.invalidationCondition != null) {
           lines.push(`  무효조건: ${sanitize(t.invalidationCondition)}`);
         }
-        lines.push(`  기한: ${t.timeframeDays}일 (만료: ~${calcExpiry(t.debateDate, t.timeframeDays)})`);
+        lines.push(
+          `  기한: ${t.timeframeDays}일 (경과: ${elapsedDays}일 / 전체: ${t.timeframeDays}일, 진행률: ${progressPct}%, 만료: ~${calcExpiry(t.debateDate, t.timeframeDays)})`,
+        );
         return `<thesis>\n${lines.join("\n")}\n</thesis>`;
       })
       .join("\n\n");
@@ -119,13 +126,24 @@ export async function verifyTheses(
 
 - **CONFIRMED**: targetCondition이 현재 시장 데이터에서 충족됨. 명확한 근거 필요.
 - **INVALIDATED**: invalidationCondition 충족, 또는 시장이 전망과 반대 방향으로 명확히 움직임.
-- **HOLD**: 아직 판단하기 이름. 데이터가 부족하거나 방향이 불명확.
+- **HOLD**: **timeframe이 아직 충분히 남아 있어 판단이 시기상조**인 경우로 한정. 단순히 데이터가 불명확하다는 이유만으로는 HOLD 사용 불가.
+
+## INVALIDATED 적극 판정 가이드
+
+다음 두 조건이 동시에 충족되면 INVALIDATED를 강하게 권장:
+1. **진행률 50% 이상** (thesis 포맷의 "진행률" 참조)
+2. **시장이 targetCondition과 반대 방향으로 명확히 이동**
+
+정성적 신호 예시 (수치 없이도 판단 가능):
+- 섹터 분위기 악화: "AI/반도체 관련 뉴스 흐름이 부정적으로 전환", "빅테크 실망 실적 연속"
+- 명확한 추세 반전: "기술주 전반의 매도 압력 지속", "섹터 로테이션이 방어주 방향으로 진행 중"
+- 구조적 변화: "금리 인상 재개로 성장주 밸류에이션 압박 재현"
 
 ## 규칙
 
-- 확실한 경우에만 CONFIRMED/INVALIDATED 판정. 애매하면 HOLD.
+- HOLD는 timeframe이 남아 있어 판단이 **시기상조**인 경우로만 사용.
+- 진행률이 높고 시장 방향이 전망과 다르면 HOLD가 아닌 INVALIDATED로 판정.
 - 각 판정에 1~2줄의 구체적 근거를 포함.
-- 시장 데이터에서 확인할 수 없는 조건은 반드시 HOLD.
 - 반드시 JSON 배열로만 응답. 다른 텍스트 없이.
 
 ## 응답 포맷
@@ -133,7 +151,8 @@ export async function verifyTheses(
 \`\`\`json
 [
   { "thesisId": 1, "verdict": "CONFIRMED", "reason": "S&P 500이 5,800 돌파하며 조건 충족" },
-  { "thesisId": 2, "verdict": "HOLD", "reason": "아직 데이터 부족" }
+  { "thesisId": 2, "verdict": "INVALIDATED", "reason": "진행률 70%, AI 반도체 섹터 뉴스 흐름이 부정적으로 전환되어 상승 전망 무효" },
+  { "thesisId": 3, "verdict": "HOLD", "reason": "진행률 20%, timeframe이 충분히 남아 있어 판단 시기상조" }
 ]
 \`\`\``;
 
@@ -267,6 +286,12 @@ function calcExpiry(debateDate: string, timeframeDays: number): string {
   const d = new Date(debateDate);
   d.setDate(d.getDate() + timeframeDays);
   return d.toISOString().slice(0, 10);
+}
+
+export function calcElapsedDays(debateDate: string, currentDate: string): number {
+  const start = new Date(debateDate).getTime();
+  const now = new Date(currentDate).getTime();
+  return Math.max(0, Math.floor((now - start) / MS_PER_DAY));
 }
 
 /**

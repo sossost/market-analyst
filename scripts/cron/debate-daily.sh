@@ -24,6 +24,12 @@ log "=== 토론 에이전트 시작 ==="
 
 if npx tsx src/agent/run-debate-agent.ts >> "$LOG_FILE" 2>&1; then
   log "=== 토론 에이전트 완료 ==="
+  log "▶ Promote learnings"
+  if yarn etl:promote-learnings >> "$LOG_FILE" 2>&1; then
+    log "✓ Learnings 승격 완료"
+  else
+    log "✗ Learnings 승격 실패 (비블로킹 — 계속 진행)"
+  fi
   log "▶ 투자 브리핑 사후 검증 시작"
   "$SCRIPT_DIR/validate-debate-report.sh" || log "✗ 사후 검증 실패 (토론 결과에 영향 없음)"
 else
