@@ -219,12 +219,24 @@ ${round2Section}
 - \`short_term_outlook\`: 단기 시장/지수 전망. 기본 timeframe 30일.
 
 **정량 조건 작성 규칙 (중요):**
-- targetCondition과 invalidationCondition은 **가능한 한 수치 비교 형식**으로 작성하세요
-- 형식: "[지표] [비교연산자] [숫자]" (예: "S&P 500 > 5800", "VIX < 20", "NVDA > 850")
-- 비교연산자: >, <, >=, <=
+- targetCondition과 invalidationCondition은 **반드시 수치 비교 형식**으로 작성하세요
+- 형식: "[지표] [비교연산자] [숫자]" — 비교연산자: >, <, >=, <=
+- 지수 예시: "S&P 500 > 5800", "NASDAQ > 18000", "VIX < 20", "Russell 2000 > 2100"
+- 섹터 RS 예시: "Technology RS > 60", "Energy RS > 55", "Healthcare RS < 45"
+  (형식: "[섹터명] RS [비교연산자] [숫자]" — 섹터명은 DB에 저장된 영문 섹터명 그대로 사용)
+- 개별 종목 예시: "NVDA > 850", "AAPL > 200"
 - 정량 조건이 있으면 시스템이 **자동으로 시장 데이터와 비교 검증**합니다
-- 정량 조건이 없으면 LLM이 주관적으로 판정하게 되어 검증 신뢰도가 떨어집니다
-- "기술주 실적 호조 지속" 같은 정성적 조건은 **불가피한 경우에만** 사용하세요
+- 정량 조건이 없으면 LLM이 주관적으로 판정하게 되어 검증 신뢰도가 크게 떨어집니다
+- **정성적 조건은 수치 비교가 구조적으로 불가능한 경우에만 허용합니다** (예: 규제 발표, 지정학 이벤트)
+  - 정성적 조건 허용 예: "반도체 수출 규제 추가 발표", "FOMC 금리 동결 결정"
+  - 정성적 조건 불허 예: "AI 반도체 수요 지속", "기술주 실적 호조 유지", "시장 심리 개선" — 이런 조건은 verificationMetric과 함께 수치 형식으로 변환하세요
+
+**verificationMetric 지원 형식:**
+- 지수명: "S&P 500", "NASDAQ", "DOW 30", "Russell 2000", "VIX"
+- 지수 별칭: "SPX" (S&P 500), "QQQ" (NASDAQ), "IWM" (Russell 2000)
+- 섹터 RS: "[섹터명] RS" (예: "Technology RS", "Energy RS", "Healthcare RS", "Financials RS")
+- 공포탐욕지수: "fear & greed" 또는 "공포탐욕지수"
+- 개별 종목 티커는 지원되지 않으므로 verificationMetric을 지수 또는 섹터 RS로 설정하세요
 
 \`\`\`json
 [

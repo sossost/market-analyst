@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseJudgments } from "@/agent/debate/thesisVerifier";
+import { parseJudgments, calcElapsedDays } from "@/agent/debate/thesisVerifier";
 
 describe("parseJudgments", () => {
   const validIds = [1, 2, 3, 5];
@@ -71,5 +71,23 @@ describe("parseJudgments", () => {
     const result = parseJudgments(raw, validIds);
     expect(result).toHaveLength(1);
     expect(result[0].thesisId).toBe(2);
+  });
+});
+
+describe("calcElapsedDays", () => {
+  it("returns 0 when debateDate and currentDate are the same", () => {
+    expect(calcElapsedDays("2025-01-01", "2025-01-01")).toBe(0);
+  });
+
+  it("returns correct elapsed days for a 30-day gap", () => {
+    expect(calcElapsedDays("2025-01-01", "2025-01-31")).toBe(30);
+  });
+
+  it("returns 0 when currentDate is before debateDate (guard against negative)", () => {
+    expect(calcElapsedDays("2025-02-01", "2025-01-01")).toBe(0);
+  });
+
+  it("returns correct elapsed days across month boundary", () => {
+    expect(calcElapsedDays("2025-01-20", "2025-02-19")).toBe(30);
   });
 });
