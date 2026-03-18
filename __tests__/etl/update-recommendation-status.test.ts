@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock DB client before importing anything that uses it
-const mockSelect = vi.fn();
-const mockFrom = vi.fn();
-const mockWhere = vi.fn();
-const mockUpdate = vi.fn();
-const mockSet = vi.fn();
-const mockQuery = vi.fn();
-const mockEnd = vi.fn();
+// vi.hoisted: vi.mock 팩토리 내에서 참조하려면 hoisted로 초기화해야 함
+const { mockFrom, mockSet, mockWhere, mockQuery, mockEnd } = vi.hoisted(() => ({
+  mockFrom: vi.fn(),
+  mockSet: vi.fn(),
+  mockWhere: vi.fn(),
+  mockQuery: vi.fn(),
+  mockEnd: vi.fn(),
+}));
 
 vi.mock("@/db/client", () => ({
   db: {
@@ -50,6 +50,11 @@ vi.mock("@/etl/utils/common", () => ({
 
 // Import after mocks
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
+import {
+  shouldTriggerTrailingStop,
+  TRAILING_STOP_THRESHOLD,
+  MIN_MAX_PNL_FOR_TRAILING,
+} from "@/etl/jobs/update-recommendation-status";
 
 describe("update-recommendation-status", () => {
   beforeEach(() => {
@@ -120,27 +125,25 @@ describe("update-recommendation-status", () => {
 });
 
 describe("trailing stop logic", () => {
-  const TRAILING_STOP_THRESHOLD = 0.5;
-  const MIN_MAX_PNL_FOR_TRAILING = 10;
-
-  function evaluateTrailingStop(maxPnlPercent: number, pnlPercent: number): boolean {
-    return (
-      maxPnlPercent >= MIN_MAX_PNL_FOR_TRAILING &&
-      pnlPercent < maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD)
-    );
-  }
-
   it("does not trigger when maxPnL is below minimum threshold", () => {
     // maxPnL: 8% (< 10%), currentPnL: 2% — 되돌림 75%이지만 maxPnL 미달로 미발동
-    const isTrailingStop = evaluateTrailingStop(8, 2);
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase: 2,
+      maxPnlPercent: 8,
+      pnlPercent: 2,
+    });
 
     expect(isTrailingStop).toBe(false);
   });
 
-  it("does not trigger when maxPnL exactly equals minimum threshold and retracement exceeds limit", () => {
+  it("triggers when maxPnL exactly equals minimum threshold (boundary: >= not >)", () => {
     // maxPnL: 10%, currentPnL: 4% — 경계값: maxPnL === 10 이고 되돌림 60%
     // MIN_MAX_PNL_FOR_TRAILING = 10, 10 >= 10 → 충족
-    const isTrailingStop = evaluateTrailingStop(10, 4);
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase: 2,
+      maxPnlPercent: 10,
+      pnlPercent: 4,
+    });
 
     // 10 >= 10 이고 4 < 10 * 0.5 = 5 → 발동
     expect(isTrailingStop).toBe(true);
@@ -149,7 +152,11 @@ describe("trailing stop logic", () => {
   it("triggers when maxPnL is above threshold and retracement exceeds limit", () => {
     // maxPnL: 25%, currentPnL: 10% — 되돌림 60% > 50% → 발동
     // 발동 조건: 10 < 25 * 0.5 = 12.5
-    const isTrailingStop = evaluateTrailingStop(25, 10);
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase: 2,
+      maxPnlPercent: 25,
+      pnlPercent: 10,
+    });
 
     expect(isTrailingStop).toBe(true);
   });
@@ -157,7 +164,22 @@ describe("trailing stop logic", () => {
   it("does not trigger when retracement is within limit", () => {
     // maxPnL: 20%, currentPnL: 15% — 되돌림 25% < 50% → 미발동
     // 미발동 조건: 15 >= 20 * 0.5 = 10
-    const isTrailingStop = evaluateTrailingStop(20, 15);
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase: 2,
+      maxPnlPercent: 20,
+      pnlPercent: 15,
+    });
+
+    expect(isTrailingStop).toBe(false);
+  });
+
+  it("does not trigger when currentPhase is null (ETL 미완료)", () => {
+    // Phase 데이터 없음 → ETL 미완료 → trailing stop 발동 금지
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase: null,
+      maxPnlPercent: 25,
+      pnlPercent: 10,
+    });
 
     expect(isTrailingStop).toBe(false);
   });
@@ -169,7 +191,11 @@ describe("trailing stop logic", () => {
     const pnlPercent = 10;
 
     const isPhaseExit = currentPhase != null && currentPhase !== 2;
-    const isTrailingStop = evaluateTrailingStop(maxPnlPercent, pnlPercent);
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase,
+      maxPnlPercent,
+      pnlPercent,
+    });
     const isTrailingStopApplied = isTrailingStop && !isPhaseExit;
 
     expect(isPhaseExit).toBe(true);
@@ -187,7 +213,11 @@ describe("trailing stop logic", () => {
     const pnlPercent = -3;
 
     const isPhaseExit = currentPhase != null && currentPhase !== 2;
-    const isTrailingStop = evaluateTrailingStop(maxPnlPercent, pnlPercent);
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase,
+      maxPnlPercent,
+      pnlPercent,
+    });
     const isTrailingStopApplied = isTrailingStop && !isPhaseExit;
 
     // trailing stop 수식 자체는 참(-3 < 7.5)이지만, Phase 이탈이 우선하므로 CLOSED_TRAILING_STOP으로 처리되지 않음
@@ -212,12 +242,18 @@ describe("trailing stop logic", () => {
     expect(triggerThreshold).toBeCloseTo(13.69, 1);
 
     // 실제 -5.66%는 발동 조건 충족
-    expect(evaluateTrailingStop(maxPnlPercent, -5.66)).toBe(true);
+    expect(
+      shouldTriggerTrailingStop({ currentPhase: 2, maxPnlPercent, pnlPercent: -5.66 }),
+    ).toBe(true);
 
     // 13.7%는 미발동 (아직 50% 이내 되돌림)
-    expect(evaluateTrailingStop(maxPnlPercent, 13.7)).toBe(false);
+    expect(
+      shouldTriggerTrailingStop({ currentPhase: 2, maxPnlPercent, pnlPercent: 13.7 }),
+    ).toBe(false);
 
     // 13.6%는 발동 (50% 초과 되돌림)
-    expect(evaluateTrailingStop(maxPnlPercent, 13.6)).toBe(true);
+    expect(
+      shouldTriggerTrailingStop({ currentPhase: 2, maxPnlPercent, pnlPercent: 13.6 }),
+    ).toBe(true);
   });
 });

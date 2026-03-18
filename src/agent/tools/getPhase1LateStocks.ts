@@ -84,25 +84,25 @@ export const getPhase1LateStocks: AgentTool = {
         r.pct_from_low_52w != null ? toNum(r.pct_from_low_52w) * 100 : null;
 
       return {
-      symbol: r.symbol,
-      phase: r.phase,
-      prevPhase: r.prev_phase,
-      rsScore: r.rs_score,
-      ma150Slope: r.ma150_slope != null ? toNum(r.ma150_slope) : null,
-      pctFromHigh52w:
-        r.pct_from_high_52w != null
-          ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
-          : null,
-      pctFromLow52w:
-        pctFromLowRaw != null ? Number(pctFromLowRaw.toFixed(1)) : null,
-      isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
-      conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
-      volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
-      sector: r.sector,
-      industry: r.industry,
-      sectorGroupPhase: r.sector_group_phase,
-      sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
-    };
+        symbol: r.symbol,
+        phase: r.phase,
+        prevPhase: r.prev_phase,
+        rsScore: r.rs_score,
+        ma150Slope: r.ma150_slope != null ? toNum(r.ma150_slope) : null,
+        pctFromHigh52w:
+          r.pct_from_high_52w != null
+            ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
+            : null,
+        pctFromLow52w:
+          pctFromLowRaw != null ? Number(pctFromLowRaw.toFixed(1)) : null,
+        isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
+        conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
+        volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
+        sector: r.sector,
+        industry: r.industry,
+        sectorGroupPhase: r.sector_group_phase,
+        sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
+      };
     });
 
     return JSON.stringify({

@@ -92,16 +92,18 @@ function determinePhase(
 
   const { price, ma150, ma200, rsScore } = input;
 
+  const slopeNegative = ma150Slope < 0;
+  const slopeFlat = Math.abs(ma150Slope) < MA150_FLAT_THRESHOLD;
+
   // Phase 4: Markdown / Decline (check BEFORE Phase 1)
   // Phase 4 초기 종목이 flat slope + 가격 근접 조건을 동시에 충족하면
   // Phase 1보다 먼저 체크하여 오분류를 방지한다.
-  if (price < ma150 && ma150 < ma200 && ma150Slope < 0 && rsScore < 50) {
+  if (price < ma150 && ma150 < ma200 && slopeNegative && rsScore < 50) {
     return 4;
   }
 
   // Phase 1: Base / Accumulation
   // MA150 nearly flat, price near MA150
-  const slopeFlat = Math.abs(ma150Slope) < MA150_FLAT_THRESHOLD;
   const priceNearMa150 =
     ma150 > 0 && Math.abs(price - ma150) / ma150 < PRICE_NEAR_MA150_THRESHOLD;
 

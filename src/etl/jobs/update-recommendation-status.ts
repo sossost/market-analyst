@@ -11,10 +11,29 @@ import { logger } from "@/agent/logger";
 const TAG = "UPDATE_RECOMMENDATION_STATUS";
 
 /** maxPnL 대비 되돌림 비율이 이 값 이상이면 trailing stop 발동 */
-const TRAILING_STOP_THRESHOLD = 0.5;
+export const TRAILING_STOP_THRESHOLD = 0.5;
 
 /** trailing stop이 활성화되려면 maxPnL이 이 값(%) 이상이어야 함 */
-const MIN_MAX_PNL_FOR_TRAILING = 10;
+export const MIN_MAX_PNL_FOR_TRAILING = 10;
+
+/**
+ * Trailing stop 발동 여부를 판정하는 순수 함수.
+ *
+ * - currentPhase == null: ETL 미완료를 의미하므로 미발동
+ * - maxPnlPercent < MIN_MAX_PNL_FOR_TRAILING: 충분한 수익 미달성 시 미발동
+ * - pnlPercent < maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD): 고점 대비 50% 이상 되돌림 시 발동
+ */
+export function shouldTriggerTrailingStop(params: {
+  currentPhase: number | null;
+  maxPnlPercent: number;
+  pnlPercent: number;
+}): boolean {
+  return (
+    params.currentPhase != null &&
+    params.maxPnlPercent >= MIN_MAX_PNL_FOR_TRAILING &&
+    params.pnlPercent < params.maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD)
+  );
+}
 
 /**
  * 일간 ETL: ACTIVE 추천 종목의 성과를 업데이트한다.
@@ -102,9 +121,11 @@ async function main() {
     const isPhaseExit = currentPhase != null && currentPhase !== 2;
 
     // Trailing stop 체크 (Phase 이탈보다 후순위)
-    const isTrailingStop =
-      maxPnlPercent >= MIN_MAX_PNL_FOR_TRAILING &&
-      pnlPercent < maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD);
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase,
+      maxPnlPercent,
+      pnlPercent,
+    });
 
     await retryDatabaseOperation(() =>
       db

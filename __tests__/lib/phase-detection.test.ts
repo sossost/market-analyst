@@ -161,6 +161,23 @@ describe("detectPhase", () => {
 
       expect(result.phase).toBe(4);
     });
+
+    it("classifies as Phase 4 when price slightly below ma150 with weak negative slope", () => {
+      // slope가 flat 범위(-0.015)이고 price가 ma150 아주 살짝 아래인 경우
+      // Phase 4 조건(price < ma150, ma150 < ma200, slope < 0)을 모두 충족하므로 Phase 4
+      const input: PhaseInput = {
+        price: 99,
+        ma50: 95,
+        ma150: 100,
+        ma200: 105,
+        ma150_20dAgo: 101.5, // slope ≈ -0.0148
+        rsScore: 49,
+        high52w: 150,
+        low52w: 80,
+      };
+      const result = detectPhase(input);
+      expect(result.phase).toBe(4);
+    });
   });
 
   describe("Phase 1 detection (base/accumulation)", () => {
