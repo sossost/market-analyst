@@ -226,4 +226,25 @@ describe('executeIssue', () => {
       'utf-8',
     )
   })
+
+  it('프롬프트에 PR 템플릿 참조와 전략비서 체크 지시를 포함한다', async () => {
+    mockExecFileCall(
+      'https://github.com/sossost/market-analyst/pull/103',
+    )
+
+    await executeIssue(sampleIssue)
+
+    const child = mockExecFile.mock.results[0].value as { stdin: { end: ReturnType<typeof vi.fn> } }
+    const prompt = child.stdin.end.mock.calls[0][0] as string
+
+    // PR 템플릿 참조
+    expect(prompt).toContain('.github/PULL_REQUEST_TEMPLATE.md')
+    // Closes 지시
+    expect(prompt).toContain(`Closes #${sampleIssue.number}`)
+    // 전략비서 체크 지시
+    expect(prompt).toContain('전략비서 체크')
+    expect(prompt).toContain('골 정렬')
+    expect(prompt).toContain('무기 품질')
+    expect(prompt).toContain('무효 판정')
+  })
 })
