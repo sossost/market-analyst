@@ -328,6 +328,90 @@ describe("extractThesesFromText", () => {
     });
   });
 
+  describe("minorityView 필드", () => {
+    it("유효한 minorityView 객체를 파싱한다", () => {
+      const text = makeThesisJson({
+        minorityView: {
+          analyst: "geopolitics",
+          position: "bearish",
+          reasoning: "중동 리스크 과소평가",
+        },
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].minorityView).toEqual({
+        analyst: "geopolitics",
+        position: "bearish",
+        reasoning: "중동 리스크 과소평가",
+        wasCorrect: null,
+      });
+    });
+
+    it("minorityView가 null이면 null로 보존한다", () => {
+      const text = makeThesisJson({ minorityView: null });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].minorityView).toBeNull();
+    });
+
+    it("minorityView가 없으면(undefined) null로 정규화한다", () => {
+      const base = {
+        agentPersona: "macro",
+        thesis: "테스트",
+        category: "structural_narrative",
+        timeframeDays: 60,
+        verificationMetric: "S&P 500",
+        targetCondition: "S&P 500 > 5800",
+        confidence: "high",
+        consensusLevel: "4/4",
+      };
+      const text = `\`\`\`json\n[${JSON.stringify(base)}]\n\`\`\``;
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].minorityView).toBeNull();
+    });
+
+    it("유효하지 않은 analyst persona면 null로 정규화한다", () => {
+      const text = makeThesisJson({
+        minorityView: {
+          analyst: "unknown_persona",
+          position: "bearish",
+          reasoning: "근거",
+        },
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].minorityView).toBeNull();
+    });
+
+    it("position이나 reasoning이 빈 문자열이면 null로 정규화한다", () => {
+      const text = makeThesisJson({
+        minorityView: {
+          analyst: "tech",
+          position: "",
+          reasoning: "근거",
+        },
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].minorityView).toBeNull();
+    });
+
+    it("wasCorrect는 항상 null로 초기화된다 (LLM이 true/false를 보내도 무시)", () => {
+      const text = makeThesisJson({
+        minorityView: {
+          analyst: "sentiment",
+          position: "bullish",
+          reasoning: "공포 과매도 반전 가능",
+          wasCorrect: true,
+        },
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].minorityView!.wasCorrect).toBeNull();
+    });
+  });
+
   it("preserves normal section titles containing '전망'", () => {
     const text = `### 4. 주도섹터/주도주 전망
 
@@ -467,6 +551,37 @@ ${makeRegimeJson()}`;
     expect(result.marketRegime).not.toBeNull();
     expect(result.marketRegime!.regime).toBe("BEAR");
     expect(result.marketRegime!.confidence).toBe("low");
+  });
+
+  it("extractDebateOutput에서 minorityView가 정상 추출된다", () => {
+    const thesisWithMinority = {
+      agentPersona: "macro",
+      thesis: "AI 인프라 수요 구조적 성장",
+      category: "structural_narrative",
+      timeframeDays: 60,
+      verificationMetric: "Hyperscaler capex YoY",
+      targetCondition: "Capex growth > 20%",
+      confidence: "high",
+      consensusLevel: "3/4",
+      nextBottleneck: null,
+      dissentReason: "지정학: 공급망 리스크",
+      minorityView: {
+        analyst: "geopolitics",
+        position: "bearish",
+        reasoning: "공급 체인 재편 속도 과대평가",
+      },
+    };
+    const thesisJson = `\`\`\`json\n[${JSON.stringify(thesisWithMinority)}]\n\`\`\``;
+    const text = `## 분석\n\n내용...\n\n${thesisJson}\n\n${makeRegimeJson()}`;
+
+    const result = extractDebateOutput(text);
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].minorityView).toEqual({
+      analyst: "geopolitics",
+      position: "bearish",
+      reasoning: "공급 체인 재편 속도 과대평가",
+      wasCorrect: null,
+    });
   });
 
   it("주도섹터/주도주 전망 헤더는 보존된다", () => {

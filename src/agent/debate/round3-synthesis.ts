@@ -1,6 +1,6 @@
 import type { LLMProvider } from "./llm/index.js";
 import { logger } from "../logger.js";
-import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition } from "../../types/debate.js";
+import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, AgentPersona } from "../../types/debate.js";
 import type { FundamentalScore } from "../../types/fundamental.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
@@ -253,7 +253,8 @@ ${round2Section}
     "nextBottleneck": "광트랜시버 대역폭 제한",
     "beneficiarySectors": ["Semiconductor Equipment", "Power Infrastructure"],
     "beneficiaryTickers": ["AMAT", "LRCX", "VRT"],
-    "dissentReason": "지정학 분석가: 공급 체인 재편 속도 과대평가 우려"
+    "dissentReason": "지정학 분석가: 공급 체인 재편 속도 과대평가 우려",
+    "minorityView": { "analyst": "geopolitics", "position": "bearish", "reasoning": "공급 체인 재편 속도 과대평가 — 실제 리드타임 6개월 이상 소요 가능" }
   }
 ]
 \`\`\`
@@ -273,6 +274,13 @@ ${round2Section}
 
 **dissentReason 작성 규칙:**
 - 합의되지 않은 의견이 있을 경우 \`dissentReason\`에 반대 입장 1~2줄 요약. 만장일치면 null.
+
+**minorityView 작성 규칙 (소수 의견 보존):**
+- 다수 의견과 다른 입장을 취한 애널리스트가 있으면 \`minorityView\` 객체를 작성.
+- 만장일치(consensusLevel "4/4")이면 null.
+- 형식: \`{ "analyst": "persona", "position": "bearish|bullish|neutral", "reasoning": "1~2줄 근거" }\`
+- 예시: \`{ "analyst": "geopolitics", "position": "bearish", "reasoning": "중동 리스크 과소평가 — 공급 체인 재편 지연 가능성" }\`
+- 소수 의견은 사후 검증 대상이므로 구체적 근거를 반드시 포함.
 
 ## 시장 레짐 판정 (JSON)
 
@@ -311,6 +319,32 @@ const VALID_CATEGORIES = new Set<string>([
 ]);
 
 /**
+ * minorityView 필드를 정규화.
+ * 유효한 객체면 wasCorrect: null을 보장, 그 외 null 반환.
+ */
+function normalizeMinorityView(raw: unknown): MinorityView | null {
+  if (raw == null || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (
+    !VALID_PERSONAS.has(obj.analyst as string) ||
+    typeof obj.position !== "string" ||
+    obj.position.length === 0 ||
+    typeof obj.reasoning !== "string" ||
+    obj.reasoning.length === 0
+  ) {
+    return null;
+  }
+
+  return {
+    analyst: obj.analyst as AgentPersona,
+    position: obj.position,
+    reasoning: obj.reasoning,
+    wasCorrect: null, // 사후 검증 시 업데이트
+  };
+}
+
+/**
  * thesis 객체의 optional/category 필드를 정규화.
  * 순수 함수 — 원본을 변경하지 않고 새 객체를 반환.
  */
@@ -329,6 +363,7 @@ function normalizeThesisFields(
     dissentReason: obj.dissentReason ?? null,
     beneficiarySectors: Array.isArray(obj.beneficiarySectors) ? obj.beneficiarySectors : [],
     beneficiaryTickers: Array.isArray(obj.beneficiaryTickers) ? obj.beneficiaryTickers : [],
+    minorityView: normalizeMinorityView(obj.minorityView),
   };
 }
 

@@ -234,6 +234,9 @@ export const theses = pgTable(
     consensusScore: integer("consensus_score"), // consensusLevel 파생 정수 (4/3/2/1)
     dissentReason: text("dissent_reason"), // 반대 의견 요약
 
+    // Phase D-3: 소수 의견 보존
+    minorityView: jsonb("minority_view").$type<import("../../types/debate.js").MinorityView>(), // { analyst, position, reasoning, wasCorrect }
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

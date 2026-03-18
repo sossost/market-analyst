@@ -2,7 +2,7 @@ import { db } from "../../db/client.js";
 import { theses } from "../../db/schema/analyst.js";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { logger } from "../logger.js";
-import type { Thesis, ThesisCategory, ConsensusLevel, ConsensusHitRateRow } from "../../types/debate.js";
+import type { Thesis, ThesisCategory, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "../../types/debate.js";
 import { recordNarrativeChain } from "./narrativeChainService.js";
 import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
@@ -45,6 +45,7 @@ export async function saveTheses(
     category: t.category ?? "short_term_outlook",
     nextBottleneck: t.nextBottleneck ?? null,
     dissentReason: t.dissentReason ?? null,
+    minorityView: t.minorityView ?? null,
     status: "ACTIVE" as const,
   }));
 
@@ -258,6 +259,9 @@ export async function resolveThesis(
     );
 
   logger.info("ThesisStore", `Thesis #${thesisId} → ${resolution.status}: ${resolution.closeReason}`);
+
+  // 소수 의견이 있으면 사후 검증 업데이트
+  await updateMinorityViewVerdict(thesisId, resolution.status);
 }
 
 /**
@@ -278,6 +282,78 @@ export async function saveCausalAnalysis(
     .where(eq(theses.id, thesisId));
 
   logger.info("ThesisStore", `Causal analysis saved for thesis #${thesisId}`);
+}
+
+/**
+ * thesis 해소 시 소수 의견의 wasCorrect를 업데이트.
+ *
+ * 판정 로직:
+ * - 다수 의견(thesis)이 INVALIDATED → 소수가 맞았을 가능성 (wasCorrect = true)
+ * - 다수 의견(thesis)이 CONFIRMED → 소수가 틀림 (wasCorrect = false)
+ */
+export async function updateMinorityViewVerdict(
+  thesisId: number,
+  majorityVerdict: "CONFIRMED" | "INVALIDATED",
+): Promise<void> {
+  const rows = await db
+    .select({ minorityView: theses.minorityView })
+    .from(theses)
+    .where(eq(theses.id, thesisId));
+
+  const row = Array.isArray(rows) ? rows[0] : undefined;
+  if (row?.minorityView == null) return;
+
+  const updated: MinorityView = {
+    ...(row.minorityView as MinorityView),
+    wasCorrect: majorityVerdict === "INVALIDATED",
+  };
+
+  await db
+    .update(theses)
+    .set({ minorityView: updated })
+    .where(eq(theses.id, thesisId));
+
+  logger.info(
+    "ThesisStore",
+    `Minority view for thesis #${thesisId}: wasCorrect=${updated.wasCorrect} (${updated.analyst}: ${updated.position})`,
+  );
+}
+
+/**
+ * 소수 의견 적중률 통계 — 전체 및 애널리스트별.
+ */
+export async function getMinorityViewStats(): Promise<{
+  total: number;
+  correct: number;
+  incorrect: number;
+  pending: number;
+  hitRate: number | null;
+}> {
+  const rows = await db
+    .select({ minorityView: theses.minorityView })
+    .from(theses)
+    .where(sql`${theses.minorityView} is not null`);
+
+  let correct = 0;
+  let incorrect = 0;
+  let pending = 0;
+
+  for (const row of rows) {
+    const mv = row.minorityView as MinorityView | null;
+    if (mv == null) continue;
+    if (mv.wasCorrect === true) correct++;
+    else if (mv.wasCorrect === false) incorrect++;
+    else pending++;
+  }
+
+  const resolved = correct + incorrect;
+  return {
+    total: rows.length,
+    correct,
+    incorrect,
+    pending,
+    hitRate: resolved > 0 ? correct / resolved : null,
+  };
 }
 
 /**
