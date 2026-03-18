@@ -75,8 +75,12 @@ export function parseBottleneckFromThesis(thesis: Thesis): BottleneckInfo | null
     bottleneck: extractField(text, "bottleneck") ?? extractFirstSentence(text),
     nextBottleneck: thesis.nextBottleneck ?? null,
     status,
-    beneficiarySectors: [],
-    beneficiaryTickers: [],
+    beneficiarySectors: Array.isArray(thesis.beneficiarySectors) && thesis.beneficiarySectors.length > 0
+      ? thesis.beneficiarySectors
+      : [],
+    beneficiaryTickers: Array.isArray(thesis.beneficiaryTickers) && thesis.beneficiaryTickers.length > 0
+      ? thesis.beneficiaryTickers
+      : [],
   };
 }
 
@@ -201,6 +205,8 @@ export async function recordNarrativeChain(
             bottleneckResolvedAt: now,
             resolutionDays,
             ...(info.nextBottleneck != null && { nextBottleneck: info.nextBottleneck }),
+            ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
+            ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
           })
           .where(eq(narrativeChains.id, existing.id));
       } else {
@@ -210,6 +216,8 @@ export async function recordNarrativeChain(
             linkedThesisIds: updatedThesisIds,
             ...(info.status !== "ACTIVE" && { status: info.status }),
             ...(info.nextBottleneck != null && { nextBottleneck: info.nextBottleneck }),
+            ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
+            ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
           })
           .where(eq(narrativeChains.id, existing.id));
       }

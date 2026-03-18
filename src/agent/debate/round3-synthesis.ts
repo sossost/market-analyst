@@ -239,6 +239,8 @@ ${round2Section}
     "confidence": "low|medium|high",
     "consensusLevel": "4/4|3/4|2/4|1/4",
     "nextBottleneck": "광트랜시버 대역폭 제한",
+    "beneficiarySectors": ["Semiconductor Equipment", "Power Infrastructure"],
+    "beneficiaryTickers": ["AMAT", "LRCX", "VRT"],
     "dissentReason": "지정학 분석가: 공급 체인 재편 속도 과대평가 우려"
   }
 ]
@@ -249,6 +251,13 @@ ${round2Section}
 - 라운드 1·2에서 2명 이상이 동일 지점을 언급한 경우에만 작성. 그 외는 null.
 - 형식: "공급 체인 노드 + 예상 시점" (예: "HBM 용량 제한 — GPU 병목 해소 후 2~3분기 내")
 - 현재 병목이 ACTIVE 초기 단계라면 null (아직 N+1을 논하기 이른 단계)
+
+**beneficiarySectors / beneficiaryTickers 작성 규칙:**
+- structural_narrative 카테고리에만 작성. 그 외 카테고리는 생략하거나 빈 배열.
+- beneficiarySectors: nextBottleneck이 해소될 때 구조적 수혜를 받는 섹터 (영문, GICS 기준 권장). 예: ["Semiconductor Equipment", "Power Infrastructure"]
+- beneficiaryTickers: 해당 수혜 섹터의 대표 종목 티커 (2~5개). 예: ["AMAT", "LRCX", "VRT"]
+- 섹션 4의 주도섹터/주도주 분석에서 이미 언급된 종목이 아닌, **아직 Phase 2 미진입이지만 서사적으로 주시할 종목** 우선.
+- 근거 없는 추측 금지. 공급 체인 논리로 연결 가능한 종목만 기입.
 
 **dissentReason 작성 규칙:**
 - 합의되지 않은 의견이 있을 경우 \`dissentReason\`에 반대 입장 1~2줄 요약. 만장일치면 null.
@@ -306,6 +315,8 @@ function normalizeThesisFields(
     category,
     nextBottleneck: obj.nextBottleneck ?? null,
     dissentReason: obj.dissentReason ?? null,
+    beneficiarySectors: Array.isArray(obj.beneficiarySectors) ? obj.beneficiarySectors : [],
+    beneficiaryTickers: Array.isArray(obj.beneficiaryTickers) ? obj.beneficiaryTickers : [],
   };
 }
 

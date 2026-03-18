@@ -41,6 +41,8 @@ export interface Thesis {
   category?: ThesisCategory;
   nextBottleneck?: string | null;
   dissentReason?: string | null;
+  beneficiarySectors?: string[] | null;
+  beneficiaryTickers?: string[] | null;
 }
 
 /**

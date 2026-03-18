@@ -265,6 +265,38 @@ describe("extractThesesFromText", () => {
     });
   });
 
+  describe("beneficiarySectors/beneficiaryTickers 정규화", () => {
+    it("beneficiarySectors와 beneficiaryTickers가 배열이면 그대로 보존", () => {
+      const text = makeThesisJson({
+        beneficiarySectors: ["Semiconductor Equipment", "Power Infrastructure"],
+        beneficiaryTickers: ["AMAT", "VRT"],
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].beneficiarySectors).toEqual(["Semiconductor Equipment", "Power Infrastructure"]);
+      expect(theses[0].beneficiaryTickers).toEqual(["AMAT", "VRT"]);
+    });
+
+    it("beneficiary 필드가 없으면 빈 배열로 정규화", () => {
+      const text = makeThesisJson({});
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].beneficiarySectors).toEqual([]);
+      expect(theses[0].beneficiaryTickers).toEqual([]);
+    });
+
+    it("beneficiary 필드가 null이면 빈 배열로 정규화", () => {
+      const text = makeThesisJson({
+        beneficiarySectors: null,
+        beneficiaryTickers: null,
+      });
+      const { theses } = extractThesesFromText(text);
+      expect(theses).toHaveLength(1);
+      expect(theses[0].beneficiarySectors).toEqual([]);
+      expect(theses[0].beneficiaryTickers).toEqual([]);
+    });
+  });
+
   describe("normalizeOptionalFields 동작 (extractThesesFromText를 통해 검증)", () => {
     it("nextBottleneck과 dissentReason이 모두 없어도 thesis가 valid로 통과한다", () => {
       const base = {

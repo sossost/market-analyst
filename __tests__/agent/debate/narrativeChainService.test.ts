@@ -223,6 +223,41 @@ describe("narrativeChainService", () => {
       const info = parseBottleneckFromThesis(thesis);
       expect(info?.nextBottleneck).toBe("전력 인프라 부족");
     });
+
+    it("extracts beneficiarySectors and beneficiaryTickers from thesis", () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "GPU 공급 부족 지속",
+        timeframeDays: 60,
+        verificationMetric: "m",
+        targetCondition: "c",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        nextBottleneck: "전력 인프라 부족",
+        beneficiarySectors: ["Power Infrastructure", "Utilities"],
+        beneficiaryTickers: ["VRT", "ETN"],
+      };
+      const info = parseBottleneckFromThesis(thesis);
+      expect(info?.beneficiarySectors).toEqual(["Power Infrastructure", "Utilities"]);
+      expect(info?.beneficiaryTickers).toEqual(["VRT", "ETN"]);
+    });
+
+    it("returns empty arrays when beneficiary fields are null or missing", () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "GPU 공급 부족 지속",
+        timeframeDays: 60,
+        verificationMetric: "m",
+        targetCondition: "c",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+      };
+      const info = parseBottleneckFromThesis(thesis);
+      expect(info?.beneficiarySectors).toEqual([]);
+      expect(info?.beneficiaryTickers).toEqual([]);
+    });
   });
 
   describe("findMatchingChain", () => {
