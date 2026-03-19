@@ -7,6 +7,7 @@
 
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { Thesis } from "../../types/debate.js";
+import { logger } from "../logger.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -289,6 +290,10 @@ export function tryQuantitativeVerification(
 
   // Neither condition is parseable → LLM fallback
   if (targetParsed == null && invalidationParsed == null) {
+    logger.info(
+      "QuantVerifier",
+      `[SKIP] Thesis "${thesis.targetCondition}" — 정량 파싱 불가 (LLM fallback)`,
+    );
     return null;
   }
 
@@ -325,6 +330,13 @@ export function tryQuantitativeVerification(
 
   // If any parseable condition couldn't be evaluated (metric not found) → LLM fallback
   if ((targetParsed != null && targetEval == null) || (invalidationParsed != null && invalidationEval == null)) {
+    const unresolvedMetric = targetParsed != null && targetEval == null
+      ? targetParsed.metric
+      : invalidationParsed!.metric;
+    logger.warn(
+      "QuantVerifier",
+      `[UNRESOLVED] 메트릭 "${unresolvedMetric}" 미발견 — 지원 메트릭: 지수(S&P 500, NASDAQ, VIX 등), 섹터 RS, Fear & Greed`,
+    );
     return null;
   }
 

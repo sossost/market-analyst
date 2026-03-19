@@ -12,6 +12,7 @@ const TAG = "PROMOTE_LEARNINGS";
 const LEARNING_EXPIRY_MONTHS = 6;
 const MAX_ACTIVE_LEARNINGS = 50;
 
+export const BOOTSTRAP_THRESHOLD = 2;
 export const COLD_START_THRESHOLD = 5;
 export const GROWTH_PHASE_THRESHOLD = 15;
 
@@ -19,25 +20,31 @@ interface PromotionThresholds {
   minHits: number;
   minHitRate: number;
   minTotal: number;
+  /** bootstrap 단계에서는 binomial test를 건너뛴다 */
+  skipBinomialTest: boolean;
 }
 
 /**
  * 현재 활성 학습 건수에 따라 승격 기준을 동적으로 반환한다.
  *
- * - Cold start (0~4건): 완화 기준 — 초기 학습 진입 허용
+ * - Bootstrap (0~1건): 최소 기준 — 학습 루프 부트스트랩 허용. binomial test 면제.
+ *   소표본에서 binomial test(p<0.05)는 수학적으로 통과 불가(5건에서 5/5 필요).
+ *   첫 학습 진입이 불가능하면 전체 학습 루프가 영구 비활성 상태에 빠진다.
+ * - Cold start (2~4건): 완화 기준 — 초기 학습 진입 허용
  * - 성장기 (5~14건): 중간 기준
  * - 정상 운영 (15건+): 기존 엄격 기준 유지
- *
- * binomialTest는 모든 단계에서 유지 — 통계적 유의성은 타협하지 않는다.
  */
 export function getPromotionThresholds(activeLearningCount: number): PromotionThresholds {
+  if (activeLearningCount < BOOTSTRAP_THRESHOLD) {
+    return { minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true };
+  }
   if (activeLearningCount < COLD_START_THRESHOLD) {
-    return { minHits: 3, minHitRate: 0.60, minTotal: 5 };
+    return { minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false };
   }
   if (activeLearningCount < GROWTH_PHASE_THRESHOLD) {
-    return { minHits: 5, minHitRate: 0.65, minTotal: 8 };
+    return { minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false };
   }
-  return { minHits: 10, minHitRate: 0.70, minTotal: 10 };
+  return { minHits: 10, minHitRate: 0.70, minTotal: 10, skipBinomialTest: false };
 }
 
 interface PromotionCandidate {
@@ -263,7 +270,7 @@ export function buildPromotionCandidates(
   }
 
   return Array.from(groups.entries())
-    .filter(([, g]) => {
+    .filter(([key, g]) => {
       const total = g.confirmed.length + g.invalidated.length;
       const hitRate = total > 0 ? g.confirmed.length / total : 0;
 
@@ -273,10 +280,15 @@ export function buildPromotionCandidates(
       if (total < thresholds.minTotal) return false;
 
       // 통계적 유의성 검증 (자기확증편향 방지)
-      const test = binomialTest(g.confirmed.length, total);
-      if (!test.isSignificant) {
-        logger.info(TAG, `  SKIP (not significant): p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
-        return false;
+      // bootstrap 단계에서는 소표본 한계로 binomial test를 면제한다
+      if (thresholds.skipBinomialTest) {
+        logger.info(TAG, `  BOOTSTRAP: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
+      } else {
+        const test = binomialTest(g.confirmed.length, total);
+        if (!test.isSignificant) {
+          logger.info(TAG, `  SKIP (not significant): ${key} p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
+          return false;
+        }
       }
 
       return true;
