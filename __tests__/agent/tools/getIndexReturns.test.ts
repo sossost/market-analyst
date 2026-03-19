@@ -11,13 +11,22 @@ function makeYahooResponse(quotes: {
   close: (number | null)[];
   high?: (number | null)[];
   low?: (number | null)[];
+  meta?: { regularMarketPrice: number; chartPreviousClose: number };
 }) {
+  const validCloses = quotes.close.filter((c): c is number => c != null);
+  const lastClose = validCloses[validCloses.length - 1] ?? 0;
+  const prevClose = validCloses.length >= 2 ? validCloses[validCloses.length - 2] : lastClose;
+
   return {
     ok: true,
     json: async () => ({
       chart: {
         result: [
           {
+            meta: quotes.meta ?? {
+              regularMarketPrice: lastClose,
+              chartPreviousClose: prevClose,
+            },
             indicators: {
               quote: [
                 {
