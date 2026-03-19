@@ -34,6 +34,11 @@ vi.mock('../prThreadStore.js', () => ({
   removePrThreadMapping: vi.fn(),
 }))
 
+vi.mock('../discordAuth.js', () => ({
+  getAllowedUserIds: vi.fn().mockReturnValue(['allowed-user']),
+  isAllowedSender: vi.fn().mockImplementation((id: string) => id === 'allowed-user'),
+}))
+
 // node:child_process — Step 3의 gh pr view 호출을 모킹
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),

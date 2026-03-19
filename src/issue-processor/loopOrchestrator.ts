@@ -20,6 +20,7 @@ import {
   loadAllMappings,
   removePrThreadMapping,
 } from './prThreadStore.js'
+import { getAllowedUserIds } from './discordAuth.js'
 import type { PrThreadMapping } from './types.js'
 
 const TAG = 'LOOP_ORCHESTRATOR'
@@ -57,15 +58,6 @@ async function isPrDone(prNumber: number): Promise<boolean> {
     // 조회 실패 시 false (다음 루프에서 재시도)
     return false
   }
-}
-
-/**
- * 허용된 Discord 사용자 ID 목록을 환경변수에서 읽는다.
- */
-function getAllowedUserIds(): string[] {
-  const raw = process.env.ALLOWED_DISCORD_USER_IDS
-  if (raw == null || raw === '') return []
-  return raw.split(',').map((id) => id.trim()).filter((id) => id !== '')
 }
 
 /**

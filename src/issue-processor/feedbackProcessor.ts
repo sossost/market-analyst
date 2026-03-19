@@ -11,37 +11,33 @@ import type { DiscordMessage, FeedbackResult, PrThreadMapping } from './types.js
 import { fetchThreadMessages } from './discordClient.js'
 import { sendThreadMessage } from './discordClient.js'
 import { updateLastScannedMessageId } from './prThreadStore.js'
+import { isAllowedSender } from './discordAuth.js'
 
 const TAG = 'FEEDBACK_PROCESSOR'
 const EXECUTION_TIMEOUT_MS = 30 * 60 * 1_000 // 30분
 const MAX_BUFFER = 50 * 1024 * 1024 // 50MB
 
-/** 허용된 Discord 사용자 ID 목록을 환경변수에서 읽는다. */
-function getAllowedUserIds(): string[] {
-  const raw = process.env.ALLOWED_DISCORD_USER_IDS
-  if (raw == null || raw === '') return []
-  return raw.split(',').map((id) => id.trim()).filter((id) => id !== '')
-}
-
-/** 발신자가 허용된 사용자인지 확인한다. */
-function isAllowedSender(authorId: string): boolean {
-  const allowed = getAllowedUserIds()
-  // 환경변수 미설정 시 보안을 위해 모두 차단
-  if (allowed.length === 0) return false
-  return allowed.includes(authorId)
+/**
+ * CEO 피드백 내용에서 XML 태그를 제거하여 프롬프트 인젝션을 방지한다.
+ * `</untrusted-feedback>` 같은 태그가 신뢰 경계를 탈출하는 것을 막는다.
+ */
+function sanitizeFeedbackContent(content: string): string {
+  return content.replace(/<[^>]+>/g, '')
 }
 
 /**
  * 피드백 프롬프트를 빌드한다.
- * CEO 입력을 <untrusted-feedback> 블록으로 격리하여 프롬프트 인젝션을 방지한다.
+ * CEO 입력을 <untrusted-feedback> 블록으로 격리하고,
+ * XML 태그를 제거하여 프롬프트 인젝션을 방지한다.
  */
 export function buildFeedbackPrompt(
   prNumber: number,
-  issueNumber: number,
+  branchName: string,
   feedbackMessages: string[],
 ): string {
-  const branchName = `feat/issue-${issueNumber}`
-  const feedbackBlock = feedbackMessages.join('\n\n---\n\n')
+  const feedbackBlock = feedbackMessages
+    .map(sanitizeFeedbackContent)
+    .join('\n\n---\n\n')
 
   return `## 미션
 
@@ -134,9 +130,10 @@ export async function processFeedback(
   mapping: PrThreadMapping,
   newMessages: DiscordMessage[],
 ): Promise<FeedbackResult> {
-  const { prNumber, threadId, issueNumber, lastScannedMessageId } = mapping
+  const { prNumber, threadId, branchName, lastScannedMessageId } = mapping
 
   // 이미 스캔한 메시지 이후만 처리 (newMessages는 이미 필터링된 상태)
+  // loopOrchestrator에서 1차 필터링 후 전달되지만, 방어적으로 재검증한다
   const feedbackMessages = newMessages
     .filter((msg) => isAllowedSender(msg.author.id))
     .filter((msg) => !isMergeApproval(msg.content))
@@ -150,7 +147,7 @@ export async function processFeedback(
 
   logger.info(TAG, `PR #${prNumber}: 피드백 ${feedbackMessages.length}건 처리 시작`)
 
-  const prompt = buildFeedbackPrompt(prNumber, issueNumber, feedbackMessages)
+  const prompt = buildFeedbackPrompt(prNumber, branchName, feedbackMessages)
 
   try {
     await runClaudeWithFeedback(prompt)

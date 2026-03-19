@@ -69,13 +69,12 @@ export function savePrThreadMapping(mapping: PrThreadMapping): void {
     (m) => m.prNumber === mapping.prNumber,
   )
 
-  if (existingIndex >= 0) {
-    mappings[existingIndex] = mapping
-  } else {
-    mappings.push(mapping)
-  }
+  const updated =
+    existingIndex >= 0
+      ? mappings.map((m, i) => (i === existingIndex ? mapping : m))
+      : [...mappings, mapping]
 
-  saveMappings(mappings)
+  saveMappings(updated)
   logger.info(
     TAG,
     `매핑 저장: PR #${mapping.prNumber} ↔ thread ${mapping.threadId}`,
