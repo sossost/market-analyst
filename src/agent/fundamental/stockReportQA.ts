@@ -206,7 +206,9 @@ export async function findExistingQAIssue(
     const exactTitle = `[QA] ${symbol} 리포트 품질 이슈 (${date})`;
     const match = issues.find((i) => i.title === exactTitle);
     return match?.number ?? null;
-  } catch {
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("StockReportQA", `기존 QA 이슈 검색 실패 (${symbol}, ${date}): ${reason}`);
     return null;
   }
 }
