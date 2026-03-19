@@ -280,7 +280,12 @@ export const getMarketBreadth: AgentTool = {
            COUNT(*)::text AS total_count
          FROM stock_phases sp
          JOIN symbols s ON sp.symbol = s.symbol
-         WHERE sp.date = (SELECT MAX(date) FROM stock_phases WHERE date < $1)
+         WHERE sp.date = (SELECT MAX(sp2.date) FROM stock_phases sp2
+                         JOIN symbols s2 ON sp2.symbol = s2.symbol
+                         WHERE sp2.date < $1
+                           AND s2.is_actively_trading = true
+                           AND s2.is_etf = false
+                           AND s2.is_fund = false)
            AND s.is_actively_trading = true
            AND s.is_etf = false
            AND s.is_fund = false`,

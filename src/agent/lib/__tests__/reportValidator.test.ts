@@ -498,4 +498,43 @@ describe("validateReport", () => {
     );
     expect(conflictWarning).toBeUndefined();
   });
+
+  // -------------------------------------------------------------------------
+  // G. 마크다운 텍스트 기반 Phase 1 추천 감지 (recommendations 없이도 동작)
+  // -------------------------------------------------------------------------
+
+  it("[기준 미달] 태그가 마크다운에 포함되면 errors 발생", () => {
+    const result = validateReport({
+      markdown: "PBFS [기준 미달] — Phase 1 종목. 리스크 주의.",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("[기준 미달]"))).toBe(true);
+  });
+
+  it("[기준 미달] 태그 없고 Phase 1 추천 문맥이 없으면 에러 없음", () => {
+    const result = validateReport({
+      markdown: "NVDA Phase 2 — 반도체 강세 지속. 리스크 주의.",
+    });
+
+    expect(result.errors.some((e) => e.includes("기준 미달"))).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 문맥"))).toBe(false);
+  });
+
+  it("Phase 1 + 추천 문맥이 같은 줄에 있으면 errors 발생", () => {
+    const result = validateReport({
+      markdown: "PBFS Phase 1 종목으로 추천 합니다. 리스크 주의.",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 문맥"))).toBe(true);
+  });
+
+  it("Phase 1 언급이 있지만 추천 문맥이 아니면 에러 없음", () => {
+    const result = validateReport({
+      markdown: "Phase 1 종목은 관찰 단계입니다. 리스크 주의.",
+    });
+
+    expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 문맥"))).toBe(false);
+  });
 });
