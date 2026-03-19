@@ -49,24 +49,21 @@ export function detectBullBias(theses: Thesis[]): Mismatch | null {
     return null;
   }
 
-  let bullishCount = 0;
-  let bearishCount = 0;
-
-  for (const t of theses) {
-    const text = t.thesis;
-    const hasBullish = BULLISH_KEYWORDS.some((kw) => text.includes(kw));
-    const hasBearish = BEARISH_KEYWORDS.some((kw) => text.includes(kw));
-
-    if (hasBullish) bullishCount++;
-    if (hasBearish) bearishCount++;
-  }
-
-  // minorityView에 bearish가 있으면 균형 잡힌 것으로 판단
-  const hasBearishMinority = theses.some(
-    (t) => t.minorityView?.position === "bearish",
+  const hasBearishView = theses.some(
+    (t) =>
+      t.minorityView?.position === "bearish" ||
+      BEARISH_KEYWORDS.some((kw) => t.thesis.includes(kw)),
   );
 
-  if (bullishCount === theses.length && bearishCount === 0 && !hasBearishMinority) {
+  if (hasBearishView) {
+    return null;
+  }
+
+  const allAreBullish = theses.every((t) =>
+    BULLISH_KEYWORDS.some((kw) => t.thesis.includes(kw)),
+  );
+
+  if (allAreBullish) {
     return {
       type: "sector_list", // 기존 MismatchType 재사용
       field: "bull_bias",
@@ -112,14 +109,7 @@ export function checkSectorAccuracy(
   const dbSectorSet = new Set(dbSectors.map((s) => s.sector));
   const mismatches: Mismatch[] = [];
 
-  const mentionedSectors = new Set<string>();
-  for (const t of theses) {
-    if (t.beneficiarySectors != null) {
-      for (const s of t.beneficiarySectors) {
-        mentionedSectors.add(s);
-      }
-    }
-  }
+  const mentionedSectors = new Set(theses.flatMap((t) => t.beneficiarySectors ?? []));
 
   for (const sector of mentionedSectors) {
     if (!dbSectorSet.has(sector)) {
@@ -236,14 +226,7 @@ export async function runDebateQA(
     checkedItems += 1;
 
     // 2. DB-based checks (parallel)
-    const mentionedTickers = new Set<string>();
-    for (const t of theses) {
-      if (t.beneficiaryTickers != null) {
-        for (const ticker of t.beneficiaryTickers) {
-          mentionedTickers.add(ticker);
-        }
-      }
-    }
+    const mentionedTickers = new Set(theses.flatMap((t) => t.beneficiaryTickers ?? []));
 
     const [sectorRows, stockRows] = await Promise.all([
       fetchSectorPhases(date),
