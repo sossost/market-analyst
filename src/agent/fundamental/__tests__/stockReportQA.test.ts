@@ -1,5 +1,20 @@
-import { describe, it, expect } from "vitest";
-import { runStockReportQA } from "../stockReportQA.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { runStockReportQA, bridgeQAToFeedback, type QAResult } from "../stockReportQA.js";
+
+// Mock reviewFeedback to intercept saveReviewFeedback calls
+vi.mock("../../reviewFeedback.js", () => ({
+  saveReviewFeedback: vi.fn(),
+}));
+
+import { saveReviewFeedback } from "../../reviewFeedback.js";
+const mockSaveReviewFeedback = vi.mocked(saveReviewFeedback);
+
+beforeEach(() => {
+  vi.resetAllMocks();
+});
 
 // ─── 테스트 픽스처 ────────────────────────────────────────────────────
 
@@ -232,5 +247,62 @@ describe("runStockReportQA", () => {
       expect(sectionIssue).toBeDefined();
       expect(riskIssue).toBeDefined();
     });
+  });
+});
+
+// ─── bridgeQAToFeedback 테스트 ────────────────────────────────────────
+
+describe("bridgeQAToFeedback", () => {
+  it("passed=true이면 saveReviewFeedback을 호출하지 않음", () => {
+    const result: QAResult = {
+      symbol: "NVDA",
+      date: "2026-03-19",
+      passed: true,
+      issues: [],
+    };
+
+    bridgeQAToFeedback(result);
+
+    expect(mockSaveReviewFeedback).not.toHaveBeenCalled();
+  });
+
+  it("이슈가 있으면 saveReviewFeedback을 호출하여 피드백 저장", () => {
+    const result: QAResult = {
+      symbol: "NVDA",
+      date: "2026-03-19",
+      passed: false,
+      issues: [
+        { checkId: "SECTION_MISSING", severity: "HIGH", description: "필수 섹션 누락: ## 4." },
+        { checkId: "NO_RISK_MENTION", severity: "HIGH", description: "리스크 키워드 없음" },
+      ],
+    };
+
+    bridgeQAToFeedback(result);
+
+    expect(mockSaveReviewFeedback).toHaveBeenCalledTimes(1);
+    const savedEntry = mockSaveReviewFeedback.mock.calls[0][0];
+    expect(savedEntry.date).toBe("2026-03-19");
+    expect(savedEntry.verdict).toBe("REVISE");
+    expect(savedEntry.feedback).toContain("NVDA");
+    expect(savedEntry.feedback).toContain("2건");
+    expect(savedEntry.issues).toHaveLength(2);
+    expect(savedEntry.issues[0]).toContain("[SECTION_MISSING]");
+    expect(savedEntry.issues[1]).toContain("[NO_RISK_MENTION]");
+  });
+
+  it("이슈 description이 checkId와 함께 저장됨", () => {
+    const result: QAResult = {
+      symbol: "AAPL",
+      date: "2026-03-19",
+      passed: false,
+      issues: [
+        { checkId: "MARGIN_RAW_DECIMAL", severity: "HIGH", description: "소수점 미변환 값 발견" },
+      ],
+    };
+
+    bridgeQAToFeedback(result);
+
+    const savedEntry = mockSaveReviewFeedback.mock.calls[0][0];
+    expect(savedEntry.issues[0]).toBe("[MARGIN_RAW_DECIMAL] 소수점 미변환 값 발견");
   });
 });

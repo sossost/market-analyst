@@ -21,7 +21,7 @@ export interface ReviewFeedbackEntry {
 
 const DEFAULT_FEEDBACK_COUNT = 5;
 const FEEDBACK_DIR = join(process.cwd(), "data", "review-feedback");
-const REPEATED_PATTERN_THRESHOLD = 3;
+const REPEATED_PATTERN_THRESHOLD = 2;
 const RECENT_FEEDBACK_FOR_PATTERNS = 10;
 
 // ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ function areIssuesSimilar(a: string, b: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * 최근 피드백에서 반복 패턴(3회+)을 감지한다.
+ * 최근 피드백에서 반복 패턴(2회+)을 감지한다.
  * 유사한 이슈를 클러스터링하고, 임계값 이상 반복된 패턴을 규칙으로 변환.
  */
 export function detectRepeatedPatterns(
@@ -182,7 +182,7 @@ export function detectRepeatedPatterns(
 // ---------------------------------------------------------------------------
 
 /**
- * 반복 패턴(3회+)을 필수 규칙 형태로 변환한다.
+ * 반복 패턴(2회+)을 필수 규칙 형태로 변환한다.
  * 프롬프트 상단(규칙 섹션 근처)에 삽입하기 위한 텍스트.
  */
 export function buildMandatoryRules(
@@ -196,7 +196,7 @@ export function buildMandatoryRules(
 
   const header = `## 필수 규칙 (반복 지적 기반)
 
-아래는 과거 리뷰에서 3회 이상 반복 지적된 사항입니다. 반드시 준수하세요. 위반 시 리포트가 거부됩니다.`;
+아래는 과거 리뷰에서 2회 이상 반복 지적된 사항입니다. 반드시 준수하세요. 위반 시 리포트가 거부됩니다.`;
 
   const ruleLines = patterns.map((p) => `- ${p.rule}`).join("\n");
 
