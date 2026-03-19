@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { tagPersistenceReason, tagSubstandardReason } from "../saveRecommendations";
+import { tagPersistenceReason, tagSubstandardReason, tagOverheatedReason } from "../saveRecommendations";
 
 /**
  * saveRecommendations execute() 통합 테스트.
@@ -629,5 +629,127 @@ describe("레짐 조회 실패 시 fail-open", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(1);
     expect(parsed.blockedByRegime).toBe(0);
+  });
+});
+
+// =============================================================================
+// tagOverheatedReason 단위 테스트
+// =============================================================================
+
+describe("tagOverheatedReason", () => {
+  it("RS > 95인 종목에 [RS 과열] 태그를 추가한다", () => {
+    expect(tagOverheatedReason("강한 모멘텀", 97)).toBe("[RS 과열] 강한 모멘텀");
+  });
+
+  it("RS = 95인 종목에는 태그를 추가하지 않는다 (경계값)", () => {
+    expect(tagOverheatedReason("강한 모멘텀", 95)).toBe("강한 모멘텀");
+  });
+
+  it("RS = 100인 종목에 [RS 과열] 태그를 추가한다", () => {
+    expect(tagOverheatedReason("최고 RS", 100)).toBe("[RS 과열] 최고 RS");
+  });
+
+  it("RS = 60인 종목에는 태그를 추가하지 않는다", () => {
+    expect(tagOverheatedReason("정상 RS", 60)).toBe("정상 RS");
+  });
+
+  it("RS가 null이면 태그를 추가하지 않는다", () => {
+    expect(tagOverheatedReason("테스트", null)).toBe("테스트");
+  });
+
+  it("이미 [RS 과열] 태그가 있으면 중복 추가하지 않는다", () => {
+    expect(tagOverheatedReason("[RS 과열] 기존 사유", 98)).toBe("[RS 과열] 기존 사유");
+  });
+
+  it("reason이 null이고 RS > 95이면 사유 미기재 메시지를 반환한다", () => {
+    expect(tagOverheatedReason(null, 98)).toBe("[RS 과열] 사유 미기재");
+  });
+});
+
+// =============================================================================
+// RS 과열 게이트 통합 테스트
+// =============================================================================
+
+describe("RS 과열 게이트", () => {
+  beforeEach(() => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+  });
+
+  it("RS > 95인 종목은 blockedByOverheatedRS로 차단한다", async () => {
+    setupDefaultPoolMocks();
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", rs_score: 97 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByOverheatedRS).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("RS 97 > 95 과열"),
+    );
+  });
+
+  it("RS = 95인 종목은 과열 차단 없이 정상 저장한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", rs_score: 95 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByOverheatedRS).toBe(0);
+  });
+
+  it("RS 100인 종목 2개 + RS 80인 종목 1개: 과열 2건 차단, 정상 1건 저장", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "MSFT", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [
+        makeRec({ symbol: "BATL", rs_score: 100 }),
+        makeRec({ symbol: "EONR", rs_score: 98 }),
+        makeRec({ symbol: "MSFT", rs_score: 80 }),
+      ],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByOverheatedRS).toBe(2);
   });
 });

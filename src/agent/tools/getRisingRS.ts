@@ -7,6 +7,8 @@ import { validateDate, validateNumber } from "./validation";
 const DEFAULT_LIMIT = 30;
 const RS_MIN = 30;
 const RS_MAX = 60;
+/** 4주 대비 최소 RS 변화량. 유의미한 모멘텀만 포착하기 위한 노이즈 필터. */
+const MIN_RS_CHANGE = 5;
 
 /**
  * RS 하강→상승 초기 종목을 조회한다.
@@ -84,13 +86,13 @@ export const getRisingRS: AgentTool = {
          WHERE sp.date = $1
            AND sp.rs_score >= $2
            AND sp.rs_score <= $3
-           AND (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) > 0
+           AND (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) >= $5
          ORDER BY
            CASE WHEN srd.change_4w::numeric > 0 THEN 0 ELSE 1 END,
            (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) DESC,
            sp.rs_score DESC
          LIMIT $4`,
-        [date, RS_MIN, RS_MAX, limit],
+        [date, RS_MIN, RS_MAX, limit, MIN_RS_CHANGE],
       ),
     );
 
@@ -121,7 +123,7 @@ export const getRisingRS: AgentTool = {
       date,
       rsRange: `${RS_MIN}~${RS_MAX}`,
       totalFound: stocks.length,
-      description: "RS 30~60 범위에서 4주 대비 RS 상승 중 + 섹터 RS 상승 우선",
+      description: `RS ${RS_MIN}~${RS_MAX} 범위에서 4주 대비 RS ${MIN_RS_CHANGE}p+ 상승 중 + 섹터 RS 상승 우선`,
       stocks,
     });
   },

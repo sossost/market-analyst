@@ -43,8 +43,8 @@ export function shouldTriggerTrailingStop(params: {
  * 2. ACTIVE 추천 조회
  * 3. 각 종목의 현재 종가/Phase/RS 조회
  * 4. PnL, maxPnl, daysHeld 계산
- * 5. Phase 2 이탈 시 CLOSED_PHASE_EXIT 처리
- * 6. Trailing stop 조건 충족 시 CLOSED_TRAILING_STOP 처리 (Phase 이탈보다 후순위)
+ * 5. Trailing stop 조건 충족 시 CLOSED_TRAILING_STOP 처리 (Phase 이탈보다 우선)
+ * 6. Phase 2 이탈 시 CLOSED_PHASE_EXIT 처리
  */
 async function main() {
   assertValidEnvironment();
@@ -120,7 +120,7 @@ async function main() {
     // Phase 2 이탈 체크
     const isPhaseExit = currentPhase != null && currentPhase !== 2;
 
-    // Trailing stop 체크 (Phase 이탈보다 후순위)
+    // Trailing stop 체크 (Phase 이탈보다 우선 — 수익 보호가 최우선)
     const isTrailingStop = shouldTriggerTrailingStop({
       currentPhase,
       maxPnlPercent,
@@ -138,20 +138,20 @@ async function main() {
           maxPnlPercent: String(maxPnlPercent),
           daysHeld,
           lastUpdated: targetDate,
-          ...(isPhaseExit
-            ? {
-                status: "CLOSED_PHASE_EXIT",
-                closeDate: targetDate,
-                closePrice: String(currentPrice),
-                closeReason: `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`,
-              }
-            : {}),
-          ...(isTrailingStop && !isPhaseExit
+          ...(isTrailingStop
             ? {
                 status: "CLOSED_TRAILING_STOP",
                 closeDate: targetDate,
                 closePrice: String(currentPrice),
                 closeReason: `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`,
+              }
+            : {}),
+          ...(isPhaseExit && !isTrailingStop
+            ? {
+                status: "CLOSED_PHASE_EXIT",
+                closeDate: targetDate,
+                closePrice: String(currentPrice),
+                closeReason: `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`,
               }
             : {}),
         })
