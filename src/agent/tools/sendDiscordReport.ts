@@ -85,7 +85,14 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
         });
       }
       // 메시지 본문도 Phase 2 이중 변환 자동 교정
-      const message = sanitizePhase2Ratios(rawMessage).text;
+      const { text: message, corrections: msgCorrections } =
+        sanitizePhase2Ratios(rawMessage);
+      if (msgCorrections.length > 0) {
+        logger.warn(
+          "sendDiscordReport",
+          `메시지 본문 Phase 2 자동 교정 ${msgCorrections.length}건: ${msgCorrections.join(", ")}`,
+        );
+      }
 
       const webhookUrl = process.env[webhookEnvVar];
       if (webhookUrl == null || webhookUrl === "") {
