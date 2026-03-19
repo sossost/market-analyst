@@ -11,6 +11,7 @@ import {
 vi.mock("@/agent/discord", () => ({
   sendDiscordMessage: vi.fn().mockResolvedValue(undefined),
   sendDiscordFile: vi.fn().mockResolvedValue(undefined),
+  sendDiscordError: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/agent/gist", () => ({
@@ -64,7 +65,7 @@ describe("createSendDiscordReport", () => {
   const ENV_VAR = "TEST_DISCORD_WEBHOOK";
 
   beforeEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     process.env[ENV_VAR] = "https://discord.test/webhook";
   });
 
@@ -75,11 +76,11 @@ describe("createSendDiscordReport", () => {
 
     const tool = createSendDiscordReport(ENV_VAR);
 
-    // markdown with only bull keywords → triggers warnings
-    const bullOnlyMd = "상승 급등 돌파 신고가 강세 긍정 호재 성장 개선 확대";
+    // 리스크 키워드 1개(리스크) + bull 키워드 다수 → bull-bias warning, error 없음
+    const warningOnlyMd = "리스크. 상승 급등 돌파 신고가 강세 긍정 호재 성장 개선 확대";
     await tool.execute({
       message: "테스트 요약",
-      markdownContent: bullOnlyMd,
+      markdownContent: warningOnlyMd,
       filename: "test.md",
     });
 
@@ -134,10 +135,11 @@ describe("createSendDiscordReport", () => {
 
     const tool = createSendDiscordReport(ENV_VAR);
 
-    const bullOnlyMd = "상승 급등 돌파 신고가 강세 긍정 호재 성장 개선 확대";
+    // 리스크 키워드 있고 bull-bias warning만 발생 — error 없어 차단되지 않음
+    const warningOnlyMd = "리스크. 상승 급등 돌파 신고가 강세 긍정 호재 성장 개선 확대";
     await tool.execute({
       message: "테스트 요약",
-      markdownContent: bullOnlyMd,
+      markdownContent: warningOnlyMd,
       filename: "test.md",
     });
 
@@ -145,5 +147,63 @@ describe("createSendDiscordReport", () => {
     const fileCall = mockSendFile.mock.calls[0];
     const sentContent = fileCall[3] as string;
     expect(sentContent).toContain("자동 품질 검증 결과");
+  });
+
+  // ---------------------------------------------------------------------------
+  // 발송 차단 게이트 — errors 반환 시 차단
+  // ---------------------------------------------------------------------------
+
+  it("returns success: false and does not send when validation errors exist", async () => {
+    const { sendDiscordMessage, sendDiscordError } = await import("@/agent/discord");
+    const { createGist } = await import("@/agent/gist");
+    const mockSend = vi.mocked(sendDiscordMessage);
+    const mockError = vi.mocked(sendDiscordError);
+    const mockGist = vi.mocked(createGist);
+    mockSend.mockResolvedValue(undefined);
+    mockError.mockResolvedValue(undefined);
+
+    const tool = createSendDiscordReport(ENV_VAR);
+
+    // Phase 2 비율 이상값 → errors 반환
+    const invalidMd = "리스크 주의. Phase 2 비율: 2330%";
+    const resultStr = await tool.execute({
+      message: "테스트 요약",
+      markdownContent: invalidMd,
+      filename: "test.md",
+    });
+    const result = JSON.parse(resultStr);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("발송 차단됨");
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockGist).not.toHaveBeenCalled();
+    expect(mockError).toHaveBeenCalledOnce();
+  });
+
+  it("proceeds with send when only warnings exist (no errors)", async () => {
+    const { sendDiscordMessage, sendDiscordError } = await import("@/agent/discord");
+    const { createGist } = await import("@/agent/gist");
+    const mockSend = vi.mocked(sendDiscordMessage);
+    const mockError = vi.mocked(sendDiscordError);
+    const mockGist = vi.mocked(createGist);
+    mockSend.mockResolvedValue(undefined);
+    mockError.mockResolvedValue(undefined);
+    mockGist.mockResolvedValue({ id: "g3", url: "https://gist.github.com/g3" });
+
+    const tool = createSendDiscordReport(ENV_VAR);
+
+    // bull-bias 경고(warning)만 있고 error 없는 케이스:
+    // 리스크 키워드 1개(리스크) + bull 키워드 다수 → bull-bias warning, no error
+    const warningOnlyMd = "리스크. 상승 급등 돌파 신고가 강세 긍정 호재 성장 개선 확대";
+    const resultStr = await tool.execute({
+      message: "테스트 요약",
+      markdownContent: warningOnlyMd,
+      filename: "test.md",
+    });
+    const result = JSON.parse(resultStr);
+
+    expect(result.success).toBe(true);
+    expect(mockError).not.toHaveBeenCalled();
+    expect(mockSend).toHaveBeenCalledOnce();
   });
 });

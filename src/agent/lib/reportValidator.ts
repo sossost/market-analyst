@@ -12,7 +12,7 @@ const BEAR_KEYWORDS = [
 
 import { MIN_PHASE, MIN_RS_SCORE } from "@/agent/tools/validation";
 
-const BULL_BIAS_THRESHOLD = 0.8;
+const BULL_BIAS_THRESHOLD = 0.7;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,26 +113,29 @@ function checkSubstandardStocks(
     phase?: number;
   }>,
   warnings: string[],
+  errors: string[],
 ): void {
-  const substandard: string[] = [];
+  const substandardPhase: string[] = [];
+  const substandardRs: string[] = [];
 
   for (const rec of recommendations) {
-    const failReasons: string[] = [];
-
-    if (rec.phase != null && rec.phase < MIN_PHASE) {
-      failReasons.push(`Phase ${rec.phase}`);
-    }
-    if (rec.rsScore != null && rec.rsScore < MIN_RS_SCORE) {
-      failReasons.push(`RS ${rec.rsScore}`);
-    }
-
-    if (failReasons.length > 0) {
-      substandard.push(`${rec.symbol} (${failReasons.join(", ")})`);
+    const isPhase1 = rec.phase != null && rec.phase < MIN_PHASE;
+    if (isPhase1) {
+      // Phase 1 종목은 RS 수치와 무관하게 항상 ERROR — RS 경고를 중복 발행하지 않음
+      substandardPhase.push(`${rec.symbol} (Phase ${rec.phase})`);
+    } else if (rec.rsScore != null && rec.rsScore < MIN_RS_SCORE) {
+      substandardRs.push(`${rec.symbol} (RS ${rec.rsScore})`);
     }
   }
 
-  if (substandard.length > 0) {
-    warnings.push(`기준 미달 종목: ${substandard.join(", ")}`);
+  if (substandardPhase.length > 0) {
+    errors.push(
+      `Phase 1 종목 추천 감지: ${substandardPhase.join(", ")} — 추천 목록에서 제외하세요`,
+    );
+  }
+
+  if (substandardRs.length > 0) {
+    warnings.push(`RS 기준 미달 종목: ${substandardRs.join(", ")}`);
   }
 }
 
@@ -175,6 +178,7 @@ const DAILY_REQUIRED_SECTIONS: ReadonlyArray<{
   { keyword: "섹터 RS", label: "섹터 RS 랭킹 표", severity: "error" },
   { keyword: "시장 흐름", label: "시장 흐름 및 종합 전망", severity: "error" },
   { keyword: "섹터별 요약", label: "섹터별 요약", severity: "warning" },
+  { keyword: "전일 대비", label: "전일 대비 변화 요약", severity: "warning" },
 ];
 
 /** 특이종목이 없는 날 메시지만 전송하면 markdownContent가 빈 문자열. 실질적인 MD 파일 최소 길이. */
@@ -238,6 +242,42 @@ function checkPhaseDescriptionConsistency(
 }
 
 // ---------------------------------------------------------------------------
+// F. 마크다운 텍스트에서 Phase 1 종목 추천 감지 (recommendations 데이터 없이도 동작)
+// ---------------------------------------------------------------------------
+
+/**
+ * 마크다운 본문에서 Phase 1 종목이 추천 목록에 포함된 패턴을 감지한다.
+ * `[기준 미달]` 태그 또는 "Phase 1" 키워드가 추천 문맥에서 등장하면 ERROR.
+ *
+ * recommendations 배열이 전달되지 않는 호출(sendDiscordReport 등)에서도
+ * Phase 1 추천을 차단하기 위한 텍스트 기반 방어선.
+ */
+const PHASE1_RECOMMENDATION_PATTERN =
+  /(?:\[기준\s*미달\]|Phase\s*1\b)[^\n]*?(?:추천|매수|진입|편입)/gi;
+const SUBSTANDARD_TAG_PATTERN = /\[기준\s*미달\]/gi;
+
+function checkPhase1InMarkdown(
+  markdown: string,
+  errors: string[],
+): void {
+  const substandardMatches = [...markdown.matchAll(SUBSTANDARD_TAG_PATTERN)];
+  if (substandardMatches.length > 0) {
+    errors.push(
+      `[기준 미달] 태그 종목 ${substandardMatches.length}건이 리포트에 포함되어 있습니다 — Phase 1 종목은 추천 목록에서 제외하세요`,
+    );
+    return;
+  }
+
+  const phase1Matches = [...markdown.matchAll(PHASE1_RECOMMENDATION_PATTERN)];
+  if (phase1Matches.length > 0) {
+    const samples = phase1Matches.map((m) => m[0].slice(0, 60));
+    errors.push(
+      `Phase 1 종목 추천 문맥 감지 (${phase1Matches.length}건): ${samples.join(" | ")}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -257,9 +297,9 @@ export function validateReport(
     }
   }
 
-  // C. 기준 미달 종목 태깅
+  // C. 기준 미달 종목 태깅 (구조화 데이터 기반)
   if (input.recommendations != null && input.recommendations.length > 0) {
-    checkSubstandardStocks(input.recommendations, warnings);
+    checkSubstandardStocks(input.recommendations, warnings, errors);
   }
 
   // D. Phase 2 비율 범위 검증 (이중 변환 방어)
@@ -270,6 +310,9 @@ export function validateReport(
     checkDailySections(input.markdown, warnings, errors);
     checkPhaseDescriptionConsistency(input.markdown, warnings);
   }
+
+  // F. 마크다운 텍스트에서 Phase 1 추천 감지 (recommendations 없어도 동작)
+  checkPhase1InMarkdown(input.markdown, errors);
 
   return {
     warnings,
