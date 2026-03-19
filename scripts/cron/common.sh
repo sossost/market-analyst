@@ -48,6 +48,21 @@ ${msg}
   fi
 }
 
+# main 브랜치 보장 — 피처 브랜치 잔류 방어
+# issue-processor가 PR 생성 후 복귀하지 않는 경우를 대비한 방어 로직
+ensure_main_branch() {
+  local current_branch
+  current_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+  if [ "$current_branch" != "main" ]; then
+    log "[WARN] main 브랜치가 아님 ($current_branch). main으로 전환..."
+    git checkout main >> "$LOG_FILE" 2>&1 || {
+      log "[WARN] git checkout 실패. 강제 전환 시도..."
+      git checkout --force main >> "$LOG_FILE" 2>&1 || log "[ERROR] main 브랜치 전환 실패"
+    }
+    git pull --rebase origin main >> "$LOG_FILE" 2>&1 || log "[WARN] git pull 실패 (계속 진행)"
+  fi
+}
+
 # claude -p 래퍼 — Max 구독 사용을 위해 ANTHROPIC_API_KEY를 임시 해제
 # API 키가 있으면 Max 인증 대신 API 과금이 우선 적용되므로 unset 필요
 run_claude_p() {

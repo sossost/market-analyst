@@ -20,6 +20,9 @@ source "$SCRIPT_DIR/common.sh"
 cd "$PROJECT_DIR"
 load_env "$PROJECT_DIR/.env"
 
+# 브랜치 가드 — issue-processor 잔류 방어
+ensure_main_branch
+
 log "=== 주간 에이전트 시작 ==="
 
 # 1. 주간 에이전트
