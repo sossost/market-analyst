@@ -85,12 +85,21 @@ ${issue.body || '(본문 없음)'}
 }
 
 /**
- * ANTHROPIC_API_KEY를 제거한 환경 변수를 반환한다.
- * API 키가 있으면 Max 인증 대신 API 과금이 우선 적용되므로 unset 필요.
+ * Claude Code CLI 실행용 환경 변수를 반환한다.
+ * - ANTHROPIC_API_KEY: Max 인증 우선을 위해 제거
+ * - Discord 관련 토큰: CLI가 Discord API를 직접 호출하는 사고 방지
  */
-function buildEnvWithoutApiKey(): NodeJS.ProcessEnv {
+function buildSandboxedEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env }
   delete env.ANTHROPIC_API_KEY
+  delete env.DISCORD_BOT_TOKEN
+  delete env.DISCORD_PR_CHANNEL_ID
+  delete env.DISCORD_WEBHOOK_URL
+  delete env.DISCORD_WEEKLY_WEBHOOK_URL
+  delete env.DISCORD_ERROR_WEBHOOK_URL
+  delete env.DISCORD_DEBATE_WEBHOOK_URL
+  delete env.DISCORD_SYSTEM_REPORT_WEBHOOK_URL
+  delete env.DISCORD_STOCK_REPORT_WEBHOOK_URL
   return env
 }
 
@@ -204,7 +213,7 @@ export async function executeIssue(
         {
           timeout: EXECUTION_TIMEOUT_MS,
           maxBuffer: MAX_BUFFER,
-          env: buildEnvWithoutApiKey(),
+          env: buildSandboxedEnv(),
           cwd: process.cwd(),
         },
         (error, stdout, stderr) => {

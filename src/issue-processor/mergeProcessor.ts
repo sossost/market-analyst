@@ -219,6 +219,14 @@ ${commentsSummary}
 
   const env = { ...process.env }
   delete env.ANTHROPIC_API_KEY
+  delete env.DISCORD_BOT_TOKEN
+  delete env.DISCORD_PR_CHANNEL_ID
+  delete env.DISCORD_WEBHOOK_URL
+  delete env.DISCORD_WEEKLY_WEBHOOK_URL
+  delete env.DISCORD_ERROR_WEBHOOK_URL
+  delete env.DISCORD_DEBATE_WEBHOOK_URL
+  delete env.DISCORD_SYSTEM_REPORT_WEBHOOK_URL
+  delete env.DISCORD_STOCK_REPORT_WEBHOOK_URL
 
   await new Promise<void>((resolve, reject) => {
     const child = execFile(

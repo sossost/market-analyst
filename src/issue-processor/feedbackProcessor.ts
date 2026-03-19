@@ -67,11 +67,20 @@ ${feedbackBlock}
 }
 
 /**
- * ANTHROPIC_API_KEY를 제거한 환경 변수를 반환한다.
+ * Claude Code CLI 실행용 환경 변수를 반환한다.
+ * Discord 토큰을 제거하여 CLI가 Discord API를 직접 호출하는 사고를 방지.
  */
-function buildEnvWithoutApiKey(): NodeJS.ProcessEnv {
+function buildSandboxedEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env }
   delete env.ANTHROPIC_API_KEY
+  delete env.DISCORD_BOT_TOKEN
+  delete env.DISCORD_PR_CHANNEL_ID
+  delete env.DISCORD_WEBHOOK_URL
+  delete env.DISCORD_WEEKLY_WEBHOOK_URL
+  delete env.DISCORD_ERROR_WEBHOOK_URL
+  delete env.DISCORD_DEBATE_WEBHOOK_URL
+  delete env.DISCORD_SYSTEM_REPORT_WEBHOOK_URL
+  delete env.DISCORD_STOCK_REPORT_WEBHOOK_URL
   return env
 }
 
@@ -92,7 +101,7 @@ async function runClaudeWithFeedback(prompt: string): Promise<void> {
       {
         timeout: EXECUTION_TIMEOUT_MS,
         maxBuffer: MAX_BUFFER,
-        env: buildEnvWithoutApiKey(),
+        env: buildSandboxedEnv(),
         cwd: process.cwd(),
       },
       (error, _stdout, stderr) => {
