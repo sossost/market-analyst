@@ -58,21 +58,25 @@ async function fetchIndexQuote(symbol: string): Promise<IndexQuote | null> {
   const result = data?.chart?.result?.[0];
   if (result == null) return null;
 
-  const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
-  const closes = rawCloses.filter((c): c is number => c != null);
-  if (closes.length < 2) return null;
+  const meta = result.meta;
+  const regularMarketPrice: number | undefined = meta?.regularMarketPrice;
+  const chartPreviousClose: number | undefined = meta?.chartPreviousClose;
 
-  const prevClose = closes[closes.length - 2];
-  const lastClose = closes[closes.length - 1];
-  if (prevClose === 0) return null;
+  if (
+    regularMarketPrice == null ||
+    chartPreviousClose == null ||
+    chartPreviousClose === 0
+  ) {
+    return null;
+  }
 
-  const change = lastClose - prevClose;
-  const changePercent = (change / prevClose) * 100;
+  const change = regularMarketPrice - chartPreviousClose;
+  const changePercent = (change / chartPreviousClose) * 100;
 
   return {
     symbol,
     name: INDEX_SYMBOLS[symbol] ?? symbol,
-    close: Number(lastClose.toFixed(2)),
+    close: Number(regularMarketPrice.toFixed(2)),
     change: Number(change.toFixed(2)),
     changePercent: Number(changePercent.toFixed(2)),
   };

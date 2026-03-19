@@ -358,18 +358,24 @@ async function fetchIndexQuotes(): Promise<IndexQuote[]> {
       const result = data?.chart?.result?.[0];
       if (result == null) continue;
 
-      const closes = result.indicators?.quote?.[0]?.close;
-      if (closes == null || closes.length < 2) continue;
+      const meta = result.meta;
+      const regularMarketPrice: number | undefined = meta?.regularMarketPrice;
+      const chartPreviousClose: number | undefined = meta?.chartPreviousClose;
 
-      const prevClose = closes[closes.length - 2];
-      const lastClose = closes[closes.length - 1];
-      if (prevClose == null || lastClose == null || prevClose === 0) continue;
+      if (
+        regularMarketPrice == null ||
+        chartPreviousClose == null ||
+        chartPreviousClose === 0
+      ) {
+        continue;
+      }
 
-      const changePercent = ((lastClose - prevClose) / prevClose) * 100;
+      const changePercent =
+        ((regularMarketPrice - chartPreviousClose) / chartPreviousClose) * 100;
 
       results.push({
         name,
-        close: Number(lastClose.toFixed(2)),
+        close: Number(regularMarketPrice.toFixed(2)),
         changePercent: Number(changePercent.toFixed(2)),
       });
     } catch {
