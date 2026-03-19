@@ -33,3 +33,41 @@ export const PRIORITY_ORDER: Record<PriorityLabel | '__default', number> = {
 } as const
 
 export const MAX_ISSUES_PER_CYCLE = 1
+
+// ---------------------------------------------------------------------------
+// Discord 양방향 소통 타입
+// ---------------------------------------------------------------------------
+
+/** Discord 스레드 정보 */
+export interface DiscordThread {
+  threadId: string
+  name: string
+}
+
+/** Discord 메시지 */
+export interface DiscordMessage {
+  id: string
+  content: string
+  author: {
+    id: string
+    username: string
+  }
+  timestamp: string
+}
+
+/** PR ↔ Discord 스레드 매핑 */
+export interface PrThreadMapping {
+  prNumber: number
+  threadId: string
+  issueNumber: number
+  branchName: string
+  /** 다음 스캔 시 중복 처리 방지 */
+  lastScannedMessageId?: string
+  createdAt: string
+}
+
+/** 피드백 처리 결과 */
+export interface FeedbackResult {
+  success: boolean
+  error?: string
+}
