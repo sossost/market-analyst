@@ -41,6 +41,9 @@ source "$SCRIPT_DIR/common.sh"
 cd "$PROJECT_DIR"
 load_env "$PROJECT_DIR/.env"
 
+# 브랜치 가드 — issue-processor 잔류 방어 (git pull 전에 수행해야 함)
+ensure_main_branch
+
 # 동시 실행 방지
 LOCK_FILE="/tmp/market-analyst-strategic-review.lock"
 if [ -f "$LOCK_FILE" ] && kill -0 "$(cat "$LOCK_FILE")" 2>/dev/null; then

@@ -29,6 +29,9 @@ source "$SCRIPT_DIR/common.sh"
 cd "$PROJECT_DIR"
 load_env "$PROJECT_DIR/.env"
 
+# 브랜치 가드 — issue-processor 잔류 방어
+ensure_main_branch
+
 log "=== 일간 ETL 파이프라인 시작 ==="
 
 # Phase 1
