@@ -73,6 +73,7 @@ export async function main(): Promise<void> {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트에서는 import만)
-if (process.argv[1]?.includes('issue-processor')) {
+// loopOrchestrator 직접 실행 시에는 여기를 타지 않도록 엄격 매칭
+if (process.argv[1]?.endsWith('index.ts') && process.argv[1]?.includes('issue-processor')) {
   main()
 }

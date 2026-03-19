@@ -10,7 +10,7 @@
 
 import 'dotenv/config'
 
-import { execFile } from 'node:child_process'
+import { execFile, execSync } from 'node:child_process'
 import { logger } from '@/lib/logger'
 import { processIssues } from './index.js'
 import { fetchThreadMessages } from './discordClient.js'
@@ -131,11 +131,34 @@ async function cleanupDoneMappings(mappings: PrThreadMapping[]): Promise<void> {
 }
 
 /**
+ * 현재 브랜치가 main이 아니면 main으로 전환한다.
+ * issue-processor.sh의 ensure_main_branch와 동일한 역할 — 방어적 이중 가드.
+ */
+function ensureMainBranch(): void {
+  try {
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim()
+    if (currentBranch !== 'main') {
+      logger.warn(TAG, `현재 브랜치: ${currentBranch} → main으로 전환`)
+      execSync('git checkout main', { encoding: 'utf-8' })
+      execSync('git pull --rebase origin main', { encoding: 'utf-8' })
+      logger.info(TAG, 'main 브랜치 전환 + pull 완료')
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `main 브랜치 전환 실패: ${reason}`)
+    throw new Error('main 브랜치 전환 실패 — 루프 중단')
+  }
+}
+
+/**
  * 1시간 루프 진입점.
  * launchd에 의해 매 정시 호출됨.
  */
 export async function runLoop(): Promise<void> {
   logger.info(TAG, '=== 루프 시작 ===')
+
+  // Step 0: main 브랜치 보장
+  ensureMainBranch()
 
   // Step 1: 미처리 이슈 처리
   logger.info(TAG, 'Step 1: 미처리 이슈 처리')
