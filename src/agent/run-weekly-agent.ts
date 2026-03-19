@@ -170,6 +170,23 @@ async function main() {
     logger.info("Signal", "백테스트 성과 요약 로드 완료");
   }
 
+  // 3.10. 추천 성과 피드백 로드
+  let recommendationPerformance = "";
+  try {
+    const perfRaw = await readRecommendationPerformance.execute({ status: "ALL" });
+    const perf = JSON.parse(perfRaw) as { summary: { closedCount: number; winRate: number; avgPnlPercent: number; avgDaysHeld: number } };
+    const s = perf.summary;
+    if (s.closedCount > 0) {
+      recommendationPerformance = `최근 ${s.closedCount}건 종료 기준 — 승률 ${s.winRate}%, 평균 PnL ${s.avgPnlPercent}%, 평균 보유 ${s.avgDaysHeld}일`;
+      if (s.winRate < 50) {
+        recommendationPerformance += "\n⚠️ 승률 50% 미만 — 보수적 기준 적용 권장";
+      }
+      logger.info("RecPerf", `추천 성과 로드 완료: 승률 ${s.winRate}%, ${s.closedCount}건`);
+    }
+  } catch (err) {
+    logger.warn("RecPerf", `추천 성과 로드 실패 (에이전트는 계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 4. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
   logger.step("[4/7] Running agent loop...\n");
 
@@ -177,7 +194,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext, regimeContext }),
+    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext, regimeContext, recommendationPerformance }),
     tools: [
       getIndexReturns,
       getMarketBreadth,

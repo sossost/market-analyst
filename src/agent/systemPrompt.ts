@@ -302,8 +302,9 @@ export function buildWeeklySystemPrompt(options?: {
   narrativeChainsSummary?: string;
   sectorLagContext?: string;
   regimeContext?: string;
+  recommendationPerformance?: string;
 }): string {
-  const { fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext, regimeContext } =
+  const { fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext, regimeContext, recommendationPerformance } =
     options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 주간 단위로 "이번 주 시장 구조가 어떻게 바뀌었는가"를 분석하고, Phase 2 초입 주도주를 발굴합니다.
@@ -624,6 +625,22 @@ ${sanitized}
 - 현재 레짐에 따라 추천 공격성을 조절 (EARLY_BULL → 적극, LATE_BULL → 보수적, BEAR → 최소화)
 - 레짐 전환 조짐이 보이면 리포트에 명시적으로 경고
 - 추천 종목의 레짐 적합성을 판단 근거에 포함`;
+  }
+
+  if (recommendationPerformance != null && recommendationPerformance !== "") {
+    const sanitized = recommendationPerformance.replace(/<\/recommendation-performance>/gi, "");
+    prompt += `
+
+## 추천 성과 피드백 (자동 반영)
+
+아래는 최근 추천 종목의 실제 성과입니다. 이번 주 추천 기준에 반영하세요:
+- 승률이 60% 미만이면 추천 기준을 보수적으로 조정
+- 평균 손실이 큰 경우 손절 기준 재검토
+- Phase 이탈 종목이 많으면 Phase 2 확인 강화
+
+<recommendation-performance trust="internal">
+${sanitized}
+</recommendation-performance>`;
   }
 
   if (signalPerformance != null && signalPerformance !== "") {

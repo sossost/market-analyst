@@ -1,10 +1,13 @@
 import { db } from "../../db/client.js";
 import { agentLearnings, theses } from "../../db/schema/analyst.js";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, isNotNull } from "drizzle-orm";
 import { logger } from "../logger.js";
+import { detectBullBias } from "../../lib/biasDetector.js";
 
 const MAX_LEARNINGS = 50;
 const MAX_RECENT_THESES = 10;
+const MAX_CAUSAL_ANALYSES = 10;
+const BULL_BIAS_THRESHOLD = 0.8;
 
 /**
  * Load active learnings from DB and format as system prompt text.
@@ -88,17 +91,101 @@ async function loadRecentVerifications(): Promise<string> {
   return lines.join("\n");
 }
 
+interface CausalAnalysis {
+  causalChain?: string;
+  keyFactors?: string[];
+  reusablePattern?: string;
+  lessonsLearned?: string;
+}
+
+/**
+ * Load recent resolved theses with causal analysis data.
+ * Groups INVALIDATED first (failure lessons matter most for preventing repetition).
+ */
+export async function loadCausalAnalysis(): Promise<string> {
+  const [invalidatedRows, confirmedRows] = await Promise.all([
+    db
+      .select()
+      .from(theses)
+      .where(eq(theses.status, "INVALIDATED"))
+      .orderBy(desc(theses.verificationDate))
+      .limit(MAX_CAUSAL_ANALYSES),
+    db
+      .select()
+      .from(theses)
+      .where(eq(theses.status, "CONFIRMED"))
+      .orderBy(desc(theses.verificationDate))
+      .limit(MAX_CAUSAL_ANALYSES),
+  ]);
+
+  const withAnalysis = [
+    ...invalidatedRows.filter((r) => r.causalAnalysis != null),
+    ...confirmedRows.filter((r) => r.causalAnalysis != null),
+  ].slice(0, MAX_CAUSAL_ANALYSES);
+
+  if (withAnalysis.length === 0) return "";
+
+  const lines: string[] = ["### 최근 실패/성공 원인 분석"];
+
+  for (const r of withAnalysis) {
+    let parsed: CausalAnalysis;
+    try {
+      parsed = JSON.parse(r.causalAnalysis!) as CausalAnalysis;
+    } catch {
+      continue;
+    }
+
+    const statusLabel = r.status === "INVALIDATED" ? "실패" : "성공";
+    lines.push(`\n**[${r.agentPersona}] ${r.thesis} — ${statusLabel}**`);
+
+    if (parsed.reusablePattern != null && parsed.reusablePattern !== "") {
+      lines.push(`- 재사용 패턴: ${parsed.reusablePattern}`);
+    }
+    if (parsed.lessonsLearned != null && parsed.lessonsLearned !== "") {
+      lines.push(`- 교훈: ${parsed.lessonsLearned}`);
+    }
+  }
+
+  return lines.length > 1 ? lines.join("\n") : "";
+}
+
+/**
+ * Detect bull-bias in active learnings and return a warning section.
+ * Returns empty string if bias is not skewed (<=80% bull).
+ */
+export async function loadBullBiasWarning(): Promise<string> {
+  const rows = await db
+    .select()
+    .from(agentLearnings)
+    .where(eq(agentLearnings.isActive, true))
+    .limit(MAX_LEARNINGS);
+
+  if (rows.length === 0) return "";
+
+  const principles = rows.map((r) => r.principle);
+  const bias = detectBullBias(principles);
+
+  if (!bias.isSkewed) return "";
+
+  const bullPct = Math.round(bias.bullRatio * 100);
+  return `### ⚠️ Bull-Bias 경고\n현재 학습된 패턴의 ${bullPct}%가 강세 편향입니다. 이번 토론에서는 bear 관점을 강화하고, 약세 시나리오를 더 깊게 분석하세요.`;
+}
+
 /**
  * Build full memory context string for injection into debate system prompts.
  * Returns empty string if no learnings or verifications exist.
  */
 export async function buildMemoryContext(): Promise<string> {
-  const [learnings, verifications] = await Promise.all([
+  const [learnings, verifications, causalAnalysis, bullBiasWarning] = await Promise.all([
     loadLearnings(),
     loadRecentVerifications(),
+    loadCausalAnalysis(),
+    loadBullBiasWarning(),
   ]);
 
-  const sections = [learnings, verifications].filter((s) => s.length > 0);
+  const sections = [learnings, verifications, causalAnalysis, bullBiasWarning].filter(
+    (s) => s.length > 0,
+  );
 
   if (sections.length === 0) {
     logger.info("MemoryLoader", "No memory context available");
