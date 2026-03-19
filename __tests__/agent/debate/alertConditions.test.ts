@@ -1,9 +1,26 @@
 import { describe, it, expect } from "vitest";
 import type { DebateResult, Thesis } from "../../../src/types/debate.js";
+import type { MarketSnapshot } from "../../../src/agent/debate/marketDataLoader.js";
 import { sanitizeErrorForDiscord } from "@/agent/discord";
 
+// Minimal snapshot type for testing (matches MarketSnapshot shape)
+interface SectorSnapshot {
+  sector: string;
+  avgRs: number;
+  rsRank: number;
+  groupPhase: number;
+  prevGroupPhase: number | null;
+  change4w: number | null;
+  change12w: number | null;
+  phase2Ratio: number | null;
+  phase1to2Count5d: number;
+}
+
 // Extract the logic for unit testing (same as in run-debate-agent.ts)
-function checkAlertConditions(result: DebateResult): { send: boolean; reason: string } {
+function checkAlertConditions(
+  result: DebateResult,
+  snapshot: MarketSnapshot,
+): { send: boolean; reason: string } {
   const { theses } = result.round3;
 
   if (theses.length === 0) {
@@ -11,22 +28,56 @@ function checkAlertConditions(result: DebateResult): { send: boolean; reason: st
   }
 
   const highConfidence = theses.filter((t) => t.confidence === "high");
-  if (highConfidence.length > 0) {
+
+  // 조건 1: high confidence 2개 이상
+  if (highConfidence.length >= 2) {
     return { send: true, reason: `확신도 높은 전망 ${highConfidence.length}건` };
   }
 
+  // 조건 2: 의견 분열 과반
   const lowConsensus = theses.filter(
     (t) => t.consensusLevel === "1/4" || t.consensusLevel === "2/4",
   );
   if (lowConsensus.length > theses.length / 2) {
-    return { send: true, reason: `분석가 간 의견 분열 — 주의 필요` };
+    return { send: true, reason: `애널리스트 간 의견 분열 — 주의 필요` };
   }
 
-  if (theses.length >= 3) {
-    return { send: true, reason: `주요 전망 ${theses.length}건 도출` };
+  // 조건 3: 섹터 Phase 전환 + high confidence
+  const hasPhaseTransition = snapshot.sectors.some(
+    (s) => s.groupPhase === 2 && s.prevGroupPhase === 1,
+  );
+  if (hasPhaseTransition && highConfidence.length >= 1) {
+    return { send: true, reason: `섹터 Phase 전환 + 확신도 높은 전망 감지` };
   }
 
   return { send: false, reason: "" };
+}
+
+function makeSnapshot(sectors: SectorSnapshot[] = []): MarketSnapshot {
+  return {
+    date: "2026-03-05",
+    sectors,
+    newPhase2Stocks: [],
+    topPhase2Stocks: [],
+    breadth: null,
+    indices: [],
+    fearGreed: null,
+  };
+}
+
+function makeSector(overrides: Partial<SectorSnapshot> = {}): SectorSnapshot {
+  return {
+    sector: "Technology",
+    avgRs: 60,
+    rsRank: 1,
+    groupPhase: 2,
+    prevGroupPhase: 2,
+    change4w: 5,
+    change12w: 10,
+    phase2Ratio: 0.4,
+    phase1to2Count5d: 3,
+    ...overrides,
+  };
 }
 
 function makeResult(theses: Thesis[]): DebateResult {
@@ -53,15 +104,30 @@ function makeThesis(overrides: Partial<Thesis> = {}): Thesis {
   };
 }
 
+const NO_TRANSITION_SNAPSHOT = makeSnapshot([makeSector({ groupPhase: 2, prevGroupPhase: 2 })]);
+const PHASE_TRANSITION_SNAPSHOT = makeSnapshot([makeSector({ groupPhase: 2, prevGroupPhase: 1 })]);
+
 describe("checkAlertConditions", () => {
   it("does not send when no theses", () => {
-    const result = checkAlertConditions(makeResult([]));
+    const result = checkAlertConditions(makeResult([]), NO_TRANSITION_SNAPSHOT);
     expect(result.send).toBe(false);
   });
 
-  it("sends on high confidence thesis", () => {
+  it("does not send for single high confidence thesis without phase transition", () => {
     const result = checkAlertConditions(
       makeResult([makeThesis({ confidence: "high" })]),
+      NO_TRANSITION_SNAPSHOT,
+    );
+    expect(result.send).toBe(false);
+  });
+
+  it("sends on 2+ high confidence theses", () => {
+    const result = checkAlertConditions(
+      makeResult([
+        makeThesis({ confidence: "high" }),
+        makeThesis({ confidence: "high" }),
+      ]),
+      NO_TRANSITION_SNAPSHOT,
     );
     expect(result.send).toBe(true);
     expect(result.reason).toContain("확신도 높은 전망");
@@ -74,17 +140,18 @@ describe("checkAlertConditions", () => {
         makeThesis({ consensusLevel: "1/4" }),
         makeThesis({ consensusLevel: "4/4" }),
       ]),
+      NO_TRANSITION_SNAPSHOT,
     );
     expect(result.send).toBe(true);
     expect(result.reason).toContain("의견 분열");
   });
 
-  it("sends when 3+ theses generated", () => {
+  it("does NOT send when 3+ medium theses (old condition 3 removed)", () => {
     const result = checkAlertConditions(
       makeResult([makeThesis(), makeThesis(), makeThesis()]),
+      NO_TRANSITION_SNAPSHOT,
     );
-    expect(result.send).toBe(true);
-    expect(result.reason).toContain("주요 전망 3건");
+    expect(result.send).toBe(false);
   });
 
   it("does not send for 1-2 medium confidence, high consensus theses", () => {
@@ -92,16 +159,35 @@ describe("checkAlertConditions", () => {
       makeResult([
         makeThesis({ confidence: "medium", consensusLevel: "3/4" }),
       ]),
+      NO_TRANSITION_SNAPSHOT,
     );
     expect(result.send).toBe(false);
   });
 
-  it("prioritizes high confidence over other conditions", () => {
+  it("sends on phase transition + single high confidence thesis", () => {
+    const result = checkAlertConditions(
+      makeResult([makeThesis({ confidence: "high" })]),
+      PHASE_TRANSITION_SNAPSHOT,
+    );
+    expect(result.send).toBe(true);
+    expect(result.reason).toContain("Phase 전환");
+  });
+
+  it("does not send on phase transition without high confidence", () => {
+    const result = checkAlertConditions(
+      makeResult([makeThesis({ confidence: "medium" })]),
+      PHASE_TRANSITION_SNAPSHOT,
+    );
+    expect(result.send).toBe(false);
+  });
+
+  it("prioritizes 2+ high confidence over phase transition condition", () => {
     const result = checkAlertConditions(
       makeResult([
         makeThesis({ confidence: "high", consensusLevel: "4/4" }),
-        makeThesis({ confidence: "low", consensusLevel: "2/4" }),
+        makeThesis({ confidence: "high", consensusLevel: "3/4" }),
       ]),
+      PHASE_TRANSITION_SNAPSHOT,
     );
     expect(result.send).toBe(true);
     expect(result.reason).toContain("확신도 높은 전망");

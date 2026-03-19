@@ -32,12 +32,18 @@ interface AlertDecision {
  * 리포트 발송 조건 판정.
  * 매일 토론은 기억 축적이 목적 — 중요할 때만 알림.
  *
- * 발송 조건:
- * 1. high confidence thesis가 1개 이상
+ * 발송 조건 (OR):
+ * 1. high confidence thesis가 2개 이상 (다수 확신)
  * 2. 애널리스트 간 의견 크게 갈림 (consensus 2/4 이하가 과반)
- * 3. thesis가 3개 이상 (활발한 토론)
+ * 3. 섹터 Phase 1→2 전환 감지 + high confidence thesis 1개 이상 (시장 신호 연동)
+ *
+ * 이전 조건 3 (thesis >= 3)은 Claude가 매번 3~4개를 생성하여 100% 충족,
+ * 게이트 역할을 하지 못해 제거됨. (#313)
  */
-function checkAlertConditions(result: DebateResult): AlertDecision {
+function checkAlertConditions(
+  result: DebateResult,
+  snapshot: MarketSnapshot,
+): AlertDecision {
   const { theses } = result.round3;
 
   if (theses.length === 0) {
@@ -45,10 +51,13 @@ function checkAlertConditions(result: DebateResult): AlertDecision {
   }
 
   const highConfidence = theses.filter((t) => t.confidence === "high");
-  if (highConfidence.length > 0) {
+
+  // 조건 1: high confidence 2개 이상 — 다수 확신 시 발송
+  if (highConfidence.length >= 2) {
     return { send: true, reason: `확신도 높은 전망 ${highConfidence.length}건` };
   }
 
+  // 조건 2: 의견 분열 과반 — 중요 쟁점 존재
   const lowConsensus = theses.filter(
     (t) => t.consensusLevel === "1/4" || t.consensusLevel === "2/4",
   );
@@ -56,8 +65,12 @@ function checkAlertConditions(result: DebateResult): AlertDecision {
     return { send: true, reason: `애널리스트 간 의견 분열 — 주의 필요` };
   }
 
-  if (theses.length >= 3) {
-    return { send: true, reason: `주요 전망 ${theses.length}건 도출` };
+  // 조건 3: 섹터 Phase 전환 + high confidence — 시장 구조 변화 시 발송
+  const hasPhaseTransition = snapshot.sectors.some(
+    (s) => s.groupPhase === 2 && s.prevGroupPhase === 1,
+  );
+  if (hasPhaseTransition && highConfidence.length >= 1) {
+    return { send: true, reason: `섹터 Phase 전환 + 확신도 높은 전망 감지` };
   }
 
   return { send: false, reason: "" };
@@ -426,7 +439,7 @@ async function main() {
   // 7. 조건부 Discord 발송
   logger.step("[7/7] Checking alert conditions...");
   const report = result.round3.report;
-  const shouldAlert = checkAlertConditions(result);
+  const shouldAlert = checkAlertConditions(result, marketSnapshot);
 
   if (shouldAlert.send) {
     logger.info("Alert", `Sending report: ${shouldAlert.reason}`);
