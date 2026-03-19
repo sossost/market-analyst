@@ -200,6 +200,8 @@ describe("buildPromotionCandidates", () => {
     expect(candidates).toHaveLength(1);
     expect(candidates[0].hitCount).toBe(5);
     expect(candidates[0].missCount).toBe(0);
+    expect(candidates[0].persona).toBe("trend-follower");
+    expect(candidates[0].metric).toBe("RS > 80");
   });
 
   it("기존 sourceThesisIds에 포함된 thesis는 후보에서 제외", () => {
