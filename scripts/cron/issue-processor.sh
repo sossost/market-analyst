@@ -1,15 +1,23 @@
 #!/bin/bash
 #
-# 자율 이슈 처리 시스템 — 평일 10:00, 12:00, 14:00, 16:00 KST 하루 4회 실행
+# 자율 이슈 처리 시스템 v2 — KST 09:00~02:00 매 정시 실행 (18회/일)
 #
-# 미처리 이슈를 자율 점검하여 Claude Code CLI로 구현 → PR 생성.
-# CEO는 PR 리뷰 + 머지 결정만.
+# Step 1: 미처리 이슈 처리 → Claude Code CLI → PR 생성 → Discord 스레드 자동 생성
+# Step 2: 열린 PR 피드백/승인 스캔 → Claude Code CLI 피드백 반영 또는 squash merge
+# Step 3: 완료된 PR (MERGED/CLOSED) 매핑 정리
+#
+# CEO는 Discord PR 채널에서:
+#   - 자유 텍스트 → 다음 루프에서 PR에 자동 반영
+#   - "승인" 작성 → 자동 squash merge
 #
 # Usage:
 #   ./scripts/cron/issue-processor.sh
 #
 # 필수 환경변수:
 #   GITHUB_TOKEN 또는 gh auth 상태 — 이슈/PR 조작
+#   DISCORD_BOT_TOKEN — Discord Bot Token (양방향 소통)
+#   DISCORD_PR_CHANNEL_ID — PR 전용 채널 ID
+#   ALLOWED_DISCORD_USER_IDS — 허용된 Discord 사용자 ID 목록 (콤마 구분)
 
 set -euo pipefail
 
@@ -45,8 +53,8 @@ ensure_main_branch
 log "▶ git pull"
 git pull --rebase origin main >> "$LOG_FILE" 2>&1 || log "git pull 실패 (계속 진행)"
 
-# 메인 스크립트 실행
-if npx tsx src/issue-processor/index.ts >> "$LOG_FILE" 2>&1; then
+# 메인 스크립트 실행 (loopOrchestrator — Step 1~3)
+if npx tsx src/issue-processor/loopOrchestrator.ts >> "$LOG_FILE" 2>&1; then
   log "=== 자율 이슈 처리 완료 ==="
   log "▶ main 브랜치 복귀"
   git checkout main >> "$LOG_FILE" 2>&1 || log "[WARN] main 복귀 실패 — trap에서 재시도"

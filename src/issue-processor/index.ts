@@ -54,14 +54,18 @@ export async function processIssues(): Promise<void> {
 }
 
 export async function main(): Promise<void> {
-  log('=== 자율 이슈 처리 시스템 시작 ===')
+  log('=== 자율 이슈 처리 시스템 시작 (loopOrchestrator로 위임) ===')
+
+  // loopOrchestrator가 Step 1~3 전체를 담당한다.
+  // index.ts를 직접 실행하면 loopOrchestrator로 위임하여 하위 호환성 유지.
+  const { runLoop } = await import('./loopOrchestrator.js')
 
   try {
-    await processIssues()
+    await runLoop()
   } catch (err) {
     const errorMessage =
       err instanceof Error ? err.message : String(err)
-    log(`✗ 시스템 오류: ${errorMessage}`)
+    log(`✗ 루프 오류: ${errorMessage}`)
     process.exit(1)
   }
 
@@ -69,6 +73,7 @@ export async function main(): Promise<void> {
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트에서는 import만)
-if (process.argv[1]?.includes('issue-processor')) {
+// loopOrchestrator 직접 실행 시에는 여기를 타지 않도록 엄격 매칭
+if (process.argv[1]?.endsWith('index.ts') && process.argv[1]?.includes('issue-processor')) {
   main()
 }
