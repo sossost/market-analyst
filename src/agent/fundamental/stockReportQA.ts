@@ -8,6 +8,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { logger } from "../logger.js";
+import { saveReviewFeedback } from "../reviewFeedback.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -180,17 +181,94 @@ function checkEpsInconsistency(reportMd: string): QAIssue | null {
 // ─── GitHub 이슈 생성 ────────────────────────────────────────────────
 
 /**
- * QA 결과를 GitHub 이슈로 생성.
+ * 같은 날짜+종목의 기존 이슈 번호를 검색한다.
+ * 없으면 null 반환. gh CLI 실패 시에도 null 반환.
+ */
+export async function findExistingQAIssue(
+  symbol: string,
+  date: string,
+): Promise<number | null> {
+  try {
+    const searchQuery = `[QA] ${symbol} 리포트 품질 이슈 (${date})`;
+    const { stdout } = await execFileAsync("gh", [
+      "issue",
+      "list",
+      "--label",
+      "report-feedback",
+      "--search",
+      searchQuery,
+      "--json",
+      "number,title",
+      "--limit",
+      "5",
+    ]);
+    const issues = JSON.parse(stdout) as Array<{ number: number; title: string }>;
+    const exactTitle = `[QA] ${symbol} 리포트 품질 이슈 (${date})`;
+    const match = issues.find((i) => i.title === exactTitle);
+    return match?.number ?? null;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("StockReportQA", `기존 QA 이슈 검색 실패 (${symbol}, ${date}): ${reason}`);
+    return null;
+  }
+}
+
+/**
+ * QA 결과를 피드백 시스템에 저장한다.
+ * 다음 리포트 생성 시 프롬프트에 반영되도록 saveReviewFeedback 호출.
+ */
+export function bridgeQAToFeedback(result: QAResult): void {
+  if (result.passed) return;
+
+  const issueDescriptions = result.issues.map((i) => `[${i.checkId}] ${i.description}`);
+
+  saveReviewFeedback({
+    date: result.date,
+    verdict: "REVISE",
+    feedback: `${result.symbol} 종목 리포트 QA에서 ${result.issues.length}건 이슈 검출`,
+    issues: issueDescriptions,
+  });
+
+  logger.info(
+    "StockReportQA",
+    `${result.symbol} 피드백 시스템에 저장 완료 (${result.issues.length}건)`,
+  );
+}
+
+/**
+ * QA 결과를 GitHub 이슈로 생성하고 피드백 시스템에 연결한다.
  * `result.passed === true`이면 no-op.
+ * 같은 날짜+종목 이슈가 이미 있으면 코멘트 추가 (중복 방지).
  * `gh` CLI 실패 시 warn 로그만 기록하고 반환 — 발행 흐름을 막지 않음.
  */
 export async function reportQAIssueToGitHub(result: QAResult): Promise<void> {
   if (result.passed) return;
 
+  // 피드백 시스템에 저장 (프롬프트 주입용)
+  bridgeQAToFeedback(result);
+
   const title = `[QA] ${result.symbol} 리포트 품질 이슈 (${result.date})`;
   const body = buildIssueBody(result);
 
   try {
+    // 중복 방지: 같은 날짜+종목 이슈가 있으면 코멘트 추가
+    const existingIssueNumber = await findExistingQAIssue(result.symbol, result.date);
+
+    if (existingIssueNumber != null) {
+      await execFileAsync("gh", [
+        "issue",
+        "comment",
+        String(existingIssueNumber),
+        "--body",
+        `## 추가 QA 결과\n\n${body}`,
+      ]);
+      logger.info(
+        "StockReportQA",
+        `${result.symbol} 기존 이슈 #${existingIssueNumber}에 코멘트 추가`,
+      );
+      return;
+    }
+
     await execFileAsync("gh", [
       "issue",
       "create",

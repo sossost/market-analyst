@@ -174,8 +174,8 @@ describe("buildFeedbackPromptSection", () => {
 
   it("includes date and verdict for each entry", () => {
     const entries = [
-      makeFeedback({ date: "2026-03-04", verdict: "REVISE" }),
-      makeFeedback({ date: "2026-03-03", verdict: "REJECT" }),
+      makeFeedback({ date: "2026-03-04", verdict: "REVISE", issues: ["밸류에이션 분석 부재"] }),
+      makeFeedback({ date: "2026-03-03", verdict: "REJECT", issues: ["차트 포맷 오류 발견"] }),
     ];
 
     const result = buildFeedbackPromptSection(entries);
@@ -274,12 +274,24 @@ describe("detectRepeatedPatterns", () => {
   it("returns empty array when no pattern reaches threshold", () => {
     const entries = [
       makeFeedback({ date: "2026-03-01", issues: ["밸류에이션 리스크 경고 부족"] }),
-      makeFeedback({ date: "2026-03-02", issues: ["밸류에이션 리스크 경고 미흡"] }),
     ];
 
     const result = detectRepeatedPatterns(entries);
 
     expect(result).toEqual([]);
+  });
+
+  it("detects pattern when same issue appears 2+ times (default threshold)", () => {
+    const entries = [
+      makeFeedback({ date: "2026-03-01", issues: ["밸류에이션 리스크 경고 부족"] }),
+      makeFeedback({ date: "2026-03-02", issues: ["밸류에이션 리스크 경고 미흡"] }),
+    ];
+
+    const result = detectRepeatedPatterns(entries);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].count).toBeGreaterThanOrEqual(2);
+    expect(result[0].pattern).toContain("밸류에이션");
   });
 
   it("detects pattern when same issue appears 3+ times", () => {
