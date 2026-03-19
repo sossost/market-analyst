@@ -12,8 +12,13 @@
  */
 
 import { execFile } from 'node:child_process'
+import { logger } from '@/lib/logger'
 import type { BranchType, GitHubIssue } from './types.js'
 import { addComment, addLabel, removeLabel } from './githubClient.js'
+import { createThread } from './discordClient.js'
+import { savePrThreadMapping } from './prThreadStore.js'
+
+const TAG = 'EXECUTE_ISSUE'
 
 const EXECUTION_TIMEOUT_MS = 90 * 60 * 1_000 // 90분
 const MAX_BUFFER = 50 * 1024 * 1024 // 50MB
@@ -107,7 +112,65 @@ function classifyError(error: Error, stderr: string): string {
 interface ExecuteResult {
   success: boolean
   prUrl?: string
+  prNumber?: number
   error?: string
+}
+
+/**
+ * PR URL에서 PR 번호를 추출한다.
+ * 예: https://github.com/owner/repo/pull/42 → 42
+ */
+function extractPrNumber(prUrl: string): number | null {
+  const match = prUrl.match(/\/pull\/(\d+)$/)
+  if (match == null) return null
+  return parseInt(match[1], 10)
+}
+
+/**
+ * Discord PR 스레드를 생성하고 매핑을 저장한다.
+ * Discord 장애가 이슈 처리를 막으면 안 되므로 실패 시 로그만 남기고 계속 진행.
+ */
+async function createDiscordThreadForPr(
+  prNumber: number,
+  prUrl: string,
+  issueNumber: number,
+  issueTitle: string,
+  branchType: BranchType,
+): Promise<void> {
+  const channelId = process.env.DISCORD_PR_CHANNEL_ID
+  if (channelId == null || channelId === '') {
+    logger.warn(TAG, 'DISCORD_PR_CHANNEL_ID 미설정 — Discord 스레드 생성 스킵')
+    return
+  }
+
+  const branchName = `${branchType}/issue-${issueNumber}`
+  const threadName = `PR #${prNumber} — ${issueTitle}`.slice(0, 100)
+  const initialMessage = [
+    `**PR #${prNumber}** 자동 생성`,
+    `이슈: #${issueNumber} ${issueTitle}`,
+    `링크: ${prUrl}`,
+    `브랜치: \`${branchName}\``,
+    '',
+    '**운영 안내**',
+    '- 피드백: 이 스레드에 자유 텍스트로 작성 → 다음 루프에서 PR에 자동 반영',
+    '- 승인/머지: "승인" (또는 approve, 머지, merge) 작성 → 자동 squash merge',
+  ].join('\n')
+
+  try {
+    const threadId = await createThread(channelId, threadName, initialMessage)
+    savePrThreadMapping({
+      prNumber,
+      threadId,
+      issueNumber,
+      branchName,
+      createdAt: new Date().toISOString(),
+    })
+    logger.info(TAG, `Discord 스레드 생성 완료: PR #${prNumber} ↔ thread ${threadId}`)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `Discord 스레드 생성 실패 (PR #${prNumber}): ${reason}`)
+    // Discord 장애가 이슈 처리를 막으면 안 됨 — 에러 전파 없이 계속 진행
+  }
 }
 
 export async function executeIssue(
@@ -165,7 +228,20 @@ export async function executeIssue(
         issue.number,
         `🤖 [자율 이슈 처리 시스템]\n\n자율 처리 완료. PR을 생성했습니다.\n\n**PR**: ${prUrl}\n\n리뷰 후 머지 여부를 결정해 주세요.`,
       )
-      return { success: true, prUrl }
+
+      // PR 번호 추출 후 Discord 스레드 생성
+      const prNumber = extractPrNumber(prUrl)
+      if (prNumber != null) {
+        await createDiscordThreadForPr(
+          prNumber,
+          prUrl,
+          issue.number,
+          issue.title,
+          branchType,
+        )
+      }
+
+      return { success: true, prUrl, prNumber: prNumber ?? undefined }
     }
 
     // PR URL을 못 찾았으나 에러는 아닌 경우
