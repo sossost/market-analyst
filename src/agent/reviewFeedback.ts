@@ -323,9 +323,24 @@ export function getVerdictStats(
   entries: ReviewFeedbackEntry[],
 ): VerdictStats {
   const total = entries.length;
-  const ok = entries.filter((e) => e.verdict === "OK").length;
-  const revise = entries.filter((e) => e.verdict === "REVISE").length;
-  const reject = entries.filter((e) => e.verdict === "REJECT").length;
+  let ok = 0;
+  let revise = 0;
+  let reject = 0;
+
+  for (const entry of entries) {
+    switch (entry.verdict) {
+      case "OK":
+        ok++;
+        break;
+      case "REVISE":
+        revise++;
+        break;
+      case "REJECT":
+        reject++;
+        break;
+    }
+  }
+
   const okRate = total > 0 ? ok / total : 0;
 
   return { total, ok, revise, reject, okRate };
