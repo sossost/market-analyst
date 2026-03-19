@@ -153,7 +153,11 @@ export const getLeadingSectors: AgentTool = {
       const sectors = sectorRows.map((s) =>
         mapSectorRow(s, industryBySector),
       );
-      return JSON.stringify({ date, sectors });
+      return JSON.stringify({
+        _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
+        date,
+        sectors,
+      });
     }
 
     // weekly: 전주 날짜 조회
@@ -173,6 +177,7 @@ export const getLeadingSectors: AgentTool = {
         mapSectorRow(s, industryBySector),
       );
       return JSON.stringify({
+        _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
         mode: "weekly",
         date,
         prevWeekDate: null,
@@ -229,6 +234,7 @@ export const getLeadingSectors: AgentTool = {
     });
 
     return JSON.stringify({
+      _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
       mode: "weekly",
       date,
       prevWeekDate,

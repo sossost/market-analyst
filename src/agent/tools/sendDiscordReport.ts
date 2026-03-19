@@ -1,7 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordError, sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
 import { createGist } from "@/agent/gist";
-import { validateReport } from "@/agent/lib/reportValidator";
+import { sanitizePhase2Ratios, validateReport } from "@/agent/lib/reportValidator";
+import { logger } from "@/agent/logger";
 import type { AgentTool } from "./types";
 import { validateString } from "./validation";
 
@@ -77,11 +78,20 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
     definition: SEND_DISCORD_REPORT_SCHEMA,
 
     async execute(input) {
-      const message = validateString(input.message);
-      if (message == null) {
+      const rawMessage = validateString(input.message);
+      if (rawMessage == null) {
         return JSON.stringify({
           error: "메시지가 비어있거나 유효하지 않습니다",
         });
+      }
+      // 메시지 본문도 Phase 2 이중 변환 자동 교정
+      const { text: message, corrections: msgCorrections } =
+        sanitizePhase2Ratios(rawMessage);
+      if (msgCorrections.length > 0) {
+        logger.warn(
+          "sendDiscordReport",
+          `메시지 본문 Phase 2 자동 교정 ${msgCorrections.length}건: ${msgCorrections.join(", ")}`,
+        );
       }
 
       const webhookUrl = process.env[webhookEnvVar];
@@ -93,17 +103,28 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
 
       const rawMdContent = validateString(input.markdownContent);
 
-      // 품질 게이트: markdownContent가 있는 경우에만 검증.
-      // message 단독 발송(특이종목 없는 날 등)은 리포트가 아니므로 검증 대상 외.
+      // Phase 2 비율 이중 변환(×100) 자동 교정 + 품질 검증
+      let sanitizedMd: string | null = null;
       if (rawMdContent != null) {
-        const validationResult = validateReport({ markdown: rawMdContent });
+        const { text, corrections } = sanitizePhase2Ratios(rawMdContent);
+        sanitizedMd = text;
+        if (corrections.length > 0) {
+          logger.warn(
+            "sendDiscordReport",
+            `Phase 2 비율 이중 변환 자동 교정 ${corrections.length}건: ${corrections.join(", ")}`,
+          );
+        }
+
+        const validationResult = validateReport({ markdown: sanitizedMd });
         if (validationResult.errors.length > 0) {
           return blockAndNotify(validationResult.errors);
         }
       }
 
       const mdContent =
-        rawMdContent != null ? appendValidationWarnings(rawMdContent) : null;
+        sanitizedMd != null
+          ? appendValidationWarnings(sanitizedMd)
+          : null;
       const filename = validateString(input.filename) ?? "report.md";
 
       try {

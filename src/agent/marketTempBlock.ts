@@ -102,8 +102,9 @@ export function formatMarketTempBlock(snapshot: MarketSnapshot): string {
         : `${getChangeIndicator(b.phase2RatioChange)}${Math.abs(b.phase2RatioChange).toFixed(1)}%p`;
 
     lines.push("🌡️ 시장 온도 데이터");
+    const phase2Display = b.phase2Ratio != null ? `${b.phase2Ratio}%` : "N/A";
     lines.push(
-      `Phase 2: ${b.phase2Ratio}% (${changeStr}) | 시장 평균 RS: ${b.marketAvgRs}`,
+      `Phase 2: ${phase2Display} (${changeStr}) | 시장 평균 RS: ${b.marketAvgRs}`,
     );
 
     const breadthParts: string[] = [];

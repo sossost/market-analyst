@@ -153,6 +153,35 @@ describe("createSendDiscordReport", () => {
   // 발송 차단 게이트 — errors 반환 시 차단
   // ---------------------------------------------------------------------------
 
+  it("auto-corrects Phase 2 double conversion and sends successfully", async () => {
+    const { sendDiscordMessage, sendDiscordError } = await import("@/agent/discord");
+    const { createGist } = await import("@/agent/gist");
+    const mockSend = vi.mocked(sendDiscordMessage);
+    const mockError = vi.mocked(sendDiscordError);
+    const mockGist = vi.mocked(createGist);
+    mockSend.mockResolvedValue(undefined);
+    mockError.mockResolvedValue(undefined);
+    mockGist.mockResolvedValue({ url: "https://gist.github.com/test", id: "abc" });
+
+    const tool = createSendDiscordReport(ENV_VAR);
+
+    // Phase 2 비율 이상값 → 자동 교정 후 정상 발송
+    const invalidMd = "리스크 주의. Phase 2 비율: 2330%";
+    const resultStr = await tool.execute({
+      message: "테스트 요약",
+      markdownContent: invalidMd,
+      filename: "test.md",
+    });
+    const result = JSON.parse(resultStr);
+
+    expect(result.success).toBe(true);
+    // Gist에는 교정된 마크다운이 전달됨
+    expect(mockGist).toHaveBeenCalledOnce();
+    const gistContent = mockGist.mock.calls[0][1];
+    expect(gistContent).toContain("Phase 2 비율: 23.3%");
+    expect(gistContent).not.toContain("2330%");
+  });
+
   it("returns success: false and does not send when validation errors exist", async () => {
     const { sendDiscordMessage, sendDiscordError } = await import("@/agent/discord");
     const { createGist } = await import("@/agent/gist");
@@ -164,8 +193,8 @@ describe("createSendDiscordReport", () => {
 
     const tool = createSendDiscordReport(ENV_VAR);
 
-    // Phase 2 비율 이상값 → errors 반환
-    const invalidMd = "리스크 주의. Phase 2 비율: 2330%";
+    // 리스크 키워드 없음 → errors 반환 (이건 자동 교정 대상이 아님)
+    const invalidMd = "반도체 섹터가 강세를 보이며 신고가를 돌파했습니다. 성장 전망이 매우 긍정적입니다.";
     const resultStr = await tool.execute({
       message: "테스트 요약",
       markdownContent: invalidMd,

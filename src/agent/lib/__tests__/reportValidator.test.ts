@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateReport, MIN_DAILY_MD_LENGTH } from "../reportValidator";
+import { sanitizePhase2Ratios, validateReport, MIN_DAILY_MD_LENGTH } from "../reportValidator";
 
 /** 500자 이상 마크다운을 만들기 위한 패딩 생성 헬퍼 */
 function padToMinLength(base: string): string {
@@ -536,5 +536,87 @@ describe("validateReport", () => {
     });
 
     expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 문맥"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H. Phase 2 비율 이중 변환 자동 교정 (sanitizePhase2Ratios)
+// ---------------------------------------------------------------------------
+
+describe("sanitizePhase2Ratios", () => {
+  it("2110% → 21.1% 자동 교정", () => {
+    const input = "Phase 2: 2110% (▲5.2%) 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2: 21.1% (▲5.2%) 리스크 주의.");
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0]).toBe("2110% → 21.1%");
+  });
+
+  it("2330.0% → 23.3% 자동 교정", () => {
+    const input = "Phase 2: 2330.0% 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2: 23.3% 리스크 주의.");
+    expect(corrections).toHaveLength(1);
+  });
+
+  it("3520% → 35.2% 자동 교정", () => {
+    const input = "Phase 2 비율: 3520% 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2 비율: 35.2% 리스크 주의.");
+    expect(corrections).toHaveLength(1);
+  });
+
+  it("정상 범위(35.2%)는 변경하지 않음", () => {
+    const input = "Phase 2: 35.2% (▲1.5%) 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe(input);
+    expect(corrections).toHaveLength(0);
+  });
+
+  it("경계값 100%는 변경하지 않음", () => {
+    const input = "Phase 2: 100% 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe(input);
+    expect(corrections).toHaveLength(0);
+  });
+
+  it("여러 이중 변환을 한꺼번에 교정", () => {
+    const input = "Phase 2: 2110% 정상. Phase 2 추이: 3520% 비정상. 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2: 21.1% 정상. Phase 2 추이: 35.2% 비정상. 리스크 주의.");
+    expect(corrections).toHaveLength(2);
+  });
+
+  it("10000% → 100.0% 자동 교정 (1.0 이중 변환)", () => {
+    const input = "Phase 2: 10000% 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2: 100.0% 리스크 주의.");
+    expect(corrections).toHaveLength(1);
+  });
+
+  it("Phase 2가 없는 텍스트는 변경하지 않음", () => {
+    const input = "시장 분석: 상승 2110% 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe(input);
+    expect(corrections).toHaveLength(0);
+  });
+
+  it("교정 후 validateReport를 통과함", () => {
+    const input = "Phase 2: 2110% (▲5.2%) 리스크 주의. 시장 하락 위험.";
+    const { text } = sanitizePhase2Ratios(input);
+    const result = validateReport({ markdown: text });
+
+    const phase2Error = result.errors.find((e) =>
+      e.includes("Phase 2 비율 이상값"),
+    );
+    expect(phase2Error).toBeUndefined();
   });
 });
