@@ -200,7 +200,11 @@ ${commentsSummary}
 3. 수정사항이 있으면 테스트 통과 확인
 4. 커밋 (메시지: "fix: 리뷰 코멘트 반영")
 5. \`git push origin ${branchName}\`
-6. \`git checkout main\`으로 복귀
+6. 각 리뷰 코멘트에 대해 PR에 리플라이를 달아라:
+   - 반영한 코멘트: "반영 완료 — {커밋 해시}" 형태로 리플라이
+   - 스킵한 코멘트: 스킵 사유를 간단히 리플라이
+   - \`gh api repos/${REPO}/pulls/${prNumber}/comments/{comment_id}/replies -f body="..."\` 사용
+7. \`git checkout main\`으로 복귀
 
 ## 규칙
 - 타당성을 판단하여 반영. 모든 코멘트를 무조건 수용하지 마라.
