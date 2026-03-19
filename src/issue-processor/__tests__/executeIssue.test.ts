@@ -90,7 +90,7 @@ describe('executeIssue — Discord 스레드 생성', () => {
         stderr: string,
       ) => void
       cb(null, 'PR이 생성되었습니다: https://github.com/owner/repo/pull/42', '')
-      return { stdin: { end: vi.fn() } } as ReturnType<typeof execFile>
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
     })
 
     const { executeIssue } = await import('../executeIssue.js')
@@ -128,7 +128,7 @@ describe('executeIssue — Discord 스레드 생성', () => {
         stderr: string,
       ) => void
       cb(null, 'PR URL 없이 완료됨', '')
-      return { stdin: { end: vi.fn() } } as ReturnType<typeof execFile>
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
     })
 
     const { executeIssue } = await import('../executeIssue.js')
@@ -158,7 +158,7 @@ describe('executeIssue — Discord 스레드 생성', () => {
         stderr: string,
       ) => void
       cb(null, 'https://github.com/owner/repo/pull/99', '')
-      return { stdin: { end: vi.fn() } } as ReturnType<typeof execFile>
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
     })
 
     const { executeIssue } = await import('../executeIssue.js')
@@ -186,7 +186,7 @@ describe('executeIssue — Discord 스레드 생성', () => {
         stderr: string,
       ) => void
       cb(null, 'https://github.com/owner/repo/pull/55', '')
-      return { stdin: { end: vi.fn() } } as ReturnType<typeof execFile>
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
     })
 
     // Discord API 실패 시뮬레이션

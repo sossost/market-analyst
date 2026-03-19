@@ -152,7 +152,7 @@ describe('processFeedback', () => {
     mockExecFile.mockImplementation((_cmd, _args, _options, callback) => {
       const cb = callback as (error: null, stdout: string, stderr: string) => void
       cb(null, '', '')
-      return { stdin: { end: vi.fn() } } as ReturnType<typeof execFile>
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
     })
 
     const messages = [
@@ -218,7 +218,7 @@ describe('processFeedback', () => {
       const cb = callback as (error: Error, stdout: string, stderr: string) => void
       const error = Object.assign(new Error('CLI failed'), { code: 'ERR' })
       cb(error, '', 'stderr error')
-      return { stdin: { end: vi.fn() } } as ReturnType<typeof execFile>
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
     })
 
     const messages = [makeMessage('msg-1', '코드 수정 요청', 'user-allowed')]

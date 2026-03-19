@@ -71,7 +71,7 @@ async function setupExecFileAsOpen(): Promise<void> {
     (_cmd, _args, _options, callback) => {
       const cb = callback as (error: null, stdout: string, stderr: string) => void
       cb(null, JSON.stringify({ state: 'OPEN' }), '')
-      return { stdin: null } as ReturnType<typeof execFile>
+      return { stdin: null } as unknown as ReturnType<typeof execFile>
     },
   )
 }
@@ -208,7 +208,7 @@ describe('runLoop — 전체 루프 흐름', () => {
       (_cmd, _args, _options, callback) => {
         const cb = callback as (error: null, stdout: string, stderr: string) => void
         cb(null, JSON.stringify({ state: 'MERGED' }), '')
-        return { stdin: null } as ReturnType<typeof execFile>
+        return { stdin: null } as unknown as ReturnType<typeof execFile>
       },
     )
 
