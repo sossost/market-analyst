@@ -54,14 +54,18 @@ export async function processIssues(): Promise<void> {
 }
 
 export async function main(): Promise<void> {
-  log('=== 자율 이슈 처리 시스템 시작 ===')
+  log('=== 자율 이슈 처리 시스템 시작 (loopOrchestrator로 위임) ===')
+
+  // loopOrchestrator가 Step 1~3 전체를 담당한다.
+  // index.ts를 직접 실행하면 loopOrchestrator로 위임하여 하위 호환성 유지.
+  const { runLoop } = await import('./loopOrchestrator.js')
 
   try {
-    await processIssues()
+    await runLoop()
   } catch (err) {
     const errorMessage =
       err instanceof Error ? err.message : String(err)
-    log(`✗ 시스템 오류: ${errorMessage}`)
+    log(`✗ 루프 오류: ${errorMessage}`)
     process.exit(1)
   }
 
