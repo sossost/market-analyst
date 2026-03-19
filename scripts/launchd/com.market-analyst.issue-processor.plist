@@ -11,20 +11,11 @@
 	</array>
 	<key>WorkingDirectory</key>
 	<string>__PROJECT_DIR__</string>
-	<!-- KST 09:00~02:00 = UTC 00:00~17:00 — 매 정시 18개 트리거 -->
-	<!-- KST는 UTC+9. KST 09:00 = UTC 00:00, KST 02:00(다음날) = UTC 17:00 -->
-	<!-- 02:00~09:00 KST는 ETL(04:30), debate(05:00), strategic-review(04:00) 시간대 — 미실행으로 리소스 보존 -->
+	<!-- KST 09:00~02:00(다음날) 매 정시 18개 트리거 -->
+	<!-- launchd는 시스템 로컬 타임존(KST) 기준으로 동작 -->
+	<!-- 02:00~09:00 KST는 ETL/debate/strategic-review 시간대 — 미실행으로 리소스 보존 -->
 	<key>StartCalendarInterval</key>
 	<array>
-		<dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-		<dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
 		<dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
 		<dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
 		<dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
@@ -34,6 +25,15 @@
 		<dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
 		<dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
 		<dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>0</integer></dict>
 	</array>
 	<key>StandardOutPath</key>
 	<string>__PROJECT_DIR__/logs/launchd-issue-processor.log</string>
