@@ -51,13 +51,17 @@ describe('createThread', () => {
   })
 
   it('Discord API를 올바른 경로로 호출하고 threadId를 반환한다', async () => {
-    mockFetch.mockResolvedValueOnce(makeOkResponse({ id: 'thread-abc' }))
+    // 1회차: 스레드 생성, 2회차: 초기 메시지 발송 (sendThreadMessage)
+    mockFetch
+      .mockResolvedValueOnce(makeOkResponse({ id: 'thread-abc' }))
+      .mockResolvedValueOnce(makeOkResponse({ id: 'msg-1' }))
 
     const result = await createThread('channel-1', 'PR #42 — Fix bug', '초기 메시지')
 
     expect(result).toBe('thread-abc')
-    expect(mockFetch).toHaveBeenCalledOnce()
+    expect(mockFetch).toHaveBeenCalledTimes(2)
 
+    // 첫 번째 호출: 스레드 생성
     const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('/channels/channel-1/threads')
     expect(options.method).toBe('POST')
@@ -65,11 +69,16 @@ describe('createThread', () => {
     const body = JSON.parse(options.body as string)
     expect(body.name).toBe('PR #42 — Fix bug')
     expect(body.type).toBe(11) // PUBLIC_THREAD
-    expect(body.message.content).toBe('초기 메시지')
+
+    // 두 번째 호출: 초기 메시지 발송
+    const [msgUrl] = mockFetch.mock.calls[1] as [string, RequestInit]
+    expect(msgUrl).toContain('/channels/thread-abc/messages')
   })
 
   it('스레드 이름을 100자로 잘라낸다', async () => {
-    mockFetch.mockResolvedValueOnce(makeOkResponse({ id: 'thread-xyz' }))
+    mockFetch
+      .mockResolvedValueOnce(makeOkResponse({ id: 'thread-xyz' }))
+      .mockResolvedValueOnce(makeOkResponse({ id: 'msg-1' }))
 
     const longName = 'A'.repeat(150)
     await createThread('channel-1', longName, 'msg')
@@ -80,7 +89,9 @@ describe('createThread', () => {
   })
 
   it('Authorization 헤더에 Bot 토큰을 포함한다', async () => {
-    mockFetch.mockResolvedValueOnce(makeOkResponse({ id: 'thread-abc' }))
+    mockFetch
+      .mockResolvedValueOnce(makeOkResponse({ id: 'thread-abc' }))
+      .mockResolvedValueOnce(makeOkResponse({ id: 'msg-1' }))
 
     await createThread('channel-1', 'PR #1', 'msg')
 

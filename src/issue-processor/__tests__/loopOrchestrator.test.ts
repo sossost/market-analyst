@@ -39,9 +39,10 @@ vi.mock('../discordAuth.js', () => ({
   isAllowedSender: vi.fn().mockImplementation((id: string) => id === 'allowed-user'),
 }))
 
-// node:child_process — Step 3의 gh pr view 호출을 모킹
+// node:child_process — execFile (Step 3의 gh pr view) + execSync (ensureMainBranch) 모킹
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
+  execSync: vi.fn().mockReturnValue('main\n'),
 }))
 
 // ---------------------------------------------------------------------------

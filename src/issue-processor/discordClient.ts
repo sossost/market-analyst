@@ -98,6 +98,11 @@ export async function createThread(
 
   const threadData = (await threadResponse.json()) as { id: string }
   logger.info(TAG, `스레드 생성 완료: ${threadData.id} "${name}"`)
+
+  // 일반 텍스트 채널에서는 message 파라미터가 표시되지 않을 수 있으므로
+  // 초기 메시지를 별도로 발송하여 확실히 보이도록 한다.
+  await sendThreadMessage(threadData.id, initialMessage)
+
   return threadData.id
 }
 

@@ -42,11 +42,6 @@ function makeMapping(
   }
 }
 
-/**
- * execFile mock을 통해 gh/git 호출을 시뮬레이션하는 헬퍼.
- * promisify(execFile)은 내부적으로 execFile callback 패턴을 Promise로 변환.
- * callback-based mock을 시퀀셜로 등록.
- */
 type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void
 
 function mockExecSequence(
@@ -71,6 +66,27 @@ function mockExecSequence(
   )
 }
 
+/** 리뷰 없는 OPEN PR의 리뷰 체크까지 시퀀스 (merge 미포함) */
+function openPrNoReviewCheckSequence() {
+  return [
+    // 1. gh pr view (상태 확인) — OPEN
+    { stdout: JSON.stringify({ state: 'OPEN' }) },
+    // 2. gh api (리뷰 코멘트 조회) — 없음
+    { stdout: '' },
+    // 3. gh pr view --json reviews (변경 요청 확인) — 없음
+    { stdout: JSON.stringify({ reviews: [] }) },
+  ]
+}
+
+/** 리뷰 없는 OPEN PR의 전체 시퀀스 (merge 포함) */
+function openPrNoReviewSequence() {
+  return [
+    ...openPrNoReviewCheckSequence(),
+    // 4. gh pr merge
+    { stdout: '' },
+  ]
+}
+
 // ---------------------------------------------------------------------------
 // processMerge
 // ---------------------------------------------------------------------------
@@ -80,17 +96,14 @@ describe('processMerge', () => {
     vi.clearAllMocks()
   })
 
-  it('OPEN PR을 squash merge하고 매핑을 삭제한다', async () => {
+  it('OPEN PR (리뷰 없음)을 squash merge하고 매핑을 삭제한다', async () => {
     const { execFile } = await import('node:child_process')
     const { sendThreadMessage } = await import('../discordClient.js')
     const { removePrThreadMapping } = await import('../prThreadStore.js')
     const { processMerge } = await import('../mergeProcessor.js')
 
     mockExecSequence(vi.mocked(execFile), [
-      // gh pr view (상태 확인) — OPEN
-      { stdout: JSON.stringify({ state: 'OPEN' }) },
-      // gh pr merge
-      { stdout: '' },
+      ...openPrNoReviewSequence(),
       // git checkout main
       { stdout: '' },
       // git pull
@@ -105,6 +118,45 @@ describe('processMerge', () => {
       'thread-42',
       expect.stringContaining('머지되었습니다'),
     )
+    expect(removePrThreadMapping).toHaveBeenCalledWith(42)
+  })
+
+  it('리뷰 코멘트가 있으면 Claude Code CLI로 반영 후 머지한다', async () => {
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { removePrThreadMapping } = await import('../prThreadStore.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    mockExecSequence(vi.mocked(execFile), [
+      // 1. gh pr view — OPEN
+      { stdout: JSON.stringify({ state: 'OPEN' }) },
+      // 2. gh api (리뷰 코멘트) — 있음
+      { stdout: JSON.stringify({ body: 'null check 추가 필요', path: 'src/index.ts', author: { login: 'gemini' }, state: 'COMMENTED' }) },
+      // 3. gh pr view --json reviews — CHANGES_REQUESTED
+      { stdout: JSON.stringify({ reviews: [{ state: 'CHANGES_REQUESTED', author: { login: 'gemini' }, body: '' }] }) },
+      // 4. Claude Code CLI (리뷰 반영) — stdin으로 프롬프트 전달
+      { stdout: '' },
+      // 5. gh pr merge
+      { stdout: '' },
+      // 6~8. 로컬 브랜치 정리
+      { stdout: '' }, // git checkout main
+      { stdout: '' }, // git pull
+      { stdout: '  main' }, // git branch
+    ])
+
+    await processMerge(makeMapping(42))
+
+    // 리뷰 발견 알림
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('리뷰 발견'),
+    )
+    // 반영 완료 알림
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('반영 완료'),
+    )
+    // 머지 완료
     expect(removePrThreadMapping).toHaveBeenCalledWith(42)
   })
 
@@ -167,8 +219,7 @@ describe('processMerge', () => {
     const { processMerge } = await import('../mergeProcessor.js')
 
     mockExecSequence(vi.mocked(execFile), [
-      // gh pr view — OPEN
-      { stdout: JSON.stringify({ state: 'OPEN' }) },
+      ...openPrNoReviewCheckSequence(),
       // gh pr merge — 실패
       { error: new Error('merge conflict') },
     ])
@@ -190,10 +241,7 @@ describe('processMerge', () => {
     const branchName = 'feat/issue-420'
 
     mockExecSequence(vi.mocked(execFile), [
-      // gh pr view
-      { stdout: JSON.stringify({ state: 'OPEN' }) },
-      // gh pr merge
-      { stdout: '' },
+      ...openPrNoReviewSequence(),
       // git checkout main
       { stdout: '' },
       // git pull
@@ -204,7 +252,7 @@ describe('processMerge', () => {
       { stdout: '' },
     ])
 
-    await processMerge(makeMapping(42))
+    await processMerge(makeMapping(42, { branchName }))
 
     expect(removePrThreadMapping).toHaveBeenCalledWith(42)
 
