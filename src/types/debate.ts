@@ -27,6 +27,19 @@ export interface PersonaDefinition {
 }
 
 /**
+ * 소수 의견 — 다수와 다른 입장을 취한 애널리스트의 견해.
+ * 사후 검증으로 소수가 맞았는지 추적한다.
+ */
+export type MinorityViewPosition = "bearish" | "bullish" | "neutral";
+
+export interface MinorityView {
+  analyst: AgentPersona;
+  position: MinorityViewPosition;
+  reasoning: string;
+  wasCorrect: boolean | null; // 사후 검증 시 업데이트
+}
+
+/**
  * Single thesis extracted from moderator synthesis.
  */
 export interface Thesis {
@@ -43,6 +56,7 @@ export interface Thesis {
   dissentReason?: string | null;
   beneficiarySectors?: string[] | null;
   beneficiaryTickers?: string[] | null;
+  minorityView?: MinorityView | null;
 }
 
 /**
