@@ -138,20 +138,14 @@ async function main() {
           maxPnlPercent: String(maxPnlPercent),
           daysHeld,
           lastUpdated: targetDate,
-          ...(isTrailingStop
+          ...(isTrailingStop || isPhaseExit
             ? {
-                status: "CLOSED_TRAILING_STOP",
+                status: isTrailingStop ? "CLOSED_TRAILING_STOP" : "CLOSED_PHASE_EXIT",
                 closeDate: targetDate,
                 closePrice: String(currentPrice),
-                closeReason: `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`,
-              }
-            : {}),
-          ...(isPhaseExit && !isTrailingStop
-            ? {
-                status: "CLOSED_PHASE_EXIT",
-                closeDate: targetDate,
-                closePrice: String(currentPrice),
-                closeReason: `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`,
+                closeReason: isTrailingStop
+                  ? `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`
+                  : `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`,
               }
             : {}),
         })

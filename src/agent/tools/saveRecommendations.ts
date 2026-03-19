@@ -21,7 +21,6 @@ interface RecommendationInput {
 
 const SUBSTANDARD_TAG = "[기준 미달]";
 const PERSISTENCE_TAG = "[지속성 미확인]";
-const OVERHEATED_TAG = "[RS 과열]";
 
 /** LLM 진입가와 DB 종가의 허용 괴리 비율 (10%) */
 const PRICE_DIVERGENCE_THRESHOLD = 0.1;
@@ -80,31 +79,6 @@ export function tagPersistenceReason(reason: string | null | undefined): string 
   return `${PERSISTENCE_TAG} ${base}`.trim();
 }
 
-/**
- * RS 과열 종목의 reason에 [RS 과열] 접두사를 추가한다.
- * RS > MAX_RS_SCORE(95)이면 Phase 2 "말기"로 판단.
- * 이미 태그가 있으면 원본을 그대로 반환한다.
- */
-export function tagOverheatedReason(
-  reason: string | null | undefined,
-  rsScore: number | null | undefined,
-): string | null {
-  const isOverheated = rsScore != null && rsScore > MAX_RS_SCORE;
-
-  if (isOverheated === false) {
-    return reason ?? null;
-  }
-
-  if (reason == null || reason === "") {
-    return `${OVERHEATED_TAG} 사유 미기재`;
-  }
-
-  if (reason.startsWith(OVERHEATED_TAG)) {
-    return reason;
-  }
-
-  return `${OVERHEATED_TAG} ${reason}`;
-}
 
 /**
  * 에이전트가 추천 종목을 DB에 저장하는 도구.
