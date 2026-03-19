@@ -9,6 +9,8 @@ import {
   detectRepeatedPatterns,
   buildMandatoryRules,
   buildAdvisoryFeedback,
+  getVerdictStats,
+  migrateFeedbackToType,
   type ReviewFeedbackEntry,
 } from "@/agent/reviewFeedback";
 
@@ -424,5 +426,175 @@ describe("buildAdvisoryFeedback", () => {
     const result = buildAdvisoryFeedback(entries);
 
     expect(result).toContain("### 2026-03-04 (REVISE)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Report type separation — saveReviewFeedback + loadRecentFeedback
+// ---------------------------------------------------------------------------
+
+describe("report type separation", () => {
+  it("saves feedback to type-specific subdirectory when reportType is set", () => {
+    const entry = makeFeedback({ reportType: "daily" });
+
+    saveReviewFeedback(entry, testDir);
+
+    const filePath = join(testDir, "daily", "2026-03-04.json");
+    expect(existsSync(filePath)).toBe(true);
+  });
+
+  it("saves feedback to base directory when reportType is not set", () => {
+    const entry = makeFeedback();
+
+    saveReviewFeedback(entry, testDir);
+
+    const filePath = join(testDir, "2026-03-04.json");
+    expect(existsSync(filePath)).toBe(true);
+  });
+
+  it("loads feedback from type-specific subdirectory", () => {
+    const entry = makeFeedback({ date: "2026-03-04", reportType: "weekly" });
+    saveReviewFeedback(entry, testDir);
+
+    const result = loadRecentFeedback(5, testDir, "weekly");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].date).toBe("2026-03-04");
+  });
+
+  it("returns empty when loading wrong type", () => {
+    const entry = makeFeedback({ date: "2026-03-04", reportType: "daily" });
+    saveReviewFeedback(entry, testDir);
+
+    const result = loadRecentFeedback(5, testDir, "weekly");
+
+    expect(result).toEqual([]);
+  });
+
+  it("isolates daily and weekly feedback", () => {
+    saveReviewFeedback(
+      makeFeedback({ date: "2026-03-01", feedback: "Daily issue", reportType: "daily" }),
+      testDir,
+    );
+    saveReviewFeedback(
+      makeFeedback({ date: "2026-03-01", feedback: "Weekly issue", reportType: "weekly" }),
+      testDir,
+    );
+
+    const daily = loadRecentFeedback(5, testDir, "daily");
+    const weekly = loadRecentFeedback(5, testDir, "weekly");
+
+    expect(daily).toHaveLength(1);
+    expect(daily[0].feedback).toBe("Daily issue");
+    expect(weekly).toHaveLength(1);
+    expect(weekly[0].feedback).toBe("Weekly issue");
+  });
+
+  it("loads from base directory when reportType not specified (backward compat)", () => {
+    const entry = makeFeedback({ date: "2026-03-04" });
+    saveReviewFeedback(entry, testDir);
+
+    const result = loadRecentFeedback(5, testDir);
+
+    expect(result).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getVerdictStats
+// ---------------------------------------------------------------------------
+
+describe("getVerdictStats", () => {
+  it("returns zero stats for empty entries", () => {
+    const stats = getVerdictStats([]);
+
+    expect(stats).toEqual({ total: 0, ok: 0, revise: 0, reject: 0, okRate: 0 });
+  });
+
+  it("counts verdicts correctly", () => {
+    const entries = [
+      makeFeedback({ verdict: "OK" }),
+      makeFeedback({ verdict: "OK" }),
+      makeFeedback({ verdict: "REVISE" }),
+      makeFeedback({ verdict: "REJECT" }),
+    ];
+
+    const stats = getVerdictStats(entries);
+
+    expect(stats.total).toBe(4);
+    expect(stats.ok).toBe(2);
+    expect(stats.revise).toBe(1);
+    expect(stats.reject).toBe(1);
+    expect(stats.okRate).toBe(0.5);
+  });
+
+  it("calculates 100% ok rate when all OK", () => {
+    const entries = [
+      makeFeedback({ verdict: "OK" }),
+      makeFeedback({ verdict: "OK" }),
+    ];
+
+    const stats = getVerdictStats(entries);
+
+    expect(stats.okRate).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// migrateFeedbackToType
+// ---------------------------------------------------------------------------
+
+describe("migrateFeedbackToType", () => {
+  it("returns 0 when directory does not exist", () => {
+    const result = migrateFeedbackToType("daily", "/nonexistent/path");
+
+    expect(result).toBe(0);
+  });
+
+  it("returns 0 when no JSON files exist", () => {
+    mkdirSync(testDir, { recursive: true });
+
+    const result = migrateFeedbackToType("daily", testDir);
+
+    expect(result).toBe(0);
+  });
+
+  it("migrates flat files to type subdirectory", () => {
+    mkdirSync(testDir, { recursive: true });
+    const entry = makeFeedback({ date: "2026-03-04" });
+    writeFileSync(join(testDir, "2026-03-04.json"), JSON.stringify(entry));
+
+    const migrated = migrateFeedbackToType("daily", testDir);
+
+    expect(migrated).toBe(1);
+    expect(existsSync(join(testDir, "2026-03-04.json"))).toBe(false);
+    expect(existsSync(join(testDir, "daily", "2026-03-04.json"))).toBe(true);
+  });
+
+  it("adds reportType to migrated entries", () => {
+    mkdirSync(testDir, { recursive: true });
+    const entry = makeFeedback({ date: "2026-03-04" });
+    writeFileSync(join(testDir, "2026-03-04.json"), JSON.stringify(entry));
+
+    migrateFeedbackToType("daily", testDir);
+
+    const loaded = loadRecentFeedback(1, testDir, "daily");
+    expect(loaded[0].reportType).toBe("daily");
+  });
+
+  it("skips files that already exist in target", () => {
+    mkdirSync(testDir, { recursive: true });
+    const dailyDir = join(testDir, "daily");
+    mkdirSync(dailyDir, { recursive: true });
+
+    const entry = makeFeedback({ date: "2026-03-04" });
+    writeFileSync(join(testDir, "2026-03-04.json"), JSON.stringify(entry));
+    writeFileSync(join(dailyDir, "2026-03-04.json"), JSON.stringify(entry));
+
+    const migrated = migrateFeedbackToType("daily", testDir);
+
+    expect(migrated).toBe(0);
+    // Original file should still exist since we skipped
+    expect(existsSync(join(testDir, "2026-03-04.json"))).toBe(true);
   });
 });

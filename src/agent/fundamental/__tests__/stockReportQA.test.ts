@@ -288,6 +288,7 @@ describe("bridgeQAToFeedback", () => {
     expect(savedEntry.issues).toHaveLength(2);
     expect(savedEntry.issues[0]).toContain("[SECTION_MISSING]");
     expect(savedEntry.issues[1]).toContain("[NO_RISK_MENTION]");
+    expect(savedEntry.reportType).toBe("fundamental");
   });
 
   it("이슈 description이 checkId와 함께 저장됨", () => {

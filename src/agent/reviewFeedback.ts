@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "./logger";
 
@@ -8,11 +8,16 @@ import { logger } from "./logger";
 
 export type ReviewVerdict = "OK" | "REVISE" | "REJECT";
 
+/** 피드백을 분리 저장할 리포트 타입 */
+export type FeedbackReportType = "daily" | "weekly" | "debate" | "fundamental";
+
 export interface ReviewFeedbackEntry {
   date: string;
   verdict: ReviewVerdict;
   feedback: string;
   issues: string[];
+  /** 리포트 타입 — 타입별 서브디렉토리에 분리 저장 */
+  reportType?: FeedbackReportType;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,38 +44,55 @@ function ensureDir(dir: string): void {
 // ---------------------------------------------------------------------------
 
 /**
+ * 피드백 저장 디렉토리를 결정한다.
+ * reportType이 있으면 서브디렉토리, 없으면 기본 디렉토리.
+ */
+function resolveFeedbackDir(
+  baseDir: string,
+  reportType?: FeedbackReportType,
+): string {
+  if (reportType == null) return baseDir;
+  return join(baseDir, reportType);
+}
+
+/**
  * 리뷰 피드백을 JSON 파일로 저장한다.
+ * reportType이 있으면 타입별 서브디렉토리에 저장.
  * 파일명: {date}.json (같은 날짜면 덮어쓰기)
  */
 export function saveReviewFeedback(
   entry: ReviewFeedbackEntry,
   dir: string = FEEDBACK_DIR,
 ): void {
-  ensureDir(dir);
-  const filePath = join(dir, `${entry.date}.json`);
+  const targetDir = resolveFeedbackDir(dir, entry.reportType);
+  ensureDir(targetDir);
+  const filePath = join(targetDir, `${entry.date}.json`);
   writeFileSync(filePath, JSON.stringify(entry, null, 2), "utf-8");
 }
 
 /**
  * 최근 N회의 피드백을 로드한다 (date 역순).
- * OK 판정은 저장하지 않으므로, 로드된 엔트리는 모두 REVISE 또는 REJECT이다.
+ * reportType을 지정하면 해당 타입의 서브디렉토리에서 로드.
+ * 지정하지 않으면 기본 디렉토리(레거시 호환).
  */
 export function loadRecentFeedback(
   count: number = DEFAULT_FEEDBACK_COUNT,
   dir: string = FEEDBACK_DIR,
+  reportType?: FeedbackReportType,
 ): ReviewFeedbackEntry[] {
-  if (!existsSync(dir)) {
+  const targetDir = resolveFeedbackDir(dir, reportType);
+  if (!existsSync(targetDir)) {
     return [];
   }
 
-  const files = readdirSync(dir)
+  const files = readdirSync(targetDir)
     .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
     .sort((a, b) => b.localeCompare(a))
     .slice(0, count);
 
   return files.flatMap((f) => {
     try {
-      const content = readFileSync(join(dir, f), "utf-8");
+      const content = readFileSync(join(targetDir, f), "utf-8");
       return [JSON.parse(content) as ReviewFeedbackEntry];
     } catch {
       logger.warn("ReviewFeedback", `Skipping corrupt file: ${f}`);
@@ -278,4 +300,98 @@ export function buildFeedbackPromptSection(
   });
 
   return `${header}\n\n${items.join("\n\n")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Public API — verdict statistics
+// ---------------------------------------------------------------------------
+
+export interface VerdictStats {
+  total: number;
+  ok: number;
+  revise: number;
+  reject: number;
+  /** OK / total — 발송 성공률 */
+  okRate: number;
+}
+
+/**
+ * 최근 피드백에서 판정 통계를 계산한다.
+ * OK 판정이 저장되어야 의미 있는 결과를 반환한다.
+ */
+export function getVerdictStats(
+  entries: ReviewFeedbackEntry[],
+): VerdictStats {
+  const total = entries.length;
+  let ok = 0;
+  let revise = 0;
+  let reject = 0;
+
+  for (const entry of entries) {
+    switch (entry.verdict) {
+      case "OK":
+        ok++;
+        break;
+      case "REVISE":
+        revise++;
+        break;
+      case "REJECT":
+        reject++;
+        break;
+    }
+  }
+
+  const okRate = total > 0 ? ok / total : 0;
+
+  return { total, ok, revise, reject, okRate };
+}
+
+// ---------------------------------------------------------------------------
+// Migration — legacy flat feedback → type-specific subdirectories
+// ---------------------------------------------------------------------------
+
+/**
+ * 기존 플랫 디렉토리의 피드백 파일을 지정 타입의 서브디렉토리로 이동한다.
+ * 이미 서브디렉토리에 같은 파일이 있으면 스킵.
+ * 원본 파일은 이동 후 삭제한다.
+ */
+export function migrateFeedbackToType(
+  targetType: FeedbackReportType,
+  dir: string = FEEDBACK_DIR,
+): number {
+  if (!existsSync(dir)) return 0;
+
+  const files = readdirSync(dir).filter((f) =>
+    /^\d{4}-\d{2}-\d{2}\.json$/.test(f),
+  );
+
+  if (files.length === 0) return 0;
+
+  const targetDir = join(dir, targetType);
+  ensureDir(targetDir);
+
+  let migrated = 0;
+  for (const f of files) {
+    const srcPath = join(dir, f);
+    const destPath = join(targetDir, f);
+
+    if (existsSync(destPath)) {
+      logger.info("Migration", `Skipping ${f} — already exists in ${targetType}/`);
+      continue;
+    }
+
+    try {
+      const content = readFileSync(srcPath, "utf-8");
+      const entry = JSON.parse(content) as ReviewFeedbackEntry;
+      entry.reportType = targetType;
+      writeFileSync(destPath, JSON.stringify(entry, null, 2), "utf-8");
+      unlinkSync(srcPath);
+      migrated++;
+    } catch {
+      logger.warn("Migration", `Failed to migrate ${f}`);
+    }
+  }
+
+  logger.info("Migration", `Migrated ${migrated}/${files.length} files to ${targetType}/`);
+  return migrated;
 }

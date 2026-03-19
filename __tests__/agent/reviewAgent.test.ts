@@ -795,7 +795,23 @@ describe("runReviewPipeline", () => {
     );
   });
 
-  it("does not save feedback when verdict is OK", async () => {
+  it("saves feedback when verdict is OK (all verdicts saved)", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(
+        JSON.stringify({ verdict: "OK", feedback: "Good report", issues: [] }),
+      ),
+    );
+
+    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
+
+    expect(mockSaveReviewFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({ verdict: "OK" }),
+    );
+  });
+
+  it("passes reportType to saveReviewFeedback when provided", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
     mockCreate.mockResolvedValueOnce(
@@ -804,9 +820,11 @@ describe("runReviewPipeline", () => {
       ),
     );
 
-    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
+    await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true, reportType: "daily" });
 
-    expect(mockSaveReviewFeedback).not.toHaveBeenCalled();
+    expect(mockSaveReviewFeedback).toHaveBeenCalledWith(
+      expect.objectContaining({ reportType: "daily" }),
+    );
   });
 
   it("exports REVIEW_COOLDOWN_MS as 60 seconds", () => {
