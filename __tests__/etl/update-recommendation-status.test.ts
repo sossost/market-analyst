@@ -184,8 +184,8 @@ describe("trailing stop logic", () => {
     expect(isTrailingStop).toBe(false);
   });
 
-  it("Phase exit takes priority over trailing stop when both conditions are met", () => {
-    // Phase 3 이탈 + trailing stop 동시 충족 → Phase 이탈이 우선 (CLOSED_PHASE_EXIT)
+  it("Trailing stop takes priority over Phase exit when both conditions are met", () => {
+    // Phase 3 이탈 + trailing stop 동시 충족 → trailing stop이 우선 (수익 보호)
     const currentPhase: number = 3;
     const maxPnlPercent = 25;
     const pnlPercent = 10;
@@ -196,19 +196,20 @@ describe("trailing stop logic", () => {
       maxPnlPercent,
       pnlPercent,
     });
-    const isTrailingStopApplied = isTrailingStop && !isPhaseExit;
+    const isTrailingStopApplied = isTrailingStop; // trailing stop 우선
+    const isPhaseExitApplied = isPhaseExit && !isTrailingStop; // trailing stop 없을 때만
 
     expect(isPhaseExit).toBe(true);
     expect(isTrailingStop).toBe(true);
-    expect(isTrailingStopApplied).toBe(false);
+    expect(isTrailingStopApplied).toBe(true);
+    expect(isPhaseExitApplied).toBe(false);
   });
 
-  it("does not trigger when PnL is negative regardless of maxPnL", () => {
-    // maxPnL: 15%, currentPnL: -3% — trailing stop 미발동
-    // pnlPercent(-3) < maxPnlPercent(15) * 0.5(7.5) → 수식상 참이지만
-    // 실전에서는 Phase 이탈(phase !== 2)로 처리되어야 함
-    // isPhaseExit가 true이면 isTrailingStop은 적용 안 됨을 검증
-    const currentPhase: number = 3; // 손실 상태에서는 Phase도 이탈한 경우가 일반적
+  it("triggers trailing stop even when PnL is negative if maxPnL was above threshold", () => {
+    // maxPnL: 15%, currentPnL: -3% — trailing stop 발동
+    // pnlPercent(-3) < maxPnlPercent(15) * 0.5(7.5) → 발동
+    // trailing stop이 우선이므로 CLOSED_TRAILING_STOP으로 처리됨
+    const currentPhase: number = 3;
     const maxPnlPercent = 15;
     const pnlPercent = -3;
 
@@ -218,11 +219,14 @@ describe("trailing stop logic", () => {
       maxPnlPercent,
       pnlPercent,
     });
-    const isTrailingStopApplied = isTrailingStop && !isPhaseExit;
+    const isTrailingStopApplied = isTrailingStop; // trailing stop 우선
+    const isPhaseExitApplied = isPhaseExit && !isTrailingStop;
 
-    // trailing stop 수식 자체는 참(-3 < 7.5)이지만, Phase 이탈이 우선하므로 CLOSED_TRAILING_STOP으로 처리되지 않음
+    // trailing stop 수식 참(-3 < 7.5) — trailing stop이 우선하므로 CLOSED_TRAILING_STOP 처리
     expect(isPhaseExit).toBe(true);
-    expect(isTrailingStopApplied).toBe(false);
+    expect(isTrailingStop).toBe(true);
+    expect(isTrailingStopApplied).toBe(true);
+    expect(isPhaseExitApplied).toBe(false);
   });
 
   it("generates correct closeReason message format", () => {
@@ -232,6 +236,28 @@ describe("trailing stop logic", () => {
     const closeReason = `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`;
 
     expect(closeReason).toBe("Trailing stop: maxPnL 27.4% → 현재 -5.7% (50% 되돌림 초과)");
+  });
+
+  it("Phase exit only applies when trailing stop is NOT triggered", () => {
+    // Phase 3 이탈이지만 maxPnL < MIN_MAX_PNL_FOR_TRAILING → trailing stop 미충족
+    // → Phase exit만 적용
+    const currentPhase: number = 3;
+    const maxPnlPercent = 5; // 10% 미만
+    const pnlPercent = 2;
+
+    const isPhaseExit = currentPhase != null && currentPhase !== 2;
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase,
+      maxPnlPercent,
+      pnlPercent,
+    });
+    const isTrailingStopApplied = isTrailingStop;
+    const isPhaseExitApplied = isPhaseExit && !isTrailingStop;
+
+    expect(isPhaseExit).toBe(true);
+    expect(isTrailingStop).toBe(false);
+    expect(isTrailingStopApplied).toBe(false);
+    expect(isPhaseExitApplied).toBe(true);
   });
 
   it("AAOI case: maxPnL 27.38% should trigger trailing stop below 13.69%", () => {
@@ -255,5 +281,32 @@ describe("trailing stop logic", () => {
     expect(
       shouldTriggerTrailingStop({ currentPhase: 2, maxPnlPercent, pnlPercent: 13.6 }),
     ).toBe(true);
+  });
+
+  it("AAOI case: trailing stop takes priority over Phase exit (maxPnL +27% → -5.6%)", () => {
+    // 실제 AAOI 사례: maxPnL +27.38%, Phase 3 이탈, 현재 -5.66%
+    // 수정 후: trailing stop이 우선하여 CLOSED_TRAILING_STOP으로 처리
+    const currentPhase: number = 3;
+    const maxPnlPercent = 27.38;
+    const pnlPercent = -5.66;
+
+    const isPhaseExit = currentPhase != null && currentPhase !== 2;
+    const isTrailingStop = shouldTriggerTrailingStop({
+      currentPhase,
+      maxPnlPercent,
+      pnlPercent,
+    });
+
+    // 둘 다 true
+    expect(isPhaseExit).toBe(true);
+    expect(isTrailingStop).toBe(true);
+
+    // 수정 후: trailing stop이 우선
+    const status = isTrailingStop
+      ? "CLOSED_TRAILING_STOP"
+      : isPhaseExit
+        ? "CLOSED_PHASE_EXIT"
+        : "ACTIVE";
+    expect(status).toBe("CLOSED_TRAILING_STOP");
   });
 });

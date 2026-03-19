@@ -51,6 +51,13 @@ export const MIN_PHASE = 2;
 export const MIN_RS_SCORE = 60;
 
 /**
+ * RS 과열 상한 — 이 값을 초과하면 Phase 2 "말기"로 판단하여 추천 차단.
+ * 근거: 최근 90일 추천 14건 중 12건이 RS 97~100에서 진입하여 즉시 Phase 3 이탈.
+ * RS 95+ 종목은 이미 모멘텀 고점에 도달한 상태로, "초입" 포착 목표와 불일치.
+ */
+export const MAX_RS_SCORE = 95;
+
+/**
  * 퍼센트 값이 0~100 범위를 벗어나면 처리한다.
  * - 100 초과: 이중 변환 버그 가능성 → error 로그 후 null 반환.
  *   null을 반환하면 comparePhase2Ratio에서 mismatch가 강제 발생하여

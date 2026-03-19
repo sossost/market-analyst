@@ -2,9 +2,10 @@ import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateNumber } from "./validation";
+import { validateDate, validateNumber, MAX_RS_SCORE } from "./validation";
 
 const DEFAULT_MIN_RS = 60;
+const DEFAULT_MAX_RS = MAX_RS_SCORE;
 const DEFAULT_LIMIT = 30;
 
 /**
@@ -27,6 +28,10 @@ export const getPhase2Stocks: AgentTool = {
           type: "number",
           description: "최소 RS 점수 (기본 60)",
         },
+        max_rs: {
+          type: "number",
+          description: "최대 RS 점수 (기본 95). RS 과열 종목 필터링용.",
+        },
         limit: {
           type: "number",
           description: "최대 반환 종목 수 (기본 30)",
@@ -42,6 +47,7 @@ export const getPhase2Stocks: AgentTool = {
       return JSON.stringify({ error: "Invalid or missing date parameter" });
     }
     const minRs = validateNumber(input.min_rs, DEFAULT_MIN_RS);
+    const maxRs = validateNumber(input.max_rs, DEFAULT_MAX_RS);
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
     const { rows } = await retryDatabaseOperation(() =>
@@ -70,9 +76,10 @@ export const getPhase2Stocks: AgentTool = {
          WHERE sp.date = $1
            AND sp.phase = 2
            AND sp.rs_score >= $2
+           AND sp.rs_score <= $4
          ORDER BY sp.rs_score DESC
          LIMIT $3`,
-        [date, minRs, limit],
+        [date, minRs, limit, maxRs],
       ),
     );
 
@@ -105,6 +112,7 @@ export const getPhase2Stocks: AgentTool = {
     return JSON.stringify({
       date,
       minRs,
+      maxRs,
       totalPhase2: stocks.length,
       newPhase2Count: stocks.filter((s) => s.isNewPhase2).length,
       stocks,

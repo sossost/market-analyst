@@ -631,3 +631,91 @@ describe("레짐 조회 실패 시 fail-open", () => {
     expect(parsed.blockedByRegime).toBe(0);
   });
 });
+
+// =============================================================================
+// RS 과열 게이트 통합 테스트
+// =============================================================================
+
+describe("RS 과열 게이트", () => {
+  beforeEach(() => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+  });
+
+  it("RS > 95인 종목은 blockedByOverheatedRS로 차단한다", async () => {
+    setupDefaultPoolMocks();
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", rs_score: 97 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByOverheatedRS).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("RS 97 > 95 과열"),
+    );
+  });
+
+  it("RS = 95인 종목은 과열 차단 없이 정상 저장한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", rs_score: 95 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByOverheatedRS).toBe(0);
+  });
+
+  it("RS 100인 종목 2개 + RS 80인 종목 1개: 과열 2건 차단, 정상 1건 저장", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "MSFT", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [
+        makeRec({ symbol: "BATL", rs_score: 100 }),
+        makeRec({ symbol: "EONR", rs_score: 98 }),
+        makeRec({ symbol: "MSFT", rs_score: 80 }),
+      ],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByOverheatedRS).toBe(2);
+  });
+});

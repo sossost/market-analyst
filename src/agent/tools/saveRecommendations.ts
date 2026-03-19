@@ -3,7 +3,7 @@ import { recommendations, recommendationFactors } from "@/db/schema/analyst";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE } from "./validation";
+import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE, MAX_RS_SCORE } from "./validation";
 import { loadConfirmedRegime, loadPendingRegimes } from "../debate/regimeStore";
 import { logger } from "@/agent/logger";
 import { runCorporateAnalyst } from "../corporateAnalyst/runCorporateAnalyst.js";
@@ -78,6 +78,7 @@ export function tagPersistenceReason(reason: string | null | undefined): string 
 
   return `${PERSISTENCE_TAG} ${base}`.trim();
 }
+
 
 /**
  * 에이전트가 추천 종목을 DB에 저장하는 도구.
@@ -253,6 +254,7 @@ export const saveRecommendations: AgentTool = {
     let savedCount = 0;
     let skippedCount = 0;
     let blockedByCooldown = 0;
+    let blockedByOverheatedRS = 0;
 
     for (const rec of recs) {
       const symbol = validateSymbol(rec.symbol);
@@ -275,6 +277,17 @@ export const saveRecommendations: AgentTool = {
           `${symbol}: 쿨다운 기간(${COOLDOWN_CALENDAR_DAYS}일) 내 CLOSED 이력, 스킵`,
         );
         blockedByCooldown++;
+        continue;
+      }
+
+      // Phase 2.5: RS 과열 게이트 — RS > 95 종목은 Phase 2 "말기"로 판단, 추천 차단
+      const rsScore = rec.rs_score ?? null;
+      if (rsScore != null && rsScore > MAX_RS_SCORE) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: RS ${rsScore} > ${MAX_RS_SCORE} 과열, 추천 차단`,
+        );
+        blockedByOverheatedRS++;
         continue;
       }
 
@@ -383,7 +396,8 @@ export const saveRecommendations: AgentTool = {
       skippedCount,
       blockedByRegime: 0,
       blockedByCooldown,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵 (이미 존재하거나 유효하지 않음), ${blockedByCooldown}개 쿨다운 차단`,
+      blockedByOverheatedRS,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByCooldown}개 쿨다운 차단, ${blockedByOverheatedRS}개 RS 과열 차단`,
     });
   },
 };
