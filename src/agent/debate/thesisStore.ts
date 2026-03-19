@@ -218,6 +218,7 @@ export async function resolveOrExpireStaleTheses(
       "ThesisStore",
       `Thesis #${r.id} → ${r.verdict} (만료 전 정량 판정): ${r.reason}`,
     );
+    await updateMinorityViewVerdict(r.id, r.verdict);
   }
 
   if (toExpireIds.length > 0) {

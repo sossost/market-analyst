@@ -1,6 +1,6 @@
 import type { LLMProvider } from "./llm/index.js";
 import { logger } from "../logger.js";
-import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, AgentPersona } from "../../types/debate.js";
+import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, MinorityViewPosition, AgentPersona } from "../../types/debate.js";
 import type { FundamentalScore } from "../../types/fundamental.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
@@ -322,6 +322,8 @@ const VALID_CATEGORIES = new Set<string>([
  * minorityView 필드를 정규화.
  * 유효한 객체면 wasCorrect: null을 보장, 그 외 null 반환.
  */
+const VALID_POSITIONS = new Set<MinorityViewPosition>(["bearish", "bullish", "neutral"]);
+
 function normalizeMinorityView(raw: unknown): MinorityView | null {
   if (raw == null || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
@@ -329,7 +331,7 @@ function normalizeMinorityView(raw: unknown): MinorityView | null {
   if (
     !VALID_PERSONAS.has(obj.analyst as string) ||
     typeof obj.position !== "string" ||
-    obj.position.length === 0 ||
+    !VALID_POSITIONS.has(obj.position as MinorityViewPosition) ||
     typeof obj.reasoning !== "string" ||
     obj.reasoning.length === 0
   ) {
@@ -338,7 +340,7 @@ function normalizeMinorityView(raw: unknown): MinorityView | null {
 
   return {
     analyst: obj.analyst as AgentPersona,
-    position: obj.position,
+    position: obj.position as MinorityViewPosition,
     reasoning: obj.reasoning,
     wasCorrect: null, // 사후 검증 시 업데이트
   };
