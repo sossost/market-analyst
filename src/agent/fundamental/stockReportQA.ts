@@ -227,6 +227,7 @@ export function bridgeQAToFeedback(result: QAResult): void {
     verdict: "REVISE",
     feedback: `${result.symbol} 종목 리포트 QA에서 ${result.issues.length}건 이슈 검출`,
     issues: issueDescriptions,
+    reportType: "fundamental",
   });
 
   logger.info(

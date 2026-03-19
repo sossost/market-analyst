@@ -7,11 +7,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockLoadRecentFeedback = vi.fn();
 const mockBuildMandatoryRules = vi.fn();
 const mockBuildAdvisoryFeedback = vi.fn();
+const mockGetVerdictStats = vi.fn().mockReturnValue({ total: 0, ok: 0, revise: 0, reject: 0, okRate: 0 });
 
 vi.mock("@/agent/reviewFeedback", () => ({
   loadRecentFeedback: mockLoadRecentFeedback,
   buildMandatoryRules: mockBuildMandatoryRules,
   buildAdvisoryFeedback: mockBuildAdvisoryFeedback,
+  getVerdictStats: mockGetVerdictStats,
 }));
 
 const { buildDailySystemPrompt, buildWeeklySystemPrompt } =
@@ -79,12 +81,12 @@ describe("buildDailySystemPrompt", () => {
     expect(result).toContain("단발성 이슈");
   });
 
-  it("calls loadRecentFeedback with default count", () => {
+  it("calls loadRecentFeedback with daily reportType", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     buildDailySystemPrompt();
 
-    expect(mockLoadRecentFeedback).toHaveBeenCalledWith();
+    expect(mockLoadRecentFeedback).toHaveBeenCalledWith(undefined, undefined, "daily");
   });
 
   it("includes theses context when provided", () => {
@@ -448,5 +450,54 @@ describe("buildWeeklySystemPrompt", () => {
     const result = buildWeeklySystemPrompt();
 
     expect(result).not.toContain("MD 파일 맨 하단에 아래 \"용어 설명\" 섹션을 반드시 포함하세요");
+  });
+
+  it("calls loadRecentFeedback with weekly reportType", () => {
+    mockLoadRecentFeedback.mockReturnValue([]);
+
+    buildWeeklySystemPrompt();
+
+    expect(mockLoadRecentFeedback).toHaveBeenCalledWith(undefined, undefined, "weekly");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Verdict stats injection
+// ---------------------------------------------------------------------------
+
+describe("verdict stats injection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("injects verdict stats when total >= 3", () => {
+    const entries = [
+      { date: "2026-03-01", verdict: "OK", feedback: "", issues: [] },
+      { date: "2026-03-02", verdict: "REVISE", feedback: "", issues: ["x"] },
+      { date: "2026-03-03", verdict: "OK", feedback: "", issues: [] },
+    ];
+    mockLoadRecentFeedback.mockReturnValue(entries);
+    mockBuildMandatoryRules.mockReturnValue("");
+    mockBuildAdvisoryFeedback.mockReturnValue("");
+    mockGetVerdictStats.mockReturnValue({ total: 3, ok: 2, revise: 1, reject: 0, okRate: 0.667 });
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).toContain("리뷰 통과 추세");
+    expect(result).toContain("발송률 67%");
+  });
+
+  it("does not inject verdict stats when total < 3", () => {
+    const entries = [
+      { date: "2026-03-01", verdict: "OK", feedback: "", issues: [] },
+    ];
+    mockLoadRecentFeedback.mockReturnValue(entries);
+    mockBuildMandatoryRules.mockReturnValue("");
+    mockBuildAdvisoryFeedback.mockReturnValue("");
+    mockGetVerdictStats.mockReturnValue({ total: 1, ok: 1, revise: 0, reject: 0, okRate: 1 });
+
+    const result = buildDailySystemPrompt();
+
+    expect(result).not.toContain("리뷰 통과 추세");
   });
 });

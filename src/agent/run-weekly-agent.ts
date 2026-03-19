@@ -249,7 +249,7 @@ async function main() {
   // 6. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (reportDrafts.length > 0) {
     logger.step("[6/7] Running review pipeline...");
-    await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL");
+    await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL", { reportType: "weekly" });
   } else if (loopError != null) {
     throw new Error(`Agent failed with no drafts: ${loopError}`);
   } else {

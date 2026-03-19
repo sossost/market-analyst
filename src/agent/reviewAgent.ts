@@ -3,7 +3,7 @@ import { sendDiscordFile, sendDiscordMessage } from "./discord";
 import { callWithRetry } from "./debate/callAgent.js";
 import { createGist } from "./gist";
 import { logger } from "./logger";
-import { saveReviewFeedback, type ReviewVerdict } from "./reviewFeedback";
+import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from "./reviewFeedback";
 import { SEND_DISCORD_REPORT_SCHEMA } from "./tools/sendDiscordReport";
 import type { AgentTool } from "./tools/types";
 
@@ -561,7 +561,7 @@ export async function sendDrafts(
 export async function runReviewPipeline(
   drafts: ReportDraft[],
   webhookEnvVar: string,
-  options?: { skipCooldown?: boolean },
+  options?: { skipCooldown?: boolean; reportType?: FeedbackReportType },
 ): Promise<void> {
   if (drafts.length === 0) {
     logger.warn("ReviewPipeline", "No report drafts captured");
@@ -590,18 +590,17 @@ export async function runReviewPipeline(
       }
     }
 
-    if (review.verdict !== "OK") {
-      try {
-        saveReviewFeedback({
-          date: new Date().toISOString().slice(0, 10),
-          verdict: review.verdict,
-          feedback: review.feedback,
-          issues: review.issues,
-        });
-        logger.info("ReviewPipeline", "Review feedback saved for future reference");
-      } catch (saveErr) {
-        logger.warn("ReviewPipeline", `Failed to save feedback: ${saveErr}`);
-      }
+    try {
+      saveReviewFeedback({
+        date: new Date().toISOString().slice(0, 10),
+        verdict: review.verdict,
+        feedback: review.feedback,
+        issues: review.issues,
+        reportType: options?.reportType,
+      });
+      logger.info("ReviewPipeline", `Review feedback saved (${review.verdict})`);
+    } catch (saveErr) {
+      logger.warn("ReviewPipeline", `Failed to save feedback: ${saveErr}`);
     }
 
     switch (review.verdict) {
