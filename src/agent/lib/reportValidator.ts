@@ -278,6 +278,38 @@ function checkPhase1InMarkdown(
 }
 
 // ---------------------------------------------------------------------------
+// G. Phase 2 비율 이중 변환(×100) 자동 교정
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase 2 비율이 100%를 초과하면 ÷100으로 자동 교정한다.
+ * 예: "Phase 2: 2110%" → "Phase 2: 21.1%"
+ *
+ * 근거: 정상 범위는 0~100%. 100 초과는 LLM이 이미 퍼센트인 값을
+ * ×100 한 이중 변환 패턴. 교정 사실은 corrections 배열로 반환.
+ */
+export function sanitizePhase2Ratios(markdown: string): {
+  text: string;
+  corrections: string[];
+} {
+  const corrections: string[] = [];
+  const pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
+
+  const text = markdown.replace(pattern, (fullMatch, rawValue: string) => {
+    const numericStr = rawValue.replace(/,/g, "");
+    const value = Number(numericStr);
+    if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
+      const corrected = (value / 100).toFixed(1);
+      corrections.push(`${rawValue}% → ${corrected}%`);
+      return fullMatch.replace(rawValue, corrected);
+    }
+    return fullMatch;
+  });
+
+  return { text, corrections };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 

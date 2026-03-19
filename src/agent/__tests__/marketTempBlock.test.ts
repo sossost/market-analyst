@@ -130,6 +130,19 @@ describe("formatMarketTempBlock", () => {
     expect(result).toContain("Phase 2: 35% (-) | 시장 평균 RS:");
   });
 
+  it("phase2Ratio null — N/A 표시 (이중 변환 감지 시)", () => {
+    const snapshot = createFullSnapshot({
+      breadth: {
+        ...createFullSnapshot().breadth!,
+        phase2Ratio: null,
+      },
+    });
+    const result = formatMarketTempBlock(snapshot);
+
+    expect(result).toContain("Phase 2: N/A");
+    expect(result).not.toContain("Phase 2: null%");
+  });
+
   it("모든 선택 필드 null — 헤더와 특별한 시장 신호 없음 행만 출력", () => {
     const snapshot = createFullSnapshot({
       indices: [],

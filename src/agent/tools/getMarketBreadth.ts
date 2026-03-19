@@ -218,6 +218,7 @@ export const getMarketBreadth: AgentTool = {
       );
 
       return JSON.stringify({
+        _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
         mode: "weekly",
         dates,
         weeklyTrend,
@@ -377,6 +378,7 @@ export const getMarketBreadth: AgentTool = {
     );
 
     return JSON.stringify({
+      _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
       date,
       totalStocks: total,
       phaseDistribution,
