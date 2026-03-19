@@ -55,10 +55,12 @@ ensure_main_branch() {
   current_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
   if [ "$current_branch" != "main" ]; then
     log "[WARN] main 브랜치가 아님 ($current_branch). main으로 전환..."
-    git checkout main >> "$LOG_FILE" 2>&1 || {
-      log "[WARN] git checkout 실패. 강제 전환 시도..."
-      git checkout --force main >> "$LOG_FILE" 2>&1 || log "[ERROR] main 브랜치 전환 실패"
-    }
+    git checkout main >> "$LOG_FILE" 2>&1 || \
+      git checkout --force main >> "$LOG_FILE" 2>&1 || {
+        log "[ERROR] main 브랜치 전환 실패 — 파이프라인 중단"
+        send_error "main 브랜치 전환 실패 ($current_branch)" "브랜치 가드"
+        exit 1
+      }
     git pull --rebase origin main >> "$LOG_FILE" 2>&1 || log "[WARN] git pull 실패 (계속 진행)"
   fi
 }

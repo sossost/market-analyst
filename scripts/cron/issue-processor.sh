@@ -34,7 +34,7 @@ if [ -f "$LOCK_FILE" ] && kill -0 "$(cat "$LOCK_FILE")" 2>/dev/null; then
 fi
 echo $$ > "$LOCK_FILE"
 # 락 파일 제거 + main 브랜치 복귀를 함께 보장
-trap 'rm -f "$LOCK_FILE"; git checkout main >> "$LOG_FILE" 2>&1 || true' EXIT
+trap 'rm -f "$LOCK_FILE"; git checkout main >> "$LOG_FILE" 2>&1 || git checkout --force main >> "$LOG_FILE" 2>&1 || true' EXIT
 
 log "=== 자율 이슈 처리 시작 ==="
 
