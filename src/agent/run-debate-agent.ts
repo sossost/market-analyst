@@ -17,6 +17,8 @@ import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
 import { logger } from "./logger";
+import { runDebateQA, type DebateQAResult } from "./debateQA";
+import { runReviewPipeline, type ReportDraft } from "./reviewAgent";
 import { loadFundamentalData } from "../lib/fundamental-data-loader";
 import { scoreFundamentals, promoteTopToS } from "../lib/fundamental-scorer";
 import { formatFundamentalContext } from "./debate/round3-synthesis";
@@ -169,6 +171,28 @@ function sanitizeDiscordMentions(text: string): string {
     .replace(/@everyone/gi, "@\u200Beveryone")
     .replace(/@here/gi, "@\u200Bhere")
     .replace(/<@[!&]?\d+>/g, "[mention]");
+}
+
+/**
+ * QA 경고가 있으면 draft 메시지 앞에 경고 블록을 삽입한 새 배열을 반환한다.
+ * 원본 drafts는 변경하지 않는다.
+ */
+export function withDebateQAWarning(
+  drafts: ReportDraft[],
+  qaResult: DebateQAResult,
+): ReportDraft[] {
+  if (drafts.length === 0) return drafts;
+
+  const lines = qaResult.mismatches.map((m) =>
+    `- ${m.field}: 리포트 \`${m.actual}\` / DB 실측 \`${m.expected}\``,
+  );
+
+  const warningBlock = `⚠️ **[투자 브리핑 데이터 정합성 경고]**\n${lines.join("\n")}\n\n`;
+
+  return [
+    { ...drafts[0], message: warningBlock + drafts[0].message },
+    ...drafts.slice(1),
+  ];
 }
 
 function buildDebateQuestion(debateDate: string): string {
@@ -436,21 +460,33 @@ async function main() {
     logger.warn("Session", `Failed to save session: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 7. 조건부 Discord 발송
-  logger.step("[7/7] Checking alert conditions...");
+  // 7. 조건부 Discord 발송 (QA + 리뷰 파이프라인 적용)
+  logger.step("[7/9] Checking alert conditions...");
   const report = result.round3.report;
   const shouldAlert = checkAlertConditions(result, marketSnapshot);
 
   if (shouldAlert.send) {
     logger.info("Alert", `Sending report: ${shouldAlert.reason}`);
 
-    // 핵심 요약 추출 (리포트 첫 섹션)
+    // 8. 투자 브리핑 QA (데이터 정합성 + bull-bias 감지)
+    logger.step("[8/9] Running debate QA...");
+    let debateQAResult: DebateQAResult | null = null;
+    try {
+      debateQAResult = await runDebateQA(debateDate, result.round3.theses);
+      logger.info(
+        "DebateQA",
+        `severity: ${debateQAResult.severity}, mismatches: ${debateQAResult.mismatches.length}, checked: ${debateQAResult.checkedItems}`,
+      );
+    } catch (err) {
+      logger.warn(
+        "DebateQA",
+        `QA 실패 (발송 계속): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    // Discord 메시지 구성
     const coreInsight = extractCoreInsight(report);
-
-    // 애널리스트별 핵심 인사이트 (Round 1)
     const personaInsights = extractPersonaInsights(result.round1.outputs);
-
-    // 애널리스트 간 쟁점 (Round 2)
     const debatePoint = extractKeyDebatePoint(result.round2.outputs);
 
     const thesesSummary = result.round3.theses
@@ -480,30 +516,27 @@ async function main() {
 
     const summary = sections.join("\n");
 
-    const webhookVar = "DISCORD_DEBATE_WEBHOOK_URL";
-    const webhookFallback = process.env[webhookVar] ?? process.env.DISCORD_WEBHOOK_URL;
+    // ReportDraft 구성 (리뷰 파이프라인 입력)
+    let drafts: ReportDraft[] = [
+      {
+        message: sanitizeDiscordMentions(summary),
+        markdownContent: report,
+        filename: `briefing-${debateDate}.md`,
+      },
+    ];
 
-    if (webhookFallback != null && webhookFallback !== "") {
-      try {
-        const gist = await createGist(
-          `briefing-${debateDate}.md`,
-          report,
-          `시장 브리핑 ${debateDate}`,
-        );
-        const reportLink = gist != null ? `\n\n📄 전체 리포트: ${gist.url}` : "";
-        await sendDiscordMessage(
-          sanitizeDiscordMentions(`${summary}${reportLink}`),
-          webhookVar,
-        );
-      } catch {
-        await sendDiscordFile(
-          webhookFallback,
-          summary,
-          `briefing-${debateDate}.md`,
-          report,
-        );
-      }
+    // QA 경고가 있으면 draft에 경고 블록 삽입
+    if (debateQAResult != null && (debateQAResult.severity === "block" || debateQAResult.severity === "warn")) {
+      const level = debateQAResult.severity === "block" ? "BLOCK" : "WARN";
+      logger.warn("DebateQA", `${level} — 경고 문구를 브리핑에 삽입합니다`);
+      drafts = withDebateQAWarning(drafts, debateQAResult);
     }
+
+    // 9. 리뷰 파이프라인 → 최종 발송
+    logger.step("[9/9] Running review pipeline...");
+    await runReviewPipeline(drafts, "DISCORD_DEBATE_WEBHOOK_URL", {
+      reportType: "debate",
+    });
   } else {
     logger.info("Alert", "No alert conditions met — results saved to DB only");
   }
