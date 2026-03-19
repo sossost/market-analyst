@@ -92,7 +92,7 @@ describe('runLoop — 전체 루프 흐름', () => {
     process.env.ALLOWED_DISCORD_USER_IDS = 'allowed-user'
   })
 
-  it('활성 매핑 없으면 Step 1만 실행하고 Step 2~3 스킵한다', async () => {
+  it('활성 매핑 없으면 피드백/머지 스킵하고 이슈 처리를 실행한다', async () => {
     const { processIssues } = await import('../index.js')
     const { loadAllMappings } = await import('../prThreadStore.js')
     const { processFeedback } = await import('../feedbackProcessor.js')
@@ -187,12 +187,27 @@ describe('runLoop — 전체 루프 흐름', () => {
     expect(processMerge).not.toHaveBeenCalled()
   })
 
-  it('Step 1 실패해도 Step 2~3를 계속 실행한다', async () => {
+  it('열린 PR이 있으면 이슈 처리를 스킵한다', async () => {
+    const { processIssues } = await import('../index.js')
+    const { loadAllMappings } = await import('../prThreadStore.js')
+    const { fetchThreadMessages } = await import('../discordClient.js')
+    const { runLoop } = await import('../loopOrchestrator.js')
+
+    vi.mocked(loadAllMappings).mockReturnValue([makeMapping(42)])
+    vi.mocked(fetchThreadMessages).mockResolvedValue([])
+    await setupExecFileAsOpen()
+
+    await runLoop()
+
+    expect(processIssues).not.toHaveBeenCalled()
+  })
+
+  it('이슈 처리 실패해도 루프가 중단되지 않는다', async () => {
     const { processIssues } = await import('../index.js')
     const { loadAllMappings } = await import('../prThreadStore.js')
     const { runLoop } = await import('../loopOrchestrator.js')
 
-    vi.mocked(processIssues).mockRejectedValue(new Error('Step 1 오류'))
+    vi.mocked(processIssues).mockRejectedValue(new Error('이슈 처리 오류'))
     vi.mocked(loadAllMappings).mockReturnValue([])
 
     await expect(runLoop()).resolves.not.toThrow()

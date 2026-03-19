@@ -160,23 +160,27 @@ export async function runLoop(): Promise<void> {
   // Step 0: main 브랜치 보장
   ensureMainBranch()
 
-  // Step 1: 미처리 이슈 처리
-  logger.info(TAG, 'Step 1: 미처리 이슈 처리')
-  try {
-    await processIssues()
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
-    logger.error(TAG, `Step 1 실패: ${reason}`)
-    // Step 1 실패해도 Step 2, 3은 계속 진행
-  }
-
-  // Step 2: 열린 PR 피드백/승인 스캔
+  // Step 1: 열린 PR 피드백/승인 스캔 (먼저 처리하여 PR 정리)
   const mappings = loadAllMappings()
   await scanPrFeedbacks(mappings)
 
-  // Step 3: 완료된 PR 매핑 정리 (Step 2 이후 재로드하여 최신 상태 반영)
+  // Step 2: 완료된 PR 매핑 정리
   const updatedMappings = loadAllMappings()
   await cleanupDoneMappings(updatedMappings)
+
+  // Step 3: 열린 PR이 없으면 미처리 이슈 처리
+  const activeMappings = loadAllMappings()
+  if (activeMappings.length > 0) {
+    logger.info(TAG, `Step 3: 열린 PR ${activeMappings.length}개 존재 — 이슈 처리 스킵`)
+  } else {
+    logger.info(TAG, 'Step 3: 열린 PR 없음 — 미처리 이슈 처리')
+    try {
+      await processIssues()
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      logger.error(TAG, `Step 3 이슈 처리 실패: ${reason}`)
+    }
+  }
 
   logger.info(TAG, '=== 루프 완료 ===')
 }
