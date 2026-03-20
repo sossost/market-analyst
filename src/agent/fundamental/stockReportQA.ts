@@ -279,6 +279,8 @@ export async function reportQAIssueToGitHub(result: QAResult): Promise<void> {
       body,
       "--label",
       "report-feedback",
+      "--label",
+      "P2: medium",
     ]);
     logger.info(
       "StockReportQA",

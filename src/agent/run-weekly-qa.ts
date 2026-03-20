@@ -397,7 +397,7 @@ function maybeCreateGithubIssue(
   try {
     const result = spawnSync(
       "gh",
-      ["issue", "create", "--title", issueTitle, "--body", issueBody, "--label", "qa,weekly"],
+      ["issue", "create", "--title", issueTitle, "--body", issueBody, "--label", "report-feedback", "--label", "P2: medium"],
       { encoding: "utf-8" },
     );
     if (result.status !== 0) {
