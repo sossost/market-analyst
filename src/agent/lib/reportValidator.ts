@@ -400,8 +400,6 @@ function checkSectorContinuityReason(
  * @remarks 같은 리포트 내에서 강세와 약세를 동시 서술하는 것은
  *          전일→익일 반전의 축약 표현일 수 있다.
  */
-const BULLISH_STOCK_PATTERN = /[⭐◎]\s*(?:강세|특이)\s*[^\n]*?([A-Z]{1,5}(?:\.[A-Z]{1,2})?)/g;
-const BEARISH_STOCK_PATTERN = /[⚠️]\s*(?:약세|경고|급락)\s*[^\n]*?([A-Z]{1,5}(?:\.[A-Z]{1,2})?)/g;
 const SYMBOL_IN_CONTEXT_PATTERN = /\b([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\b/g;
 
 function checkDirectionReversalContext(
