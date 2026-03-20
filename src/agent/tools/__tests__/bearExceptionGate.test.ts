@@ -307,22 +307,22 @@ describe("evaluateBearException", () => {
 
 describe("tagBearExceptionReason", () => {
   it("reason에 [Bear 예외] 접두사를 추가한다", () => {
-    const result = tagBearExceptionReason("강한 RS 모멘텀", "예외 통과");
+    const result = tagBearExceptionReason("강한 RS 모멘텀");
     expect(result).toBe("[Bear 예외] 강한 RS 모멘텀");
   });
 
   it("이미 [Bear 예외] 태그가 있으면 중복 추가하지 않는다", () => {
-    const result = tagBearExceptionReason("[Bear 예외] 기존 사유", "예외 통과");
+    const result = tagBearExceptionReason("[Bear 예외] 기존 사유");
     expect(result).toBe("[Bear 예외] 기존 사유");
   });
 
   it("null을 받으면 [Bear 예외] 태그만 반환한다", () => {
-    const result = tagBearExceptionReason(null, "예외 통과");
+    const result = tagBearExceptionReason(null);
     expect(result).toBe("[Bear 예외]");
   });
 
   it("빈 문자열을 받으면 [Bear 예외] 태그만 반환한다", () => {
-    const result = tagBearExceptionReason("", "예외 통과");
+    const result = tagBearExceptionReason("");
     expect(result).toBe("[Bear 예외]");
   });
 });

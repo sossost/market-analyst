@@ -335,7 +335,7 @@ export const saveRecommendations: AgentTool = {
       // Bear 예외 태깅
       let taggedReason: string | null = rec.reason ?? null;
       if (bearExceptionPassed) {
-        taggedReason = tagBearExceptionReason(taggedReason, "");
+        taggedReason = tagBearExceptionReason(taggedReason);
       }
 
       // 기준 미달 태깅 (Phase < 2 또는 RS < 60)

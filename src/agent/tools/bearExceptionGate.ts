@@ -133,7 +133,6 @@ export async function evaluateBearException(
  */
 export function tagBearExceptionReason(
   reason: string | null | undefined,
-  exceptionReason: string,
 ): string {
   const base = reason ?? "";
 
