@@ -23,11 +23,12 @@ fi
 
 # fix:/refactor:/test:/chore: 전용 브랜치는 문서 업데이트 불필요
 # feat: 커밋이 하나라도 있을 때만 경로 패턴 체크 적용
-FEAT_ONLY_COMMITS=$(git log "$BASE_BRANCH"..HEAD --oneline --grep="^feat" 2>/dev/null || echo "")
-ALL_COMMITS=$(git log "$BASE_BRANCH"..HEAD --oneline 2>/dev/null || echo "")
-# 모든 커밋이 fix/refactor/test/chore/docs 이면 경로 패턴 체크 스킵
+# --format=%s 로 제목 줄만 추출하여 본문 텍스트 오탐 방지
+FEAT_ONLY_COMMITS=$(git log "$BASE_BRANCH"..HEAD --format="%s" 2>/dev/null | grep "^feat" || true)
+ALL_COMMIT_SUBJECTS=$(git log "$BASE_BRANCH"..HEAD --format="%s" 2>/dev/null || echo "")
+# 모든 커밋 제목이 fix/refactor/test/chore/docs/perf/ci 이면 경로 패턴 체크 스킵
 if [ -z "$FEAT_ONLY_COMMITS" ]; then
-  NON_FIX_COMMITS=$(echo "$ALL_COMMITS" | grep -vE "^[a-f0-9]+ (fix|refactor|test|chore|docs|perf|ci):" || true)
+  NON_FIX_COMMITS=$(echo "$ALL_COMMIT_SUBJECTS" | grep -vE "^(fix|refactor|test|chore|docs|perf|ci):" || true)
   if [ -z "$NON_FIX_COMMITS" ]; then
     exit 0
   fi
@@ -57,7 +58,7 @@ for pattern in "${SIGNIFICANT_PATTERNS[@]}"; do
   fi
 done
 
-# feat: 커밋이 있으면 유의미한 변경으로 추가 표시
+# feat: 커밋 제목이 있으면 유의미한 변경으로 추가 표시
 if [ -n "$FEAT_ONLY_COMMITS" ]; then
   HAS_SIGNIFICANT_CHANGE=true
   SIGNIFICANT_AREAS="$SIGNIFICANT_AREAS\n  - feat 커밋 감지"
