@@ -17,6 +17,10 @@ import {
   getRegimePerformanceSummary,
   formatRegimePerformanceForPrompt,
 } from "./debate/regimeThesisAnalyzer";
+import {
+  getCalibrationResult,
+  formatCalibrationForPrompt,
+} from "./debate/confidenceCalibrator";
 import { verifyTheses } from "./debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
@@ -423,8 +427,26 @@ async function main() {
     );
   }
 
-  // Combine memory + few-shot + regime performance into enriched memory context
-  const enrichedMemory = [memoryContext, fewShotContext, regimePerformanceContext]
+  // Confidence 캘리브레이션 로드 (에러 격리)
+  let calibrationContext = "";
+  try {
+    const calibrationResult = await getCalibrationResult();
+    calibrationContext = formatCalibrationForPrompt(calibrationResult);
+    if (calibrationContext.length > 0) {
+      logger.info(
+        "Calibration",
+        `캘리브레이션 컨텍스트 로드: ${calibrationResult.totalResolved}건, ECE=${calibrationResult.ece ?? "N/A"}`,
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      "Calibration",
+      `캘리브레이션 로드 실패: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // Combine memory + few-shot + regime performance + calibration into enriched memory context
+  const enrichedMemory = [memoryContext, fewShotContext, regimePerformanceContext, calibrationContext]
     .filter((s) => s.length > 0)
     .join("\n\n");
 
