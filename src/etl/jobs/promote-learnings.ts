@@ -2,6 +2,8 @@ import "dotenv/config";
 import { db, pool } from "@/db/client";
 import { theses, agentLearnings, failurePatterns } from "@/db/schema/analyst";
 import { eq, sql, and } from "drizzle-orm";
+
+export const BEAR_KEYWORDS_FOR_PRIORITY = ["하락", "약세", "부정", "조정", "위축", "둔화", "악화", "하향", "리스크", "경계"];
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { binomialTest } from "@/lib/statisticalTests";
 import { detectBullBias } from "@/lib/biasDetector";
@@ -109,13 +111,20 @@ async function main() {
 
   const activeCountAfterDemotion = activeLearnings.length - demotedCount;
 
+  // 5a. 현재 편향 체크 (승격 전 상태 기준 — bear-priority 정렬에 사용)
+  const prePrinciples = activeLearnings.map((l) => l.principle);
+  const preBias = detectBullBias(prePrinciples);
+  if (preBias.isSkewed) {
+    logger.warn(TAG, `BIAS WARNING (pre-promote): Bull-bias ${(preBias.bullRatio * 100).toFixed(0)}% > 80% — bear 후보 우선 승격`);
+  }
+
   const candidates = buildPromotionCandidates(
     confirmedTheses,
     invalidatedTheses,
     existingSourceIds,
     activeCountAfterDemotion,
   );
-  const promotedCount = await promoteNewLearnings(candidates, activeCountAfterDemotion, today);
+  const promotedCount = await promoteNewLearnings(candidates, activeCountAfterDemotion, today, preBias.isSkewed);
 
   // 6. 실패 패턴 기반 경계 학습 승격/강등
   const cautionPromoted = await promoteFailurePatterns(today);
@@ -316,18 +325,26 @@ export function buildPromotionCandidates(
     });
 }
 
-async function promoteNewLearnings(
+export async function promoteNewLearnings(
   candidates: PromotionCandidate[],
   currentActiveCount: number,
   today: string,
+  bearPriority: boolean = false,
 ): Promise<number> {
   const slotsAvailable = MAX_ACTIVE_LEARNINGS - currentActiveCount;
   if (slotsAvailable <= 0 || candidates.length === 0) return 0;
 
-  // 적중률 높은 순으로 정렬
+  // 적중률 높은 순으로 정렬, bear-priority 시 bear 키워드 포함 후보를 우선 배치
   const sorted = [...candidates].sort((a, b) => {
     const rateA = a.hitCount / (a.hitCount + a.missCount);
     const rateB = b.hitCount / (b.hitCount + b.missCount);
+
+    if (bearPriority) {
+      const aIsBear = BEAR_KEYWORDS_FOR_PRIORITY.some((kw) => a.metric.includes(kw));
+      const bIsBear = BEAR_KEYWORDS_FOR_PRIORITY.some((kw) => b.metric.includes(kw));
+      if (aIsBear !== bIsBear) return aIsBear ? -1 : 1;
+    }
+
     return rateB - rateA;
   });
 

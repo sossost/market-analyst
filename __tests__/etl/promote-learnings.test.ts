@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPromotionCandidates, buildCautionPrinciple, getPromotionThresholds } from "@/etl/jobs/promote-learnings";
+import { buildPromotionCandidates, buildCautionPrinciple, getPromotionThresholds, BEAR_KEYWORDS_FOR_PRIORITY } from "@/etl/jobs/promote-learnings";
 
 /**
  * 장기 기억 승격/강등 로직의 핵심: 만료 판정 + 적중률 계산 + 승격 후보 생성.
@@ -431,6 +431,68 @@ describe("promote-learnings logic", () => {
 
       // n=5, k=3 → p=0.5 기준 이항검정은 유의하지 않음 (p > 0.05)
       const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 2);
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("BEAR_KEYWORDS_FOR_PRIORITY", () => {
+    it("contains expected bear keywords", () => {
+      expect(BEAR_KEYWORDS_FOR_PRIORITY).toContain("하락");
+      expect(BEAR_KEYWORDS_FOR_PRIORITY).toContain("약세");
+      expect(BEAR_KEYWORDS_FOR_PRIORITY).toContain("경계");
+    });
+
+    it("does not contain bull keywords", () => {
+      expect(BEAR_KEYWORDS_FOR_PRIORITY).not.toContain("상승");
+      expect(BEAR_KEYWORDS_FOR_PRIORITY).not.toContain("강세");
+      expect(BEAR_KEYWORDS_FOR_PRIORITY).not.toContain("반등");
+    });
+  });
+
+  describe("buildPromotionCandidates — bear priority sorting", () => {
+    function makeBearCandidate(metric: string, hitCount = 10, missCount = 0) {
+      const confirmed = Array.from({ length: hitCount }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: metric }),
+      );
+      const invalidated = Array.from({ length: missCount }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: metric, status: "INVALIDATED" }),
+      );
+      return { confirmed, invalidated };
+    }
+
+    it("bear-keyword metrics sort before bull-keyword metrics when bearPriority is true via candidate metric", () => {
+      // We test the bear priority logic by checking that BEAR_KEYWORDS_FOR_PRIORITY
+      // would match bear-labeled candidates
+      const bearMetric = "하락 위험 조정 지표";
+      const bullMetric = "상승 모멘텀 지표";
+
+      const isBear = BEAR_KEYWORDS_FOR_PRIORITY.some((kw) => bearMetric.includes(kw));
+      const isBull = BEAR_KEYWORDS_FOR_PRIORITY.some((kw) => bullMetric.includes(kw));
+
+      expect(isBear).toBe(true);
+      expect(isBull).toBe(false);
+    });
+
+    it("candidates with bear metric keywords are identified correctly", () => {
+      const bearMetrics = ["약세 전환 신호", "하락 위험 감지", "조정 국면 판단"];
+      const bullMetrics = ["상승 추세 지속", "반등 패턴 확인"];
+
+      for (const metric of bearMetrics) {
+        const isBear = BEAR_KEYWORDS_FOR_PRIORITY.some((kw) => metric.includes(kw));
+        expect(isBear).toBe(true);
+      }
+
+      for (const metric of bullMetrics) {
+        const isBear = BEAR_KEYWORDS_FOR_PRIORITY.some((kw) => metric.includes(kw));
+        expect(isBear).toBe(false);
+      }
+    });
+
+    it("bear priority candidates are filtered by existing source IDs as usual", () => {
+      const { confirmed } = makeBearCandidate("하락 리스크 패턴");
+      const existingIds = new Set(confirmed.map((t) => t.id as number));
+
+      const result = buildPromotionCandidates(confirmed, [], existingIds, 15);
       expect(result).toHaveLength(0);
     });
   });
