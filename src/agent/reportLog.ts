@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { DailyReportLog } from "@/types";
 import { db } from "../db/client.js";
 import { dailyReports } from "../db/schema/analyst.js";
@@ -157,7 +157,10 @@ export async function updateReportFullContent(
       .update(dailyReports)
       .set({ fullContent })
       .where(
-        sql`${dailyReports.reportDate} = ${reportDate} AND ${dailyReports.type} = ${type}`,
+        and(
+          eq(dailyReports.reportDate, reportDate),
+          eq(dailyReports.type, type),
+        ),
       );
     logger.info("ReportLog", `DB full_content updated: ${reportDate} (${type})`);
   } catch (error) {
