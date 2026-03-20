@@ -17,6 +17,30 @@ export const TRAILING_STOP_THRESHOLD = 0.5;
 export const MIN_MAX_PNL_FOR_TRAILING = 10;
 
 /**
+ * 진입가 대비 최대 허용 손실(%).
+ * 이 값 이하로 PnL이 떨어지면 무조건 손절한다.
+ * 근거: EONR -32.7% 방치 사례 — trailing stop은 수익 구간 진입 후에만 작동하므로,
+ * 수익 구간에 한 번도 도달하지 못한 종목은 무한 손실에 노출된다.
+ */
+export const HARD_STOP_LOSS_PERCENT = -7;
+
+/**
+ * Hard stop-loss 발동 여부를 판정하는 순수 함수.
+ *
+ * - currentPhase == null: ETL 미완료를 의미하므로 미발동
+ * - pnlPercent <= HARD_STOP_LOSS_PERCENT: 진입가 대비 -7% 이하 시 발동
+ */
+export function shouldTriggerStopLoss(params: {
+  currentPhase: number | null;
+  pnlPercent: number;
+}): boolean {
+  return (
+    params.currentPhase != null &&
+    params.pnlPercent <= HARD_STOP_LOSS_PERCENT
+  );
+}
+
+/**
  * Trailing stop 발동 여부를 판정하는 순수 함수.
  *
  * - currentPhase == null: ETL 미완료를 의미하므로 미발동
@@ -43,8 +67,9 @@ export function shouldTriggerTrailingStop(params: {
  * 2. ACTIVE 추천 조회
  * 3. 각 종목의 현재 종가/Phase/RS 조회
  * 4. PnL, maxPnl, daysHeld 계산
- * 5. Trailing stop 조건 충족 시 CLOSED_TRAILING_STOP 처리 (Phase 이탈보다 우선)
- * 6. Phase 2 이탈 시 CLOSED_PHASE_EXIT 처리
+ * 5. Hard stop-loss 조건 충족 시 CLOSED_STOP_LOSS 처리 (최우선)
+ * 6. Trailing stop 조건 충족 시 CLOSED_TRAILING_STOP 처리
+ * 7. Phase 2 이탈 시 CLOSED_PHASE_EXIT 처리
  */
 async function main() {
   assertValidEnvironment();
@@ -120,12 +145,30 @@ async function main() {
     // Phase 2 이탈 체크
     const isPhaseExit = currentPhase != null && currentPhase !== 2;
 
-    // Trailing stop 체크 (Phase 이탈보다 우선 — 수익 보호가 최우선)
-    const isTrailingStop = shouldTriggerTrailingStop({
+    // Hard stop-loss 체크 (최우선 — 무한 손실 방지)
+    const isStopLoss = shouldTriggerStopLoss({ currentPhase, pnlPercent });
+
+    // Trailing stop 체크 (Phase 이탈보다 우선 — 수익 보호)
+    const isTrailingStop = !isStopLoss && shouldTriggerTrailingStop({
       currentPhase,
       maxPnlPercent,
       pnlPercent,
     });
+
+    const shouldClose = isStopLoss || isTrailingStop || isPhaseExit;
+
+    let closeStatus: string | undefined;
+    let closeReason: string | undefined;
+    if (isStopLoss) {
+      closeStatus = "CLOSED_STOP_LOSS";
+      closeReason = `Hard stop-loss: PnL ${pnlPercent.toFixed(1)}% ≤ ${HARD_STOP_LOSS_PERCENT}% 한도 초과`;
+    } else if (isTrailingStop) {
+      closeStatus = "CLOSED_TRAILING_STOP";
+      closeReason = `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`;
+    } else if (isPhaseExit) {
+      closeStatus = "CLOSED_PHASE_EXIT";
+      closeReason = `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`;
+    }
 
     await retryDatabaseOperation(() =>
       db
@@ -138,21 +181,19 @@ async function main() {
           maxPnlPercent: String(maxPnlPercent),
           daysHeld,
           lastUpdated: targetDate,
-          ...(isTrailingStop || isPhaseExit
+          ...(shouldClose && closeStatus != null
             ? {
-                status: isTrailingStop ? "CLOSED_TRAILING_STOP" : "CLOSED_PHASE_EXIT",
+                status: closeStatus,
                 closeDate: targetDate,
                 closePrice: String(currentPrice),
-                closeReason: isTrailingStop
-                  ? `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`
-                  : `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`,
+                closeReason,
               }
             : {}),
         })
         .where(eq(recommendations.id, rec.id)),
     );
 
-    if (isPhaseExit || isTrailingStop) closedCount++;
+    if (shouldClose) closedCount++;
   }
 
   logger.info(

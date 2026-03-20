@@ -215,7 +215,7 @@ export const saveRecommendations: AgentTool = {
       retryDatabaseOperation(() =>
         pool.query<{ symbol: string }>(
           `SELECT DISTINCT symbol FROM recommendations
-           WHERE status IN ('CLOSED', 'CLOSED_PHASE_EXIT')
+           WHERE status IN ('CLOSED', 'CLOSED_PHASE_EXIT', 'CLOSED_TRAILING_STOP', 'CLOSED_STOP_LOSS')
              AND recommendation_date >= $1
              AND symbol = ANY($2)`,
           [cooldownStart, symbols],
