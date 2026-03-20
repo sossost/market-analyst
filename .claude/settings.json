@@ -12,5 +12,18 @@
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check-doc-sync.sh"
+          }
+        ]
+      }
+    ]
   }
 }
