@@ -26,6 +26,8 @@ const LAUNCHD_TIMEOUT_MS = 30_000
 
 const DB_SCHEMA_PATTERNS = ['src/db/schema/', 'db/migrations/']
 const LAUNCHD_PATTERN = 'scripts/launchd/'
+const SELF_LABEL = 'com.market-analyst.issue-processor'
+const LAUNCH_AGENTS_DIR = `${process.env.HOME}/Library/LaunchAgents`
 
 const REPO = 'sossost/market-analyst'
 
@@ -125,18 +127,58 @@ async function applyDbMigration(threadId: string): Promise<void> {
 }
 
 /**
- * launchd를 재로드한다 (setup-launchd.sh).
+ * 개별 plist를 재로드한다 (unload → sed → load).
+ * 자기 자신(issue-processor)은 스킵 — unload하면 이 프로세스가 죽는다.
+ */
+async function reloadPlist(plistFile: string): Promise<{ label: string; skipped: boolean }> {
+  const label = plistFile.replace('.plist', '').replace('scripts/launchd/', '')
+  const srcPath = `${process.cwd()}/${plistFile}`
+  const targetPath = `${LAUNCH_AGENTS_DIR}/${label}.plist`
+
+  if (label === SELF_LABEL) {
+    logger.warn(TAG, `${label}: 자기 자신 — 재로드 스킵 (다음 수동 reload 필요)`)
+    return { label, skipped: true }
+  }
+
+  // unload 기존 (없으면 무시)
+  try {
+    await execFileP('launchctl', ['unload', targetPath], { timeout: LAUNCHD_TIMEOUT_MS })
+  } catch {
+    // 이미 unload 상태면 무시
+  }
+
+  // sed로 플레이스홀더 치환 후 복사
+  const projectDir = process.cwd()
+  await execFileP('bash', ['-c', `sed "s|__PROJECT_DIR__|${projectDir}|g" "${srcPath}" > "${targetPath}"`], {
+    timeout: LAUNCHD_TIMEOUT_MS,
+  })
+
+  // load
+  await execFileP('launchctl', ['load', targetPath], { timeout: LAUNCHD_TIMEOUT_MS })
+  return { label, skipped: false }
+}
+
+/**
+ * 변경된 plist 파일만 개별 재로드한다.
+ * setup-launchd.sh 전체 호출 대신 개별 처리 — 자기 자신(issue-processor) unload 방지.
  * 실패 시 스레드에 에러 알림 후 조용히 종료 — processMerge 흐름을 막지 않는다.
  */
-async function reloadLaunchd(threadId: string): Promise<void> {
+async function reloadLaunchd(changedPlists: string[], threadId: string): Promise<void> {
   try {
-    await sendThreadMessage(threadId, '⚙️ plist 변경 감지 — launchd 재로드 중...')
-    await execFileP('bash', ['scripts/launchd/setup-launchd.sh'], {
-      timeout: LAUNCHD_TIMEOUT_MS,
-      cwd: process.cwd(),
-    })
-    logger.info(TAG, 'launchd 재로드 완료')
-    await sendThreadMessage(threadId, '✅ launchd 재로드 완료')
+    await sendThreadMessage(threadId, `⚙️ plist 변경 감지 (${changedPlists.length}개) — 개별 재로드 중...`)
+
+    const results: string[] = []
+    for (const plistFile of changedPlists) {
+      const { label, skipped } = await reloadPlist(plistFile)
+      if (skipped) {
+        results.push(`⏭️ ${label} (자기 자신 — 스킵)`)
+      } else {
+        results.push(`✓ ${label}`)
+        logger.info(TAG, `${label} 재로드 완료`)
+      }
+    }
+
+    await sendThreadMessage(threadId, `✅ launchd 재로드 완료\n${results.join('\n')}`)
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
     logger.error(TAG, `launchd 재로드 실패: ${reason}`)
@@ -147,7 +189,7 @@ async function reloadLaunchd(threadId: string): Promise<void> {
 /**
  * PR 머지 후 인프라 반영이 필요한지 판단하고 실행한다.
  * - DB 스키마/마이그레이션 파일 포함 → applyDbMigration
- * - launchd plist 파일 포함 → reloadLaunchd
+ * - launchd plist 파일 포함 → reloadLaunchd (개별 plist만, 자기 자신 제외)
  * - 해당 없으면 스킵
  */
 async function runPostMergeInfra(prNumber: number, threadId: string): Promise<void> {
@@ -164,11 +206,11 @@ async function runPostMergeInfra(prNumber: number, threadId: string): Promise<vo
   const needsDbMigration = files.some(
     f => DB_SCHEMA_PATTERNS.some(pattern => f.startsWith(pattern))
   )
-  const needsLaunchdReload = files.some(
+  const changedPlists = files.filter(
     f => f.startsWith(LAUNCHD_PATTERN) && f.endsWith('.plist')
   )
 
-  if (!needsDbMigration && !needsLaunchdReload) {
+  if (!needsDbMigration && changedPlists.length === 0) {
     logger.info(TAG, `PR #${prNumber}: 인프라 반영 대상 없음 — 스킵`)
     return
   }
@@ -176,8 +218,8 @@ async function runPostMergeInfra(prNumber: number, threadId: string): Promise<vo
   if (needsDbMigration) {
     await applyDbMigration(threadId)
   }
-  if (needsLaunchdReload) {
-    await reloadLaunchd(threadId)
+  if (changedPlists.length > 0) {
+    await reloadLaunchd(changedPlists, threadId)
   }
 }
 
