@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   appendValidationWarnings,
   createSendDiscordReport,
+  inferReportType,
 } from "../sendDiscordReport";
 
 // ---------------------------------------------------------------------------
@@ -17,6 +18,28 @@ vi.mock("@/agent/discord", () => ({
 vi.mock("@/agent/gist", () => ({
   createGist: vi.fn().mockResolvedValue({ id: "gist-1", url: "https://gist.github.com/1" }),
 }));
+
+// ---------------------------------------------------------------------------
+// inferReportType — 순수 함수 테스트
+// ---------------------------------------------------------------------------
+
+describe("inferReportType", () => {
+  it("daily-*.md → 'daily'", () => {
+    expect(inferReportType("daily-2026-03-19.md")).toBe("daily");
+  });
+
+  it("weekly-*.md → 'weekly'", () => {
+    expect(inferReportType("weekly-2026-03-19.md")).toBe("weekly");
+  });
+
+  it("unknown filename → undefined", () => {
+    expect(inferReportType("report.md")).toBeUndefined();
+  });
+
+  it("null → undefined", () => {
+    expect(inferReportType(null)).toBeUndefined();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // appendValidationWarnings — 순수 함수 테스트

@@ -149,15 +149,27 @@ function checkPhase2RatioRange(
   markdown: string,
   errors: string[],
 ): void {
-  // 함수 내부에서 매번 생성하여 lastIndex 상태 오염 방지
-  const pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
+  // Phase 2: NUM% 패턴
+  const phase2Pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(markdown)) !== null) {
+  while ((match = phase2Pattern.exec(markdown)) !== null) {
     const rawValue = match[1].replace(/,/g, "");
     const value = Number(rawValue);
     if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
       errors.push(
         `Phase 2 비율 이상값 감지: ${value}% (최대 100%). 이중 변환(×100) 버그 가능성. 원본: "${match[0]}"`,
+      );
+    }
+  }
+
+  // (전일 NUM%) 패턴 — Phase 2 전일 비율도 0~100 범위
+  const prevDayPattern = /\(전일\s*([\d,]+(?:\.\d+)?)\s*%\)/gi;
+  while ((match = prevDayPattern.exec(markdown)) !== null) {
+    const rawValue = match[1].replace(/,/g, "");
+    const value = Number(rawValue);
+    if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
+      errors.push(
+        `전일 비율 이상값 감지: ${value}% (최대 100%). 이중 변환(×100) 버그 가능성. 원본: "${match[0]}"`,
       );
     }
   }
@@ -225,18 +237,31 @@ function checkDailySections(
  *
  * @remarks 주간 리포트는 섹터 전체 흐름 서술에서 false positive 가능성이 높아 일간 전용으로 제한.
  */
-const PHASE2_BEARISH_PATTERN = /Phase\s*2[^\n]*?(약세|하락세|부진|급락|손절)/gi;
+const PHASE2_BEARISH_PATTERN = /Phase\s*2[^\n]*?(약세|하락세|부진|급락|손절|급락 경고)/gi;
 
 function checkPhaseDescriptionConsistency(
   markdown: string,
   warnings: string[],
+  errors: string[],
 ): void {
   const conflicts = [...markdown.matchAll(PHASE2_BEARISH_PATTERN)]
-    .map((match) => match[0].slice(0, 80));
+    .map((match) => ({ text: match[0].slice(0, 80), keyword: match[1] }));
 
-  if (conflicts.length > 0) {
+  if (conflicts.length === 0) return;
+
+  // "급락" 키워드가 포함된 모순은 ERROR (Phase 2 + 급락은 심각한 불일치)
+  const severeConflicts = conflicts.filter((c) => c.keyword.includes("급락"));
+  const mildConflicts = conflicts.filter((c) => !c.keyword.includes("급락"));
+
+  if (severeConflicts.length > 0) {
+    errors.push(
+      `Phase 2 ↔ 급락 서술 모순 감지 (${severeConflicts.length}건). Phase 2 종목에 급락 경고를 사용하려면 ⚠️ 약세 경고 섹션으로 이동하세요: ${severeConflicts.map((c) => c.text).join(" | ")}`,
+    );
+  }
+
+  if (mildConflicts.length > 0) {
     warnings.push(
-      `Phase 2 분류 ↔ 약세 서술 모순 감지 (${conflicts.length}건). 서술 또는 Phase 분류를 수정하세요: ${conflicts.join(" | ")}`,
+      `Phase 2 분류 ↔ 약세 서술 모순 감지 (${mildConflicts.length}건). 서술 또는 Phase 분류를 수정하세요: ${mildConflicts.map((c) => c.text).join(" | ")}`,
     );
   }
 }
@@ -293,14 +318,30 @@ export function sanitizePhase2Ratios(markdown: string): {
   corrections: string[];
 } {
   const corrections: string[] = [];
-  const pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
 
-  const text = markdown.replace(pattern, (fullMatch, rawValue: string) => {
+  // 1차: "Phase 2: NUM%" 패턴 (기존)
+  const phase2Pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
+
+  let text = markdown.replace(phase2Pattern, (fullMatch, rawValue: string) => {
     const numericStr = rawValue.replace(/,/g, "");
     const value = Number(numericStr);
     if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
       const corrected = (value / 100).toFixed(1);
       corrections.push(`${rawValue}% → ${corrected}%`);
+      return fullMatch.replace(rawValue, corrected);
+    }
+    return fullMatch;
+  });
+
+  // 2차: "(전일 NUM%)" 패턴 — Phase 2 컨텍스트에서 전일 비율도 이중 변환 대상
+  const prevDayPattern = /\(전일\s*([\d,]+(?:\.\d+)?)\s*%\)/gi;
+
+  text = text.replace(prevDayPattern, (fullMatch, rawValue: string) => {
+    const numericStr = rawValue.replace(/,/g, "");
+    const value = Number(numericStr);
+    if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
+      const corrected = (value / 100).toFixed(1);
+      corrections.push(`전일 ${rawValue}% → ${corrected}%`);
       return fullMatch.replace(rawValue, corrected);
     }
     return fullMatch;
@@ -340,7 +381,7 @@ export function validateReport(
   // E. 일간 리포트 전용 검증 (필수 섹션 + Phase 분류 일관성)
   if (input.reportType === "daily") {
     checkDailySections(input.markdown, warnings, errors);
-    checkPhaseDescriptionConsistency(input.markdown, warnings);
+    checkPhaseDescriptionConsistency(input.markdown, warnings, errors);
   }
 
   // F. 마크다운 텍스트에서 Phase 1 추천 감지 (recommendations 없어도 동작)

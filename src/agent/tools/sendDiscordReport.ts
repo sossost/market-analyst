@@ -1,10 +1,18 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordError, sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
 import { createGist } from "@/agent/gist";
-import { sanitizePhase2Ratios, validateReport } from "@/agent/lib/reportValidator";
+import { sanitizePhase2Ratios, validateReport, type ReportType } from "@/agent/lib/reportValidator";
 import { logger } from "@/agent/logger";
 import type { AgentTool } from "./types";
 import { validateString } from "./validation";
+
+/** 파일명에서 리포트 타입을 추론한다. daily-*.md → "daily", weekly-*.md → "weekly" */
+export function inferReportType(filename: string | null): ReportType | undefined {
+  if (filename == null) return undefined;
+  if (filename.startsWith("daily")) return "daily";
+  if (filename.startsWith("weekly")) return "weekly";
+  return undefined;
+}
 
 /**
  * send_discord_report 도구 스키마.
@@ -102,6 +110,8 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
       }
 
       const rawMdContent = validateString(input.markdownContent);
+      const rawFilename = validateString(input.filename);
+      const reportType = inferReportType(rawFilename);
 
       // Phase 2 비율 이중 변환(×100) 자동 교정 + 품질 검증
       let sanitizedMd: string | null = null;
@@ -115,7 +125,7 @@ export function createSendDiscordReport(webhookEnvVar: string): AgentTool {
           );
         }
 
-        const validationResult = validateReport({ markdown: sanitizedMd });
+        const validationResult = validateReport({ markdown: sanitizedMd, reportType });
         if (validationResult.errors.length > 0) {
           return blockAndNotify(validationResult.errors);
         }
