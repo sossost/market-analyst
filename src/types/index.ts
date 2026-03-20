@@ -31,6 +31,8 @@ export interface PhaseDetail {
   priceAbove30PctFromLow: boolean;
   priceWithin25PctOfHigh: boolean;
   conditionsMet: string[];
+  /** Number of Phase 2 conditions met (0-8). Used to identify near-Phase-2 stocks. */
+  phase2ConditionsMet: number;
 }
 
 /**
