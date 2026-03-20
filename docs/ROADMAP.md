@@ -170,7 +170,7 @@
 
 | 구성 요소 | 설명 |
 |-----------|------|
-| Strategic Auto-Review (F9) | Claude Code CLI 기반 매일 04:00 자동 리뷰 — 시스템 건강도 점검 (PR #266) |
+| Strategic Auto-Review (F9) | 매일 04:00 시스템 분석 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거) + 이슈 생성 (PR #266, #343) |
 | Corporate Analyst (F10) | 추천 종목별 심층 분석 리포트 자동 생성 (PR #277) |
 | 정량 목표주가 | DCF + P/E 피어 멀티플 가중 평균 기반 목표주가 산출 |
 | 컨센서스 교차 검증 | 월가 컨센서스 대비 ALIGNED/DIVERGENT/LARGE_DIVERGENT 판정 |

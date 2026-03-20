@@ -48,7 +48,12 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 주간: Phase 2 주도주 심층 분석 + 펀더멘탈 검증 (SEPA)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
 
-8. 자율 운영
+8. 전략 참모 (매일 04:00)
+   → 8개 영역 시스템 분석 (포착 로직, 학습 루프, 추천 성과 등)
+   → strategic-briefing.md 갱신 — 매니저의 골 정렬 판단 근거
+   → 가치 있는 인사이트만 GitHub 이슈로 생성 (최대 3건/일)
+
+9. 자율 운영
    → Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
    → 맥미니 서버 launchd 기반 스케줄링
 ```
@@ -259,7 +264,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Agent Weekly | 10:00 토 | 주간 에이전트 + 펀더멘탈 검증 |
 | QA Weekly | 12:00 토 | 주간 QA 분석 |
 | News Collect | 00/06/12/18:00 매일 | 뉴스 수집 |
-| Strategic Review | 04:00 매일 | 전략 참모 자동 리뷰 (Claude Code CLI) |
+| Strategic Review | 04:00 매일 | 전략 참모 리뷰 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거) |
 | Issue Processor | 09:00~02:00 매 정시 (18회/일) | GitHub 이슈 자동 처리 → PR 생성 |
 | Log Cleanup | 09:00 일 | 오래된 로그 정리 |
 
@@ -299,7 +304,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **F6** Debate & Evolution — 멀티 모델(GPT-4o/Gemini/Claude) 4명 토론 + thesis 저장 + 학습 루프
 - [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + 전체 종목 확장
 - [x] **F8** Report/Debate Archive Dashboard — Next.js 16 + Supabase Auth + 리포트/토론 아카이브 UI
-- [x] **F9** Strategic Auto-Review — Claude Code CLI 기반 전략 참모 자동 리뷰
+- [x] **F9** Strategic Auto-Review — 매일 시스템 분석 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거)
 - [x] **F10** Corporate Analyst — 종목별 심층 분석 리포트 + 정량 목표주가 산출 (피어 멀티플 + 컨센서스 교차 검증)
 
 ### Enhancement Phases (완료)
