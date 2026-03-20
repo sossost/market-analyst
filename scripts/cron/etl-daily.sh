@@ -8,11 +8,13 @@
 #   Phase 3: build-breakout-signals, build-noise-signals, build-stock-phases (순차 — 커넥션 풀 경쟁 방지)
 #   Phase 3.5: build-sector-rs, build-industry-rs, record-signals, update-signal-returns
 #   Phase 3.6: detect-sector-phase-events, update-sector-lag-patterns
-#   Phase 4: validate-data → run-daily-agent
+#   Phase 4: validate-data
+#   Phase 5: 토론 → promote-learnings → 투자 브리핑 QA (비블로킹)
+#   Phase 6: 일간보고서 → 일간보고서 QA
 #
 # Usage:
 #   ./scripts/cron/etl-daily.sh
-#   ETL_SKIP_AGENT=1 ./scripts/cron/etl-daily.sh  # 에이전트 실행 건너뛰기
+#   ETL_SKIP_AGENT=1 ./scripts/cron/etl-daily.sh  # 에이전트 전체 스킵
 
 set -euo pipefail
 
@@ -70,11 +72,37 @@ run_step "Update Recommendation Status" "src/etl/jobs/update-recommendation-stat
 run_step "Validate Data" "src/etl/jobs/validate-data.ts"
 
 if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
-  run_step "Run Daily Agent" "src/agent/run-daily-agent.ts"
-fi
+  # Phase 5: 토론 (비블로킹 — 실패해도 일간보고서는 실행)
+  log "▶ 토론 에이전트 시작"
+  DEBATE_OK=0
+  if npx tsx src/agent/run-debate-agent.ts >> "$LOG_FILE" 2>&1; then
+    log "✓ 토론 에이전트 완료"
+    DEBATE_OK=1
 
-# Phase 5: 보고서 품질 검증 (비블로킹 — 실패해도 파이프라인 종료 안 됨)
-if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
+    # promote-learnings (비블로킹)
+    log "▶ Promote learnings"
+    if yarn etl:promote-learnings >> "$LOG_FILE" 2>&1; then
+      log "✓ Learnings 승격 완료"
+    else
+      log "⚠ Learnings 승격 실패 (비블로킹)"
+    fi
+
+    # 투자 브리핑 QA (비블로킹)
+    log "▶ 투자 브리핑 QA"
+    if "$SCRIPT_DIR/validate-debate-report.sh" >> "$LOG_FILE" 2>&1; then
+      log "✓ 투자 브리핑 QA 완료"
+    else
+      log "⚠ 투자 브리핑 QA 실패 (비블로킹)"
+    fi
+  else
+    log "⚠ 토론 에이전트 실패 (비블로킹 — 일간보고서 계속 진행)"
+    send_error "run-debate-agent.ts 실패" "토론"
+  fi
+
+  # Phase 6: 일간보고서
+  run_step "Run Daily Agent" "src/agent/run-daily-agent.ts"
+
+  # 일간보고서 QA (비블로킹)
   log "▶ Daily Report QA"
   if "$SCRIPT_DIR/validate-daily-report.sh" >> "$LOG_FILE" 2>&1; then
     log "✓ Daily Report QA 완료"

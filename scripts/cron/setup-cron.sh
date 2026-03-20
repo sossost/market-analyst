@@ -3,8 +3,7 @@
 # 맥미니 크론잡 설정 스크립트
 #
 # GitHub Actions 스케줄과 동일:
-#   ETL Daily:    평일 UTC 23:30 (KST 08:30)
-#   Debate Daily: 평일 UTC 22:00 (KST 07:00)
+#   ETL Daily:    평일 UTC 22:00 (KST 07:00) — ETL → 토론 → 일간보고서
 #   Agent Weekly: 토 UTC 01:00 (KST 10:00)
 #   QA Weekly:    토 UTC 03:00 (KST 12:00)
 #
@@ -57,10 +56,8 @@ install_cron() {
 
   local entries
   entries="$MARKER_START
-# ETL Daily: 평일 UTC 23:30 (KST 08:30) — Sun-Fri
-30 23 * * 0-5 $SCRIPT_DIR/etl-daily.sh >> $PROJECT_DIR/logs/cron.log 2>&1
-# Debate Daily: 평일 UTC 22:00 (KST 07:00) — Sun-Thu (= KST Mon-Fri)
-0 22 * * 0-4 $SCRIPT_DIR/debate-daily.sh >> $PROJECT_DIR/logs/cron.log 2>&1
+# ETL Daily: 평일 UTC 22:00 (KST 07:00) — Sun-Fri (ETL → 토론 → 일간보고서)
+0 22 * * 0-5 $SCRIPT_DIR/etl-daily.sh >> $PROJECT_DIR/logs/cron.log 2>&1
 # Agent Weekly: 토 UTC 01:00 (KST 10:00)
 0 1 * * 6 $SCRIPT_DIR/agent-weekly.sh >> $PROJECT_DIR/logs/cron.log 2>&1
 # QA Weekly: 토 UTC 03:00 (KST 12:00) — Agent Weekly(01:00) 이후
@@ -78,8 +75,7 @@ ${entries}" | crontab -
 
   echo "크론잡 등록 완료:"
   echo ""
-  echo "  ETL Daily:    평일 UTC 23:30 (KST 08:30)"
-  echo "  Debate Daily: 평일 UTC 22:00 Sun-Thu (KST 07:00 Mon-Fri)"
+  echo "  ETL Daily:    평일 UTC 22:00 (KST 07:00) — ETL → 토론 → 일간보고서"
   echo "  Agent Weekly: 토 UTC 01:00 (KST 10:00)"
   echo "  QA Weekly:    토 UTC 03:00 (KST 12:00)"
   echo "  Log Cleanup:  일 UTC 00:00 (30일 이상 삭제)"
