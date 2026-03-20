@@ -14,6 +14,10 @@ describe('isReportType', () => {
     expect(isReportType('weekly')).toBe(true)
   })
 
+  it('"debate"는 유효한 ReportType이다', () => {
+    expect(isReportType('debate')).toBe(true)
+  })
+
   it('"unknown"은 유효하지 않다', () => {
     expect(isReportType('unknown')).toBe(false)
   })
@@ -56,5 +60,9 @@ describe('상수값', () => {
 
   it('REPORT_TYPE_LABEL.daily는 "일간"이다', () => {
     expect(REPORT_TYPE_LABEL.daily).toBe('일간')
+  })
+
+  it('REPORT_TYPE_LABEL.debate는 "투자 브리핑"이다', () => {
+    expect(REPORT_TYPE_LABEL.debate).toBe('투자 브리핑')
   })
 })

@@ -20,6 +20,7 @@ import { saveReportLogTool } from "./tools/saveReportLog";
 import {
   createDraftCaptureTool,
   runReviewPipeline,
+  draftsToFullContent,
   type ReportDraft,
 } from "./reviewAgent";
 import { runDailyQA, type DailyQAResult } from "./dailyQA";
@@ -259,7 +260,14 @@ async function main() {
   // 9. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (finalDrafts.length > 0) {
     logger.step("[9/9] Running review pipeline...");
-    await runReviewPipeline(finalDrafts, "DISCORD_WEBHOOK_URL", { reportType: "daily" });
+    const sentDrafts = await runReviewPipeline(finalDrafts, "DISCORD_WEBHOOK_URL", { reportType: "daily" });
+
+    // full_content DB 저장
+    if (sentDrafts.length > 0) {
+      const { updateReportFullContent } = await import("./reportLog");
+      const fullContent = draftsToFullContent(sentDrafts);
+      await updateReportFullContent(targetDate, "daily", fullContent);
+    }
   } else if (loopError != null) {
     throw new Error(`Agent failed with no drafts: ${loopError}`);
   } else {

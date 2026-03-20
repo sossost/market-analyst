@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import type { DailyReportLog } from "@/types";
 import { db } from "../db/client.js";
 import { dailyReports } from "../db/schema/analyst.js";
@@ -67,8 +67,10 @@ function dbRowToDailyReportLog(
 ): DailyReportLog {
   return {
     date: row.reportDate,
+    type: row.type as DailyReportLog["type"],
     reportedSymbols: row.reportedSymbols,
     marketSummary: row.marketSummary,
+    fullContent: row.fullContent ?? null,
     metadata: row.metadata ?? DEFAULT_METADATA,
   };
 }
@@ -125,9 +127,10 @@ export async function saveReportLog(data: DailyReportLog): Promise<void> {
       .insert(dailyReports)
       .values({
         reportDate: data.date,
-        type: "daily",
+        type: data.type ?? "daily",
         reportedSymbols: data.reportedSymbols,
         marketSummary: data.marketSummary,
+        fullContent: data.fullContent ?? null,
         metadata: data.metadata ?? null,
       })
       .onConflictDoNothing({
@@ -137,6 +140,29 @@ export async function saveReportLog(data: DailyReportLog): Promise<void> {
   } catch (error) {
     const msg = error instanceof Error ? error.message : "unknown error";
     logger.warn("ReportLog", `DB save failed (file backup exists): ${msg}`);
+  }
+}
+
+/**
+ * Update the full_content column for an existing daily_reports row.
+ * Used after the review pipeline finalizes the report text.
+ */
+export async function updateReportFullContent(
+  reportDate: string,
+  type: "daily" | "weekly" | "debate",
+  fullContent: string,
+): Promise<void> {
+  try {
+    await db
+      .update(dailyReports)
+      .set({ fullContent })
+      .where(
+        sql`${dailyReports.reportDate} = ${reportDate} AND ${dailyReports.type} = ${type}`,
+      );
+    logger.info("ReportLog", `DB full_content updated: ${reportDate} (${type})`);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "unknown error";
+    logger.warn("ReportLog", `DB full_content update failed: ${msg}`);
   }
 }
 

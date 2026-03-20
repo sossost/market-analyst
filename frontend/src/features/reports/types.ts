@@ -1,4 +1,4 @@
-export type ReportType = 'daily' | 'weekly'
+export type ReportType = 'daily' | 'weekly' | 'debate'
 
 export interface ReportedStock {
   symbol: string

@@ -24,6 +24,7 @@ import { readRecommendationPerformance } from "./tools/readRecommendationPerform
 import {
   createDraftCaptureTool,
   runReviewPipeline,
+  draftsToFullContent,
   type ReportDraft,
 } from "./reviewAgent";
 import {
@@ -266,7 +267,14 @@ async function main() {
   // 6. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (reportDrafts.length > 0) {
     logger.step("[6/7] Running review pipeline...");
-    await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL", { reportType: "weekly" });
+    const sentDrafts = await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL", { reportType: "weekly" });
+
+    // full_content DB 저장
+    if (sentDrafts.length > 0) {
+      const { updateReportFullContent } = await import("./reportLog");
+      const fullContent = draftsToFullContent(sentDrafts);
+      await updateReportFullContent(targetDate, "weekly", fullContent);
+    }
   } else if (loopError != null) {
     throw new Error(`Agent failed with no drafts: ${loopError}`);
   } else {

@@ -5,9 +5,10 @@ export const ITEMS_PER_PAGE = 20
 export const REPORT_TYPE_LABEL: Record<ReportType, string> = {
   daily: '일간',
   weekly: '주간',
+  debate: '투자 브리핑',
 }
 
-const VALID_REPORT_TYPES = new Set<string>(['daily', 'weekly'])
+const VALID_REPORT_TYPES = new Set<string>(['daily', 'weekly', 'debate'])
 
 export function isReportType(value: unknown): value is ReportType {
   return typeof value === 'string' && VALID_REPORT_TYPES.has(value)

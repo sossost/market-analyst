@@ -9,7 +9,7 @@ interface ReportTypeBadgeProps {
 
 export function ReportTypeBadge({ type }: ReportTypeBadgeProps) {
   const label = REPORT_TYPE_LABEL[type]
-  const variant = type === 'daily' ? 'secondary' : 'default'
+  const variant = type === 'daily' ? 'secondary' : type === 'debate' ? 'outline' : 'default'
 
   return <Badge variant={variant}>{label}</Badge>
 }
