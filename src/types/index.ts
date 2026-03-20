@@ -92,12 +92,14 @@ export interface ReportedStock {
 
 export interface DailyReportLog {
   date: string;
+  type?: "daily" | "weekly" | "debate";
   reportedSymbols: ReportedStock[];
   marketSummary: {
     phase2Ratio: number;
     leadingSectors: string[];
     totalAnalyzed: number;
   };
+  fullContent?: string | null;
   metadata: {
     model: string;
     tokensUsed: { input: number; output: number };

@@ -194,6 +194,20 @@ function extractJson(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Draft → Full Content
+// ---------------------------------------------------------------------------
+
+/**
+ * Combine report drafts into a single full_content string for DB storage.
+ * Uses markdownContent when available, falls back to message.
+ */
+export function draftsToFullContent(drafts: ReportDraft[]): string {
+  return drafts
+    .map((d) => d.markdownContent ?? d.message)
+    .join("\n\n---\n\n");
+}
+
+// ---------------------------------------------------------------------------
 // Draft Capture Tool
 // ---------------------------------------------------------------------------
 
@@ -562,10 +576,10 @@ export async function runReviewPipeline(
   drafts: ReportDraft[],
   webhookEnvVar: string,
   options?: { skipCooldown?: boolean; reportType?: FeedbackReportType },
-): Promise<void> {
+): Promise<ReportDraft[]> {
   if (drafts.length === 0) {
     logger.warn("ReviewPipeline", "No report drafts captured");
-    return;
+    return [];
   }
 
   logger.step("\n--- Review Pipeline ---");
@@ -634,4 +648,6 @@ export async function runReviewPipeline(
 
   await sendDrafts(finalDrafts, webhookEnvVar);
   logger.step("--- Review Pipeline Complete ---\n");
+
+  return finalDrafts;
 }

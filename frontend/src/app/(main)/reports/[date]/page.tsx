@@ -6,6 +6,7 @@ import { RecommendedStockTable } from '@/features/reports/components/Recommended
 import { ReportTypeBadge } from '@/features/reports/components/ReportTypeBadge'
 import { isValidDateParam } from '@/features/reports/constants'
 import { fetchReportByDate } from '@/features/reports/lib/supabase-queries'
+import { MarkdownContent } from '@/shared/components/ui/MarkdownContent'
 import {
   Card,
   CardContent,
@@ -52,6 +53,17 @@ export default async function ReportDetailPage({ params }: Props) {
       </div>
 
       <div className="flex flex-col gap-6">
+        {report.fullContent != null && (
+          <Card>
+            <CardHeader>
+              <CardTitle>리포트 본문</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MarkdownContent content={report.fullContent} />
+            </CardContent>
+          </Card>
+        )}
+
         <MarketSummaryCard summary={report.marketSummary} />
 
         <section>

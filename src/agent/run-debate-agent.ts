@@ -18,7 +18,7 @@ import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord
 import { createGist } from "./gist";
 import { logger } from "./logger";
 import { runDebateQA, type DebateQAResult } from "./debateQA";
-import { runReviewPipeline, type ReportDraft } from "./reviewAgent";
+import { runReviewPipeline, draftsToFullContent, type ReportDraft } from "./reviewAgent";
 import { loadFundamentalData } from "../lib/fundamental-data-loader";
 import { scoreFundamentals, promoteTopToS } from "../lib/fundamental-scorer";
 import { formatFundamentalContext } from "./debate/round3-synthesis";
@@ -534,9 +534,23 @@ async function main() {
 
     // 9. 리뷰 파이프라인 → 최종 발송
     logger.step("[9/9] Running review pipeline...");
-    await runReviewPipeline(drafts, "DISCORD_DEBATE_WEBHOOK_URL", {
+    const sentDrafts = await runReviewPipeline(drafts, "DISCORD_DEBATE_WEBHOOK_URL", {
       reportType: "debate",
     });
+
+    // full_content DB 저장 (debate 타입으로 daily_reports에 저장)
+    if (sentDrafts.length > 0) {
+      const { saveReportLog } = await import("./reportLog");
+      const fullContent = draftsToFullContent(sentDrafts);
+      await saveReportLog({
+        date: debateDate,
+        type: "debate",
+        reportedSymbols: [],
+        marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
+        fullContent,
+        metadata: { model: "debate-pipeline", tokensUsed: { input: 0, output: 0 }, toolCalls: 0, executionTime: 0 },
+      });
+    }
   } else {
     logger.info("Alert", "No alert conditions met — results saved to DB only");
   }

@@ -746,10 +746,9 @@ describe("runReviewPipeline", () => {
       ),
     );
 
-    await expect(
-      runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true }),
-    ).resolves.toBeUndefined();
+    const result = await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
 
+    expect(result).toHaveLength(1);
     expect(mockSendDiscordMessage).not.toHaveBeenCalled();
   });
 

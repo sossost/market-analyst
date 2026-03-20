@@ -15,4 +15,10 @@ describe('ReportTypeBadge', () => {
 
     expect(screen.getByText('주간')).toBeInTheDocument()
   })
+
+  it('renders "투자 브리핑" for debate type', () => {
+    render(<ReportTypeBadge type="debate" />)
+
+    expect(screen.getByText('투자 브리핑')).toBeInTheDocument()
+  })
 })
