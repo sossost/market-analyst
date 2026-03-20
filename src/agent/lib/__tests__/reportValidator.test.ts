@@ -459,6 +459,21 @@ describe("validateReport", () => {
     expect(conflictWarning).toContain("1건");
   });
 
+  it("Phase 2와 급락 서술이 같은 줄에 등장하면 errors에 모순 경고 (심각)", () => {
+    const result = validateReport({
+      markdown:
+        "COOK Phase 2 — 급락 경고. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    expect(result.isValid).toBe(false);
+    const conflictError = result.errors.find((e) =>
+      e.includes("Phase 2 ↔ 급락 서술 모순"),
+    );
+    expect(conflictError).toBeDefined();
+    expect(conflictError).toContain("1건");
+  });
+
   it("Phase 2와 약세 서술이 다른 줄에 있으면 경고 없음", () => {
     const result = validateReport({
       markdown:
@@ -472,7 +487,7 @@ describe("validateReport", () => {
     expect(conflictWarning).toBeUndefined();
   });
 
-  it("여러 Phase 2 + 약세 패턴이 있으면 건수를 정확히 표시", () => {
+  it("여러 Phase 2 + 약세(비급락) 패턴이 있으면 건수를 정확히 표시", () => {
     const result = validateReport({
       markdown:
         "SLDB Phase 2 — 약세 시작.\nNVDA Phase 2 — 하락세 지속. 리스크 주의.",
@@ -484,6 +499,17 @@ describe("validateReport", () => {
     );
     expect(conflictWarning).toBeDefined();
     expect(conflictWarning).toContain("2건");
+  });
+
+  it("Phase 2 + 급락/약세 혼합 시 급락은 errors, 약세는 warnings로 분리", () => {
+    const result = validateReport({
+      markdown:
+        "COOK Phase 2 — 급락 경고.\nSLDB Phase 2 — 약세 시작. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    expect(result.errors.some((e) => e.includes("Phase 2 ↔ 급락 서술 모순"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("Phase 2 분류 ↔ 약세 서술 모순"))).toBe(true);
   });
 
   it("weekly 리포트에서는 Phase 분류 일관성 검사를 실행하지 않음", () => {
@@ -618,5 +644,40 @@ describe("sanitizePhase2Ratios", () => {
       e.includes("Phase 2 비율 이상값"),
     );
     expect(phase2Error).toBeUndefined();
+  });
+
+  // 전일 비율 이중 변환 자동 교정
+  it("(전일 2110%) → (전일 21.1%) 자동 교정", () => {
+    const input = "Phase 2: 21.6% (전일 2110%) 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2: 21.6% (전일 21.1%) 리스크 주의.");
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0]).toContain("전일");
+  });
+
+  it("Phase 2와 전일 모두 이중 변환이면 양쪽 다 교정", () => {
+    const input = "Phase 2: 2160.0% (전일 2110.0%) 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2: 21.6% (전일 21.1%) 리스크 주의.");
+    expect(corrections).toHaveLength(2);
+  });
+
+  it("(전일 35.2%) 정상 범위는 변경하지 않음", () => {
+    const input = "Phase 2: 21.6% (전일 35.2%) 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe(input);
+    expect(corrections).toHaveLength(0);
+  });
+
+  it("전일 비율 이상값 감지 (validateReport)", () => {
+    const result = validateReport({
+      markdown: "Phase 2: 21.6% (전일 2110%) 리스크 주의.",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("전일 비율 이상값"))).toBe(true);
   });
 });
