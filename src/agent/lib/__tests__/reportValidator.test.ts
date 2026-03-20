@@ -512,6 +512,32 @@ describe("validateReport", () => {
     expect(result.warnings.some((w) => w.includes("Phase 2 분류 ↔ 약세 서술 모순"))).toBe(true);
   });
 
+  it("Phase 2 + 모멘텀 훼손 서술 → warnings에 모순 경고", () => {
+    const result = validateReport({
+      markdown:
+        "TYGO Phase 2 — 모멘텀 훼손 가능성. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const conflictWarning = result.warnings.find((w) =>
+      w.includes("Phase 2 분류 ↔ 약세 서술 모순"),
+    );
+    expect(conflictWarning).toBeDefined();
+  });
+
+  it("Phase 2 + 추세 이탈 서술 → warnings에 모순 경고", () => {
+    const result = validateReport({
+      markdown:
+        "EDSA Phase 2 — 추세 이탈 우려. 리스크 주의.",
+      reportType: "daily",
+    });
+
+    const conflictWarning = result.warnings.find((w) =>
+      w.includes("Phase 2 분류 ↔ 약세 서술 모순"),
+    );
+    expect(conflictWarning).toBeDefined();
+  });
+
   it("weekly 리포트에서는 Phase 분류 일관성 검사를 실행하지 않음", () => {
     const result = validateReport({
       markdown:
@@ -563,10 +589,109 @@ describe("validateReport", () => {
 
     expect(result.errors.some((e) => e.includes("Phase 1 종목 추천 문맥"))).toBe(false);
   });
+
+  // -------------------------------------------------------------------------
+  // H. 주도 섹터 연속 동일 시 유지 사유 서술 검증
+  // -------------------------------------------------------------------------
+
+  it("전일 대비 섹션에 섹터 동일 언급 + 사유 없음 → warnings 발생", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 전일 대비 변화 요약\n주도 섹터 전일과 동일. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    expect(result.warnings.some((w) => w.includes("유지 사유가 서술되지 않았습니다"))).toBe(true);
+  });
+
+  it("전일 대비 섹션에 섹터 동일 + 사유 키워드 있음 → warnings 없음", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 전일 대비 변화 요약\n주도 섹터 전일과 동일 — WTI 상승 지속 때문. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    expect(result.warnings.some((w) => w.includes("유지 사유가 서술되지 않았습니다"))).toBe(false);
+  });
+
+  it("전일 대비 섹션이 없으면 섹터 동일 검사 스킵", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망. 주도 섹터 동일. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    expect(result.warnings.some((w) => w.includes("유지 사유가 서술되지 않았습니다"))).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // I. 종목 방향 반전 감지
+  // -------------------------------------------------------------------------
+
+  it("같은 종목이 강세/약세 섹션에 동시 등장 → warnings 발생", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n⭐ 강세 특이종목\nCOOK (Phase 2, RS 73) +8.5%\n⚠️ 약세 경고\nCOOK Phase 2 급락 -7%. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    expect(result.warnings.some((w) => w.includes("방향 반전 감지"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("COOK"))).toBe(true);
+  });
+
+  it("강세/약세에 겹치는 종목 없으면 방향 반전 경고 없음", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n⭐ 강세 특이종목\nNVDA (Phase 2, RS 90) +3.2%\n⚠️ 약세 경고\nCOOK Phase 2 급락 -7%. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    expect(result.warnings.some((w) => w.includes("방향 반전 감지"))).toBe(false);
+  });
+
+  it("weekly 리포트에서는 방향 반전 검사를 실행하지 않음", () => {
+    const result = validateReport({
+      markdown:
+        "⭐ 강세 특이종목\nCOOK +8.5%\n⚠️ 약세 경고\nCOOK -7%. 리스크 주의.",
+      reportType: "weekly",
+    });
+
+    expect(result.warnings.some((w) => w.includes("방향 반전 감지"))).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // D-2. Phase 2 비율 콜론 없는 패턴 검증
+  // -------------------------------------------------------------------------
+
+  it("Phase 2 비율 2160.0% (콜론 없음) → errors에 이중 변환 경고", () => {
+    const result = validateReport({
+      markdown:
+        "Phase 2 비율 2160.0% 리스크 주의.",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 2 비율 이상값"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("2160"))).toBe(true);
+  });
+
+  it("Phase 2 종목 비율 1500% (콜론 없음) → errors에 이중 변환 경고", () => {
+    const result = validateReport({
+      markdown:
+        "Phase 2 종목 비율 1500% 리스크 주의.",
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 2 비율 이상값"))).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
-// H. Phase 2 비율 이중 변환 자동 교정 (sanitizePhase2Ratios)
+// J. Phase 2 비율 이중 변환 자동 교정 (sanitizePhase2Ratios)
 // ---------------------------------------------------------------------------
 
 describe("sanitizePhase2Ratios", () => {
@@ -679,5 +804,21 @@ describe("sanitizePhase2Ratios", () => {
 
     expect(result.isValid).toBe(false);
     expect(result.errors.some((e) => e.includes("전일 비율 이상값"))).toBe(true);
+  });
+
+  it("Phase 2 비율 2160% (콜론 없음) → 21.6% 자동 교정", () => {
+    const input = "Phase 2 비율 2160.0% 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2 비율 21.6% 리스크 주의.");
+    expect(corrections).toHaveLength(1);
+  });
+
+  it("Phase 2 종목 비율 1500% (콜론 없음) → 15.0% 자동 교정", () => {
+    const input = "Phase 2 종목 비율 1500% 리스크 주의.";
+    const { text, corrections } = sanitizePhase2Ratios(input);
+
+    expect(text).toBe("Phase 2 종목 비율 15.0% 리스크 주의.");
+    expect(corrections).toHaveLength(1);
   });
 });

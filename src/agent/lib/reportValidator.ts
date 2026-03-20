@@ -149,8 +149,8 @@ function checkPhase2RatioRange(
   markdown: string,
   errors: string[],
 ): void {
-  // Phase 2: NUM% 패턴
-  const phase2Pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
+  // Phase 2: NUM% (콜론 포함, 중간 텍스트 허용) + Phase 2 비율 NUM% (콜론 없음)
+  const phase2Pattern = /Phase\s*2(?:[^:\n]*:\s*|\s*(?:비율|종목\s*비율)\s*)([\d,]+(?:\.\d+)?)\s*%/gi;
   let match: RegExpExecArray | null;
   while ((match = phase2Pattern.exec(markdown)) !== null) {
     const rawValue = match[1].replace(/,/g, "");
@@ -237,7 +237,7 @@ function checkDailySections(
  *
  * @remarks 주간 리포트는 섹터 전체 흐름 서술에서 false positive 가능성이 높아 일간 전용으로 제한.
  */
-const PHASE2_BEARISH_PATTERN = /Phase\s*2[^\n]*?(약세|하락세|부진|급락|손절|급락 경고)/gi;
+const PHASE2_BEARISH_PATTERN = /Phase\s*2[^\n]*?(약세|하락세|부진|급락|손절|급락 경고|모멘텀 훼손|추세 이탈|하락 전환|약세 전환)/gi;
 
 function checkPhaseDescriptionConsistency(
   markdown: string,
@@ -319,8 +319,8 @@ export function sanitizePhase2Ratios(markdown: string): {
 } {
   const corrections: string[] = [];
 
-  // 1차: "Phase 2: NUM%" 패턴 (기존)
-  const phase2Pattern = /Phase\s*2[^:]*:\s*([\d,]+(?:\.\d+)?)\s*%/gi;
+  // 1차: "Phase 2: NUM%" (콜론 포함) 또는 "Phase 2 비율 NUM%" (콜론 없음)
+  const phase2Pattern = /Phase\s*2(?:[^:\n]*:\s*|\s*(?:비율|종목\s*비율)\s*)([\d,]+(?:\.\d+)?)\s*%/gi;
 
   let text = markdown.replace(phase2Pattern, (fullMatch, rawValue: string) => {
     const numericStr = rawValue.replace(/,/g, "");
@@ -348,6 +348,91 @@ export function sanitizePhase2Ratios(markdown: string): {
   });
 
   return { text, corrections };
+}
+
+// ---------------------------------------------------------------------------
+// H. 주도 섹터 연속 동일 시 유지 사유 서술 검증
+// ---------------------------------------------------------------------------
+
+/**
+ * "전일 대비" 섹션에서 섹터가 "동일" 또는 "유지"로 언급되면서
+ * 사유 설명 키워드가 없으면 warning을 발행한다.
+ *
+ * 예: "주도 섹터 전일과 동일" → 왜 동일한지 1줄 이상 필요
+ */
+const SECTOR_CONTINUITY_PATTERN =
+  /(?:주도\s*섹터|상위\s*섹터)[^\n]*?(?:동일|유지|변동\s*없|변화\s*없|그대로)/gi;
+const SECTOR_REASON_KEYWORDS = [
+  "때문", "영향", "지속", "이유", "근거", "배경", "덕분",
+  "상승", "하락", "개선", "악화", "수급", "유입", "이탈",
+  "WTI", "금리", "실적", "마진", "수요", "공급",
+] as const;
+
+function checkSectorContinuityReason(
+  markdown: string,
+  warnings: string[],
+): void {
+  // "전일 대비" 섹션 추출 (## 전일 대비 ~ 다음 ## 또는 EOF)
+  const sectionMatch = markdown.match(/##\s*전일 대비[^\n]*\n([\s\S]*?)(?=\n##\s|$)/i);
+  if (sectionMatch == null) return;
+
+  const section = sectionMatch[1];
+  const continuityMatches = [...section.matchAll(SECTOR_CONTINUITY_PATTERN)];
+  if (continuityMatches.length === 0) return;
+
+  // 사유 키워드가 섹션 내에 하나라도 있으면 통과
+  const hasReason = SECTOR_REASON_KEYWORDS.some((kw) => section.includes(kw));
+  if (!hasReason) {
+    warnings.push(
+      "주도 섹터가 전일과 동일하나 유지 사유가 서술되지 않았습니다. 지속 근거를 1줄 이상 추가하세요.",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// I. 전일 추천→익일 경고 전환 맥락 검증
+// ---------------------------------------------------------------------------
+
+/**
+ * 동일 종목이 ⭐/◎ 강세 섹션과 ⚠️ 약세 섹션에 모두 등장하면
+ * 방향 반전 맥락이 필요함을 경고한다.
+ *
+ * @remarks 같은 리포트 내에서 강세와 약세를 동시 서술하는 것은
+ *          전일→익일 반전의 축약 표현일 수 있다.
+ */
+const SYMBOL_IN_CONTEXT_PATTERN = /\b([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\b/g;
+
+function checkDirectionReversalContext(
+  markdown: string,
+  warnings: string[],
+): void {
+  // 강세 섹션의 종목 추출
+  const bullSection = markdown.match(/[⭐◎]\s*강세[^\n]*(?:\n(?![#⚠])[^\n]*)*/g);
+  const bearSection = markdown.match(/⚠️?\s*약세[^\n]*(?:\n(?![#⭐◎])[^\n]*)*/g);
+
+  if (bullSection == null || bearSection == null) return;
+
+  const bullText = bullSection.join("\n");
+  const bearText = bearSection.join("\n");
+
+  const bullSymbols = new Set(
+    [...bullText.matchAll(SYMBOL_IN_CONTEXT_PATTERN)].map((m) => m[1]),
+  );
+  const bearSymbols = new Set(
+    [...bearText.matchAll(SYMBOL_IN_CONTEXT_PATTERN)].map((m) => m[1]),
+  );
+
+  // 공통 종목 = 같은 리포트에서 강세+약세 동시 언급
+  const overlap = [...bullSymbols].filter((s) => bearSymbols.has(s));
+  // 일반적인 키워드 제외 (RS, Phase, MA 등은 종목이 아님)
+  const COMMON_WORDS = new Set(["RS", "MA", "EPS", "PE", "PB", "ETF", "VIX", "DOW", "QQQ", "SPY", "IWM"]);
+  const realOverlap = overlap.filter((s) => !COMMON_WORDS.has(s));
+
+  if (realOverlap.length > 0) {
+    warnings.push(
+      `종목 방향 반전 감지: ${realOverlap.join(", ")}이(가) 강세/약세 섹션에 동시 등장합니다. 방향 전환 맥락(원인)을 명시하세요.`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -382,6 +467,8 @@ export function validateReport(
   if (input.reportType === "daily") {
     checkDailySections(input.markdown, warnings, errors);
     checkPhaseDescriptionConsistency(input.markdown, warnings, errors);
+    checkSectorContinuityReason(input.markdown, warnings);
+    checkDirectionReversalContext(input.markdown, warnings);
   }
 
   // F. 마크다운 텍스트에서 Phase 1 추천 감지 (recommendations 없어도 동작)
