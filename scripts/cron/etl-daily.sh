@@ -74,10 +74,8 @@ run_step "Validate Data" "src/etl/jobs/validate-data.ts"
 if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
   # Phase 5: 토론 (비블로킹 — 실패해도 일간보고서는 실행)
   log "▶ 토론 에이전트 시작"
-  DEBATE_OK=0
   if npx tsx src/agent/run-debate-agent.ts >> "$LOG_FILE" 2>&1; then
     log "✓ 토론 에이전트 완료"
-    DEBATE_OK=1
 
     # promote-learnings (비블로킹)
     log "▶ Promote learnings"
