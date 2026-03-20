@@ -13,11 +13,12 @@ export interface GitHubIssue {
 /** 이슈 처리를 허용할 GitHub 계정 — 프롬프트 인젝션 방지 */
 export const ALLOWED_AUTHORS: readonly string[] = ['sossost'] as const
 
-export type AutoLabel = 'auto:in-progress' | 'auto:done'
+export type AutoLabel = 'auto:in-progress' | 'auto:done' | 'auto:blocked'
 
 export const AUTO_LABELS: readonly AutoLabel[] = [
   'auto:in-progress',
   'auto:done',
+  'auto:blocked',
 ] as const
 
 export type BranchType = 'fix' | 'feat' | 'refactor' | 'chore'
