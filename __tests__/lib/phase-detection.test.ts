@@ -134,7 +134,7 @@ describe("detectPhase", () => {
       expect(result.detail.ma150SlopePositive).toBe(false);
     });
 
-    it("fails Phase 2 when price is not 30% above 52w low", () => {
+    it("returns Phase 2 even when price is not 30% above 52w low", () => {
       // price = 150, low52w needs to be high enough so 150 < low52w * 1.3
       const result = detectPhase(makePhase2Input({ low52w: 120 }));
       // 120 * 1.3 = 156, price=150 < 156 → fails this condition but 7/8 → still Phase 2
@@ -143,7 +143,7 @@ describe("detectPhase", () => {
       expect(result.detail.phase2ConditionsMet).toBe(7);
     });
 
-    it("fails Phase 2 when price is more than 25% below 52w high", () => {
+    it("returns Phase 2 even when price is more than 25% below 52w high", () => {
       // high52w = 250 → 250*0.75 = 187.5, price=150 < 187.5 → fails
       const result = detectPhase(makePhase2Input({ high52w: 250 }));
       // 7/8 conditions → still Phase 2
