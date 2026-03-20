@@ -11,7 +11,12 @@ import {
   validateRegimeInput,
   saveRegimePending,
   applyHysteresis,
+  loadConfirmedRegime,
 } from "./debate/regimeStore";
+import {
+  getRegimePerformanceSummary,
+  formatRegimePerformanceForPrompt,
+} from "./debate/regimeThesisAnalyzer";
 import { verifyTheses } from "./debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
@@ -394,8 +399,34 @@ async function main() {
     logger.warn("FewShot", `Failed to load past sessions: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Combine memory + few-shot into enriched memory context
-  const enrichedMemory = [memoryContext, fewShotContext].filter((s) => s.length > 0).join("\n\n");
+  // 레짐별 thesis 적중률 로드 (에러 격리)
+  let regimePerformanceContext = "";
+  try {
+    const [regimeSummary, confirmedRegime] = await Promise.all([
+      getRegimePerformanceSummary(),
+      loadConfirmedRegime(),
+    ]);
+    if (regimeSummary.totalResolved > 0) {
+      regimePerformanceContext = formatRegimePerformanceForPrompt(
+        regimeSummary,
+        confirmedRegime?.regime,
+      );
+      logger.info(
+        "RegimePerf",
+        `${regimeSummary.regimeHitRates.length}개 레짐, ${regimeSummary.totalResolved}건 분석 로드`,
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      "RegimePerf",
+      `레짐 성과 로드 실패: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // Combine memory + few-shot + regime performance into enriched memory context
+  const enrichedMemory = [memoryContext, fewShotContext, regimePerformanceContext]
+    .filter((s) => s.length > 0)
+    .join("\n\n");
 
   // 5. 토론 실행
   logger.step(`[5/7] Running debate for ${debateDate}...`);
