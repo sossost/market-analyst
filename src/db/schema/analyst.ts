@@ -1060,3 +1060,124 @@ export const dailyReports = pgTable(
     idxType: index("idx_daily_reports_type").on(t.type),
   }),
 );
+
+// ==================== Unusual Whales: 옵션 플로우 / 다크풀 ====================
+
+/**
+ * options_flow_daily — 일별 종목별 옵션 플로우 집계.
+ * Unusual Whales API에서 수집한 개별 옵션 거래를 날짜+종목 기준으로 집계.
+ * 기존 Phase/RS 시그널의 확인/선행 보조 레이어로 활용.
+ */
+export const optionsFlowDaily = pgTable(
+  "options_flow_daily",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    date: text("date").notNull(), // YYYY-MM-DD
+
+    // 프리미엄 집계
+    totalPremium: numeric("total_premium").notNull(),
+    callPremium: numeric("call_premium").notNull(),
+    putPremium: numeric("put_premium").notNull(),
+    callPutRatio: numeric("call_put_ratio"), // callPremium / putPremium (cap at 99)
+
+    // 계약 수
+    totalContracts: integer("total_contracts").notNull(),
+    sweepCount: integer("sweep_count").notNull().default(0),
+    blockCount: integer("block_count").notNull().default(0),
+    unusualCount: integer("unusual_count").notNull().default(0),
+
+    // 센티먼트
+    bullishPremium: numeric("bullish_premium").notNull(),
+    bearishPremium: numeric("bearish_premium").notNull(),
+    sentimentScore: integer("sentiment_score"), // -100 to +100
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_options_flow_daily_symbol_date").on(t.symbol, t.date),
+    idxDate: index("idx_options_flow_daily_date").on(t.date),
+    idxSymbolDate: index("idx_options_flow_daily_symbol_date").on(
+      t.symbol,
+      t.date,
+    ),
+    idxSentiment: index("idx_options_flow_daily_sentiment").on(
+      t.sentimentScore,
+      t.date,
+    ),
+  }),
+);
+
+/**
+ * darkpool_daily — 일별 종목별 다크풀 거래 집계.
+ * Unusual Whales API에서 수집한 다크풀 블록 거래를 날짜+종목 기준으로 집계.
+ */
+export const darkpoolDaily = pgTable(
+  "darkpool_daily",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    date: text("date").notNull(), // YYYY-MM-DD
+
+    // 거래 집계
+    totalNotional: numeric("total_notional").notNull(),
+    totalShares: integer("total_shares").notNull(),
+    tradeCount: integer("trade_count").notNull(),
+    avgPrice: numeric("avg_price"),
+    avgTradeSize: integer("avg_trade_size"), // totalShares / tradeCount
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_darkpool_daily_symbol_date").on(t.symbol, t.date),
+    idxDate: index("idx_darkpool_daily_date").on(t.date),
+    idxSymbolDate: index("idx_darkpool_daily_symbol_date").on(
+      t.symbol,
+      t.date,
+    ),
+  }),
+);
+
+/**
+ * smart_flow_signals — 옵션 플로우 + 다크풀 복합 시그널.
+ * 기존 Phase 2 / RS 시그널과 교차 검증하여 기관 매집 선행 신호를 포착.
+ */
+export const smartFlowSignals = pgTable(
+  "smart_flow_signals",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    date: text("date").notNull(), // YYYY-MM-DD
+
+    // 시그널 메타
+    signalType: text("signal_type").notNull(), // BULLISH_SWEEP | DARK_ACCUMULATION | OPTIONS_SURGE | MIXED
+    strength: text("strength").notNull(), // STRONG | MODERATE | WEAK
+    compositeScore: integer("composite_score").notNull(), // -100 to +100
+
+    // 기존 시그널 교차 검증
+    confirmsExisting: boolean("confirms_existing").notNull().default(false),
+
+    // 원본 데이터 참조 (JSON)
+    details: text("details"), // JSON: { optionsFlow, darkPool } aggregated metrics
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_smart_flow_signals_symbol_date").on(t.symbol, t.date),
+    idxDate: index("idx_smart_flow_signals_date").on(t.date),
+    idxStrength: index("idx_smart_flow_signals_strength").on(
+      t.strength,
+      t.date,
+    ),
+    idxConfirms: index("idx_smart_flow_signals_confirms").on(
+      t.confirmsExisting,
+      t.date,
+    ),
+  }),
+);
