@@ -72,7 +72,7 @@
 | 4 애널리스트 | 매크로(GPT-4o), 테크(Gemini 2.0 Flash), 지정학(Claude), 심리(Claude) |
 | 3라운드 | 독립분석 → 교차검증(반박 필수) → 모더레이터(Claude) 종합 |
 | LLM Provider | 추상화 레이어 (`src/agent/debate/llm/`) + FallbackProvider |
-| 폴백 | 외부 API(GPT-4o/Gemini) 장애 시 Claude 자동 폴백 + warn 로그 |
+| 폴백 | Claude 계열: ClaudeCliProvider(Max 구독, $0) 우선 → AnthropicProvider API 폴백. 외부 API(GPT-4o/Gemini) 장애 시 Claude 자동 폴백 + warn 로그 |
 | 뉴스 사전 수집 | Brave Search로 애널리스트별 뉴스 주입 |
 | 모멘텀 데이터 | 5일/20일 가격 변화율 → 고점 피로감 감지 |
 | 환각 방지 | 프롬프트 레벨 수치 정확성 규칙 |
@@ -377,7 +377,8 @@ Wave 2a/2b: 서사 확장 — Done (PR #98, #101)
 멀티 모델 토론 — Done
   |
   ├── LLM Provider 추상화 (Anthropic/OpenAI/Gemini) ✓
-  ├── FallbackProvider (외부 API 장애 → Claude 폴백) ✓
+  ├── FallbackProvider (Claude: CLI→API 폴백, 외부 API: Claude 폴백) ✓
+  ├── ClaudeCliProvider 우선 — 토론 엔진 + 리뷰 에이전트 전체 API 비용 $0 (PR #257~Phase2) ✓
   ├── macro → GPT-4o, tech → Gemini 2.0 Flash ✓
   └── Claude Sonnet 4.6 업그레이드 (PR #231) ✓
   |

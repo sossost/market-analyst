@@ -2,24 +2,16 @@ import { loadActiveTheses, resolveThesis, saveCausalAnalysis } from "./thesisSto
 import { analyzeCauses } from "./causalAnalyzer.js";
 import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
 import { logger } from "../logger.js";
-import { ClaudeCliProvider } from "./llm/claudeCliProvider.js";
-import { AnthropicProvider } from "./llm/anthropicProvider.js";
-import { FallbackProvider } from "./llm/fallbackProvider.js";
+import { createProvider } from "./llm/providerFactory.js";
 import type { LLMProvider } from "./llm/types.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { Thesis } from "../../types/debate.js";
 
-import { CLAUDE_SONNET } from "@/lib/models.js";
-
-const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 const MS_PER_DAY = 86_400_000;
 
 function createVerifierProvider(): LLMProvider {
-  const cli = new ClaudeCliProvider();
-  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
-  if (!hasApiKey) return cli;
-  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
+  return createProvider("sonnet");
 }
 
 interface VerificationJudgment {

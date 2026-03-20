@@ -1,17 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ReportDraft } from "@/agent/reviewAgent";
-import { CLAUDE_SONNET } from "@/lib/models.js";
 
 // ---------------------------------------------------------------------------
 // Mock setup — must happen before any imports from the module under test
 // ---------------------------------------------------------------------------
 
-const mockCreate = vi.fn();
+const mockCall = vi.fn();
 
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class MockAnthropic {
-    messages = { create: mockCreate };
-  },
+vi.mock("@/agent/debate/llm/providerFactory", () => ({
+  createProvider: () => ({ call: mockCall }),
 }));
 
 const mockSendDiscordMessage = vi.fn();
@@ -56,11 +53,10 @@ function makeDraft(overrides: Partial<ReportDraft> = {}): ReportDraft {
   };
 }
 
-function makeTextResponse(text: string) {
+function makeLLMResult(text: string) {
   return {
-    content: [{ type: "text", text }],
-    stop_reason: "end_turn",
-    usage: { input_tokens: 100, output_tokens: 50 },
+    content: text,
+    tokensUsed: { input: 100, output: 50 },
   };
 }
 
@@ -208,13 +204,13 @@ describe("reviewReport", () => {
     vi.clearAllMocks();
   });
 
-  it("returns OK verdict when Claude responds with valid OK JSON", async () => {
+  it("returns OK verdict when provider responds with valid OK JSON", async () => {
     const reviewJson = JSON.stringify({
       verdict: "OK",
       feedback: "Report is well structured.",
       issues: [],
     });
-    mockCreate.mockResolvedValueOnce(makeTextResponse(reviewJson));
+    mockCall.mockResolvedValueOnce(makeLLMResult(reviewJson));
 
     const result = await reviewReport([makeDraft()]);
 
@@ -229,7 +225,7 @@ describe("reviewReport", () => {
       feedback: "Missing risk section.",
       issues: ["No macro risk mentioned", "Valuation unclear"],
     });
-    mockCreate.mockResolvedValueOnce(makeTextResponse(reviewJson));
+    mockCall.mockResolvedValueOnce(makeLLMResult(reviewJson));
 
     const result = await reviewReport([makeDraft()]);
 
@@ -245,7 +241,7 @@ describe("reviewReport", () => {
       feedback: "Report is fundamentally flawed.",
       issues: ["No data backing claims", "Misleading conclusions"],
     });
-    mockCreate.mockResolvedValueOnce(makeTextResponse(reviewJson));
+    mockCall.mockResolvedValueOnce(makeLLMResult(reviewJson));
 
     const result = await reviewReport([makeDraft()]);
 
@@ -253,8 +249,8 @@ describe("reviewReport", () => {
     expect(result.issues).toHaveLength(2);
   });
 
-  it("defaults to REVISE when Claude returns malformed JSON", async () => {
-    mockCreate.mockResolvedValueOnce(makeTextResponse("not valid json at all"));
+  it("defaults to REVISE when provider returns malformed JSON", async () => {
+    mockCall.mockResolvedValueOnce(makeLLMResult("not valid json at all"));
 
     const result = await reviewReport([makeDraft()]);
 
@@ -264,27 +260,15 @@ describe("reviewReport", () => {
 
   it("defaults to REVISE when the JSON has an invalid verdict value", async () => {
     const badJson = JSON.stringify({ verdict: "MAYBE", feedback: "?", issues: [] });
-    mockCreate.mockResolvedValueOnce(makeTextResponse(badJson));
+    mockCall.mockResolvedValueOnce(makeLLMResult(badJson));
 
     const result = await reviewReport([makeDraft()]);
 
     expect(result.verdict).toBe("REVISE");
   });
 
-  it("defaults to REVISE when Claude returns an empty text block", async () => {
-    mockCreate.mockResolvedValueOnce(makeTextResponse(""));
-
-    const result = await reviewReport([makeDraft()]);
-
-    expect(result.verdict).toBe("REVISE");
-  });
-
-  it("defaults to REVISE when Claude response has no text content block", async () => {
-    mockCreate.mockResolvedValueOnce({
-      content: [],
-      stop_reason: "end_turn",
-      usage: { input_tokens: 10, output_tokens: 0 },
-    });
+  it("defaults to REVISE when provider returns an empty string", async () => {
+    mockCall.mockResolvedValueOnce(makeLLMResult(""));
 
     const result = await reviewReport([makeDraft()]);
 
@@ -297,7 +281,7 @@ describe("reviewReport", () => {
       feedback: "Some issues.",
       issues: ["Valid issue", 42, null, "Another valid issue"],
     });
-    mockCreate.mockResolvedValueOnce(makeTextResponse(reviewJson));
+    mockCall.mockResolvedValueOnce(makeLLMResult(reviewJson));
 
     const result = await reviewReport([makeDraft()]);
 
@@ -306,7 +290,7 @@ describe("reviewReport", () => {
 
   it("coerces missing feedback to empty string", async () => {
     const reviewJson = JSON.stringify({ verdict: "OK", issues: [] });
-    mockCreate.mockResolvedValueOnce(makeTextResponse(reviewJson));
+    mockCall.mockResolvedValueOnce(makeLLMResult(reviewJson));
 
     const result = await reviewReport([makeDraft()]);
 
@@ -315,43 +299,32 @@ describe("reviewReport", () => {
 
   it("coerces missing issues to empty array", async () => {
     const reviewJson = JSON.stringify({ verdict: "OK", feedback: "Good." });
-    mockCreate.mockResolvedValueOnce(makeTextResponse(reviewJson));
+    mockCall.mockResolvedValueOnce(makeLLMResult(reviewJson));
 
     const result = await reviewReport([makeDraft()]);
 
     expect(result.issues).toEqual([]);
   });
 
-  it("calls the Anthropic API with the correct model", async () => {
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify({ verdict: "OK", feedback: "", issues: [] })),
+  it("calls the provider with the reviewer system prompt", async () => {
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(JSON.stringify({ verdict: "OK", feedback: "", issues: [] })),
     );
 
     await reviewReport([makeDraft()]);
 
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.model).toBe(CLAUDE_SONNET);
+    const call = mockCall.mock.calls[0][0];
+    expect(call.systemPrompt).toContain("수치 기준 명시");
+    expect(call.systemPrompt).toContain("SYMBOL(+XX%)");
+    expect(call.systemPrompt).toContain("+XX%(일간)");
+    expect(call.systemPrompt).toContain("+XX%(5일)");
+    expect(call.systemPrompt).toContain("+XX%(20일)");
+    expect(call.systemPrompt).toContain("52주 저점 대비 +XX%");
   });
 
-  it("includes numeric basis verification item in reviewer system prompt", async () => {
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify({ verdict: "OK", feedback: "", issues: [] })),
-    );
-
-    await reviewReport([makeDraft()]);
-
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.system).toContain("수치 기준 명시");
-    expect(call.system).toContain("SYMBOL(+XX%)");
-    expect(call.system).toContain("+XX%(일간)");
-    expect(call.system).toContain("+XX%(5일)");
-    expect(call.system).toContain("+XX%(20일)");
-    expect(call.system).toContain("52주 저점 대비 +XX%");
-  });
-
-  it("includes all draft messages in the prompt sent to Claude", async () => {
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify({ verdict: "OK", feedback: "", issues: [] })),
+  it("includes all draft messages in the user message sent to provider", async () => {
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(JSON.stringify({ verdict: "OK", feedback: "", issues: [] })),
     );
 
     const drafts = [
@@ -361,10 +334,9 @@ describe("reviewReport", () => {
 
     await reviewReport(drafts);
 
-    const call = mockCreate.mock.calls[0][0];
-    const userMessage = call.messages[0].content as string;
-    expect(userMessage).toContain("First draft content");
-    expect(userMessage).toContain("Second draft content");
+    const call = mockCall.mock.calls[0][0];
+    expect(call.userMessage).toContain("First draft content");
+    expect(call.userMessage).toContain("Second draft content");
   });
 });
 
@@ -377,11 +349,11 @@ describe("refineReport", () => {
     vi.clearAllMocks();
   });
 
-  it("returns refined drafts parsed from Claude's JSON response", async () => {
+  it("returns refined drafts parsed from provider's JSON response", async () => {
     const refined: ReportDraft[] = [
       { message: "Refined summary", markdownContent: "# Refined", filename: "daily.md" },
     ];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     const result = await refineReport([makeDraft()], "Add risk section.");
 
@@ -391,18 +363,18 @@ describe("refineReport", () => {
     expect(result[0].filename).toBe("daily.md");
   });
 
-  it("falls back to original drafts when Claude returns malformed JSON", async () => {
+  it("falls back to original drafts when provider returns malformed JSON", async () => {
     const originals = [makeDraft({ message: "Original content" })];
-    mockCreate.mockResolvedValueOnce(makeTextResponse("not json"));
+    mockCall.mockResolvedValueOnce(makeLLMResult("not json"));
 
     const result = await refineReport(originals, "Some feedback.");
 
     expect(result).toEqual(originals);
   });
 
-  it("falls back to original drafts when Claude returns an empty array", async () => {
+  it("falls back to original drafts when provider returns an empty array", async () => {
     const originals = [makeDraft()];
-    mockCreate.mockResolvedValueOnce(makeTextResponse("[]"));
+    mockCall.mockResolvedValueOnce(makeLLMResult("[]"));
 
     const result = await refineReport(originals, "feedback");
 
@@ -410,8 +382,8 @@ describe("refineReport", () => {
   });
 
   it("accepts a single-object JSON response (not wrapped in array)", async () => {
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify({ message: "refined message" })),
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(JSON.stringify({ message: "refined message" })),
     );
 
     const result = await refineReport([makeDraft()], "feedback");
@@ -421,7 +393,7 @@ describe("refineReport", () => {
 
   it("coerces missing markdownContent to undefined in refined draft", async () => {
     const refined = [{ message: "Refined without markdown" }];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     const result = await refineReport([makeDraft()], "feedback");
 
@@ -430,7 +402,7 @@ describe("refineReport", () => {
 
   it("coerces missing filename to undefined in refined draft", async () => {
     const refined = [{ message: "Refined", markdownContent: "# Content" }];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     const result = await refineReport([makeDraft()], "feedback");
 
@@ -439,8 +411,8 @@ describe("refineReport", () => {
 
   it("falls back to original when message is not a string", async () => {
     const originals = [makeDraft({ message: "Original" })];
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify([{ message: null }])),
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(JSON.stringify([{ message: null }])),
     );
 
     const result = await refineReport(originals, "feedback");
@@ -448,25 +420,24 @@ describe("refineReport", () => {
     expect(result[0].message).toBe("Original");
   });
 
-  it("calls the Anthropic API with the correct model", async () => {
+  it("calls the provider with the refine system prompt", async () => {
     const refined = [makeDraft({ message: "Refined" })];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     await refineReport([makeDraft()], "Feedback here.");
 
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.model).toBe(CLAUDE_SONNET);
+    const call = mockCall.mock.calls[0][0];
+    expect(call.systemPrompt).toContain("리뷰어의 지적사항");
   });
 
-  it("includes the feedback in the prompt sent to Claude", async () => {
+  it("includes the feedback in the user message sent to provider", async () => {
     const refined = [makeDraft({ message: "Refined" })];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     await refineReport([makeDraft()], "Add macro risk analysis.");
 
-    const call = mockCreate.mock.calls[0][0];
-    const userMessage = call.messages[0].content as string;
-    expect(userMessage).toContain("Add macro risk analysis.");
+    const call = mockCall.mock.calls[0][0];
+    expect(call.userMessage).toContain("Add macro risk analysis.");
   });
 });
 
@@ -479,11 +450,11 @@ describe("extractDataOnly", () => {
     vi.clearAllMocks();
   });
 
-  it("returns data-only drafts parsed from Claude's JSON response", async () => {
+  it("returns data-only drafts parsed from provider's JSON response", async () => {
     const dataOnly: ReportDraft[] = [
       { message: "S&P 500 +1.2% ⚠️ 리뷰어 판정에 따라 분석 섹션이 제외되었습니다." },
     ];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(dataOnly)));
 
     const result = await extractDataOnly([makeDraft()]);
 
@@ -491,9 +462,9 @@ describe("extractDataOnly", () => {
     expect(result[0].message).toContain("S&P 500");
   });
 
-  it("falls back to original drafts when Claude returns malformed JSON", async () => {
+  it("falls back to original drafts when provider returns malformed JSON", async () => {
     const originals = [makeDraft({ message: "Original with opinions" })];
-    mockCreate.mockResolvedValueOnce(makeTextResponse("not json"));
+    mockCall.mockResolvedValueOnce(makeLLMResult("not json"));
 
     const result = await extractDataOnly(originals);
 
@@ -502,13 +473,13 @@ describe("extractDataOnly", () => {
 
   it("uses the DATA_ONLY system prompt (not REFINE)", async () => {
     const dataOnly: ReportDraft[] = [{ message: "Data only" }];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(dataOnly)));
 
     await extractDataOnly([makeDraft()]);
 
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.system).toContain("팩트/데이터 기반 섹션만");
-    expect(call.system).not.toContain("리뷰어의 지적사항");
+    const call = mockCall.mock.calls[0][0];
+    expect(call.systemPrompt).toContain("팩트/데이터 기반 섹션만");
+    expect(call.systemPrompt).not.toContain("리뷰어의 지적사항");
   });
 });
 
@@ -635,39 +606,39 @@ describe("runReviewPipeline", () => {
   it("does nothing and skips review when drafts array is empty", async () => {
     await runReviewPipeline([], "TEST_WEBHOOK", { skipCooldown: true });
 
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCall).not.toHaveBeenCalled();
     expect(mockSendDiscordMessage).not.toHaveBeenCalled();
   });
 
   it("sends original drafts directly when review verdict is OK", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "OK", feedback: "", issues: [] }),
       ),
     );
 
     await runReviewPipeline([makeDraft({ message: "Original" })], "TEST_WEBHOOK", { skipCooldown: true });
 
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledTimes(1);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith("Original", "TEST_WEBHOOK");
   });
 
   it("refines drafts and sends refined version when verdict is REVISE", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "REVISE", feedback: "Add risks.", issues: ["Missing risk"] }),
       ),
     );
 
     const refined = { message: "Refined with risks added" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
 
-    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCall).toHaveBeenCalledTimes(2);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
       "Refined with risks added",
       "TEST_WEBHOOK",
@@ -677,8 +648,8 @@ describe("runReviewPipeline", () => {
   it("extracts data-only sections when verdict is REJECT", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({
           verdict: "REJECT",
           feedback: "Completely rewrite.",
@@ -688,11 +659,11 @@ describe("runReviewPipeline", () => {
     );
 
     const dataOnly = { message: "S&P 500 +1.2%, NASDAQ +0.8% ⚠️ 리뷰어 판정에 따라 분석 섹션이 제외되었습니다." };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(dataOnly)));
 
     await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
 
-    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCall).toHaveBeenCalledTimes(2);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
       expect.stringContaining("분석 섹션이 제외되었습니다"),
       "TEST_WEBHOOK",
@@ -702,14 +673,14 @@ describe("runReviewPipeline", () => {
   it("sends refined drafts (not originals) after REVISE", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "REVISE", feedback: "Improve clarity.", issues: [] }),
       ),
     );
 
     const refined = { message: "Improved clarity version" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     await runReviewPipeline(
       [makeDraft({ message: "Original uncleated draft" })],
@@ -725,14 +696,14 @@ describe("runReviewPipeline", () => {
   it("calls refineReport when review parse fails (conservative REVISE fallback)", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(makeTextResponse("invalid json"));
+    mockCall.mockResolvedValueOnce(makeLLMResult("invalid json"));
 
     const refined = { message: "Conservatively refined" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     await runReviewPipeline([makeDraft({ message: "Original" })], "TEST_WEBHOOK", { skipCooldown: true });
 
-    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCall).toHaveBeenCalledTimes(2);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
       "Conservatively refined",
       "TEST_WEBHOOK",
@@ -740,8 +711,8 @@ describe("runReviewPipeline", () => {
   });
 
   it("still sends drafts even when webhook env var is not set", async () => {
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "OK", feedback: "", issues: [] }),
       ),
     );
@@ -755,14 +726,14 @@ describe("runReviewPipeline", () => {
   it("saves feedback when verdict is REVISE", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "REVISE", feedback: "Add risks.", issues: ["Missing risk"] }),
       ),
     );
 
     const refined = { message: "Refined" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
 
@@ -778,14 +749,14 @@ describe("runReviewPipeline", () => {
   it("saves feedback when verdict is REJECT", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "REJECT", feedback: "Bad report.", issues: ["No data"] }),
       ),
     );
 
     const dataOnly = { message: "Data only" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(dataOnly)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(dataOnly)));
 
     await runReviewPipeline([makeDraft()], "TEST_WEBHOOK", { skipCooldown: true });
 
@@ -797,8 +768,8 @@ describe("runReviewPipeline", () => {
   it("saves feedback when verdict is OK (all verdicts saved)", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "OK", feedback: "Good report", issues: [] }),
       ),
     );
@@ -813,8 +784,8 @@ describe("runReviewPipeline", () => {
   it("passes reportType to saveReviewFeedback when provided", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
 
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(
+    mockCall.mockResolvedValueOnce(
+      makeLLMResult(
         JSON.stringify({ verdict: "OK", feedback: "", issues: [] }),
       ),
     );
@@ -830,9 +801,9 @@ describe("runReviewPipeline", () => {
     expect(REVIEW_COOLDOWN_MS).toBe(60_000);
   });
 
-  it("sends original drafts when the review API call throws", async () => {
+  it("sends original drafts when the provider call throws", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
-    mockCreate.mockRejectedValueOnce(new Error("Network timeout"));
+    mockCall.mockRejectedValueOnce(new Error("Network timeout"));
 
     await runReviewPipeline(
       [makeDraft({ message: "Original" })],
@@ -853,11 +824,11 @@ describe("refineReport (multi-draft)", () => {
     vi.clearAllMocks();
   });
 
-  it("refines multiple drafts independently via separate API calls", async () => {
+  it("refines multiple drafts independently via separate provider calls", async () => {
     const refined1 = { message: "Refined draft 1" };
     const refined2 = { message: "Refined draft 2" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined1)));
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined2)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined1)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined2)));
 
     const originals = [
       makeDraft({ message: "Original 1" }),
@@ -866,7 +837,7 @@ describe("refineReport (multi-draft)", () => {
 
     const result = await refineReport(originals, "Add risks.");
 
-    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCall).toHaveBeenCalledTimes(2);
     expect(result).toHaveLength(2);
     expect(result[0].message).toBe("Refined draft 1");
     expect(result[1].message).toBe("Refined draft 2");
@@ -874,8 +845,8 @@ describe("refineReport (multi-draft)", () => {
 
   it("keeps original draft when one draft fails to refine", async () => {
     const refined1 = { message: "Refined draft 1" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined1)));
-    mockCreate.mockResolvedValueOnce(makeTextResponse("invalid json"));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined1)));
+    mockCall.mockResolvedValueOnce(makeLLMResult("invalid json"));
 
     const originals = [
       makeDraft({ message: "Original 1" }),
@@ -890,17 +861,17 @@ describe("refineReport (multi-draft)", () => {
 
   it("handles single draft without Promise.allSettled", async () => {
     const refined = { message: "Single refined" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     const result = await refineReport([makeDraft()], "feedback");
 
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledTimes(1);
     expect(result[0].message).toBe("Single refined");
   });
 
-  it("handles Claude response as array for single draft", async () => {
+  it("handles provider response as array for single draft", async () => {
     const refined = [{ message: "Refined in array" }];
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(refined)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(refined)));
 
     const result = await refineReport([makeDraft()], "feedback");
 
@@ -920,8 +891,8 @@ describe("extractDataOnly (multi-draft)", () => {
   it("extracts data from multiple drafts independently", async () => {
     const data1 = { message: "Data only 1" };
     const data2 = { message: "Data only 2" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(data1)));
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(data2)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(data1)));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(data2)));
 
     const originals = [
       makeDraft({ message: "Original 1" }),
@@ -930,15 +901,15 @@ describe("extractDataOnly (multi-draft)", () => {
 
     const result = await extractDataOnly(originals);
 
-    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCall).toHaveBeenCalledTimes(2);
     expect(result[0].message).toBe("Data only 1");
     expect(result[1].message).toBe("Data only 2");
   });
 
   it("keeps original when one draft extraction fails", async () => {
     const data1 = { message: "Data only 1" };
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(data1)));
-    mockCreate.mockResolvedValueOnce(makeTextResponse("broken"));
+    mockCall.mockResolvedValueOnce(makeLLMResult(JSON.stringify(data1)));
+    mockCall.mockResolvedValueOnce(makeLLMResult("broken"));
 
     const originals = [
       makeDraft({ message: "Original 1" }),

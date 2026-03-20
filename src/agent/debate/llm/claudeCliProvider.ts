@@ -2,8 +2,8 @@ import { execFile } from "node:child_process";
 import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { LLMProviderError } from "./types.js";
 
-const DEFAULT_MODEL = "claude-opus-4-5";
-const TIMEOUT_MS = 120_000;
+const DEFAULT_MODEL = "claude-opus-4-6";
+const TIMEOUT_MS = 300_000; // 5분 — Round 3 Opus 긴 출력 대응
 const MAX_SYSTEM_PROMPT_BYTES = 64 * 1024; // 64KB
 
 interface ClaudeCliJsonOutput {
@@ -101,11 +101,14 @@ export class ClaudeCliProvider implements LLMProvider {
       "json",
     ];
 
+    // ANTHROPIC_API_KEY가 있으면 CLI가 Max 대신 API 과금으로 동작하므로 제거
+    const { ANTHROPIC_API_KEY: _, ...cleanEnv } = process.env;
+
     return new Promise<LLMCallResult>((resolve, reject) => {
       const child = execFile(
         "claude",
         args,
-        { timeout: this.timeoutMs, maxBuffer: 10 * 1024 * 1024 },
+        { timeout: this.timeoutMs, maxBuffer: 10 * 1024 * 1024, env: cleanEnv },
         (error, stdout, _stderr) => {
           if (error != null) {
             reject(this.classifyError(error, stdout));

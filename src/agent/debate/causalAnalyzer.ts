@@ -1,20 +1,12 @@
 import { findSessionByDate } from "./sessionStore.js";
 import { logger } from "../logger.js";
-import { ClaudeCliProvider } from "./llm/claudeCliProvider.js";
-import { AnthropicProvider } from "./llm/anthropicProvider.js";
-import { FallbackProvider } from "./llm/fallbackProvider.js";
+import { createProvider } from "./llm/providerFactory.js";
 import type { LLMProvider } from "./llm/types.js";
 
-import { CLAUDE_SONNET } from "@/lib/models.js";
-
-const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 
 function createCausalProvider(): LLMProvider {
-  const cli = new ClaudeCliProvider();
-  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
-  if (!hasApiKey) return cli;
-  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
+  return createProvider("sonnet");
 }
 
 export interface CausalAnalysisInput {

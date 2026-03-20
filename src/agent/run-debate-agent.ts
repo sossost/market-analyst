@@ -281,12 +281,15 @@ async function loadFundamentalContextSafely(
 }
 
 function validateEnvironment(): void {
-  const required = ["DATABASE_URL", "ANTHROPIC_API_KEY"];
+  const required = ["DATABASE_URL"];
   const missing = required.filter(
     (key) => process.env[key] == null || process.env[key] === "",
   );
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+  }
+  if (process.env.ANTHROPIC_API_KEY == null || process.env.ANTHROPIC_API_KEY === "") {
+    logger.warn("Env", "ANTHROPIC_API_KEY 미설정 — Claude CLI only (API 폴백 불가)");
   }
 }
 
