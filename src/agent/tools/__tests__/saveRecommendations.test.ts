@@ -88,7 +88,7 @@ function makeInsertChain(rowCount: number) {
 function setupDefaultPoolMocks() {
   // pool.query 호출 순서 (Promise.all 병렬이지만 mock은 순차 소비):
   // 1. activeRows (ACTIVE symbol)
-  // 2. cooldownRows (CLOSED/CLOSED_PHASE_EXIT symbol in cooldown)
+  // 2. cooldownRows (CLOSED/CLOSED_PHASE_EXIT/CLOSED_TRAILING_STOP/CLOSED_STOP_LOSS symbol in cooldown)
   // 3. persistenceRows (stock_phases phase >= 2)  ← activeRows/cooldownRows와 병렬
   // 4. priceRows (daily_prices)
   // saveFactorSnapshot 내부 쿼리는 별도

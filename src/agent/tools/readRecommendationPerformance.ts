@@ -120,6 +120,9 @@ export const readRecommendationPerformance: AgentTool = {
     const phaseExitCount = allClosed.filter(
       (r) => r.status === "CLOSED_PHASE_EXIT",
     ).length;
+    const stopLossCount = allClosed.filter(
+      (r) => r.status === "CLOSED_STOP_LOSS",
+    ).length;
 
     const summary = {
       totalCount: activeRecs.length + closedRecs.length,
@@ -135,7 +138,8 @@ export const readRecommendationPerformance: AgentTool = {
       closedByReason: {
         phaseExit: phaseExitCount,
         trailingStop: trailingStopCount,
-        other: closedRecs.length - phaseExitCount - trailingStopCount,
+        stopLoss: stopLossCount,
+        other: closedRecs.length - phaseExitCount - trailingStopCount - stopLossCount,
       },
     };
 
@@ -217,6 +221,9 @@ async function executeThisWeek(): Promise<string> {
   const weekPhaseExitCount = closedThisWeek.filter(
     (r) => r.status === "CLOSED_PHASE_EXIT",
   ).length;
+  const weekStopLossCount = closedThisWeek.filter(
+    (r) => r.status === "CLOSED_STOP_LOSS",
+  ).length;
 
   return JSON.stringify({
     period: "this_week",
@@ -232,7 +239,8 @@ async function executeThisWeek(): Promise<string> {
       closedByReason: {
         phaseExit: weekPhaseExitCount,
         trailingStop: weekTrailingStopCount,
-        other: closedThisWeek.length - weekPhaseExitCount - weekTrailingStopCount,
+        stopLoss: weekStopLossCount,
+        other: closedThisWeek.length - weekPhaseExitCount - weekTrailingStopCount - weekStopLossCount,
       },
     },
     phaseExits: phaseExits.map((r) => ({
