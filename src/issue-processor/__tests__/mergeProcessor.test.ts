@@ -78,12 +78,14 @@ function openPrNoReviewCheckSequence() {
   ]
 }
 
-/** 리뷰 없는 OPEN PR의 전체 시퀀스 (merge 포함) */
+/** 리뷰 없는 OPEN PR의 전체 시퀀스 (merge + fetchMergedFiles 포함) */
 function openPrNoReviewSequence() {
   return [
     ...openPrNoReviewCheckSequence(),
     // 4. gh pr merge
     { stdout: '' },
+    // 5. gh pr view --json files (fetchMergedFiles — 인프라 반영 대상 없음)
+    { stdout: JSON.stringify({ files: [] }) },
   ]
 }
 
@@ -138,7 +140,9 @@ describe('processMerge', () => {
       { stdout: '' },
       // 5. gh pr merge
       { stdout: '' },
-      // 6~8. 로컬 브랜치 정리
+      // 6. gh pr view --json files (fetchMergedFiles — 인프라 반영 대상 없음)
+      { stdout: JSON.stringify({ files: [] }) },
+      // 7~9. 로컬 브랜치 정리
       { stdout: '' }, // git checkout main
       { stdout: '' }, // git pull
       { stdout: '  main' }, // git branch

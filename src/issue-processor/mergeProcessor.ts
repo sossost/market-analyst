@@ -6,6 +6,7 @@
  * 2. PR 리뷰 코멘트 확인 (Gemini 등 외부 리뷰어)
  * 3. 타당한 리뷰 있으면 Claude Code CLI로 반영 → 푸시
  * 4. squash merge 실행
+ * 4.5. post-merge 인프라 반영 (DB 마이그레이션, launchd 재로드)
  * 5. 로컬 브랜치 정리
  * 6. 스레드에 완료 알림
  * 7. PR 매핑 삭제
@@ -20,6 +21,11 @@ import { removePrThreadMapping } from './prThreadStore.js'
 const TAG = 'MERGE_PROCESSOR'
 const GH_TIMEOUT_MS = 60_000
 const GIT_TIMEOUT_MS = 30_000
+const DB_PUSH_TIMEOUT_MS = 120_000
+const LAUNCHD_TIMEOUT_MS = 30_000
+
+const DB_SCHEMA_PATTERNS = ['src/db/schema/', 'db/migrations/']
+const LAUNCHD_PATTERN = 'scripts/launchd/'
 
 const REPO = 'sossost/market-analyst'
 
@@ -33,8 +39,12 @@ function execFileP(
   options: { timeout: number; env?: NodeJS.ProcessEnv; cwd?: string },
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(command, args, options, (error, stdout) => {
+    execFile(command, args, options, (error, stdout, stderr) => {
       if (error != null) {
+        const detail = stderr?.trim()
+        if (detail) {
+          error.message = `${error.message}\n${detail}`
+        }
         reject(error)
         return
       }
@@ -78,6 +88,97 @@ async function fetchPrState(prNumber: number): Promise<PrState> {
   ])
   const data = JSON.parse(raw) as { state: string }
   return data.state as PrState
+}
+
+/**
+ * PR 머지 후 변경된 파일 목록을 조회한다.
+ * 조회 실패 시 null 반환.
+ */
+async function fetchMergedFiles(prNumber: number): Promise<string[] | null> {
+  try {
+    const raw = await gh(['pr', 'view', String(prNumber), '--json', 'files'])
+    const data = JSON.parse(raw) as { files: Array<{ path: string }> }
+    return data.files.map(f => f.path)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * DB 마이그레이션을 적용한다 (yarn db:push --force).
+ * 실패 시 스레드에 에러 알림 후 조용히 종료 — processMerge 흐름을 막지 않는다.
+ */
+async function applyDbMigration(threadId: string): Promise<void> {
+  try {
+    await sendThreadMessage(threadId, '🗄️ DB 스키마 변경 감지 — drizzle-kit push 실행 중...')
+    await execFileP('yarn', ['db:push', '--force'], {
+      timeout: DB_PUSH_TIMEOUT_MS,
+      cwd: process.cwd(),
+    })
+    logger.info(TAG, 'DB 마이그레이션 완료')
+    await sendThreadMessage(threadId, '✅ DB 마이그레이션 완료')
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `DB 마이그레이션 실패: ${reason}`)
+    await sendThreadMessage(threadId, `❌ DB 마이그레이션 실패: ${reason.slice(0, 300)}`)
+  }
+}
+
+/**
+ * launchd를 재로드한다 (setup-launchd.sh).
+ * 실패 시 스레드에 에러 알림 후 조용히 종료 — processMerge 흐름을 막지 않는다.
+ */
+async function reloadLaunchd(threadId: string): Promise<void> {
+  try {
+    await sendThreadMessage(threadId, '⚙️ plist 변경 감지 — launchd 재로드 중...')
+    await execFileP('bash', ['scripts/launchd/setup-launchd.sh'], {
+      timeout: LAUNCHD_TIMEOUT_MS,
+      cwd: process.cwd(),
+    })
+    logger.info(TAG, 'launchd 재로드 완료')
+    await sendThreadMessage(threadId, '✅ launchd 재로드 완료')
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `launchd 재로드 실패: ${reason}`)
+    await sendThreadMessage(threadId, `❌ launchd 재로드 실패: ${reason.slice(0, 300)}`)
+  }
+}
+
+/**
+ * PR 머지 후 인프라 반영이 필요한지 판단하고 실행한다.
+ * - DB 스키마/마이그레이션 파일 포함 → applyDbMigration
+ * - launchd plist 파일 포함 → reloadLaunchd
+ * - 해당 없으면 스킵
+ */
+async function runPostMergeInfra(prNumber: number, threadId: string): Promise<void> {
+  const files = await fetchMergedFiles(prNumber)
+  if (files == null) {
+    logger.warn(TAG, `PR #${prNumber} 변경 파일 조회 실패 — 인프라 반영 스킵`)
+    return
+  }
+  if (files.length === 0) {
+    logger.info(TAG, `PR #${prNumber}: 변경 파일 없음 — 인프라 반영 스킵`)
+    return
+  }
+
+  const needsDbMigration = files.some(
+    f => DB_SCHEMA_PATTERNS.some(pattern => f.startsWith(pattern))
+  )
+  const needsLaunchdReload = files.some(
+    f => f.startsWith(LAUNCHD_PATTERN) && f.endsWith('.plist')
+  )
+
+  if (!needsDbMigration && !needsLaunchdReload) {
+    logger.info(TAG, `PR #${prNumber}: 인프라 반영 대상 없음 — 스킵`)
+    return
+  }
+
+  if (needsDbMigration) {
+    await applyDbMigration(threadId)
+  }
+  if (needsLaunchdReload) {
+    await reloadLaunchd(threadId)
+  }
 }
 
 /**
@@ -238,8 +339,14 @@ ${commentsSummary}
         env,
         cwd: process.cwd(),
       },
-      (error) => {
+      (error, _stdout, stderr) => {
         if (error != null) {
+          // execFile의 error.message는 "Command failed: ..."만 포함.
+          // 실제 원인(인증 만료, PATH 문제 등)은 stderr에 있으므로 병합.
+          const detail = stderr?.trim()
+          if (detail) {
+            error.message = `${error.message}\n${detail}`
+          }
           reject(error)
           return
         }
@@ -358,10 +465,13 @@ export async function processMerge(mapping: PrThreadMapping): Promise<void> {
     return
   }
 
-  // 3. 로컬 브랜치 정리
+  // 3.5. Post-merge 인프라 반영
+  await runPostMergeInfra(prNumber, threadId)
+
+  // 4. 로컬 브랜치 정리
   await deleteLocalBranchIfExists(branchName)
 
-  // 4. 스레드에 완료 알림
+  // 5. 스레드에 완료 알림
   try {
     await sendThreadMessage(
       threadId,
@@ -372,7 +482,7 @@ export async function processMerge(mapping: PrThreadMapping): Promise<void> {
     logger.warn(TAG, `완료 알림 발송 실패 (머지는 완료): ${reason}`)
   }
 
-  // 5. 매핑 삭제
+  // 6. 매핑 삭제
   removePrThreadMapping(prNumber)
   logger.info(TAG, `PR #${prNumber} 처리 완료 — 매핑 삭제`)
 }
