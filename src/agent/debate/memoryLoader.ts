@@ -1,13 +1,15 @@
 import { db } from "../../db/client.js";
 import { agentLearnings, theses } from "../../db/schema/analyst.js";
-import { eq, desc, isNotNull } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { logger } from "../logger.js";
 import { detectBullBias } from "../../lib/biasDetector.js";
+import { getConfidenceHitRates } from "./thesisStore.js";
 
 const MAX_LEARNINGS = 50;
 const MAX_RECENT_THESES = 10;
 const MAX_CAUSAL_ANALYSES = 10;
 const BULL_BIAS_THRESHOLD = 0.8;
+const MEDIUM_CONFIDENCE_WARNING_THRESHOLD = 0.50;
 
 /**
  * Load active learnings from DB and format as system prompt text.
@@ -172,18 +174,63 @@ export async function loadBullBiasWarning(): Promise<string> {
 }
 
 /**
+ * Confidence별 적중률 통계를 로드하여 경고 메시지 생성.
+ *
+ * 검증된(CONFIRMED/INVALIDATED) thesis에서 confidence별 적중률을 계산.
+ * medium confidence 적중률이 50% 미만이면 경고를 포함.
+ */
+export async function loadConfidenceCalibration(): Promise<string> {
+  const stats = await getConfidenceHitRates();
+
+  if (stats.length === 0) return "";
+
+  const statLines: string[] = [];
+  let hasWarning = false;
+
+  for (const r of stats) {
+    const total = r.confirmed + r.invalidated;
+    if (total < 3) continue; // 표본 부족 시 생략
+
+    const hitRate = r.hitRate;
+    if (hitRate === null) continue;
+
+    const isLowHitRate = hitRate < MEDIUM_CONFIDENCE_WARNING_THRESHOLD;
+
+    if ((r.confidence === "medium" || r.confidence === "low") && isLowHitRate) {
+      hasWarning = true;
+    }
+
+    const pct = (hitRate * 100).toFixed(0);
+    const label = isLowHitRate ? "⚠️" : "✓";
+    statLines.push(`- ${label} ${r.confidence}: 적중률 ${pct}% (${r.confirmed}/${total})`);
+  }
+
+  if (!hasWarning) return "";
+
+  const lines: string[] = [
+    "### ⚠️ Confidence 보정 필요",
+    ...statLines,
+    "",
+    "**medium/low confidence 전망은 추천 근거로 사용하지 마세요.** high confidence만 의사결정에 반영하세요.",
+  ];
+
+  return lines.join("\n");
+}
+
+/**
  * Build full memory context string for injection into debate system prompts.
  * Returns empty string if no learnings or verifications exist.
  */
 export async function buildMemoryContext(): Promise<string> {
-  const [learnings, verifications, causalAnalysis, bullBiasWarning] = await Promise.all([
+  const [learnings, verifications, causalAnalysis, bullBiasWarning, confidenceCalibration] = await Promise.all([
     loadLearnings(),
     loadRecentVerifications(),
     loadCausalAnalysis(),
     loadBullBiasWarning(),
+    loadConfidenceCalibration(),
   ]);
 
-  const sections = [learnings, verifications, causalAnalysis, bullBiasWarning].filter(
+  const sections = [learnings, verifications, causalAnalysis, bullBiasWarning, confidenceCalibration].filter(
     (s) => s.length > 0,
   );
 

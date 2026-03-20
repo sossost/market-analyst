@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db, pool } from "@/db/client";
 import { theses, agentLearnings, failurePatterns } from "@/db/schema/analyst";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 
 export const BEAR_KEYWORDS_FOR_PRIORITY = ["하락", "약세", "부정", "조정", "위축", "둔화", "악화", "하향", "리스크", "경계"];
 import { assertValidEnvironment } from "@/etl/utils/validation";
@@ -59,6 +59,63 @@ interface PromotionCandidate {
   verificationMethods: string[];
 }
 
+// ---------------------------------------------------------------------------
+// verificationMetric 정규화
+//
+// LLM이 같은 지표를 다양한 형태로 생성하므로 (e.g. "Technology RS", "Tech RS",
+// "Information Technology 섹터 RS") 학습 그룹핑 시 정규화가 필요하다.
+// ---------------------------------------------------------------------------
+
+const METRIC_ALIASES: Record<string, string> = {
+  spx: "S&P 500", sp500: "S&P 500", "s&p500": "S&P 500", "s&p 500": "S&P 500",
+  qqq: "NASDAQ", nasdaq: "NASDAQ",
+  iwm: "Russell 2000", "russell 2000": "Russell 2000",
+  "dow 30": "DOW 30", dow: "DOW 30", djia: "DOW 30",
+  vix: "VIX",
+  "fear & greed": "Fear & Greed", "fear and greed": "Fear & Greed", "공포탐욕지수": "Fear & Greed",
+};
+
+const SECTOR_METRIC_ALIASES: Record<string, string> = {
+  tech: "Technology", it: "Technology", "information technology": "Technology", "info tech": "Technology",
+  "comm services": "Communication Services", communications: "Communication Services", telecom: "Communication Services",
+  "consumer discretionary": "Consumer Cyclical", "cons cyclical": "Consumer Cyclical", discretionary: "Consumer Cyclical",
+  "consumer staples": "Consumer Defensive", "cons defensive": "Consumer Defensive", staples: "Consumer Defensive",
+  financials: "Financial Services", finance: "Financial Services", financial: "Financial Services",
+  materials: "Basic Materials", "basic material": "Basic Materials",
+  health: "Healthcare", "health care": "Healthcare",
+  industrial: "Industrials",
+  realestate: "Real Estate", reit: "Real Estate", reits: "Real Estate",
+  utility: "Utilities",
+};
+
+const SECTOR_RS_NORMALIZE_PATTERN = /^(.+?)\s*(?:섹터\s+|sector\s+)?RS(?:\s+score)?$/i;
+
+/**
+ * verificationMetric 문자열을 정규화된 키로 변환.
+ *
+ * "Tech RS" → "Technology RS"
+ * "Information Technology 섹터 RS" → "Technology RS"
+ * "SPX" → "S&P 500"
+ */
+export function normalizeMetricKey(raw: string): string {
+  const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
+
+  // 섹터 RS 패턴 매칭
+  const sectorMatch = SECTOR_RS_NORMALIZE_PATTERN.exec(trimmed);
+  if (sectorMatch != null) {
+    const rawSector = sectorMatch[1].trim().toLowerCase();
+    const canonical = SECTOR_METRIC_ALIASES[rawSector] ?? sectorMatch[1].trim();
+    return `${canonical} RS`;
+  }
+
+  // 지수/기타 지표 별칭
+  const aliased = METRIC_ALIASES[lower];
+  if (aliased != null) return aliased;
+
+  return trimmed;
+}
+
 /**
  * 장기 기억 승격/강등 ETL.
  *
@@ -85,19 +142,21 @@ async function main() {
   // 2. 만료 강등 (6개월 초과)
   const demotedCount = await demoteExpiredLearnings(activeLearnings, today);
 
-  // 3. thesis 데이터 로드
-  const [confirmedTheses, invalidatedTheses] = await Promise.all([
+  // 3. thesis 데이터 로드 (EXPIRED도 부정 신호로 포함)
+  const [confirmedTheses, invalidatedTheses, expiredTheses] = await Promise.all([
     db.select().from(theses).where(eq(theses.status, "CONFIRMED")),
     db.select().from(theses).where(eq(theses.status, "INVALIDATED")),
+    db.select().from(theses).where(eq(theses.status, "EXPIRED")),
   ]);
 
-  logger.info(TAG, `Confirmed: ${confirmedTheses.length}, Invalidated: ${invalidatedTheses.length}`);
+  logger.info(TAG, `Confirmed: ${confirmedTheses.length}, Invalidated: ${invalidatedTheses.length}, Expired: ${expiredTheses.length}`);
 
   // 4. 기존 learnings의 hitCount/missCount 업데이트
+  const allNegativeTheses = [...invalidatedTheses, ...expiredTheses];
   const updatedCount = await updateLearningStats(
     activeLearnings.filter((l) => l.isActive !== false),
     confirmedTheses,
-    invalidatedTheses,
+    allNegativeTheses,
     today,
   );
 
@@ -120,7 +179,7 @@ async function main() {
 
   const candidates = buildPromotionCandidates(
     confirmedTheses,
-    invalidatedTheses,
+    allNegativeTheses,
     existingSourceIds,
     activeCountAfterDemotion,
   );
@@ -143,6 +202,9 @@ async function main() {
 
   logger.info(TAG, `Results: ${demotedCount} demoted, ${updatedCount} updated, ${promotedCount} promoted, ${cautionPromoted} caution`);
   logger.info(TAG, `Active learnings: ${latestLearnings.length}`);
+
+  // 학습 루프 헬스체크 — 활성 학습 0건이면 경고
+  await checkLearningLoopHealth(latestLearnings.length, today);
 
   await pool.end();
 }
@@ -258,12 +320,13 @@ export function buildPromotionCandidates(
   activeLearningCount: number = 0,
 ): PromotionCandidate[] {
   const thresholds = getPromotionThresholds(activeLearningCount);
-  // persona + metric 기준 그룹화 (기존 learning에 없는 thesis만)
+  // persona + 정규화된 metric 기준 그룹화 (기존 learning에 없는 thesis만)
   const groups = new Map<string, { confirmed: typeof theses.$inferSelect[]; invalidated: typeof theses.$inferSelect[] }>();
 
   for (const t of confirmedTheses) {
     if (existingSourceIds.has(t.id)) continue;
-    const key = `${t.agentPersona}::${t.verificationMetric}`;
+    const normalizedMetric = normalizeMetricKey(t.verificationMetric);
+    const key = `${t.agentPersona}::${normalizedMetric}`;
     const group = groups.get(key) ?? { confirmed: [], invalidated: [] };
     group.confirmed.push(t);
     groups.set(key, group);
@@ -271,7 +334,8 @@ export function buildPromotionCandidates(
 
   for (const t of invalidatedTheses) {
     if (existingSourceIds.has(t.id)) continue;
-    const key = `${t.agentPersona}::${t.verificationMetric}`;
+    const normalizedMetric = normalizeMetricKey(t.verificationMetric);
+    const key = `${t.agentPersona}::${normalizedMetric}`;
     const group = groups.get(key);
     if (group != null) {
       group.invalidated.push(t);
@@ -540,6 +604,62 @@ export async function promoteFailurePatterns(today: string): Promise<number> {
   }
 
   return promotedCount;
+}
+
+// ─── Learning Loop Healthcheck ────────────────────────────────────────────────
+
+const HEALTHCHECK_STALE_DAYS = 7;
+
+/**
+ * 학습 루프 헬스체크.
+ *
+ * - 활성 학습 0건: 즉시 경고
+ * - 최근 7일간 신규/업데이트 학습 0건: 루프 정체 경고
+ */
+export async function checkLearningLoopHealth(
+  activeLearningCount: number,
+  today: string,
+): Promise<void> {
+  if (activeLearningCount === 0) {
+    const [confirmedCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(theses)
+      .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]));
+
+    const resolvedCount = confirmedCount?.count ?? 0;
+
+    logger.warn(
+      TAG,
+      `⚠️ LEARNING LOOP HEALTH: 활성 학습 0건. 해소된 thesis ${resolvedCount}건이 학습으로 전환되지 않음. ` +
+      `원인: 그룹핑 임계값 미달 또는 verificationMetric 다양성 초과. ` +
+      `promote-learnings 로그에서 SKIP/BOOTSTRAP 항목 확인 필요.`,
+    );
+    return;
+  }
+
+  // 최근 7일간 업데이트 없는지 확인
+  const staleDate = new Date(today);
+  staleDate.setDate(staleDate.getDate() - HEALTHCHECK_STALE_DAYS);
+  const staleDateStr = staleDate.toISOString().slice(0, 10);
+
+  const [recentUpdate] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(agentLearnings)
+    .where(
+      and(
+        eq(agentLearnings.isActive, true),
+        sql`${agentLearnings.lastVerified} >= ${staleDateStr}`,
+      ),
+    );
+
+  const recentCount = recentUpdate?.count ?? 0;
+
+  if (recentCount === 0) {
+    logger.warn(
+      TAG,
+      `⚠️ LEARNING LOOP STALE: 최근 ${HEALTHCHECK_STALE_DAYS}일간 학습 업데이트 0건. 루프 정체 가능.`,
+    );
+  }
 }
 
 main().catch(async (err) => {
