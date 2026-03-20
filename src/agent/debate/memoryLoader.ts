@@ -1,8 +1,9 @@
 import { db } from "../../db/client.js";
 import { agentLearnings, theses } from "../../db/schema/analyst.js";
-import { eq, desc, isNotNull, sql, inArray } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { logger } from "../logger.js";
 import { detectBullBias } from "../../lib/biasDetector.js";
+import { getConfidenceHitRates } from "./thesisStore.js";
 
 const MAX_LEARNINGS = 50;
 const MAX_RECENT_THESES = 10;
@@ -179,48 +180,39 @@ export async function loadBullBiasWarning(): Promise<string> {
  * medium confidence 적중률이 50% 미만이면 경고를 포함.
  */
 export async function loadConfidenceCalibration(): Promise<string> {
-  const rows = await db
-    .select({
-      confidence: theses.confidence,
-      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
-      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
-    })
-    .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
-    .groupBy(theses.confidence);
+  const stats = await getConfidenceHitRates();
 
-  if (rows.length === 0) return "";
+  if (stats.length === 0) return "";
 
-  const lines: string[] = [];
-  let hasMediumWarning = false;
+  const statLines: string[] = [];
+  let hasWarning = false;
 
-  for (const r of rows) {
+  for (const r of stats) {
     const total = r.confirmed + r.invalidated;
     if (total < 3) continue; // 표본 부족 시 생략
 
-    const hitRate = r.confirmed / total;
+    const hitRate = r.hitRate;
+    if (hitRate === null) continue;
 
-    if (r.confidence === "medium" && hitRate < MEDIUM_CONFIDENCE_WARNING_THRESHOLD) {
-      hasMediumWarning = true;
+    const isLowHitRate = hitRate < MEDIUM_CONFIDENCE_WARNING_THRESHOLD;
+
+    if ((r.confidence === "medium" || r.confidence === "low") && isLowHitRate) {
+      hasWarning = true;
     }
-    if (r.confidence === "low" && hitRate < MEDIUM_CONFIDENCE_WARNING_THRESHOLD) {
-      hasMediumWarning = true;
-    }
-  }
 
-  if (!hasMediumWarning) return "";
-
-  lines.push("### ⚠️ Confidence 보정 필요");
-  for (const r of rows) {
-    const total = r.confirmed + r.invalidated;
-    if (total < 3) continue;
-    const hitRate = r.confirmed / total;
     const pct = (hitRate * 100).toFixed(0);
-    const label = hitRate < MEDIUM_CONFIDENCE_WARNING_THRESHOLD ? "⚠️" : "✓";
-    lines.push(`- ${label} ${r.confidence}: 적중률 ${pct}% (${r.confirmed}/${total})`);
+    const label = isLowHitRate ? "⚠️" : "✓";
+    statLines.push(`- ${label} ${r.confidence}: 적중률 ${pct}% (${r.confirmed}/${total})`);
   }
-  lines.push("");
-  lines.push("**medium/low confidence 전망은 추천 근거로 사용하지 마세요.** high confidence만 의사결정에 반영하세요.");
+
+  if (!hasWarning) return "";
+
+  const lines: string[] = [
+    "### ⚠️ Confidence 보정 필요",
+    ...statLines,
+    "",
+    "**medium/low confidence 전망은 추천 근거로 사용하지 마세요.** high confidence만 의사결정에 반영하세요.",
+  ];
 
   return lines.join("\n");
 }
