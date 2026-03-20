@@ -13,6 +13,7 @@
  */
 
 import { execFile } from 'node:child_process'
+import { readFile, writeFile } from 'node:fs/promises'
 import { logger } from '@/lib/logger'
 import type { PrThreadMapping } from './types.js'
 import { sendThreadMessage } from './discordClient.js'
@@ -147,11 +148,11 @@ async function reloadPlist(plistFile: string): Promise<{ label: string; skipped:
     // 이미 unload 상태면 무시
   }
 
-  // sed로 플레이스홀더 치환 후 복사
+  // 플레이스홀더 치환 후 복사 (Node.js native — 경로 특수문자 안전)
   const projectDir = process.cwd()
-  await execFileP('bash', ['-c', `sed "s|__PROJECT_DIR__|${projectDir}|g" "${srcPath}" > "${targetPath}"`], {
-    timeout: LAUNCHD_TIMEOUT_MS,
-  })
+  const template = await readFile(srcPath, 'utf-8')
+  const content = template.replace(/__PROJECT_DIR__/g, projectDir)
+  await writeFile(targetPath, content, 'utf-8')
 
   // load
   await execFileP('launchctl', ['load', targetPath], { timeout: LAUNCHD_TIMEOUT_MS })
