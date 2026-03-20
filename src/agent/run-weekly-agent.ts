@@ -21,6 +21,7 @@ import { readReportHistory } from "./tools/readReportHistory";
 import { saveReportLogTool } from "./tools/saveReportLog";
 import { saveRecommendations } from "./tools/saveRecommendations";
 import { readRecommendationPerformance } from "./tools/readRecommendationPerformance";
+import { readRegimePerformance } from "./tools/readRegimePerformance";
 import {
   createDraftCaptureTool,
   runReviewPipeline,
@@ -208,6 +209,7 @@ async function main() {
       searchCatalyst,
       readReportHistory,
       readRecommendationPerformance,
+      readRegimePerformance,
       createDraftCaptureTool(reportDrafts),
       saveReportLogTool,
       saveRecommendations,
