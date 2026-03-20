@@ -836,9 +836,11 @@ describe("validateReport — 역분할 의심 종목 감지", () => {
       ],
     });
 
-    expect(result.warnings.some((w) => w.includes("역분할 의심"))).toBe(true);
-    expect(result.warnings.some((w) => w.includes("COOK"))).toBe(true);
-    expect(result.warnings.some((w) => w.includes("Phase 4→2"))).toBe(true);
+    const warning = result.warnings.find(w => w.includes("역분할 의심") && w.includes("COOK") && w.includes("Phase 4→2"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("역분할 의심");
+    expect(warning).toContain("COOK");
+    expect(warning).toContain("Phase 4→2");
   });
 
   it("Phase 3→2 + pctFromLow52w 2000% → 역분할 의심 경고", () => {
@@ -849,8 +851,10 @@ describe("validateReport — 역분할 의심 종목 감지", () => {
       ],
     });
 
-    expect(result.warnings.some((w) => w.includes("역분할 의심"))).toBe(true);
-    expect(result.warnings.some((w) => w.includes("TEST"))).toBe(true);
+    const warning = result.warnings.find(w => w.includes("역분할 의심") && w.includes("TEST"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("역분할 의심");
+    expect(warning).toContain("TEST");
   });
 
   it("Phase 1→2 (정상 전환) → 역분할 의심 없음", () => {
@@ -916,8 +920,10 @@ describe("validateReport — 추천 종목별 리스크 언급 비율", () => {
       ],
     });
 
-    expect(result.warnings.some((w) => w.includes("리스크 언급 비율"))).toBe(true);
-    expect(result.warnings.some((w) => w.includes("0%"))).toBe(true);
+    const warning = result.warnings.find(w => w.includes("리스크 언급 비율") && w.includes("0%"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("리스크 언급 비율");
+    expect(warning).toContain("0%");
   });
 
   it("3건 추천 중 1건에 리스크 언급 (33%) → 경고 없음", () => {
@@ -978,9 +984,11 @@ describe("validateReport — 극단적 거래량 과열 경고 누락", () => {
       ],
     });
 
-    expect(result.warnings.some((w) => w.includes("극단적 거래량"))).toBe(true);
-    expect(result.warnings.some((w) => w.includes("OVID"))).toBe(true);
-    expect(result.warnings.some((w) => w.includes("13.7배"))).toBe(true);
+    const warning = result.warnings.find(w => w.includes("극단적 거래량") && w.includes("OVID") && w.includes("13.7배"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("극단적 거래량");
+    expect(warning).toContain("OVID");
+    expect(warning).toContain("13.7배");
   });
 
   it("volRatio 13.7배 + 과열 경고 있음 → 경고 없음", () => {
@@ -1025,8 +1033,9 @@ describe("validateReport — 극단적 거래량 과열 경고 누락", () => {
       ],
     });
 
-    expect(result.warnings.some((w) => w.includes("극단적 거래량"))).toBe(true);
-    // OVID는 과열이 있으므로 제외, STRO만 포함
-    expect(result.warnings.some((w) => w.includes("STRO") && w.includes("극단적 거래량"))).toBe(true);
+    const warning = result.warnings.find(w => w.includes("극단적 거래량"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("STRO");
+    expect(warning).not.toContain("OVID");
   });
 });

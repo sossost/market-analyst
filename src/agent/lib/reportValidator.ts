@@ -514,8 +514,8 @@ function checkPerRecRiskMention(
   for (const rec of recommendations) {
     // 종목 심볼이 등장하는 줄과 그 다음 2줄 범위에서 리스크 키워드 검색
     const symbolPattern = new RegExp(
-      `${rec.symbol}[^\\n]*(?:\\n[^\\n]*){0,2}`,
-      "gi",
+      `\\b${rec.symbol}\\b[^\\n]*(?:\\n[^\\n]*){0,2}`,
+      "g",
     );
     const symbolContexts = [...markdown.matchAll(symbolPattern)]
       .map((m) => m[0])
@@ -561,8 +561,8 @@ function checkExtremeVolumeWithoutWarning(
 
     // 해당 종목 주변 컨텍스트에서 과열/경고 키워드 확인
     const symbolPattern = new RegExp(
-      `${rec.symbol}[^\\n]*(?:\\n[^\\n]*){0,2}`,
-      "gi",
+      `\\b${rec.symbol}\\b[^\\n]*(?:\\n[^\\n]*){0,2}`,
+      "g",
     );
     const contexts = [...markdown.matchAll(symbolPattern)]
       .map((m) => m[0])
