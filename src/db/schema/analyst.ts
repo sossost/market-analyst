@@ -590,6 +590,9 @@ export const narrativeChains = pgTable(
 
     // 해소까지 소요 일수 (해소 시 자동 계산)
     resolutionDays: integer("resolution_days"),
+
+    // Sector Alpha Gate — 수혜 섹터의 SEPA 적합성 (null = 미평가)
+    alphaCompatible: boolean("alpha_compatible"),
   },
   (t) => ({
     idxStatus: index("idx_narrative_chains_status").on(t.status),

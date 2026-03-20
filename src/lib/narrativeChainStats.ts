@@ -23,6 +23,7 @@ export interface ActiveChainSummary {
   linkedThesisCount: number;
   beneficiarySectors: string[];
   beneficiaryTickers: string[];
+  alphaCompatible: boolean | null;
 }
 
 /**
@@ -88,6 +89,7 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
       linkedThesisIds: narrativeChains.linkedThesisIds,
       beneficiarySectors: narrativeChains.beneficiarySectors,
       beneficiaryTickers: narrativeChains.beneficiaryTickers,
+      alphaCompatible: narrativeChains.alphaCompatible,
     })
     .from(narrativeChains)
     .where(inArray(narrativeChains.status, activeStatuses));
@@ -114,6 +116,7 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
     beneficiaryTickers: Array.isArray(chain.beneficiaryTickers)
       ? (chain.beneficiaryTickers as string[])
       : [],
+    alphaCompatible: chain.alphaCompatible,
   }));
 }
 
@@ -127,19 +130,21 @@ export async function formatChainsForDailyPrompt(): Promise<string> {
 
   const lines: string[] = [
     "## 현재 추적 중인 서사 체인 (종목 태그 참조용)\n",
-    "| 체인명 | 메가트렌드 | 상태 | 경과일 |",
-    "|--------|----------|------|--------|",
+    "| 체인명 | 메가트렌드 | 상태 | Alpha Gate | 경과일 |",
+    "|--------|----------|------|-----------|--------|",
   ];
 
   for (const chain of chains) {
+    const alphaTag = formatAlphaTag(chain.alphaCompatible);
     lines.push(
-      `| ${chain.bottleneck} | ${chain.megatrend} | ${chain.status} | ${chain.daysSinceIdentified}일 |`,
+      `| ${chain.bottleneck} | ${chain.megatrend} | ${chain.status} | ${alphaTag} | ${chain.daysSinceIdentified}일 |`,
     );
   }
 
   lines.push(
     "",
     "리포트 작성 시 위 체인과 관련된 섹터/종목에 [체인명 / 상태] 태그를 추가하세요.",
+    "Alpha Gate \"구조적 관찰\" 체인의 수혜 종목은 종목 추천에서 제외하되, 거시 분석 참고용으로 언급할 수 있습니다.",
   );
 
   return lines.join("\n");
@@ -161,8 +166,8 @@ export async function formatChainsSummaryForPrompt(): Promise<string> {
 
   const lines: string[] = [
     "## 현재 추적 중인 병목 체인\n",
-    "| 병목 노드 | 메가트렌드 | 식별일 | 경과일 | 상태 | N+1 병목 | 수혜 섹터 | 수혜 종목 | 참고 해소 기간 |",
-    "|----------|----------|--------|-------|------|---------|----------|----------|-------------|",
+    "| 병목 노드 | 메가트렌드 | 식별일 | 경과일 | 상태 | Alpha Gate | N+1 병목 | 수혜 섹터 | 수혜 종목 | 참고 해소 기간 |",
+    "|----------|----------|--------|-------|------|-----------|---------|----------|----------|-------------|",
   ];
 
   for (const chain of chains) {
@@ -174,8 +179,9 @@ export async function formatChainsSummaryForPrompt(): Promise<string> {
     const tickers = chain.beneficiaryTickers.length > 0
       ? chain.beneficiaryTickers.join(", ")
       : "—";
+    const alphaTag = formatAlphaTag(chain.alphaCompatible);
     lines.push(
-      `| ${chain.bottleneck} | ${chain.megatrend} | ${dateStr} | ${chain.daysSinceIdentified}일 | ${chain.status} | ${nextBn} | ${sectors} | ${tickers} | ${refResolution} |`,
+      `| ${chain.bottleneck} | ${chain.megatrend} | ${dateStr} | ${chain.daysSinceIdentified}일 | ${chain.status} | ${alphaTag} | ${nextBn} | ${sectors} | ${tickers} | ${refResolution} |`,
     );
   }
 
@@ -183,9 +189,18 @@ export async function formatChainsSummaryForPrompt(): Promise<string> {
     "",
     "※ 해소된 체인이 3개 이상 쌓이면 \"참고 해소 기간\"에 평균 기간이 표시됩니다.",
     "※ 수혜 종목은 N+1 병목 해소 시 구조적 수혜가 예상되는 종목입니다. 현재 Phase/RS 기준 미달이어도 서사적 워치리스트로 활용하세요.",
+    "※ Alpha Gate \"구조적 관찰\": 해당 섹터의 SEPA 적합성이 낮아 종목 발굴 대상으로 부적합할 수 있음. 거시 분석으로만 활용.",
   );
 
   return lines.join("\n");
+}
+
+/**
+ * Alpha Gate 상태를 한글 태그로 변환.
+ */
+function formatAlphaTag(alphaCompatible: boolean | null): string {
+  if (alphaCompatible == null) return "미평가";
+  return alphaCompatible ? "통과" : "구조적 관찰";
 }
 
 function calculateMedian(sorted: number[]): number {
