@@ -80,7 +80,7 @@ export function buildBinsFromRows(
     rows.map((r) => [r.confidence, r]),
   );
 
-  const confidenceLevels: Confidence[] = ["low", "medium", "high"];
+  const confidenceLevels = Object.keys(EXPECTED_RATES) as Confidence[];
 
   return confidenceLevels.map((conf) => {
     const row = byConfidence.get(conf);

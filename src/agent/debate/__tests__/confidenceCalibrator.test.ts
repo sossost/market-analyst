@@ -18,10 +18,7 @@ vi.mock("../../../db/client.js", () => ({
             where: (...b: unknown[]) => {
               mockWhere(...b);
               return {
-                groupBy: (...c: unknown[]) => {
-                  mockGroupBy(...c);
-                  return mockGroupBy.mock.results.at(-1)?.value ?? [];
-                },
+                groupBy: mockGroupBy,
               };
             },
           };
