@@ -272,26 +272,26 @@ describe("promote-learnings logic", () => {
   describe("getPromotionThresholds", () => {
     it("bootstrap (0건) → 최소 기준 + binomial test 면제", () => {
       const thresholds = getPromotionThresholds(0);
-      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+      expect(thresholds).toEqual({ minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true });
     });
 
     it("bootstrap (1건) → 최소 기준 + binomial test 면제", () => {
       const thresholds = getPromotionThresholds(1);
-      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+      expect(thresholds).toEqual({ minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true });
     });
 
     it("cold start (2건) → 완화 기준 반환", () => {
       const thresholds = getPromotionThresholds(2);
-      expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
     });
 
     it("cold start (4건) → 완화 기준 반환", () => {
       const thresholds = getPromotionThresholds(4);
-      expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
     });
 
     it("경계값 4→5건 전환 — 5건은 중간 기준", () => {
-      expect(getPromotionThresholds(4)).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+      expect(getPromotionThresholds(4)).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
       expect(getPromotionThresholds(5)).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
     });
 
@@ -322,7 +322,17 @@ describe("promote-learnings logic", () => {
   });
 
   describe("buildPromotionCandidates — graduated threshold 적용", () => {
-    it("bootstrap: 학습 0건 → 2건 적중, total=3으로 승격 가능 (minHits=2, minTotal=3)", () => {
+    it("bootstrap: 학습 0건 → 단일 thesis로도 승격 가능 (minHits=1, minTotal=1)", () => {
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 0);
+      expect(result).toHaveLength(1);
+      expect(result[0].hitCount).toBe(1);
+    });
+
+    it("bootstrap: 학습 0건 → 2건 적중 + 1건 실패도 승격 가능", () => {
       const confirmed = Array.from({ length: 2 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
       );
@@ -335,21 +345,11 @@ describe("promote-learnings logic", () => {
       expect(result[0].hitCount).toBe(2);
     });
 
-    it("bootstrap: 학습 0건 → minTotal=3 미달 시 승격 불가", () => {
-      // 2 confirmed + 0 invalidated = total=2 < minTotal=3
-      const confirmed = Array.from({ length: 2 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
-      );
-
-      const result = buildPromotionCandidates(confirmed, [], new Set(), 0);
-      expect(result).toHaveLength(0);
-    });
-
     it("bootstrap: 학습 0건 → hitRate 55% 미달 시 승격 불가", () => {
-      // 2 confirmed + 2 invalidated = 50% hitRate < 55%
-      const confirmed = Array.from({ length: 2 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
-      );
+      // 1 confirmed + 2 invalidated = 33% hitRate < 55%
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "CPI" }),
+      ];
       const invalidated = Array.from({ length: 2 }, (_, i) =>
         makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
       );
@@ -404,9 +404,20 @@ describe("promote-learnings logic", () => {
     });
 
     it("bootstrap에서 binomialTest 면제 — 소표본에서도 승격 가능", () => {
-      // bootstrap (0건): minHits=2, minTotal=3, skipBinomialTest=true
+      // bootstrap (0건): minHits=1, minTotal=1, skipBinomialTest=true
+      // 단일 confirmed thesis도 승격 가능
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "VIX" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 0);
+      expect(result).toHaveLength(1);
+    });
+
+    it("cold start(2건+)에서 binomialTest 유지 — 통계적 비유의미 데이터는 승격 불가", () => {
+      // cold start 기준 (2건): minHits=2, minTotal=3, minHitRate=0.60
       // 2 confirmed + 1 invalidated = 67% hitRate, total=3
-      // 실제 binomialTest(2, 3)은 p=0.5 → 비유의미이지만, bootstrap이므로 통과
+      // binomialTest에서 p값이 크면 비유의미로 탈락
       const confirmed = Array.from({ length: 2 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "VIX" }),
       );
@@ -414,22 +425,7 @@ describe("promote-learnings logic", () => {
         makeThesis({ id: 100, agentPersona: "macro", verificationMetric: "VIX", status: "INVALIDATED" }),
       ];
 
-      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 0);
-      expect(result).toHaveLength(1);
-    });
-
-    it("cold start(2건+)에서 binomialTest 유지 — 통계적 비유의미 데이터는 승격 불가", () => {
-      // cold start 기준 (2건): minHits=3, minTotal=5, minHitRate=0.60
-      // 3 confirmed + 2 invalidated = 60% hitRate = 경계값, total=5
-      // binomialTest에서 p값이 크면 비유의미로 탈락
-      const confirmed = Array.from({ length: 3 }, (_, i) =>
-        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "VIX" }),
-      );
-      const invalidated = Array.from({ length: 2 }, (_, i) =>
-        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "VIX", status: "INVALIDATED" }),
-      );
-
-      // n=5, k=3 → p=0.5 기준 이항검정은 유의하지 않음 (p > 0.05)
+      // n=3, k=2 → p=0.5 기준 이항검정은 유의하지 않음 (p > 0.05)
       const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 2);
       expect(result).toHaveLength(0);
     });
