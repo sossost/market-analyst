@@ -16,9 +16,16 @@ const MA150_FLAT_THRESHOLD = 0.02; // ±2% considered flat
 const PRICE_NEAR_MA150_THRESHOLD = 0.05; // within 5% of MA150
 
 /**
+ * Minimum Phase 2 conditions for "early" detection.
+ * 8/8 = confirmed Phase 2, 6-7/8 with core conditions = Phase 2 early.
+ * Core conditions (must ALL be met): price > MA150, MA150 > MA200, MA150 slope > 0.
+ */
+const PHASE_2_MIN_CONDITIONS = 6;
+
+/**
  * Detect Weinstein Phase for a stock.
  *
- * Phase 2 requires ALL 8 conditions:
+ * Phase 2 conditions (8 total):
  *   1. price > MA150
  *   2. price > MA200
  *   3. MA150 > MA200
@@ -28,13 +35,16 @@ const PRICE_NEAR_MA150_THRESHOLD = 0.05; // within 5% of MA150
  *   7. price > 30% above 52w low
  *   8. price within 25% of 52w high
  *
- * Phase 4: price < MA150, MA150 < MA200, slope negative, RS low (checked BEFORE Phase 1)
- * Phase 1: MA150 flat, price near MA150
- * Phase 3: everything else (distribution/topping)
+ * Phase 2 판정: Core 3개 조건 충족 + 총 6/8 이상 → Phase 2.
+ *   Core: price > MA150, MA150 > MA200, MA150 slope > 0
+ *   이전 8/8 이진 판정에서 6/8 최소로 완화하여 전환 초입 포착.
  *
- * 판정 우선순위: Phase 2 → Phase 4 → Phase 1 → Phase 3(default)
- * Phase 4를 Phase 1보다 먼저 체크하는 이유: Phase 4 초기 종목이 flat slope + 가격 근접을
- * 동시에 충족하여 Phase 1로 오분류되는 케이스를 방지한다.
+ * Phase 4: price < MA150, MA150 < MA200, slope negative, RS < 50
+ * Phase 3 (distribution): price ≤ MA150 AND MA150 > MA200 (topping after Phase 2 run)
+ * Phase 1: MA150 flat, price near MA150
+ * Phase 3: everything else (default)
+ *
+ * 판정 우선순위: Phase 2 → Phase 4 → Phase 3(distribution) → Phase 1 → Phase 3(default)
  */
 export function detectPhase(input: PhaseInput): PhaseResult {
   const { price, ma50, ma150, ma200, ma150_20dAgo, rsScore, high52w, low52w } =
@@ -73,9 +83,10 @@ export function detectPhase(input: PhaseInput): PhaseResult {
     priceAbove30PctFromLow,
     priceWithin25PctOfHigh,
     conditionsMet,
+    phase2ConditionsMet: conditionsMet.length,
   };
 
-  const phase = determinePhase(input, ma150Slope, conditionsMet.length);
+  const phase = determinePhase(input, ma150Slope, detail);
 
   return { phase, ma150Slope, detail };
 }
@@ -83,10 +94,20 @@ export function detectPhase(input: PhaseInput): PhaseResult {
 function determinePhase(
   input: PhaseInput,
   ma150Slope: number,
-  phase2ConditionsMet: number,
+  detail: PhaseDetail,
 ): Phase {
-  // Phase 2: ALL 8 conditions met
-  if (phase2ConditionsMet === 8) {
+  const { priceAboveMa150, ma150AboveMa200, ma150SlopePositive } = detail;
+  const totalConditions = detail.phase2ConditionsMet;
+
+  // Phase 2: Core conditions (price > MA150, MA150 > MA200, slope positive)
+  // + at least 6/8 total conditions met.
+  // Previously required 8/8 — relaxed to 6/8 to capture Phase 2 early/transitioning stocks.
+  if (
+    priceAboveMa150 &&
+    ma150AboveMa200 &&
+    ma150SlopePositive &&
+    totalConditions >= PHASE_2_MIN_CONDITIONS
+  ) {
     return 2;
   }
 
@@ -100,6 +121,14 @@ function determinePhase(
   // Phase 1보다 먼저 체크하여 오분류를 방지한다.
   if (price < ma150 && ma150 < ma200 && slopeNegative && rsScore < 50) {
     return 4;
+  }
+
+  // Phase 3 (distribution): price dropped below (or at) MA150 while MA150 still above MA200.
+  // This catches topping/distribution after a Phase 2 run.
+  // MUST be checked BEFORE Phase 1 to prevent Phase 3 → Phase 1 misclassification
+  // when slope is flat and price is near MA150.
+  if (!priceAboveMa150 && ma150AboveMa200) {
+    return 3;
   }
 
   // Phase 1: Base / Accumulation

@@ -3,7 +3,7 @@ import { detectPhase, calculateMa150Slope } from "@/lib/phase-detection";
 import type { PhaseInput } from "@/types";
 
 /**
- * Weinstein Phase 2 conditions (all must be true):
+ * Weinstein Phase 2 conditions (all must be true for full confirmation):
  * 1. price > MA150
  * 2. price > MA200
  * 3. MA150 > MA200
@@ -12,6 +12,8 @@ import type { PhaseInput } from "@/types";
  * 6. RS score > 50
  * 7. price > 30% above 52-week low
  * 8. price within 25% of 52-week high
+ *
+ * Phase 2 판정: Core 3개(price > MA150, MA150 > MA200, slope > 0) + 총 6/8 이상
  */
 
 function makePhase2Input(overrides: Partial<PhaseInput> = {}): PhaseInput {
@@ -58,6 +60,7 @@ describe("detectPhase", () => {
 
       expect(result.phase).toBe(2);
       expect(result.detail.conditionsMet).toHaveLength(8);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
     });
 
     it("includes all 8 condition labels when Phase 2", () => {
@@ -78,56 +81,109 @@ describe("detectPhase", () => {
       expect(result.ma150Slope).toBeGreaterThan(0);
     });
 
-    it("fails Phase 2 when price < MA150", () => {
+    it("returns Phase 2 with 7/8 conditions (missing MA50 > MA150)", () => {
+      // Core conditions met: price > MA150, MA150 > MA200, slope positive
+      // Missing: MA50 > MA150 only → 7/8 → Phase 2 early
+      const result = detectPhase(makePhase2Input({ ma50: 130 }));
+      expect(result.phase).toBe(2);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.ma50AboveMa150).toBe(false);
+    });
+
+    it("returns Phase 2 with 7/8 conditions (missing RS > 50)", () => {
+      const result = detectPhase(makePhase2Input({ rsScore: 40 }));
+      expect(result.phase).toBe(2);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.rsAbove50).toBe(false);
+    });
+
+    it("returns Phase 2 with 6/8 conditions when core conditions met", () => {
+      // Missing: MA50 > MA150 and RS > 50 → 6/8
+      const result = detectPhase(makePhase2Input({ ma50: 130, rsScore: 40 }));
+      expect(result.phase).toBe(2);
+      expect(result.detail.phase2ConditionsMet).toBe(6);
+    });
+
+    it("does NOT return Phase 2 with 5/8 conditions", () => {
+      // Missing: MA50 > MA150, RS > 50, price not 30% above low → 5/8
+      const result = detectPhase(
+        makePhase2Input({ ma50: 130, rsScore: 40, low52w: 120 }),
+      );
+      expect(result.phase).not.toBe(2);
+      expect(result.detail.phase2ConditionsMet).toBe(5);
+    });
+
+    it("does NOT return Phase 2 when core condition price > MA150 fails", () => {
+      // 7/8 but missing core: price <= MA150
       const result = detectPhase(makePhase2Input({ price: 130 }));
       expect(result.phase).not.toBe(2);
       expect(result.detail.priceAboveMa150).toBe(false);
     });
 
-    it("fails Phase 2 when price < MA200", () => {
-      const result = detectPhase(makePhase2Input({ price: 115 }));
-      expect(result.phase).not.toBe(2);
-      expect(result.detail.priceAboveMa200).toBe(false);
-    });
-
-    it("fails Phase 2 when MA150 < MA200", () => {
+    it("does NOT return Phase 2 when core condition MA150 > MA200 fails", () => {
+      // MA150 < MA200 → core condition fails
       const result = detectPhase(makePhase2Input({ ma150: 115, ma200: 120 }));
       expect(result.phase).not.toBe(2);
       expect(result.detail.ma150AboveMa200).toBe(false);
     });
 
-    it("fails Phase 2 when MA50 < MA150", () => {
-      const result = detectPhase(makePhase2Input({ ma50: 130 }));
-      expect(result.phase).not.toBe(2);
-      expect(result.detail.ma50AboveMa150).toBe(false);
-    });
-
-    it("fails Phase 2 when MA150 slope is negative", () => {
+    it("does NOT return Phase 2 when core condition slope positive fails", () => {
+      // slope negative → core condition fails
       const result = detectPhase(makePhase2Input({ ma150_20dAgo: 140 }));
       expect(result.phase).not.toBe(2);
       expect(result.detail.ma150SlopePositive).toBe(false);
     });
 
-    it("fails Phase 2 when RS < 50", () => {
-      const result = detectPhase(makePhase2Input({ rsScore: 40 }));
-      expect(result.phase).not.toBe(2);
-      expect(result.detail.rsAbove50).toBe(false);
-    });
-
     it("fails Phase 2 when price is not 30% above 52w low", () => {
       // price = 150, low52w needs to be high enough so 150 < low52w * 1.3
       const result = detectPhase(makePhase2Input({ low52w: 120 }));
-      // 120 * 1.3 = 156, price=150 < 156 → fails
-      expect(result.phase).not.toBe(2);
+      // 120 * 1.3 = 156, price=150 < 156 → fails this condition but 7/8 → still Phase 2
+      expect(result.phase).toBe(2);
       expect(result.detail.priceAbove30PctFromLow).toBe(false);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
     });
 
     it("fails Phase 2 when price is more than 25% below 52w high", () => {
-      // price = 150, high52w * 0.75 = threshold
       // high52w = 250 → 250*0.75 = 187.5, price=150 < 187.5 → fails
       const result = detectPhase(makePhase2Input({ high52w: 250 }));
-      expect(result.phase).not.toBe(2);
+      // 7/8 conditions → still Phase 2
+      expect(result.phase).toBe(2);
       expect(result.detail.priceWithin25PctOfHigh).toBe(false);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
+    });
+  });
+
+  describe("Phase 2 early detection (issue #328 fix)", () => {
+    it("captures 7/8 stock that was previously misclassified as Phase 3", () => {
+      // Classic Phase 2 transitioning: all conditions met except MA50 hasn't crossed MA150 yet
+      const result = detectPhase({
+        price: 150,
+        ma50: 130, // MA50 still below MA150 — lagging indicator
+        ma150: 135,
+        ma200: 120,
+        ma150_20dAgo: 130,
+        rsScore: 75,
+        high52w: 160,
+        low52w: 80,
+      });
+      expect(result.phase).toBe(2);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
+    });
+
+    it("captures Phase 1 → Phase 2 transition with 6/8 conditions", () => {
+      // Emerging from base: core structural conditions met, but RS and MA50 still catching up
+      const result = detectPhase({
+        price: 140,
+        ma50: 130, // below MA150
+        ma150: 135,
+        ma200: 130,
+        ma150_20dAgo: 133, // slope positive
+        rsScore: 45, // RS still below 50
+        high52w: 160,
+        low52w: 80,
+      });
+      expect(result.phase).toBe(2);
+      expect(result.detail.phase2ConditionsMet).toBe(6);
     });
   });
 
@@ -163,8 +219,6 @@ describe("detectPhase", () => {
     });
 
     it("classifies as Phase 4 when price slightly below ma150 with weak negative slope", () => {
-      // slope가 flat 범위(-0.015)이고 price가 ma150 아주 살짝 아래인 경우
-      // Phase 4 조건(price < ma150, ma150 < ma200, slope < 0)을 모두 충족하므로 Phase 4
       const input: PhaseInput = {
         price: 99,
         ma50: 95,
@@ -181,14 +235,14 @@ describe("detectPhase", () => {
   });
 
   describe("Phase 1 detection (base/accumulation)", () => {
-    it("returns Phase 1 when MA150 is flat and price near MA150 (price above MA150)", () => {
-      // price > ma150 → Phase 4의 price < ma150 조건 불충족 → Phase 1로 판정
+    it("returns Phase 1 when MA150 is flat and price near MA150 with MA150 <= MA200", () => {
+      // Phase 1 requires MA150 <= MA200 (otherwise it's Phase 3 distribution)
       const result = detectPhase({
         price: 102,
         ma50: 99,
         ma150: 101,
-        ma200: 103,
-        ma150_20dAgo: 101.5, // nearly flat slope: (101 - 101.5) / 101.5 = -0.0049 (flat 범위)
+        ma200: 103, // MA150 < MA200 → not distribution
+        ma150_20dAgo: 101.5, // nearly flat slope
         rsScore: 45,
         high52w: 130,
         low52w: 85,
@@ -197,13 +251,13 @@ describe("detectPhase", () => {
       expect(result.phase).toBe(1);
     });
 
-    it("returns Phase 1 when price oscillates around flat MA150", () => {
+    it("returns Phase 1 when price oscillates around flat MA150 with MA150 ≈ MA200", () => {
       const result = detectPhase({
         price: 102,
         ma50: 100,
         ma150: 101,
         ma200: 102,
-        ma150_20dAgo: 100.5, // very slight rise: slope positive → Phase 4 조건 slope < 0 불충족
+        ma150_20dAgo: 100.5,
         rsScore: 48,
         high52w: 125,
         low52w: 88,
@@ -213,33 +267,80 @@ describe("detectPhase", () => {
     });
   });
 
-  describe("Phase 4 priority over Phase 1", () => {
-    it("classifies as Phase 4 when both Phase 1 and Phase 4 conditions overlap", () => {
-      // MA150 slope가 flat(-0.02 이내)이면서 가격이 MA150 근처(5% 이내)이지만,
-      // 동시에 price < MA150, MA150 < MA200, slope < 0, RS < 50인 경우 Phase 4 우선
-      const input: PhaseInput = {
-        price: 98, // MA150(100)의 2% 이내 → priceNearMa150 충족
+  describe("Phase 3 distribution guard (issue #328 fix)", () => {
+    it("classifies as Phase 3 when price ≤ MA150 and MA150 > MA200 (distribution)", () => {
+      // This was previously misclassified as Phase 1 when slope was flat
+      const result = detectPhase({
+        price: 98, // price < MA150
         ma50: 95,
         ma150: 100,
-        ma200: 105, // MA150 < MA200 → Phase 4 조건 충족
-        ma150_20dAgo: 101.5, // slope = (100 - 101.5) / 101.5 = -0.0148: flat 범위이면서 음수 → slopeFlat 충족 + slope < 0
-        rsScore: 35, // RS < 50 → Phase 4 조건 충족
+        ma200: 95, // MA150 > MA200 → was in Phase 2, now topping
+        ma150_20dAgo: 100.5, // slope flat
+        rsScore: 55,
+        high52w: 120,
+        low52w: 70,
+      });
+
+      expect(result.phase).toBe(3);
+    });
+
+    it("classifies as Phase 3 not Phase 1 when MA150 > MA200 with flat slope and price near MA150", () => {
+      // Exact scenario from issue #328: Phase 3 → Phase 1 misclassification
+      const result = detectPhase({
+        price: 99, // within 5% of MA150(100) → priceNearMa150 = true
+        ma50: 97,
+        ma150: 100,
+        ma200: 95, // MA150 > MA200
+        ma150_20dAgo: 101, // slope ≈ -0.0099 → flat range
+        rsScore: 45,
+        high52w: 130,
+        low52w: 70,
+      });
+
+      // Should be Phase 3 (distribution), NOT Phase 1
+      expect(result.phase).toBe(3);
+    });
+
+    it("still classifies as Phase 1 when MA150 ≤ MA200 (genuine base)", () => {
+      // RS >= 50 to avoid Phase 4, slope flat, price near MA150, MA150 < MA200
+      const result = detectPhase({
+        price: 99,
+        ma50: 97,
+        ma150: 100,
+        ma200: 102, // MA150 < MA200 → genuine base building
+        ma150_20dAgo: 100.5, // slope ≈ -0.005 → flat range
+        rsScore: 50, // RS >= 50 → not Phase 4
+        high52w: 130,
+        low52w: 70,
+      });
+
+      expect(result.phase).toBe(1);
+    });
+  });
+
+  describe("Phase 4 priority over Phase 1", () => {
+    it("classifies as Phase 4 when both Phase 1 and Phase 4 conditions overlap", () => {
+      const input: PhaseInput = {
+        price: 98,
+        ma50: 95,
+        ma150: 100,
+        ma200: 105,
+        ma150_20dAgo: 101.5, // slope ≈ -0.0148
+        rsScore: 35,
         high52w: 150,
         low52w: 80,
       };
       const result = detectPhase(input);
-      // Phase 1 조건(slopeFlat + priceNearMa150)도 충족하지만 Phase 4가 우선
       expect(result.phase).toBe(4);
     });
 
     it("classifies as Phase 1 when Phase 4 price condition is not met (price above MA150)", () => {
-      // price > MA150 이면 Phase 4 조건(price < MA150) 불충족 → Phase 1로 분류
       const input: PhaseInput = {
-        price: 103, // price > MA150(100) → Phase 4 price 조건 불충족
+        price: 103,
         ma50: 100,
         ma150: 100,
         ma200: 105,
-        ma150_20dAgo: 101.5, // slope: -0.0148 (flat 범위)
+        ma150_20dAgo: 101.5,
         rsScore: 35,
         high52w: 150,
         low52w: 80,
@@ -270,10 +371,12 @@ describe("detectPhase", () => {
   });
 
   describe("boundary values", () => {
-    it("RS exactly 50 does not qualify for Phase 2", () => {
+    it("RS exactly 50 does not qualify for Phase 2 RS condition", () => {
       const result = detectPhase(makePhase2Input({ rsScore: 50 }));
-      expect(result.phase).not.toBe(2);
+      // 7/8 conditions → still Phase 2 (core conditions met)
+      expect(result.phase).toBe(2);
       expect(result.detail.rsAbove50).toBe(false);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
     });
 
     it("RS 51 qualifies for Phase 2 rs condition", () => {
@@ -294,12 +397,19 @@ describe("detectPhase", () => {
     });
 
     it("price exactly 30% above low qualifies", () => {
-      // low52w = 100, price = 130 → exactly 30% above → should pass
       const result = detectPhase(
         makePhase2Input({ price: 150, low52w: 115 }),
       );
       // 115 * 1.3 = 149.5, price=150 > 149.5 → passes
       expect(result.detail.priceAbove30PctFromLow).toBe(true);
+    });
+
+    it("phase2ConditionsMet is always set correctly", () => {
+      const result = detectPhase(makePhase2Input());
+      expect(result.detail.phase2ConditionsMet).toBe(8);
+
+      const result2 = detectPhase(makePhase2Input({ rsScore: 30, ma50: 100 }));
+      expect(result2.detail.phase2ConditionsMet).toBe(6);
     });
   });
 });
