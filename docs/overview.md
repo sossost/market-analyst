@@ -2,7 +2,7 @@
 
 **Status:** Active (운영 중)
 **Created:** 2026-03-04
-**Last Updated:** 2026-03-13
+**Last Updated:** 2026-03-20
 
 ---
 
@@ -30,10 +30,11 @@
 │     ETL      │    │   Debate     │    │    Agent     │
 │              │    │              │    │              │
 │ Stock Phases │───▶│Multi-Model   │───▶│Claude Sonnet │
-│ Sector RS    │    │GPT-4o/Gemini│    │ + 17 Tools   │
+│ Sector RS    │    │GPT-4o/Gemini│    │ + 16 Tools   │
 │ Industry RS  │    │/Claude 4명   │    │ + Fundamental│
-└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
-       │                   │                   │
+│ Breakout/    │    │ + 서사 프레임 │    │ + Corporate  │
+│ Noise Signal │    └──────┬───────┘    └──────┬───────┘
+└──────┬───────┘           │                   │
        │            ┌──────▼───────┐           │
        └───────────▶│  Learning    │◀──────────┘
                     │    Loop      │
@@ -47,32 +48,51 @@
         └─────────┘  └──────────┘  └──────────┘
                            │
                     ┌──────▼───────┐
+                    │  QA + Gate   │
+                    │ (품질 검증)   │
+                    └──────┬───────┘
+                           │
+                    ┌──────▼───────┐
                     │   Delivery   │
                     │ Discord+Gist │
-                    └──────────────┘
-                    Supabase (PostgreSQL)
+                    └──────┬───────┘
+                           │
+               ┌───────────┼───────────┐
+               │           │           │
+        ┌──────▼──┐  ┌─────▼────┐  ┌──▼───────┐
+        │Supabase │  │ Frontend │  │ Auto     │
+        │   (DB)  │  │Dashboard │  │Issue Proc│
+        └─────────┘  └──────────┘  └──────────┘
 ```
 
-### CI/CD Pipeline (GitHub Actions + 맥미니 launchd)
+### 자동화 스케줄 (맥미니 launchd — 8개 작업)
+
+모든 자동화는 맥미니 서버에서 macOS launchd로 실행. GitHub Actions는 사용하지 않음.
 
 ```
-ETL 일간:   일~금 UTC 23:30 (KST 08:30)
-  build-stock-phases → build-sector-rs ──┐
-                    └→ build-industry-rs ─┤→ detect-sector-phase-events
-                                          → update-sector-lag-patterns
-                                          → validate → run-daily-agent
+ETL 일간:        KST 08:30 화~토
+  build-stock-phases → build-sector-rs → build-industry-rs
+  → detect-sector-phase-events → update-sector-lag-patterns
+  → validate → run-daily-agent → 리포트 검증
 
-토론:       월~금 UTC 22:00 (KST 07:00)
+토론:            KST 07:00 화~금
   애널리스트 토론 → thesis 저장
 
-주간 에이전트: 토 UTC 01:00 (KST 10:00)
-  run-weekly-agent (금요일 데이터 기반)
+주간 에이전트:    KST 10:00 토
+  run-weekly-agent + 펀더멘탈 검증
 
-QA:         토 UTC 03:00 (KST 12:00)
-  주간 QA 분석 → data/qa-reports/ 저장
+QA 주간:         KST 12:00 토
+  주간 QA 분석
 
-ETL 주간:   일 UTC 07:00 (KST 16:00)
-  심볼/펀더멘탈 데이터 갱신
+뉴스 수집:       KST 00/06/12/18:00 매일
+
+전략 리뷰:       KST 04:00 매일
+  Claude Code CLI 기반 시스템 건강도 점검
+
+이슈 프로세서:    KST 09:00~02:00 매 정시 (18회/일)
+  GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
+
+로그 정리:       KST 09:00 일
 ```
 
 ---
@@ -93,8 +113,12 @@ ETL 주간:   일 UTC 07:00 (KST 16:00)
 | Phase N-1 | Narrative Layer | **완료** | 수요-공급-병목 서사 프레임 + 실패 패턴 + 합의도 추적 |
 | Wave 2a/2b | 서사 확장 | **완료** | N+1 병목 예측 + 공급 과잉 전환 + narrative_chains 병목 추적 |
 | Sector Lag | 섹터 시차 패턴 | **완료** | Phase 전이 시차 축적 + 선행 경보 → 주간 에이전트 연동 |
-| Phase N-2 | 검증 인프라 | **대기 중** | 데이터 축적 중 (N-1 머지 후 2주) |
-| F3 | Industry Intelligence | 미착수 | FMP 뉴스, 테마 연결/예측 |
+| F8 | Report/Debate Dashboard | **완료** | Next.js 16 + Supabase Auth + 리포트/토론 아카이브 |
+| F9 | Strategic Auto-Review | **완료** | Claude Code CLI 기반 전략 참모 자동 리뷰 (#266) |
+| F10 | Corporate Analyst | **완료** | 종목 심층 분석 + 정량 목표주가 (#277) |
+| Layer 14 | 학습 루프 안정화 | **완료** | thesis 검증 수리 + 피드백 루프 보강 (#322~#332) |
+| Phase N-2 | 검증 인프라 | **대기 중** | 데이터 축적 중 (착수: 3/22~) |
+| ~~F3~~ | ~~Industry Intelligence~~ | 폐기 | F6 토론 엔진이 시장 분석 역할을 대체 |
 
 ---
 
@@ -166,6 +190,16 @@ Wave 2a/2b: 서사 확장 — Done (PR #98, #101)
 섹터 시차 패턴 — Done (PR #102)
   sector_phase_events + sector_lag_patterns + 주간 에이전트 선행 경보
 
+Layer 13: 전략 참모 + 기업 애널리스트 (F9 + F10) — Done
+  Strategic Auto-Review (PR #266) + Corporate Analyst (PR #277)
+  정량 목표주가 (DCF + P/E 피어 멀티플) + 컨센서스 교차 검증
+  시장 레짐 분류 5단계 + 히스테리시스 (#270)
+
+Layer 14: 학습 루프 안정화 — Done (PR #322~#332)
+  thesis 검증 0건 수리 + 피드백 루프 3건 보강 + 발송 게이트 강화
+  Phase 2 비율 이중 변환 교정 + 사후 품질 검증 파이프라인
+  Post-merge 인프라 자동 반영 (DB 마이그레이션 + launchd 재로드)
+
 Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
   홀드아웃 테스트 + 위양성 비용 리포트
   착수 기준: 아래 3개 중 2개 이상 충족 시
@@ -183,14 +217,14 @@ Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
 | 프로젝트 구조 | 별도 레포 (`market-analyst`) | 관심사 완전 분리, 독립 CI/CD |
 | DB 공유 | screener와 같은 Supabase | 기존 가격/재무 데이터 재활용, 중복 없음 |
 | 실행 환경 | Claude API + Tool Use (Node.js ESM) | 완전한 제어권, 도구 설계 자유 |
-| 모델 | Claude Sonnet 4 + GPT-4o + Gemini 2.0 Flash | 멀티 모델 다양성으로 확증편향 완화, Claude 폴백으로 안정성 확보 |
+| 모델 | Claude Sonnet 4.6 + GPT-4o + Gemini 2.0 Flash | 멀티 모델 다양성으로 확증편향 완화, Claude 폴백으로 안정성 확보 |
 | Phase 기준 | Weinstein Stage Analysis (8개 조건) | 체계적 프레임워크, 정량 판별 가능 |
 | 섹터 시그널 | RS 가속도 + 브레드스 | 다수 종목 동반 상승 확인 |
 | 카탈리스트 | Brave Search API | 뉴스 검색 비용 합리적, 빠른 결과 |
 | 리포트 분리 | 일간(시장 온도) / 주간(종목 발굴) | 목적별 최적화 |
 | 딜리버리 | Discord Webhook + Gist | 모바일 즉시 확인, MD 파일 완전 렌더링 |
-| 리포트 이력 | JSON 파일 (`data/reports/`) | DB 불필요, 간단하고 충분 |
-| 스케줄링 | GitHub Actions cron + 맥미니 launchd | GitHub Actions: 기본 파이프라인 / launchd: 맥미니 로컬 보조 |
+| 리포트 이력 | daily_reports DB 테이블 | JSON 파일 → DB 마이그레이션 완료 (PR #126) |
+| 스케줄링 | 맥미니 launchd (8개 작업) | 로컬 제어 + SSH 원격 관리, GitHub Actions 미사용 |
 | 토론 시스템 | 4명 애널리스트 × 3라운드 | 매크로/테크/지정학/심리 교차 검증 |
 | 학습 루프 | thesis 검증 + 패턴 승격 | 이항 검정(p < 0.05 + Cohen's h ≥ 0.3) 유의성 필터 |
 | 펀더멘탈 | Minervini SEPA 기준 | EPS/매출 YoY >25%, 가속, 마진확대 |
@@ -208,8 +242,8 @@ Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
 | Google Generative AI | 토론 테크 애널리스트 (Gemini 2.0 Flash) | API 과금 |
 | Discord Webhook | 리포트 발송 (일간/주간/에러 채널) | 무료 |
 | Brave Search API | 카탈리스트 뉴스 검색 | 무료 티어 (월 2,000건) |
-| GitHub Actions | 스케줄링 (ETL, 토론, 에이전트, QA) | 무료 티어 |
 | GitHub Gist | MD 리포트 첨부 | 무료 |
+| FMP API | 기업 데이터 (실적, 추정치, 실적콜, 피어, 목표주가) | Professional 플랜 |
 
 ---
 
@@ -231,6 +265,7 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── sector_rs_daily        → 섹터별 RS 점수/가속도/브레드스
 ├── industry_rs_daily      → 산업별 RS 점수/가속도/브레드스
 ├── recommendations        → 추천 종목 기록 + 성과 트래킹
+├── recommendation_factors → 추천 팩터 스냅샷
 ├── theses                 → 토론 thesis (카테고리 분리)
 ├── debate_sessions        → 토론 세션 저장
 ├── agent_learnings        → 장기 기억 (검증된 원칙 + 경계 패턴)
@@ -238,7 +273,20 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── failure_patterns       → Phase 2 신호 후 실패 케이스
 ├── narrative_chains       → 병목 생애주기 추적 (식별/해소/상태)
 ├── sector_phase_events    → 섹터/산업 Phase 전이 이벤트 로그
-└── sector_lag_patterns    → 섹터 쌍별 시차 통계 (평균/분산/신뢰도)
+├── sector_lag_patterns    → 섹터 쌍별 시차 통계 (평균/분산/신뢰도)
+├── market_regimes         → 시장 레짐 분류 (5단계 + 히스테리시스)
+├── stock_analysis_reports → 기업 심층 분석 리포트 + 정량 목표주가
+├── weekly_qa_reports      → 주간 QA 리포트
+├── daily_reports          → 일간 리포트 (파일→DB 마이그레이션)
+├── news_archive           → 뉴스 아카이브
+├── signal_log             → 시그널 로그
+├── company_profiles       → 기업 프로필 (FMP)
+├── annual_financials      → 연간 실적 (FMP)
+├── analyst_estimates      → 애널리스트 추정치 (FMP)
+├── earning_call_transcripts → 실적콜 트랜스크립트 (FMP)
+├── eps_surprises          → EPS 서프라이즈 (FMP)
+├── peer_groups            → 피어그룹 (FMP)
+└── price_target_consensus → 목표주가 컨센서스 (FMP)
 ```
 
 ---
@@ -263,14 +311,17 @@ market-analyst/
 │   │   │   ├── llm/               # LLM Provider 추상화 (Anthropic/OpenAI/Gemini + 폴백)
 │   │   │   ├── thesisVerifier.ts   # LLM 기반 자동 검증
 │   │   │   ├── causalAnalyzer.ts   # 원인 분석
+│   │   │   ├── regimeStore.ts     # 시장 레짐 분류 (5단계 + 히스테리시스)
 │   │   │   ├── sessionStore.ts     # 세션 저장 + 유사 세션 검색
 │   │   │   ├── memoryLoader.ts     # 학습 → 프롬프트 주입
 │   │   │   └── narrativeChainService.ts  # 병목 체인 추적
+│   │   ├── corporateAnalyst/   # F10: 기업 심층 분석 + 정량 목표주가
 │   │   ├── fundamental/        # F7: SEPA 펀더멘탈 검증
 │   │   └── tools/              # 에이전트 도구 (16개 + 내부 유틸 1개)
 │   ├── etl/                # F1: ETL Pipeline
 │   │   ├── jobs/               # ETL 실행 파일
 │   │   └── utils/              # Phase 판별, RS 계산, 유틸리티
+│   ├── issue-processor/    # 자율 이슈 처리 (Claude Code CLI)
 │   ├── lib/                # 유틸리티
 │   │   ├── fundamental-scorer.ts    # SEPA 스코어링
 │   │   ├── statisticalTests.ts      # 이항 검정 + Cohen's h
@@ -279,12 +330,15 @@ market-analyst/
 │   │   └── sectorLagStats.ts        # 섹터 시차 통계 + 선행 경보
 │   ├── db/                 # Drizzle ORM 스키마
 │   └── types/              # 공유 타입 정의
-├── __tests__/              # Vitest 테스트
+├── __tests__/              # Vitest 테스트 (1,701 tests / 108 files)
 ├── data/
 │   ├── reports/            # 리포트 이력 JSON
 │   ├── qa-reports/         # QA 분석 결과 MD
 │   └── review-feedback/    # 도구 유효성 검증 JSON
+├── frontend/               # Next.js 16 대시보드 (App Router)
+│   ├── src/app/            # 라우트
+│   ├── src/features/       # 피쳐 기반 모듈 (auth, reports, debates)
+│   └── e2e/                # Playwright E2E 테스트
 ├── docs/features/          # 기능별 스펙/결정/플랜
-├── .github/workflows/      # CI/CD (ETL, 토론, 에이전트, QA)
-└── scripts/launchd/        # 맥미니 launchd 스케줄 설정
+└── scripts/launchd/        # 맥미니 launchd 스케줄 설정 (8개 작업)
 ```
