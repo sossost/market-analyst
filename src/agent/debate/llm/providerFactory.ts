@@ -10,12 +10,10 @@ import { CLAUDE_SONNET, CLAUDE_HAIKU, CLAUDE_OPUS } from "@/lib/models.js";
 /**
  * model string → LLMProvider 인스턴스 매핑.
  *
- * - "claude-*" 또는 sonnet/haiku/opus alias → ClaudeCliProvider 우선.
- *   ANTHROPIC_API_KEY 있으면 FallbackProvider(CLI → API), 없으면 CLI 단독.
+ * - "claude-*" 또는 sonnet/haiku/opus alias → ClaudeCliProvider 단독 (API 폴백 없음).
+ *   CLI 실패 시 에러를 던져 조용한 API 과금을 방지.
  * - "gpt-*" → OpenAIProvider. API 키 있으면 Anthropic 폴백 추가.
  * - "gemini-*" → GeminiProvider. API 키 있으면 Anthropic 폴백 추가.
- *
- * ANTHROPIC_API_KEY 미설정 시 Claude CLI only — API 폴백 불가.
  */
 export function createProvider(model: string): LLMProvider {
   const normalizedModel = model.trim().toLowerCase();
@@ -26,8 +24,7 @@ export function createProvider(model: string): LLMProvider {
     normalizedModel === "haiku" ||
     normalizedModel === "opus"
   ) {
-    const resolvedModel = resolveAnthropicModel(model.trim());
-    return createClaudeProvider(resolvedModel);
+    return createClaudeProvider();
   }
 
   if (normalizedModel.startsWith("gpt-")) {
@@ -60,14 +57,12 @@ export function createProvider(model: string): LLMProvider {
 }
 
 /**
- * Claude 계열 모델용 provider 생성.
- * API 키 있으면 FallbackProvider(CLI → API), 없으면 ClaudeCliProvider 단독.
+ * Claude 계열 모델용 provider — CLI 단독.
+ * API 키 유무와 무관하게 항상 ClaudeCliProvider만 사용.
+ * CLI 실패 시 에러를 던져 조용한 API 과금을 방지.
  */
-function createClaudeProvider(resolvedModel: string): LLMProvider {
-  const cli = new ClaudeCliProvider();
-  const hasApiKey = hasAnthropicApiKey();
-  if (!hasApiKey) return cli;
-  return new FallbackProvider(cli, new AnthropicProvider(resolvedModel), "ClaudeCLI");
+function createClaudeProvider(): LLMProvider {
+  return new ClaudeCliProvider();
 }
 
 function hasAnthropicApiKey(): boolean {
