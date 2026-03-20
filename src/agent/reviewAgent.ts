@@ -1,6 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { sendDiscordFile, sendDiscordMessage } from "./discord";
-import { callWithRetry } from "./debate/callAgent.js";
+import { createProvider } from "./debate/llm/providerFactory.js";
+import type { LLMProvider } from "./debate/llm/types.js";
 import { createGist } from "./gist";
 import { logger } from "./logger";
 import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from "./reviewFeedback";
@@ -103,10 +103,17 @@ JSON 배열로 응답합니다. 코드 펜스 없이 순수 JSON만 출력하세
 markdownContent와 filename이 원본에 없었으면 해당 필드는 생략합니다.`;
 
 // ---------------------------------------------------------------------------
-// Shared Anthropic client (module-level singleton)
+// Shared provider (lazy singleton — 동일 파이프라인 내 재사용)
 // ---------------------------------------------------------------------------
 
-const client = new Anthropic({ maxRetries: 5 });
+let _provider: LLMProvider | null = null;
+
+function getReviewProvider(): LLMProvider {
+  if (_provider == null) {
+    _provider = createProvider(REVIEW_MODEL);
+  }
+  return _provider;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -282,7 +289,7 @@ function buildDraftText(drafts: ReportDraft[]): string {
 
 /**
  * 리포트 초안을 리뷰하고 판정 결과를 반환한다.
- * 단일 Claude API 호출 (Sonnet).
+ * ClaudeCliProvider 우선, 폴백 시 AnthropicProvider 사용.
  * 파싱 실패 시 보수적으로 REVISE를 반환한다 (미검증 리포트 발송 방지).
  */
 export async function reviewReport(
@@ -290,22 +297,13 @@ export async function reviewReport(
 ): Promise<ReviewResult> {
   const draftText = buildDraftText(drafts);
 
-  const response = await callWithRetry(() =>
-    client.messages.create({
-      model: REVIEW_MODEL,
-      max_tokens: REVIEW_MAX_TOKENS,
-      system: REVIEWER_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `아래 시장 분석 리포트를 리뷰해주세요.\n\n${draftText}`,
-        },
-      ],
-    }),
-  );
-
-  const textBlock = response.content.find((b) => b.type === "text");
-  const raw = textBlock?.type === "text" ? textBlock.text : "";
+  const provider = getReviewProvider();
+  const result = await provider.call({
+    systemPrompt: REVIEWER_SYSTEM_PROMPT,
+    userMessage: `아래 시장 분석 리포트를 리뷰해주세요.\n\n${draftText}`,
+    maxTokens: REVIEW_MAX_TOKENS,
+  });
+  const raw = result.content;
 
   try {
     const jsonText = extractJson(raw);
@@ -351,28 +349,19 @@ async function refineSingleDraft(
 ): Promise<ReportDraft> {
   const draftText = buildDraftText([draft]);
 
-  const response = await callWithRetry(() =>
-    client.messages.create({
-      model: REVIEW_MODEL,
-      max_tokens: REFINE_MAX_TOKENS,
-      system: REFINE_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `아래 리포트를 리뷰어 피드백에 따라 수정해주세요.
+  const provider = getReviewProvider();
+  const result = await provider.call({
+    systemPrompt: REFINE_SYSTEM_PROMPT,
+    userMessage: `아래 리포트를 리뷰어 피드백에 따라 수정해주세요.
 
 [원본 리포트]
 ${draftText}
 
 [리뷰어 피드백]
 ${feedback}`,
-        },
-      ],
-    }),
-  );
-
-  const textBlock = response.content.find((b) => b.type === "text");
-  const raw = textBlock?.type === "text" ? textBlock.text : "";
+    maxTokens: REFINE_MAX_TOKENS,
+  });
+  const raw = result.content;
 
   const jsonText = extractJson(raw);
 
@@ -444,22 +433,13 @@ async function extractSingleDraftData(
 ): Promise<ReportDraft> {
   const draftText = buildDraftText([draft]);
 
-  const response = await callWithRetry(() =>
-    client.messages.create({
-      model: REVIEW_MODEL,
-      max_tokens: REFINE_MAX_TOKENS,
-      system: DATA_ONLY_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `아래 리포트에서 팩트/데이터 섹션만 추출해주세요.\n\n${draftText}`,
-        },
-      ],
-    }),
-  );
-
-  const textBlock = response.content.find((b) => b.type === "text");
-  const raw = textBlock?.type === "text" ? textBlock.text : "";
+  const provider = getReviewProvider();
+  const result = await provider.call({
+    systemPrompt: DATA_ONLY_SYSTEM_PROMPT,
+    userMessage: `아래 리포트에서 팩트/데이터 섹션만 추출해주세요.\n\n${draftText}`,
+    maxTokens: REFINE_MAX_TOKENS,
+  });
+  const raw = result.content;
 
   const jsonText = extractJson(raw);
 
