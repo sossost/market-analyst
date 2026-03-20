@@ -72,22 +72,22 @@ describe("상수 경계값", () => {
 describe("getPromotionThresholds", () => {
   it("활성 학습 0건(bootstrap) — 최소 기준 + binomial test 면제", () => {
     const thresholds = getPromotionThresholds(0);
-    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+    expect(thresholds).toEqual({ minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true });
   });
 
   it("활성 학습 1건(bootstrap) — 최소 기준 + binomial test 면제", () => {
     const thresholds = getPromotionThresholds(1);
-    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+    expect(thresholds).toEqual({ minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true });
   });
 
   it("활성 학습 BOOTSTRAP_THRESHOLD = 2건(cold start) — 완화 기준 반환", () => {
     const thresholds = getPromotionThresholds(BOOTSTRAP_THRESHOLD);
-    expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
   });
 
   it("활성 학습 COLD_START_THRESHOLD - 1 = 4건 — 완화 기준 반환", () => {
     const thresholds = getPromotionThresholds(COLD_START_THRESHOLD - 1);
-    expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
   });
 
   it("활성 학습 COLD_START_THRESHOLD = 5건 — 성장기 기준 반환", () => {
@@ -141,23 +141,25 @@ function makeThesis(overrides: Partial<{
 }
 
 describe("buildPromotionCandidates", () => {
-  it("임계값 미달 — 후보 없음", () => {
+  it("bootstrap 단일 thesis — 후보 생성 (minHits=1, minTotal=1)", () => {
     const confirmed = [makeThesis({ id: 1 })];
     const invalidated: ReturnType<typeof makeThesis>[] = [];
     const existingSourceIds = new Set<number>();
 
-    // bootstrap: minHits=2 필요, 1개만 있으므로 탈락
+    // bootstrap: minHits=1, minTotal=1 → 단일 confirmed thesis로 승격 가능
     const candidates = buildPromotionCandidates(
       confirmed as never,
       invalidated as never,
       existingSourceIds,
-      0, // bootstrap → minHits=2
+      0, // bootstrap
     );
 
-    expect(candidates).toHaveLength(0);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].hitCount).toBe(1);
+    expect(candidates[0].missCount).toBe(0);
   });
 
-  it("bootstrap 기준(minHits=2, minTotal=3) 충족 — binomial test 면제로 후보 생성", () => {
+  it("bootstrap 기준(minHits=1, minTotal=1) 충족 — binomial test 면제로 후보 생성", () => {
     const confirmed = [
       makeThesis({ id: 1 }),
       makeThesis({ id: 2 }),
@@ -165,7 +167,7 @@ describe("buildPromotionCandidates", () => {
     const invalidated = [makeThesis({ id: 3 })];
     const existingSourceIds = new Set<number>();
 
-    // bootstrap (0 learnings): minHits=2, minTotal=3, skipBinomialTest=true
+    // bootstrap (0 learnings): minHits=1, minTotal=1, skipBinomialTest=true
     const candidates = buildPromotionCandidates(
       confirmed as never,
       invalidated as never,
@@ -180,13 +182,30 @@ describe("buildPromotionCandidates", () => {
     expect(candidates[0].metric).toBe("RS > 80");
   });
 
-  it("cold start 기준(minHits=3, minTotal=5) 충족 — 후보 생성", () => {
+  it("bootstrap에서 hitRate 55% 미만이면 탈락", () => {
+    const confirmed = [makeThesis({ id: 1 })];
+    const invalidated = [
+      makeThesis({ id: 2 }),
+      makeThesis({ id: 3 }),
+    ];
+    const existingSourceIds = new Set<number>();
+
+    // hitRate = 1/3 = 33% < 55% → 탈락
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      invalidated as never,
+      existingSourceIds,
+      0,
+    );
+
+    expect(candidates).toHaveLength(0);
+  });
+
+  it("cold start 기준(minHits=2, minTotal=3) 충족 — 후보 생성", () => {
     const confirmed = [
       makeThesis({ id: 1 }),
       makeThesis({ id: 2 }),
       makeThesis({ id: 3 }),
-      makeThesis({ id: 4 }),
-      makeThesis({ id: 5 }),
     ];
     const invalidated: ReturnType<typeof makeThesis>[] = [];
     const existingSourceIds = new Set<number>();
@@ -195,14 +214,30 @@ describe("buildPromotionCandidates", () => {
       confirmed as never,
       invalidated as never,
       existingSourceIds,
-      3, // cold start (2~4) → minHits=3
+      3, // cold start (2~4) → minHits=2
     );
 
     expect(candidates).toHaveLength(1);
-    expect(candidates[0].hitCount).toBe(5);
+    expect(candidates[0].hitCount).toBe(3);
     expect(candidates[0].missCount).toBe(0);
     expect(candidates[0].persona).toBe("trend-follower");
     expect(candidates[0].metric).toBe("RS > 80");
+  });
+
+  it("cold start에서 minHits=2 미만이면 탈락", () => {
+    const confirmed = [makeThesis({ id: 1 })];
+    const invalidated: ReturnType<typeof makeThesis>[] = [];
+    const existingSourceIds = new Set<number>();
+
+    // cold start: minHits=2, 1건만 있으므로 탈락
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      invalidated as never,
+      existingSourceIds,
+      3, // cold start
+    );
+
+    expect(candidates).toHaveLength(0);
   });
 
   it("기존 sourceThesisIds에 포함된 thesis는 후보에서 제외", () => {
@@ -225,13 +260,9 @@ describe("buildPromotionCandidates", () => {
     expect(candidates).toHaveLength(0);
   });
 
-  it("activeLearningCount 기본값 0 — bootstrap 기준 적용", () => {
-    const confirmed = [
-      makeThesis({ id: 1 }),
-      makeThesis({ id: 2 }),
-      makeThesis({ id: 3 }),
-    ];
-    // activeLearningCount 파라미터 생략 → 기본값 0 → bootstrap
+  it("activeLearningCount 기본값 0 — bootstrap 기준 적용 (단일 thesis도 승격)", () => {
+    const confirmed = [makeThesis({ id: 1 })];
+    // activeLearningCount 파라미터 생략 → 기본값 0 → bootstrap (minHits=1)
     const candidates = buildPromotionCandidates(
       confirmed as never,
       [] as never,
@@ -270,11 +301,9 @@ describe("buildPromotionCandidates", () => {
       makeThesis({ id: 20 }),
       makeThesis({ id: 21 }),
       makeThesis({ id: 22 }),
-      makeThesis({ id: 23 }),
-      makeThesis({ id: 24 }),
     ];
 
-    // cold start (3 learnings) → skipBinomialTest=false
+    // cold start (3 learnings) → skipBinomialTest=false, minHits=2
     const candidates = buildPromotionCandidates(
       confirmed as never,
       [] as never,
