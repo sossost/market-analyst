@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { LLMProviderError } from "./types.js";
 
-const DEFAULT_MODEL = "claude-opus-4-5";
+const DEFAULT_MODEL = "claude-opus-4-6";
 const TIMEOUT_MS = 120_000;
 const MAX_SYSTEM_PROMPT_BYTES = 64 * 1024; // 64KB
 

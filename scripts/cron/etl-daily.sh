@@ -93,11 +93,13 @@ if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
       log "⚠ 투자 브리핑 QA 실패 (비블로킹)"
     fi
   else
-    log "⚠ 토론 에이전트 실패 (비블로킹 — 일간보고서 계속 진행)"
-    send_error "run-debate-agent.ts 실패" "토론"
+    log "✗ 토론 에이전트 실패 — 일간보고서도 스킵 (토론 결과 종속)"
+    send_error "run-debate-agent.ts 실패 — 일간보고서 스킵" "토론"
+    log "=== ETL 파이프라인 완료 (토론 실패로 일간보고서 미실행) ==="
+    exit 1
   fi
 
-  # Phase 6: 일간보고서
+  # Phase 6: 일간보고서 (토론 성공 시에만 실행)
   run_step "Run Daily Agent" "src/agent/run-daily-agent.ts"
 
   # 일간보고서 QA (비블로킹)
