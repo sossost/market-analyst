@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockData: { learnings: unknown[]; confirmed: unknown[]; invalidated: unknown[] } = {
+const mockData: { learnings: unknown[]; confirmed: unknown[]; invalidated: unknown[]; confidenceStats: unknown[] } = {
   learnings: [],
   confirmed: [],
   invalidated: [],
+  confidenceStats: [],
 };
 
 // Track eq() calls to determine which query is being made
@@ -16,6 +17,8 @@ vi.mock("drizzle-orm", () => ({
   },
   desc: (col: unknown) => ({ col, direction: "desc" }),
   isNotNull: (col: unknown) => ({ col, op: "isNotNull" }),
+  sql: () => "sql_tag",
+  inArray: (_col: unknown, vals: unknown[]) => ({ op: "inArray", vals }),
 }));
 
 vi.mock("../../../src/lib/biasDetector.js", () => ({
@@ -34,9 +37,15 @@ vi.mock("../../../src/lib/biasDetector.js", () => ({
 
 vi.mock("../../../src/db/client.js", () => ({
   db: {
-    select: () => ({
+    select: (...args: unknown[]) => ({
       from: () => ({
-        where: (condition: { val: unknown }) => {
+        where: (condition: { val?: unknown; op?: string; vals?: unknown[] }) => {
+          // inArray query (loadConfidenceCalibration)
+          if (condition?.op === "inArray") {
+            return {
+              groupBy: () => Promise.resolve(mockData.confidenceStats),
+            };
+          }
           const val = condition?.val;
           if (val === true) {
             // agent_learnings is_active = true
@@ -59,13 +68,14 @@ vi.mock("../../../src/db/client.js", () => ({
   },
 }));
 
-import { buildMemoryContext, loadCausalAnalysis, loadBullBiasWarning } from "../../../src/agent/debate/memoryLoader.js";
+import { buildMemoryContext, loadCausalAnalysis, loadBullBiasWarning, loadConfidenceCalibration } from "../../../src/agent/debate/memoryLoader.js";
 
 describe("memoryLoader", () => {
   beforeEach(() => {
     mockData.learnings = [];
     mockData.confirmed = [];
     mockData.invalidated = [];
+    mockData.confidenceStats = [];
     eqCalls.length = 0;
   });
 
@@ -339,5 +349,67 @@ describe("loadBullBiasWarning", () => {
 
     const context = await buildMemoryContext();
     expect(context).toContain("Bull-Bias 경고");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadConfidenceCalibration
+// ---------------------------------------------------------------------------
+
+describe("loadConfidenceCalibration", () => {
+  beforeEach(() => {
+    mockData.confidenceStats = [];
+  });
+
+  it("returns empty string when no confidence stats exist", async () => {
+    const result = await loadConfidenceCalibration();
+    expect(result).toBe("");
+  });
+
+  it("returns empty string when all confidence levels have >50% hit rate", async () => {
+    mockData.confidenceStats = [
+      { confidence: "high", confirmed: 8, invalidated: 2 },
+      { confidence: "medium", confirmed: 6, invalidated: 4 },
+    ];
+
+    const result = await loadConfidenceCalibration();
+    expect(result).toBe("");
+  });
+
+  it("returns warning when medium confidence hit rate is below 50%", async () => {
+    mockData.confidenceStats = [
+      { confidence: "high", confirmed: 4, invalidated: 1 },
+      { confidence: "medium", confirmed: 5, invalidated: 6 },
+    ];
+
+    const result = await loadConfidenceCalibration();
+    expect(result).toContain("Confidence 보정 필요");
+    expect(result).toContain("medium");
+    expect(result).toContain("high confidence만 의사결정에 반영");
+  });
+
+  it("skips confidence levels with fewer than 3 observations", async () => {
+    mockData.confidenceStats = [
+      { confidence: "low", confirmed: 0, invalidated: 1 },
+      { confidence: "medium", confirmed: 3, invalidated: 7 },
+    ];
+
+    const result = await loadConfidenceCalibration();
+    expect(result).toContain("Confidence 보정 필요");
+    expect(result).toContain("medium");
+    // low는 표본 부족(1건)으로 생략
+    expect(result).not.toContain("low:");
+  });
+
+  it("includes confidence calibration warning in buildMemoryContext", async () => {
+    mockData.confidenceStats = [
+      { confidence: "medium", confirmed: 2, invalidated: 8 },
+    ];
+    mockData.learnings = [
+      { principle: "테스트 원칙", category: "confirmed", hitRate: "0.80", hitCount: 4 },
+    ];
+
+    const context = await buildMemoryContext();
+    expect(context).toContain("Confidence 보정 필요");
   });
 });

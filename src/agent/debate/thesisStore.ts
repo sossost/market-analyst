@@ -2,7 +2,7 @@ import { db } from "../../db/client.js";
 import { theses } from "../../db/schema/analyst.js";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { logger } from "../logger.js";
-import type { Thesis, ThesisCategory, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "../../types/debate.js";
+import type { Thesis, ThesisCategory, Confidence, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "../../types/debate.js";
 import { recordNarrativeChain } from "./narrativeChainService.js";
 import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
@@ -426,6 +426,33 @@ export async function getConsensusByHitRate(): Promise<ConsensusHitRateRow[]> {
     expired: r.expired,
     total: r.total,
   }));
+}
+
+/**
+ * Confidence별 적중률 통계.
+ */
+export async function getConfidenceHitRates(): Promise<
+  Array<{ confidence: Confidence; confirmed: number; invalidated: number; hitRate: number | null }>
+> {
+  const rows = await db
+    .select({
+      confidence: theses.confidence,
+      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
+      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+    })
+    .from(theses)
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
+    .groupBy(theses.confidence);
+
+  return rows.map((r) => {
+    const total = r.confirmed + r.invalidated;
+    return {
+      confidence: r.confidence as Confidence,
+      confirmed: r.confirmed,
+      invalidated: r.invalidated,
+      hitRate: total > 0 ? r.confirmed / total : null,
+    };
+  });
 }
 
 const PERSONA_LABEL: Record<string, string> = {

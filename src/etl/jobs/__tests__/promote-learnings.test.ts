@@ -6,6 +6,7 @@ import {
   getPromotionThresholds,
   buildPromotionCandidates,
   buildCautionPrinciple,
+  normalizeMetricKey,
 } from "../promote-learnings.js";
 
 // DB/외부 의존성 mock
@@ -118,7 +119,7 @@ function makeThesis(overrides: Partial<{
   verificationMetric: string;
   verificationMethod: string | null;
   status: string;
-}>) {
+}> = {}) {
   return {
     id: 1,
     agentPersona: "trend-follower",
@@ -283,6 +284,118 @@ describe("buildPromotionCandidates", () => {
 
     // binomial test not significant → 탈락
     expect(candidates).toHaveLength(0);
+  });
+});
+
+// ─── normalizeMetricKey ───────────────────────────────────────────────────────
+
+describe("normalizeMetricKey", () => {
+  it("'Tech RS' → 'Technology RS'로 정규화", () => {
+    expect(normalizeMetricKey("Tech RS")).toBe("Technology RS");
+  });
+
+  it("'Information Technology RS' → 'Technology RS'로 정규화", () => {
+    expect(normalizeMetricKey("Information Technology RS")).toBe("Technology RS");
+  });
+
+  it("'Technology 섹터 RS' → 'Technology RS'로 정규화", () => {
+    expect(normalizeMetricKey("Technology 섹터 RS")).toBe("Technology RS");
+  });
+
+  it("'Technology sector RS' → 'Technology RS'로 정규화", () => {
+    expect(normalizeMetricKey("Technology sector RS")).toBe("Technology RS");
+  });
+
+  it("'Technology RS score' → 'Technology RS'로 정규화", () => {
+    expect(normalizeMetricKey("Technology RS score")).toBe("Technology RS");
+  });
+
+  it("'Financials RS' → 'Financial Services RS'로 정규화", () => {
+    expect(normalizeMetricKey("Financials RS")).toBe("Financial Services RS");
+  });
+
+  it("'Consumer Discretionary RS' → 'Consumer Cyclical RS'로 정규화", () => {
+    expect(normalizeMetricKey("Consumer Discretionary RS")).toBe("Consumer Cyclical RS");
+  });
+
+  it("'Consumer Staples RS' → 'Consumer Defensive RS'로 정규화", () => {
+    expect(normalizeMetricKey("Consumer Staples RS")).toBe("Consumer Defensive RS");
+  });
+
+  it("'Health RS' → 'Healthcare RS'로 정규화", () => {
+    expect(normalizeMetricKey("Health RS")).toBe("Healthcare RS");
+  });
+
+  it("SPX → S&P 500으로 정규화", () => {
+    expect(normalizeMetricKey("SPX")).toBe("S&P 500");
+  });
+
+  it("QQQ → NASDAQ으로 정규화", () => {
+    expect(normalizeMetricKey("QQQ")).toBe("NASDAQ");
+  });
+
+  it("공포탐욕지수 → Fear & Greed로 정규화", () => {
+    expect(normalizeMetricKey("공포탐욕지수")).toBe("Fear & Greed");
+  });
+
+  it("이미 정규화된 메트릭은 그대로 유지", () => {
+    expect(normalizeMetricKey("S&P 500")).toBe("S&P 500");
+    expect(normalizeMetricKey("Technology RS")).toBe("Technology RS");
+    expect(normalizeMetricKey("VIX")).toBe("VIX");
+  });
+
+  it("알 수 없는 메트릭은 그대로 반환", () => {
+    expect(normalizeMetricKey("Custom Metric")).toBe("Custom Metric");
+  });
+});
+
+// ─── buildPromotionCandidates with normalized metrics ─────────────────────────
+
+describe("buildPromotionCandidates — 메트릭 정규화", () => {
+  it("다른 표기의 같은 메트릭이 하나의 그룹으로 병합된다", () => {
+    const confirmed = [
+      makeThesis({ id: 100, agentPersona: "tech", verificationMetric: "Tech RS" }),
+      makeThesis({ id: 101, agentPersona: "tech", verificationMetric: "Technology RS" }),
+    ];
+    const invalidated = [
+      makeThesis({ id: 102, agentPersona: "tech", verificationMetric: "Information Technology RS" }),
+    ];
+
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      invalidated as never,
+      new Set<number>(),
+      0, // bootstrap
+    );
+
+    // 3개 모두 "Technology RS"로 정규화 → 1개 그룹
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].hitCount).toBe(2);
+    expect(candidates[0].missCount).toBe(1);
+    expect(candidates[0].metric).toBe("Technology RS");
+  });
+
+  it("EXPIRED theses가 invalidated로 전달되면 miss로 카운트된다", () => {
+    const confirmed = [
+      makeThesis({ id: 200, agentPersona: "macro", verificationMetric: "S&P 500" }),
+      makeThesis({ id: 201, agentPersona: "macro", verificationMetric: "S&P 500" }),
+    ];
+    // EXPIRED theses를 invalidated로 전달 (main()에서 합침)
+    const expiredAsInvalidated = [
+      makeThesis({ id: 202, agentPersona: "macro", verificationMetric: "S&P 500", status: "EXPIRED" }),
+    ];
+
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      expiredAsInvalidated as never,
+      new Set<number>(),
+      0, // bootstrap
+    );
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].hitCount).toBe(2);
+    expect(candidates[0].missCount).toBe(1);
+    expect(candidates[0].persona).toBe("macro");
   });
 });
 
