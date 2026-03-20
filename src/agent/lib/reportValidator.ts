@@ -29,6 +29,9 @@ export interface ReportValidationInput {
     sector?: string;
     rsScore?: number;
     phase?: number;
+    prevPhase?: number;
+    pctFromLow52w?: number;
+    volRatio?: number;
   }>;
 }
 
@@ -436,6 +439,152 @@ function checkDirectionReversalContext(
 }
 
 // ---------------------------------------------------------------------------
+// J. 역분할 의심 종목 감지
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase 4/3 → Phase 2 전환 + 52주 저점 대비 극단적 괴리율(>1000%)인 종목을
+ * 역분할 기술적 아티팩트 의심 대상으로 경고한다.
+ *
+ * 근거: 역분할 시 주가가 N배 상승하여 기술적 지표(MA, Phase)가 인위적으로
+ * 상승 추세로 전환된다. 실제 추세 전환이 아닌 가격 인위 상승이므로 경고 필요.
+ */
+const REVERSE_SPLIT_PCT_THRESHOLD = 1000;
+
+function checkReverseSplitSuspect(
+  recommendations: Array<{
+    symbol: string;
+    phase?: number;
+    prevPhase?: number;
+    pctFromLow52w?: number;
+  }>,
+  warnings: string[],
+): void {
+  const suspects: string[] = [];
+
+  for (const rec of recommendations) {
+    if (
+      rec.phase === 2 &&
+      rec.prevPhase != null &&
+      rec.prevPhase >= 3 &&
+      rec.pctFromLow52w != null &&
+      rec.pctFromLow52w > REVERSE_SPLIT_PCT_THRESHOLD
+    ) {
+      suspects.push(
+        `${rec.symbol} (Phase ${rec.prevPhase}→2, 52주 저점 대비 +${rec.pctFromLow52w.toFixed(0)}%)`,
+      );
+    }
+  }
+
+  if (suspects.length > 0) {
+    warnings.push(
+      `역분할 의심 종목 감지: ${suspects.join(", ")} — Phase 급전환 + 극단적 괴리율은 역분할 기술적 아티팩트일 수 있습니다. 실제 추세 전환 여부를 확인하세요.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// K. 추천 종목별 리스크 언급 비율 검증
+// ---------------------------------------------------------------------------
+
+/**
+ * 추천 종목 중 마크다운에서 리스크/경고를 언급한 종목 비율이
+ * 30% 미만이면 bull-bias 경고를 발행한다.
+ *
+ * 기존 checkRiskKeywords는 전체 키워드 빈도를 계산하지만,
+ * 이 체커는 종목별로 리스크 언급 여부를 확인한다.
+ */
+const MIN_RISK_MENTION_RATIO = 0.3;
+const MIN_RECOMMENDATIONS_FOR_CHECK = 3;
+
+const PER_REC_BEAR_KEYWORDS = [
+  "리스크", "주의", "경고", "위험", "과열", "급락",
+  "손절", "변동성", "저항", "둔화", "약세",
+] as const;
+
+function checkPerRecRiskMention(
+  markdown: string,
+  recommendations: Array<{ symbol: string }>,
+  warnings: string[],
+): void {
+  if (recommendations.length < MIN_RECOMMENDATIONS_FOR_CHECK) return;
+
+  let riskMentionedCount = 0;
+
+  for (const rec of recommendations) {
+    // 종목 심볼이 등장하는 줄과 그 다음 2줄 범위에서 리스크 키워드 검색
+    const symbolPattern = new RegExp(
+      `\\b${rec.symbol}\\b[^\\n]*(?:\\n[^\\n]*){0,2}`,
+      "g",
+    );
+    const symbolContexts = [...markdown.matchAll(symbolPattern)]
+      .map((m) => m[0])
+      .join(" ");
+
+    const hasRiskMention = PER_REC_BEAR_KEYWORDS.some((kw) =>
+      symbolContexts.includes(kw),
+    );
+
+    if (hasRiskMention) {
+      riskMentionedCount++;
+    }
+  }
+
+  const ratio = riskMentionedCount / recommendations.length;
+  if (ratio < MIN_RISK_MENTION_RATIO) {
+    const pct = Math.round(ratio * 100);
+    warnings.push(
+      `추천 종목 리스크 언급 비율 ${pct}% (${riskMentionedCount}/${recommendations.length}건) — 목표 30% 이상. 추천 종목별 리스크/주의사항을 보강하세요.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// L. 극단적 거래량 과열 경고 누락 감지
+// ---------------------------------------------------------------------------
+
+/**
+ * 거래량 비율(volRatio)이 극단적으로 높은 종목(10배 이상)에 대해
+ * 마크다운에 과열/주의 경고가 없으면 경고를 발행한다.
+ */
+const EXTREME_VOL_RATIO = 10;
+
+function checkExtremeVolumeWithoutWarning(
+  markdown: string,
+  recommendations: Array<{ symbol: string; volRatio?: number }>,
+  warnings: string[],
+): void {
+  const unwarned: string[] = [];
+
+  for (const rec of recommendations) {
+    if (rec.volRatio == null || rec.volRatio < EXTREME_VOL_RATIO) continue;
+
+    // 해당 종목 주변 컨텍스트에서 과열/경고 키워드 확인
+    const symbolPattern = new RegExp(
+      `\\b${rec.symbol}\\b[^\\n]*(?:\\n[^\\n]*){0,2}`,
+      "g",
+    );
+    const contexts = [...markdown.matchAll(symbolPattern)]
+      .map((m) => m[0])
+      .join(" ");
+
+    const hasWarning = ["과열", "주의", "경고", "위험", "급등 주의", "변동성"].some(
+      (kw) => contexts.includes(kw),
+    );
+
+    if (!hasWarning) {
+      unwarned.push(`${rec.symbol} (거래량 ${rec.volRatio.toFixed(1)}배)`);
+    }
+  }
+
+  if (unwarned.length > 0) {
+    warnings.push(
+      `극단적 거래량 종목에 과열 경고 누락: ${unwarned.join(", ")} — 거래량 ${EXTREME_VOL_RATIO}배 이상 급증 시 과열 가능성을 언급하세요.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -458,6 +607,10 @@ export function validateReport(
   // C. 기준 미달 종목 태깅 (구조화 데이터 기반)
   if (input.recommendations != null && input.recommendations.length > 0) {
     checkSubstandardStocks(input.recommendations, warnings, errors);
+    // J. 역분할 의심 종목 감지
+    checkReverseSplitSuspect(input.recommendations, warnings);
+    // L. 극단적 거래량 과열 경고 누락
+    checkExtremeVolumeWithoutWarning(input.markdown, input.recommendations, warnings);
   }
 
   // D. Phase 2 비율 범위 검증 (이중 변환 방어)
@@ -469,6 +622,10 @@ export function validateReport(
     checkPhaseDescriptionConsistency(input.markdown, warnings, errors);
     checkSectorContinuityReason(input.markdown, warnings);
     checkDirectionReversalContext(input.markdown, warnings);
+    // K. 추천 종목별 리스크 언급 비율 (일간 전용)
+    if (input.recommendations != null && input.recommendations.length > 0) {
+      checkPerRecRiskMention(input.markdown, input.recommendations, warnings);
+    }
   }
 
   // F. 마크다운 텍스트에서 Phase 1 추천 감지 (recommendations 없어도 동작)

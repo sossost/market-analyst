@@ -822,3 +822,220 @@ describe("sanitizePhase2Ratios", () => {
     expect(corrections).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// J-2. 역분할 의심 종목 감지 (checkReverseSplitSuspect)
+// ---------------------------------------------------------------------------
+
+describe("validateReport — 역분할 의심 종목 감지", () => {
+  it("Phase 4→2 + pctFromLow52w 5000% → 역분할 의심 경고", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의.",
+      recommendations: [
+        { symbol: "COOK", phase: 2, prevPhase: 4, pctFromLow52w: 5000, rsScore: 100 },
+      ],
+    });
+
+    const warning = result.warnings.find(w => w.includes("역분할 의심") && w.includes("COOK") && w.includes("Phase 4→2"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("역분할 의심");
+    expect(warning).toContain("COOK");
+    expect(warning).toContain("Phase 4→2");
+  });
+
+  it("Phase 3→2 + pctFromLow52w 2000% → 역분할 의심 경고", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의.",
+      recommendations: [
+        { symbol: "TEST", phase: 2, prevPhase: 3, pctFromLow52w: 2000, rsScore: 90 },
+      ],
+    });
+
+    const warning = result.warnings.find(w => w.includes("역분할 의심") && w.includes("TEST"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("역분할 의심");
+    expect(warning).toContain("TEST");
+  });
+
+  it("Phase 1→2 (정상 전환) → 역분할 의심 없음", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의.",
+      recommendations: [
+        { symbol: "NVDA", phase: 2, prevPhase: 1, pctFromLow52w: 300, rsScore: 85 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("역분할 의심"))).toBe(false);
+  });
+
+  it("Phase 4→2이지만 pctFromLow52w가 500% (임계값 이하) → 역분할 의심 없음", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의.",
+      recommendations: [
+        { symbol: "ABC", phase: 2, prevPhase: 4, pctFromLow52w: 500, rsScore: 80 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("역분할 의심"))).toBe(false);
+  });
+
+  it("prevPhase가 없는 종목은 역분할 검사 스킵", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의.",
+      recommendations: [
+        { symbol: "XYZ", phase: 2, pctFromLow52w: 5000, rsScore: 95 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("역분할 의심"))).toBe(false);
+  });
+
+  it("pctFromLow52w가 없는 종목은 역분할 검사 스킵", () => {
+    const result = validateReport({
+      markdown: "시장 분석 리포트. 리스크 주의.",
+      recommendations: [
+        { symbol: "XYZ", phase: 2, prevPhase: 4, rsScore: 95 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("역분할 의심"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// K. 추천 종목별 리스크 언급 비율 검증 (checkPerRecRiskMention)
+// ---------------------------------------------------------------------------
+
+describe("validateReport — 추천 종목별 리스크 언급 비율", () => {
+  it("3건 이상 추천 중 리스크 언급 0건 → 리스크 비율 경고", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n시장 분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\nOVID 강세 돌파.\n\n\nCOOK 상승 추세.\n\n\nSTRO 신고가.\n\n\n시장 전반적 리스크 존재하나 해당 종목들은 견조.",
+      ),
+      reportType: "daily",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2 },
+        { symbol: "COOK", rsScore: 73, phase: 2 },
+        { symbol: "STRO", rsScore: 99, phase: 2 },
+      ],
+    });
+
+    const warning = result.warnings.find(w => w.includes("리스크 언급 비율") && w.includes("0%"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("리스크 언급 비율");
+    expect(warning).toContain("0%");
+  });
+
+  it("3건 추천 중 1건에 리스크 언급 (33%) → 경고 없음", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n시장 분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\nOVID 강세 돌파.\nCOOK 상승 추세.\nSTRO 급락 경고 — 변동성 주의. 리스크 주의.",
+      ),
+      reportType: "daily",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2 },
+        { symbol: "COOK", rsScore: 73, phase: 2 },
+        { symbol: "STRO", rsScore: 99, phase: 2 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("리스크 언급 비율"))).toBe(false);
+  });
+
+  it("추천 2건 미만이면 리스크 비율 검사 스킵", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n시장 분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\nOVID 강세 돌파. 리스크 주의.",
+      ),
+      reportType: "daily",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("리스크 언급 비율"))).toBe(false);
+  });
+
+  it("weekly 리포트에서는 종목별 리스크 비율 검사 스킵", () => {
+    const result = validateReport({
+      markdown: "OVID 돌파.\nCOOK 상승.\nSTRO 신고가. 리스크 주의.",
+      reportType: "weekly",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2 },
+        { symbol: "COOK", rsScore: 73, phase: 2 },
+        { symbol: "STRO", rsScore: 99, phase: 2 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("리스크 언급 비율"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// L. 극단적 거래량 과열 경고 누락 감지 (checkExtremeVolumeWithoutWarning)
+// ---------------------------------------------------------------------------
+
+describe("validateReport — 극단적 거래량 과열 경고 누락", () => {
+  it("volRatio 13.7배 + 과열 경고 없음 → 경고 발생", () => {
+    const result = validateReport({
+      markdown: "OVID 강세 돌파 신고가.\n\n\n시장 전반적 리스크 존재.",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2, volRatio: 13.7 },
+      ],
+    });
+
+    const warning = result.warnings.find(w => w.includes("극단적 거래량") && w.includes("OVID") && w.includes("13.7배"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("극단적 거래량");
+    expect(warning).toContain("OVID");
+    expect(warning).toContain("13.7배");
+  });
+
+  it("volRatio 13.7배 + 과열 경고 있음 → 경고 없음", () => {
+    const result = validateReport({
+      markdown: "OVID 강세 돌파 — 거래량 급증 과열 주의. 리스크 주의.",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2, volRatio: 13.7 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("극단적 거래량"))).toBe(false);
+  });
+
+  it("volRatio 5배 (임계값 이하) → 경고 없음", () => {
+    const result = validateReport({
+      markdown: "OVID 강세 돌파. 리스크 주의.",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2, volRatio: 5.0 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("극단적 거래량"))).toBe(false);
+  });
+
+  it("volRatio 없는 종목은 거래량 검사 스킵", () => {
+    const result = validateReport({
+      markdown: "NVDA 강세 돌파. 리스크 주의.",
+      recommendations: [
+        { symbol: "NVDA", rsScore: 85, phase: 2 },
+      ],
+    });
+
+    expect(result.warnings.some((w) => w.includes("극단적 거래량"))).toBe(false);
+  });
+
+  it("여러 극단적 거래량 종목 중 경고 있는 종목은 제외", () => {
+    const result = validateReport({
+      markdown: "OVID 강세 돌파 과열.\n\n\nSTRO 강세 신고가 상승.\n\n\n시장 전반적 리스크 존재.",
+      recommendations: [
+        { symbol: "OVID", rsScore: 85, phase: 2, volRatio: 13.7 },
+        { symbol: "STRO", rsScore: 99, phase: 2, volRatio: 11.2 },
+      ],
+    });
+
+    const warning = result.warnings.find(w => w.includes("극단적 거래량"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("STRO");
+    expect(warning).not.toContain("OVID");
+  });
+});
