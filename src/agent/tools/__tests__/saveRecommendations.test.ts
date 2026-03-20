@@ -28,6 +28,16 @@ vi.mock("../../../agent/debate/regimeStore", () => ({
   loadPendingRegimes: vi.fn(),
 }));
 
+vi.mock("../bearExceptionGate", () => ({
+  evaluateBearException: vi.fn(),
+  tagBearExceptionReason: vi.fn((reason: string | null) => {
+    const base = reason ?? "";
+    if (base.startsWith("[Bear 예외]")) return base;
+    return `[Bear 예외] ${base}`.trim();
+  }),
+  BEAR_EXCEPTION_TAG: "[Bear 예외]",
+}));
+
 vi.mock("@/agent/logger", () => ({
   logger: {
     info: vi.fn(),
@@ -42,12 +52,14 @@ import { saveRecommendations } from "../saveRecommendations";
 import { pool } from "@/db/client";
 import { db } from "@/db/client";
 import { loadConfirmedRegime, loadPendingRegimes } from "../../../agent/debate/regimeStore";
+import { evaluateBearException } from "../bearExceptionGate";
 import { logger } from "@/agent/logger";
 
 const mockPool = pool as unknown as { query: ReturnType<typeof vi.fn> };
 const mockDb = db as unknown as { insert: ReturnType<typeof vi.fn> };
 const mockLoadConfirmedRegime = loadConfirmedRegime as ReturnType<typeof vi.fn>;
 const mockLoadPendingRegimes = loadPendingRegimes as ReturnType<typeof vi.fn>;
+const mockEvaluateBearException = evaluateBearException as ReturnType<typeof vi.fn>;
 const mockLogger = logger as unknown as {
   warn: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
@@ -107,8 +119,8 @@ beforeEach(() => {
 // Phase 1: 레짐 하드 게이트
 // =============================================================================
 
-describe("Phase 1: 레짐 하드 게이트", () => {
-  it("EARLY_BEAR 레짐이면 전체 배치를 차단하고 success: false를 반환한다", async () => {
+describe("Phase 1: 레짐 하드 게이트 + Bear 예외", () => {
+  it("EARLY_BEAR 레짐에서 Bear 예외 미충족 종목은 blockedByRegime로 차단한다", async () => {
     mockLoadConfirmedRegime.mockResolvedValue({
       regime: "EARLY_BEAR",
       regimeDate: "2026-03-10",
@@ -118,22 +130,30 @@ describe("Phase 1: 레짐 하드 게이트", () => {
       confirmedAt: "2026-03-10",
     });
 
+    setupDefaultPoolMocks();
+
+    // Bear 예외 미충족
+    mockEvaluateBearException.mockResolvedValue({
+      passed: false,
+      reason: "Bear 예외 미충족: 섹터RS 50%, SEPA A",
+      details: { sectorRsRank: 10, totalSectors: 20, sectorRsPercentile: 50, fundamentalGrade: "A", phase2Count: 3 },
+    });
+
     const result = await saveRecommendations.execute({
       date: "2026-03-10",
       recommendations: [makeRec({ symbol: "AAPL" }), makeRec({ symbol: "MSFT" })],
     });
 
     const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(0);
-    expect(parsed.skippedCount).toBe(0);
     expect(parsed.blockedByRegime).toBe(2);
-    expect(parsed.blockedByCooldown).toBe(0);
-    // DB insert가 전혀 호출되지 않아야 한다
-    expect(mockPool.query).not.toHaveBeenCalled();
+    expect(parsed.bearExceptionCount).toBe(0);
+    // Bear 예외 평가를 각 종목별로 호출해야 한다
+    expect(mockEvaluateBearException).toHaveBeenCalledTimes(2);
   });
 
-  it("BEAR 레짐이면 전체 배치를 차단하고 success: false를 반환한다", async () => {
+  it("BEAR 레짐에서 Bear 예외 미충족 종목은 blockedByRegime로 차단한다", async () => {
     mockLoadConfirmedRegime.mockResolvedValue({
       regime: "BEAR",
       regimeDate: "2026-03-10",
@@ -143,18 +163,130 @@ describe("Phase 1: 레짐 하드 게이트", () => {
       confirmedAt: "2026-03-10",
     });
 
+    setupDefaultPoolMocks();
+
+    mockEvaluateBearException.mockResolvedValue({
+      passed: false,
+      reason: "Bear 예외 미충족",
+      details: { sectorRsRank: null, totalSectors: null, sectorRsPercentile: null, fundamentalGrade: "F", phase2Count: 0 },
+    });
+
     const result = await saveRecommendations.execute({
       date: "2026-03-10",
       recommendations: [makeRec({ symbol: "TSLA" })],
     });
 
     const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
     expect(parsed.blockedByRegime).toBe(1);
-    expect(mockPool.query).not.toHaveBeenCalled();
+    expect(parsed.bearExceptionCount).toBe(0);
   });
 
-  it("EARLY_BULL 레짐이면 차단하지 않고 정상 저장을 진행한다", async () => {
+  it("EARLY_BEAR 레짐에서 Bear 예외 통과 종목은 [Bear 예외] 태그와 함께 저장한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "EARLY_BEAR",
+      regimeDate: "2026-03-10",
+      rationale: "약세 초입",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockEvaluateBearException.mockResolvedValue({
+      passed: true,
+      reason: "Bear 예외 통과: 섹터RS 상위5%, SEPA S, Phase2 5일",
+      details: { sectorRsRank: 1, totalSectors: 20, sectorRsPercentile: 5, fundamentalGrade: "S", phase2Count: 5 },
+    });
+
+    let capturedReason: string | undefined;
+    let firstInsertCalled = false;
+    mockDb.insert.mockImplementation(() => ({
+      values: vi.fn((data: Record<string, unknown>) => {
+        if (!firstInsertCalled) {
+          firstInsertCalled = true;
+          capturedReason = data.reason as string | undefined;
+        }
+        return {
+          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+        };
+      }),
+    }));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "LMT", sector: "Industrials", rs_score: 90, reason: "방산 섹터 역행 강세" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByRegime).toBe(0);
+    expect(parsed.bearExceptionCount).toBe(1);
+    // [Bear 예외] 태그가 붙어야 한다
+    expect(capturedReason).toContain("[Bear 예외]");
+  });
+
+  it("BEAR 레짐에서 2종목 중 1개만 Bear 예외 통과 시 혼합 결과를 반환한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "BEAR",
+      regimeDate: "2026-03-10",
+      rationale: "약세장",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot (LMT만 저장됨)
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    // LMT: 통과, AAPL: 실패
+    mockEvaluateBearException
+      .mockResolvedValueOnce({
+        passed: true,
+        reason: "Bear 예외 통과",
+        details: { sectorRsRank: 1, totalSectors: 20, sectorRsPercentile: 5, fundamentalGrade: "S", phase2Count: 5 },
+      })
+      .mockResolvedValueOnce({
+        passed: false,
+        reason: "Bear 예외 미충족",
+        details: { sectorRsRank: 10, totalSectors: 20, sectorRsPercentile: 50, fundamentalGrade: "B", phase2Count: 1 },
+      });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [
+        makeRec({ symbol: "LMT", sector: "Industrials" }),
+        makeRec({ symbol: "AAPL", sector: "Technology" }),
+      ],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByRegime).toBe(1);
+    expect(parsed.bearExceptionCount).toBe(1);
+  });
+
+  it("EARLY_BULL 레짐이면 Bear 예외 평가 없이 정상 저장을 진행한다", async () => {
     mockLoadConfirmedRegime.mockResolvedValue({
       regime: "EARLY_BULL",
       regimeDate: "2026-03-10",
@@ -182,6 +314,8 @@ describe("Phase 1: 레짐 하드 게이트", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(1);
     expect(parsed.blockedByRegime).toBe(0);
+    // Bear 예외 평가가 호출되지 않아야 한다
+    expect(mockEvaluateBearException).not.toHaveBeenCalled();
   });
 });
 

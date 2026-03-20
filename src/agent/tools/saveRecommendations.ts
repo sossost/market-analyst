@@ -5,6 +5,7 @@ import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE, MAX_RS_SCORE } from "./validation";
 import { loadConfirmedRegime, loadPendingRegimes } from "../debate/regimeStore";
+import { evaluateBearException, tagBearExceptionReason, BEAR_EXCEPTION_TAG } from "./bearExceptionGate";
 import { logger } from "@/agent/logger";
 import { runCorporateAnalyst } from "../corporateAnalyst/runCorporateAnalyst.js";
 
@@ -177,21 +178,7 @@ export const saveRecommendations: AgentTool = {
       logger.error("Regime", `레짐 조회 실패, Bear Gate 미적용: ${reason}`);
     }
 
-    if (regimeForGate != null && BEAR_REGIMES.has(regimeForGate)) {
-      const totalCount = recs.length;
-      logger.warn(
-        "QualityGate",
-        `레짐 ${regimeForGate} — 전체 추천 배치 ${totalCount}개 차단`,
-      );
-      return JSON.stringify({
-        success: false,
-        savedCount: 0,
-        skippedCount: 0,
-        blockedByRegime: totalCount,
-        blockedByCooldown: 0,
-        message: `레짐 ${regimeForGate}: 전체 ${totalCount}개 추천 차단`,
-      });
-    }
+    const isBearRegime = regimeForGate != null && BEAR_REGIMES.has(regimeForGate);
 
     const symbols = recs
       .map((r) => validateSymbol(r.symbol))
@@ -253,6 +240,8 @@ export const saveRecommendations: AgentTool = {
 
     let savedCount = 0;
     let skippedCount = 0;
+    let blockedByRegime = 0;
+    let bearExceptionCount = 0;
     let blockedByCooldown = 0;
     let blockedByOverheatedRS = 0;
 
@@ -278,6 +267,32 @@ export const saveRecommendations: AgentTool = {
         );
         blockedByCooldown++;
         continue;
+      }
+
+      // Phase 1.5: Bear 레짐 게이트 — 개별 종목 예외 심사
+      let bearExceptionPassed = false;
+      if (isBearRegime) {
+        const exceptionResult = await evaluateBearException({
+          symbol,
+          sector: rec.sector ?? "",
+          date,
+        });
+
+        if (!exceptionResult.passed) {
+          logger.warn(
+            "QualityGate",
+            `${symbol}: 레짐 ${regimeForGate} 차단 — ${exceptionResult.reason}`,
+          );
+          blockedByRegime++;
+          continue;
+        }
+
+        bearExceptionPassed = true;
+        bearExceptionCount++;
+        logger.info(
+          "QualityGate",
+          `${symbol}: 레짐 ${regimeForGate} Bear 예외 통과 — ${exceptionResult.reason}`,
+        );
       }
 
       // Phase 2.5: RS 과열 게이트 — RS > 95 종목은 Phase 2 "말기"로 판단, 추천 차단
@@ -317,8 +332,14 @@ export const saveRecommendations: AgentTool = {
         }
       }
 
+      // Bear 예외 태깅
+      let taggedReason: string | null = rec.reason ?? null;
+      if (bearExceptionPassed) {
+        taggedReason = tagBearExceptionReason(taggedReason, "");
+      }
+
       // 기준 미달 태깅 (Phase < 2 또는 RS < 60)
-      let taggedReason = tagSubstandardReason(rec.reason, rec.phase, rec.rs_score);
+      taggedReason = tagSubstandardReason(taggedReason, rec.phase, rec.rs_score);
 
       // Phase 3: Phase 2 지속성 소프트 태깅
       const phase2Count = persistenceMap.get(symbol) ?? 0;
@@ -394,10 +415,11 @@ export const saveRecommendations: AgentTool = {
       success: true,
       savedCount,
       skippedCount,
-      blockedByRegime: 0,
+      blockedByRegime,
+      bearExceptionCount,
       blockedByCooldown,
       blockedByOverheatedRS,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByCooldown}개 쿨다운 차단, ${blockedByOverheatedRS}개 RS 과열 차단`,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByOverheatedRS}개 RS 과열 차단`,
     });
   },
 };
