@@ -45,15 +45,15 @@ describe('hasReviewMarker', () => {
     vi.clearAllMocks()
   })
 
-  it('[자동 PR 리뷰] 마커가 있는 코멘트가 있으면 true를 반환한다', async () => {
+  it('[자동 PR 리뷰] 마커가 있는 리뷰가 있으면 true를 반환한다', async () => {
     const { execFile } = await import('node:child_process')
     vi.mocked(execFile).mockImplementation((_cmd, _args, _options, callback) => {
       const cb = callback as (err: null, stdout: string) => void
       cb(
         null,
         JSON.stringify({
-          comments: [
-            { body: '[자동 PR 리뷰]\n\n## Strategic Review\n...' },
+          reviews: [
+            { body: '[자동 PR 리뷰]\n\n## Strategic Review\n...', state: 'COMMENTED' },
           ],
         }),
       )
@@ -64,16 +64,16 @@ describe('hasReviewMarker', () => {
     expect(result).toBe(true)
   })
 
-  it('마커가 없는 코멘트만 있으면 false를 반환한다', async () => {
+  it('마커가 없는 리뷰만 있으면 false를 반환한다', async () => {
     const { execFile } = await import('node:child_process')
     vi.mocked(execFile).mockImplementation((_cmd, _args, _options, callback) => {
       const cb = callback as (err: null, stdout: string) => void
       cb(
         null,
         JSON.stringify({
-          comments: [
-            { body: 'LGTM!' },
-            { body: '코드 리뷰 부탁드려요' },
+          reviews: [
+            { body: 'LGTM!', state: 'APPROVED' },
+            { body: '코드 리뷰 부탁드려요', state: 'COMMENTED' },
           ],
         }),
       )
@@ -84,11 +84,11 @@ describe('hasReviewMarker', () => {
     expect(result).toBe(false)
   })
 
-  it('코멘트가 없으면 false를 반환한다', async () => {
+  it('리뷰가 없으면 false를 반환한다', async () => {
     const { execFile } = await import('node:child_process')
     vi.mocked(execFile).mockImplementation((_cmd, _args, _options, callback) => {
       const cb = callback as (err: null, stdout: string) => void
-      cb(null, JSON.stringify({ comments: [] }))
+      cb(null, JSON.stringify({ reviews: [] }))
       return {} as ReturnType<typeof execFile>
     })
 

@@ -32,7 +32,7 @@ async function gh(args: string[]): Promise<string> {
 }
 
 /**
- * PR의 코멘트 목록을 조회하여 [자동 PR 리뷰] 마커가 있는지 확인한다.
+ * PR의 리뷰 목록을 조회하여 [자동 PR 리뷰] 마커가 있는지 확인한다.
  * 조회 실패 시 안전하게 true(이미 리뷰됨)를 반환하여 해당 PR을 스킵한다.
  */
 export async function hasReviewMarker(prNumber: number): Promise<boolean> {
@@ -42,20 +42,20 @@ export async function hasReviewMarker(prNumber: number): Promise<boolean> {
       'view',
       String(prNumber),
       '--json',
-      'comments',
+      'reviews',
     ])
 
     if (raw === '') return false
 
-    const parsed: { comments: Array<{ body: string }> } = JSON.parse(raw)
-    return parsed.comments.some((comment) =>
-      comment.body.includes(REVIEW_MARKER),
+    const parsed: { reviews: Array<{ body: string; state: string }> } = JSON.parse(raw)
+    return parsed.reviews.some((review) =>
+      review.body.includes(REVIEW_MARKER),
     )
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
     logger.warn(
       TAG,
-      `PR #${prNumber} 코멘트 조회 실패 — 안전을 위해 리뷰됨으로 처리: ${reason}`,
+      `PR #${prNumber} 리뷰 조회 실패 — 안전을 위해 리뷰됨으로 처리: ${reason}`,
     )
     // 조회 실패 시 스킵 (중복 리뷰 방지 우선)
     return true
