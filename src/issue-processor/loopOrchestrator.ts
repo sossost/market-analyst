@@ -60,6 +60,52 @@ async function isPrDone(prNumber: number): Promise<boolean> {
   }
 }
 
+/** PR 상태 조회 결과 */
+interface PrStatusData {
+  isDraft: boolean
+  labels: Array<{ name: string }>
+  state: string
+}
+
+/** auto:blocked 라벨명 */
+const AUTO_BLOCKED_LABEL = 'auto:blocked'
+
+/**
+ * 매핑 목록에서 머지 가능한 PR만 필터링한다.
+ * 머지 가능 기준: Open + non-Draft + auto:blocked 라벨 없음
+ *
+ * GitHub API 조회 실패 시 해당 PR을 머지 가능으로 간주한다.
+ * 근거: 조회 실패로 이슈 처리가 멈추는 것이 더 나쁘다.
+ */
+async function filterMergeableMappings(
+  mappings: PrThreadMapping[],
+): Promise<PrThreadMapping[]> {
+  const results = await Promise.allSettled(
+    mappings.map(async (mapping) => {
+      try {
+        const raw = await ghCheck([
+          'pr', 'view', String(mapping.prNumber),
+          '--json', 'isDraft,labels,state',
+        ])
+        const data = JSON.parse(raw) as PrStatusData
+        const isOpen = data.state === 'OPEN'
+        const isNotDraft = data.isDraft === false
+        const isNotBlocked = !data.labels.some((l) => l.name === AUTO_BLOCKED_LABEL)
+        return isOpen && isNotDraft && isNotBlocked ? mapping : null
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err)
+        logger.warn(TAG, `PR #${mapping.prNumber} 상태 조회 실패 — 머지 가능으로 간주: ${reason}`)
+        // 조회 실패 시 보수적으로 머지 가능 처리
+        return mapping
+      }
+    }),
+  )
+
+  return results
+    .filter((r) => r.status === 'fulfilled' && r.value != null)
+    .map((r) => (r as PromiseFulfilledResult<PrThreadMapping>).value)
+}
+
 /**
  * Step 2: 열린 PR 매핑을 스캔하여 피드백/승인 처리.
  */
@@ -168,12 +214,14 @@ export async function runLoop(): Promise<void> {
   const updatedMappings = loadAllMappings()
   await cleanupDoneMappings(updatedMappings)
 
-  // Step 3: 열린 PR이 없으면 미처리 이슈 처리
+  // Step 3: 머지 가능한 PR이 없으면 미처리 이슈 처리
+  // Draft이거나 auto:blocked 라벨이 붙은 PR은 머지 불가로 분류하여 이슈 처리를 재개한다
   const activeMappings = loadAllMappings()
-  if (activeMappings.length > 0) {
-    logger.info(TAG, `Step 3: 열린 PR ${activeMappings.length}개 존재 — 이슈 처리 스킵`)
+  const mergeableMappings = await filterMergeableMappings(activeMappings)
+  if (mergeableMappings.length > 0) {
+    logger.info(TAG, `Step 3: 머지 가능한 PR ${mergeableMappings.length}개 존재 — 이슈 처리 스킵`)
   } else {
-    logger.info(TAG, 'Step 3: 열린 PR 없음 — 미처리 이슈 처리')
+    logger.info(TAG, 'Step 3: 머지 가능한 PR 없음 — 미처리 이슈 처리')
     try {
       await processIssues()
     } catch (err) {
