@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { isIssueBranch, hasReviewMarker } from '../findReviewablePrs.js'
+import { hasReviewMarker } from '../findReviewablePrs.js'
 
 // ---------------------------------------------------------------------------
 // node:child_process 모킹
@@ -35,48 +35,6 @@ vi.mock('node:util', () => ({
       })
   },
 }))
-
-// ---------------------------------------------------------------------------
-// isIssueBranch 테스트
-// ---------------------------------------------------------------------------
-
-describe('isIssueBranch', () => {
-  it('fix/issue-* 브랜치는 true를 반환한다', () => {
-    expect(isIssueBranch('fix/issue-123')).toBe(true)
-  })
-
-  it('feat/issue-* 브랜치는 true를 반환한다', () => {
-    expect(isIssueBranch('feat/issue-42')).toBe(true)
-  })
-
-  it('refactor/issue-* 브랜치는 true를 반환한다', () => {
-    expect(isIssueBranch('refactor/issue-1')).toBe(true)
-  })
-
-  it('chore/issue-* 브랜치는 true를 반환한다', () => {
-    expect(isIssueBranch('chore/issue-999')).toBe(true)
-  })
-
-  it('main 브랜치는 false를 반환한다', () => {
-    expect(isIssueBranch('main')).toBe(false)
-  })
-
-  it('feature/my-feature 같은 수동 브랜치는 false를 반환한다', () => {
-    expect(isIssueBranch('feature/my-feature')).toBe(false)
-  })
-
-  it('fix/some-thing 처럼 issue- 없는 브랜치는 false를 반환한다', () => {
-    expect(isIssueBranch('fix/some-thing')).toBe(false)
-  })
-
-  it('fix/issue-abc 처럼 숫자 없는 브랜치는 false를 반환한다', () => {
-    expect(isIssueBranch('fix/issue-abc')).toBe(false)
-  })
-
-  it('docs/issue-1 같은 허용되지 않는 접두사는 false를 반환한다', () => {
-    expect(isIssueBranch('docs/issue-1')).toBe(false)
-  })
-})
 
 // ---------------------------------------------------------------------------
 // hasReviewMarker 테스트

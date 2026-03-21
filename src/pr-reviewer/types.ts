@@ -74,8 +74,5 @@ export const MAX_PRS_PER_CYCLE = 2
 /** 중복 리뷰 방지 마커 */
 export const REVIEW_MARKER = '[자동 PR 리뷰]'
 
-/** 이슈 프로세서가 생성한 브랜치 패턴 */
-export const ISSUE_BRANCH_PATTERN = /^(fix|feat|refactor|chore)\/issue-\d+$/
-
 /** GitHub 리포지토리 식별자 */
 export const REPO = 'sossost/market-analyst'
