@@ -70,13 +70,21 @@ function makeMessage(id: string, content: string, authorId = 'allowed-user'): Di
   }
 }
 
-/** execFile을 OPEN 상태 응답으로 설정 (Step 3가 매핑을 유지하게 함) */
+/**
+ * execFile을 OPEN 상태 응답으로 설정.
+ * filterMergeableMappings(isDraft,labels,state)와 isPrDone(state) 모두 처리.
+ */
 async function setupExecFileAsOpen(): Promise<void> {
   const { execFile } = await import('node:child_process')
   vi.mocked(execFile).mockImplementation(
-    (_cmd, _args, _options, callback) => {
+    (_cmd, args, _options, callback) => {
       const cb = callback as (error: null, stdout: string, stderr: string) => void
-      cb(null, JSON.stringify({ state: 'OPEN' }), '')
+      const argList = args as string[]
+      const isFullJson = argList.includes('isDraft,labels,state')
+      const response = isFullJson
+        ? JSON.stringify({ state: 'OPEN', isDraft: false, labels: [] })
+        : JSON.stringify({ state: 'OPEN' })
+      cb(null, response, '')
       return { stdin: null } as unknown as ReturnType<typeof execFile>
     },
   )
@@ -187,18 +195,100 @@ describe('runLoop — 전체 루프 흐름', () => {
     expect(processMerge).not.toHaveBeenCalled()
   })
 
-  it('열린 PR이 있으면 이슈 처리를 스킵한다', async () => {
+  it('Open + non-Draft + auto:blocked 없는 PR이 있으면 이슈 처리를 스킵한다', async () => {
     const { processIssues } = await import('../index.js')
     const { loadAllMappings } = await import('../prThreadStore.js')
     const { fetchThreadMessages } = await import('../discordClient.js')
+    const { execFile } = await import('node:child_process')
     const { runLoop } = await import('../loopOrchestrator.js')
 
     vi.mocked(loadAllMappings).mockReturnValue([makeMapping(42)])
     vi.mocked(fetchThreadMessages).mockResolvedValue([])
-    await setupExecFileAsOpen()
+
+    // filterMergeableMappings: Open + non-Draft + no auto:blocked
+    vi.mocked(execFile).mockImplementation(
+      (_cmd, _args, _options, callback) => {
+        const cb = callback as (error: null, stdout: string, stderr: string) => void
+        cb(null, JSON.stringify({ state: 'OPEN', isDraft: false, labels: [] }), '')
+        return { stdin: null } as unknown as ReturnType<typeof execFile>
+      },
+    )
 
     await runLoop()
 
+    expect(processIssues).not.toHaveBeenCalled()
+  })
+
+  it('PR이 Draft이면 이슈 처리를 재개한다', async () => {
+    const { processIssues } = await import('../index.js')
+    const { loadAllMappings } = await import('../prThreadStore.js')
+    const { fetchThreadMessages } = await import('../discordClient.js')
+    const { execFile } = await import('node:child_process')
+    const { runLoop } = await import('../loopOrchestrator.js')
+
+    vi.mocked(loadAllMappings).mockReturnValue([makeMapping(42)])
+    vi.mocked(fetchThreadMessages).mockResolvedValue([])
+
+    // filterMergeableMappings: isDraft = true → 머지 불가
+    vi.mocked(execFile).mockImplementation(
+      (_cmd, _args, _options, callback) => {
+        const cb = callback as (error: null, stdout: string, stderr: string) => void
+        cb(null, JSON.stringify({ state: 'OPEN', isDraft: true, labels: [] }), '')
+        return { stdin: null } as unknown as ReturnType<typeof execFile>
+      },
+    )
+
+    await runLoop()
+
+    expect(processIssues).toHaveBeenCalledOnce()
+  })
+
+  it('PR에 auto:blocked 라벨이 있으면 이슈 처리를 재개한다', async () => {
+    const { processIssues } = await import('../index.js')
+    const { loadAllMappings } = await import('../prThreadStore.js')
+    const { fetchThreadMessages } = await import('../discordClient.js')
+    const { execFile } = await import('node:child_process')
+    const { runLoop } = await import('../loopOrchestrator.js')
+
+    vi.mocked(loadAllMappings).mockReturnValue([makeMapping(42)])
+    vi.mocked(fetchThreadMessages).mockResolvedValue([])
+
+    // filterMergeableMappings: auto:blocked 라벨 있음 → 머지 불가
+    vi.mocked(execFile).mockImplementation(
+      (_cmd, _args, _options, callback) => {
+        const cb = callback as (error: null, stdout: string, stderr: string) => void
+        cb(null, JSON.stringify({ state: 'OPEN', isDraft: false, labels: [{ name: 'auto:blocked' }] }), '')
+        return { stdin: null } as unknown as ReturnType<typeof execFile>
+      },
+    )
+
+    await runLoop()
+
+    expect(processIssues).toHaveBeenCalledOnce()
+  })
+
+  it('PR 상태 조회 실패 시 해당 PR을 머지 가능으로 간주한다', async () => {
+    const { processIssues } = await import('../index.js')
+    const { loadAllMappings } = await import('../prThreadStore.js')
+    const { fetchThreadMessages } = await import('../discordClient.js')
+    const { execFile } = await import('node:child_process')
+    const { runLoop } = await import('../loopOrchestrator.js')
+
+    vi.mocked(loadAllMappings).mockReturnValue([makeMapping(42)])
+    vi.mocked(fetchThreadMessages).mockResolvedValue([])
+
+    // filterMergeableMappings: gh CLI 실패 → 보수적으로 머지 가능 처리
+    vi.mocked(execFile).mockImplementation(
+      (_cmd, _args, _options, callback) => {
+        const cb = callback as (error: Error, stdout: string, stderr: string) => void
+        cb(new Error('gh CLI 실패'), '', '')
+        return { stdin: null } as unknown as ReturnType<typeof execFile>
+      },
+    )
+
+    await runLoop()
+
+    // 조회 실패 시 머지 가능 → 이슈 처리 스킵
     expect(processIssues).not.toHaveBeenCalled()
   })
 
@@ -224,11 +314,17 @@ describe('runLoop — 전체 루프 흐름', () => {
     vi.mocked(loadAllMappings).mockReturnValue([mapping])
     vi.mocked(fetchThreadMessages).mockResolvedValue([])
 
-    // gh pr view — MERGED
+    // filterMergeableMappings: isDraft,labels,state 요청 → OPEN non-Draft
+    // isPrDone: state 요청 → MERGED
     vi.mocked(execFile).mockImplementation(
-      (_cmd, _args, _options, callback) => {
+      (_cmd, args, _options, callback) => {
         const cb = callback as (error: null, stdout: string, stderr: string) => void
-        cb(null, JSON.stringify({ state: 'MERGED' }), '')
+        const argList = args as string[]
+        const isFullJson = argList.includes('isDraft,labels,state')
+        const response = isFullJson
+          ? JSON.stringify({ state: 'OPEN', isDraft: false, labels: [] })
+          : JSON.stringify({ state: 'MERGED' })
+        cb(null, response, '')
         return { stdin: null } as unknown as ReturnType<typeof execFile>
       },
     )

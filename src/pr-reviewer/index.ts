@@ -12,6 +12,9 @@ import { logger } from '@/lib/logger.js'
 import { findReviewablePrs } from './findReviewablePrs.js'
 import { runStrategicReviewer, runCodeReviewer } from './runReviewer.js'
 import { postReviewComment } from './postReviewComment.js'
+import { parseStrategicVerdict, applyHoldGate } from './holdGate.js'
+import { findMappingByPrNumber } from '../issue-processor/prThreadStore.js'
+import { sendThreadMessage } from '../issue-processor/discordClient.js'
 
 const TAG = 'PR_REVIEWER'
 
@@ -72,8 +75,41 @@ export async function reviewPrs(): Promise<void> {
       } else {
         logger.warn(TAG, `  ⚠ PR #${pr.number} 부분 리뷰 완료 (일부 실패)`)
       }
+
+      // Strategic 리뷰 성공 시 판정을 파싱하여 HOLD/REJECT면 Hold Gate 실행
+      // 파싱 실패 시 PROCEED로 폴백하여 멀쩡한 PR이 Draft 전환되는 것을 방지
+      if (strategic.success === true && strategic.output != null) {
+        const verdict = parseStrategicVerdict(strategic.output) ?? 'PROCEED'
+        await applyHoldGate(pr.number, verdict)
+      }
+
+      // Discord PR 스레드에 리뷰 완료 알림
+      await notifyDiscordThread(pr.number)
     }),
   )
+}
+
+/**
+ * PR의 Discord 스레드에 리뷰 완료 알림을 보낸다.
+ * 스레드 매핑이 없거나 발송 실패 시 로그만 남기고 진행한다.
+ */
+async function notifyDiscordThread(prNumber: number): Promise<void> {
+  try {
+    const mapping = findMappingByPrNumber(prNumber)
+    if (mapping == null) {
+      logger.info(TAG, `  PR #${prNumber} Discord 스레드 매핑 없음 — 알림 스킵`)
+      return
+    }
+
+    await sendThreadMessage(
+      mapping.threadId,
+      `🔍 PR #${prNumber} 자동 리뷰 완료 — GitHub PR 코멘트를 확인하세요.`,
+    )
+    logger.info(TAG, `  Discord 알림 발송: PR #${prNumber}`)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.warn(TAG, `  Discord 알림 실패 (무시): ${reason}`)
+  }
 }
 
 export async function main(): Promise<void> {
