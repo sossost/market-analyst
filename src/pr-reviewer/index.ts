@@ -25,52 +25,55 @@ export async function reviewPrs(): Promise<void> {
     return
   }
 
-  for (const pr of prs) {
-    logger.info(TAG, `▶ PR #${pr.number} "${pr.title}" 리뷰 시작`)
+  // 모든 PR을 병렬 리뷰 (PR당 Strategic + Code도 병렬)
+  // 근거: :15 시작 → 타임아웃 30분 → :45 종료 → 다음 이슈 프로세서(:00)까지 15분 버퍼
+  // 순차 실행 시 2건 × 30분 = 60분 → 다음 사이클과 충돌
+  await Promise.allSettled(
+    prs.map(async (pr) => {
+      logger.info(TAG, `▶ PR #${pr.number} "${pr.title}" 리뷰 시작`)
 
-    // Strategic + Code 리뷰 병렬 실행
-    const [strategicSettled, codeSettled] = await Promise.allSettled([
-      runStrategicReviewer(pr),
-      runCodeReviewer(pr),
-    ])
+      const [strategicSettled, codeSettled] = await Promise.allSettled([
+        runStrategicReviewer(pr),
+        runCodeReviewer(pr),
+      ])
 
-    const strategic =
-      strategicSettled.status === 'fulfilled'
-        ? strategicSettled.value
-        : {
-            type: 'strategic' as const,
-            prNumber: pr.number,
-            success: false,
-            error:
-              strategicSettled.reason instanceof Error
-                ? strategicSettled.reason.message
-                : String(strategicSettled.reason),
-          }
+      const strategic =
+        strategicSettled.status === 'fulfilled'
+          ? strategicSettled.value
+          : {
+              type: 'strategic' as const,
+              prNumber: pr.number,
+              success: false,
+              error:
+                strategicSettled.reason instanceof Error
+                  ? strategicSettled.reason.message
+                  : String(strategicSettled.reason),
+            }
 
-    const code =
-      codeSettled.status === 'fulfilled'
-        ? codeSettled.value
-        : {
-            type: 'code' as const,
-            prNumber: pr.number,
-            success: false,
-            error:
-              codeSettled.reason instanceof Error
-                ? codeSettled.reason.message
-                : String(codeSettled.reason),
-          }
+      const code =
+        codeSettled.status === 'fulfilled'
+          ? codeSettled.value
+          : {
+              type: 'code' as const,
+              prNumber: pr.number,
+              success: false,
+              error:
+                codeSettled.reason instanceof Error
+                  ? codeSettled.reason.message
+                  : String(codeSettled.reason),
+            }
 
-    // PR 코멘트 게시
-    await postReviewComment(pr.number, strategic, code)
+      await postReviewComment(pr.number, strategic, code)
 
-    if (strategic.success === true && code.success === true) {
-      logger.info(TAG, `  ✓ PR #${pr.number} 리뷰 완료`)
-    } else if (strategic.success === false && code.success === false) {
-      logger.error(TAG, `  ✗ PR #${pr.number} 두 리뷰어 모두 실패`)
-    } else {
-      logger.warn(TAG, `  ⚠ PR #${pr.number} 부분 리뷰 완료 (일부 실패)`)
-    }
-  }
+      if (strategic.success === true && code.success === true) {
+        logger.info(TAG, `  ✓ PR #${pr.number} 리뷰 완료`)
+      } else if (strategic.success === false && code.success === false) {
+        logger.error(TAG, `  ✗ PR #${pr.number} 두 리뷰어 모두 실패`)
+      } else {
+        logger.warn(TAG, `  ⚠ PR #${pr.number} 부분 리뷰 완료 (일부 실패)`)
+      }
+    }),
+  )
 }
 
 export async function main(): Promise<void> {
