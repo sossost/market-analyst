@@ -104,7 +104,7 @@ QA 주간:         KST 12:00 토
 | F1 | Data Infrastructure | **완료** | Weinstein Phase, 섹터/산업 RS, 브레드스 |
 | F2 | Agent Core | **완료** | Claude agentic loop, 16개 + 내부 유틸 1개 도구, 일간/주간 분리 |
 | F4 | Tracking System | **완료** | 추천 성과 트래킹, Phase 이탈 감지 |
-| F5 | Report & Delivery | **완료** | Discord 발송, Gist MD 첨부, 리뷰 파이프라인 |
+| F5 | Report & Delivery | **완료** | Discord 발송, Gist MD 첨부, 리뷰 파이프라인, QA 고도화(severity 세분화·교차 검증·급락 필터·완전성 게이트) |
 | F6 | Debate & Evolution | **완료 — 운영 중** | 멀티 모델(GPT-4o/Gemini/Claude) 3라운드 토론 + thesis + 학습 루프 |
 | F7 | Fundamental Validation | **완료** | Minervini SEPA 스코어링 + 전체 종목 확장 |
 | Phase A | Learning Loop | **완료** | 세션 저장, few-shot 주입, 원인 분석, 패턴 승격 |
