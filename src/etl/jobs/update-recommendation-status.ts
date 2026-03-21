@@ -11,11 +11,28 @@ import { findRecommendationCurrentData } from "@/db/repositories/index.js";
 
 const TAG = "UPDATE_RECOMMENDATION_STATUS";
 
-/** maxPnL 대비 되돌림 비율이 이 값 이상이면 trailing stop 발동 */
-export const TRAILING_STOP_THRESHOLD = 0.5;
+/**
+ * 단계적 이익 실현 (Progressive Trailing Stop) 설정.
+ *
+ * maxPnL 구간별로 되돌림 허용 비율과 이익 바닥(profit floor)을 차등 적용한다.
+ * 배열은 minMaxPnl 내림차순으로 정렬해야 한다 (가장 높은 tier부터 매칭).
+ *
+ * - retracement: 고점 대비 허용 되돌림 비율 (0.25 = 25%)
+ * - profitFloor: 해당 tier 진입 후 최소 보장 수익률(%)
+ *
+ * 근거: #359 — AAOI +27.4% → -5.7% 사례. Phase exit 의존 청산으로 수익 증발.
+ */
+export const PROFIT_TIERS = [
+  { minMaxPnl: 20, retracement: 0.25, profitFloor: 10 },
+  { minMaxPnl: 10, retracement: 0.30, profitFloor: 3 },
+  { minMaxPnl: 5, retracement: 0.40, profitFloor: 0 },
+] as const;
 
-/** trailing stop이 활성화되려면 maxPnL이 이 값(%) 이상이어야 함 */
-export const MIN_MAX_PNL_FOR_TRAILING = 10;
+/** @deprecated 하위 호환용. PROFIT_TIERS[2].retracement 참조 */
+export const TRAILING_STOP_THRESHOLD = 0.25;
+
+/** @deprecated 하위 호환용. PROFIT_TIERS[2].minMaxPnl 참조 */
+export const MIN_MAX_PNL_FOR_TRAILING = 5;
 
 /**
  * 진입가 대비 최대 허용 손실(%).
@@ -42,22 +59,61 @@ export function shouldTriggerStopLoss(params: {
 }
 
 /**
+ * 현재 maxPnl에 해당하는 profit tier를 찾는다.
+ * PROFIT_TIERS는 minMaxPnl 내림차순이므로 첫 번째 매칭이 가장 높은 tier.
+ */
+export function findProfitTier(maxPnlPercent: number) {
+  return PROFIT_TIERS.find((tier) => maxPnlPercent >= tier.minMaxPnl) ?? null;
+}
+
+/**
  * Trailing stop 발동 여부를 판정하는 순수 함수.
  *
- * - currentPhase == null: ETL 미완료를 의미하므로 미발동
- * - maxPnlPercent < MIN_MAX_PNL_FOR_TRAILING: 충분한 수익 미달성 시 미발동
- * - pnlPercent < maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD): 고점 대비 50% 이상 되돌림 시 발동
+ * 단계적 이익 실현 로직:
+ * 1. currentPhase == null → ETL 미완료, 미발동
+ * 2. maxPnlPercent에 해당하는 profit tier 탐색
+ * 3. tier 없으면 (maxPnl < 5%) 미발동
+ * 4. trailing level = max(maxPnl * (1 - retracement), profitFloor)
+ * 5. pnlPercent < trailing level → 발동
+ *
+ * 예: maxPnl 27.4% → tier(20, 0.25, 10) → level = max(20.55, 10) = 20.55
+ *     pnl이 20.55% 아래로 떨어지면 발동
  */
 export function shouldTriggerTrailingStop(params: {
   currentPhase: number | null;
   maxPnlPercent: number;
   pnlPercent: number;
 }): boolean {
-  return (
-    params.currentPhase != null &&
-    params.maxPnlPercent >= MIN_MAX_PNL_FOR_TRAILING &&
-    params.pnlPercent < params.maxPnlPercent * (1 - TRAILING_STOP_THRESHOLD)
+  if (params.currentPhase == null) return false;
+
+  const tier = findProfitTier(params.maxPnlPercent);
+  if (tier == null) return false;
+
+  const trailingLevel = Math.max(
+    params.maxPnlPercent * (1 - tier.retracement),
+    tier.profitFloor,
   );
+
+  return params.pnlPercent < trailingLevel;
+}
+
+/**
+ * 트레일링 스탑 발동 시 closeReason에 포함할 설명 문자열 생성.
+ */
+export function formatTrailingStopReason(params: {
+  maxPnlPercent: number;
+  pnlPercent: number;
+}): string {
+  const tier = findProfitTier(params.maxPnlPercent);
+  if (tier == null) return `Trailing stop: maxPnL ${params.maxPnlPercent.toFixed(1)}%`;
+
+  const trailingLevel = Math.max(
+    params.maxPnlPercent * (1 - tier.retracement),
+    tier.profitFloor,
+  );
+  const retracementPct = tier.retracement * 100;
+
+  return `Trailing stop: maxPnL ${params.maxPnlPercent.toFixed(1)}% → 현재 ${params.pnlPercent.toFixed(1)}% (tier ${tier.minMaxPnl}%+: ${retracementPct}% 되돌림, floor ${tier.profitFloor}%, level ${trailingLevel.toFixed(1)}%)`;
 }
 
 /**
@@ -154,7 +210,7 @@ async function main() {
       closeReason = `Hard stop-loss: PnL ${pnlPercent.toFixed(1)}% ≤ ${HARD_STOP_LOSS_PERCENT}% 한도 초과`;
     } else if (isTrailingStop) {
       closeStatus = "CLOSED_TRAILING_STOP";
-      closeReason = `Trailing stop: maxPnL ${maxPnlPercent.toFixed(1)}% → 현재 ${pnlPercent.toFixed(1)}% (${TRAILING_STOP_THRESHOLD * 100}% 되돌림 초과)`;
+      closeReason = formatTrailingStopReason({ maxPnlPercent, pnlPercent });
     } else if (isPhaseExit) {
       closeStatus = "CLOSED_PHASE_EXIT";
       closeReason = `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`;
