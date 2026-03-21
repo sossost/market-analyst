@@ -55,6 +55,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 
 9. 자율 운영
    → Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
+   → Auto PR Reviewer: 이슈 프로세서가 생성한 PR을 Strategic + Code 리뷰어가 병렬 검토 → GitHub 코멘트 자동 게시
    → 맥미니 서버 launchd 기반 스케줄링
 ```
 
@@ -237,7 +238,7 @@ yarn db:push                # 스키마 적용
 | 학습 승격 | 축적 중 | 10건+ | 3회+ 적중 패턴 필요 |
 | 실패 패턴 | 축적 중 | 5건+ | N-1e 배포 완료, 데이터 수집 중 |
 | 프론트엔드 | 리포트/토론 아카이브 | 대시보드 확장 | Next.js 16 + Supabase Auth |
-| 자동화 스케줄 | 8개 launchd 작업 | 안정 운영 | 매일 20회+ 자동 트리거 |
+| 자동화 스케줄 | 9개 launchd 작업 | 안정 운영 | 매일 36회+ 자동 트리거 |
 
 **핵심 추적 질문:** 서사-기술적 교집합이 기술적 단독 대비 적중률을 높이는가? → N-2 홀드아웃 테스트(3/22 이후)에서 검증 예정.
 
@@ -266,6 +267,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | News Collect | 00/06/12/18:00 매일 | 뉴스 수집 |
 | Strategic Review | 04:00 매일 | 전략 참모 리뷰 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거) |
 | Issue Processor | 09:00~02:00 매 정시 (18회/일) | GitHub 이슈 자동 처리 → PR 생성 |
+| PR Reviewer | 09:15~02:15 매 :15분 (18회/일) | 이슈 프로세서 생성 PR 자동 검토 → Strategic + Code 리뷰 코멘트 게시 |
 | Log Cleanup | 09:00 일 | 오래된 로그 정리 |
 
 ```bash
@@ -316,6 +318,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **Sector Lag Pattern** — 섹터 간 Phase 전이 시차 축적 + 선행 경보 → 주간 에이전트 연동
 - [x] **일간 품질 검증** — Claude Code CLI 기반 리포트 QA + 조건부 발송 게이트 + bull-bias 감지
 - [x] **자율 이슈 처리** — Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
+- [x] **자동 PR 리뷰** — Auto PR Reviewer: 이슈 프로세서 생성 PR → Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (#364)
 
 ### Next (진행 예정)
 
@@ -344,6 +347,7 @@ src/
 │   ├── tools/               # 에이전트 도구 (16개 + 내부 유틸 1개)
 │   └── reviewAgent.ts       # 리포트 품질 검증 + 조건부 발송
 ├── issue-processor/         # 자율 이슈 처리 (Claude Code CLI)
+├── pr-reviewer/             # 자동 PR 리뷰 (Strategic + Code 병렬 리뷰어)
 ├── etl/                     # 데이터 파이프라인
 ├── lib/                     # 유틸리티 (스코어링, 분석, 시차 통계)
 └── db/schema/               # Drizzle ORM 스키마

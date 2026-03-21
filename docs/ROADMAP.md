@@ -1,6 +1,6 @@
 # Market Analyst — Roadmap
 
-**최종 업데이트:** 2026-03-20
+**최종 업데이트:** 2026-03-21
 
 ---
 
@@ -164,6 +164,7 @@
 | 수치 기준 명시 강제 | 프롬프트에 정량 근거 의무화 (PR #161) |
 | 조건부 발송 게이트 | 품질 미달 시 발송 차단 (PR #162) |
 | Auto Issue Processor | GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성 (PR #154) |
+| Auto PR Reviewer | 이슈 프로세서 생성 PR → Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (PR #364) |
 
 ### Layer 13: 전략 참모 + 기업 애널리스트 (F9 + F10) — Done
 시스템 전체를 자동 리뷰하고, 추천 종목별 심층 분석을 자동 생성하는 고도화. (PR #266, #277)
