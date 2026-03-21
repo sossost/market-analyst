@@ -56,25 +56,25 @@ describe("compareSectors", () => {
     expect(result).toHaveLength(0);
   });
 
-  it("겹침 50% 미만이면 warn mismatch 1개 반환", () => {
-    // 3개 중 1개 겹침 = 33.3% — warn
+  it("겹침 50% 미만이면 block mismatch 1개 반환 (섹터 오분류는 심각한 팩트 오류)", () => {
+    // 3개 중 1개 겹침 = 33.3% — block
     const result = compareSectors(
       ["Technology", "Healthcare", "Energy"],
       ["Technology", "Financials", "Materials"],
     );
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("sector_list");
-    expect(result[0].severity).toBe("warn");
+    expect(result[0].severity).toBe("block");
     expect(result[0].field).toBe("leadingSectors");
   });
 
-  it("겹침 0%이면 warn mismatch 1개 반환", () => {
+  it("겹침 0%이면 block mismatch 1개 반환", () => {
     const result = compareSectors(
       ["Technology", "Healthcare"],
       ["Energy", "Financials"],
     );
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe("warn");
+    expect(result[0].severity).toBe("block");
   });
 
   it("dbTopSectors가 빈 배열이면 mismatch 없음 (스킵)", () => {
@@ -114,7 +114,7 @@ describe("comparePhase2Ratio", () => {
     expect(result).toBeNull();
   });
 
-  it("차이가 tolerance 초과이면 warn mismatch 반환", () => {
+  it("차이가 tolerance 초과이지만 10pp 미만이면 warn mismatch 반환", () => {
     const result = comparePhase2Ratio(55, 58, 2);
     expect(result).not.toBeNull();
     expect(result!.type).toBe("phase2_ratio");
@@ -122,10 +122,35 @@ describe("comparePhase2Ratio", () => {
     expect(result!.field).toBe("phase2Ratio");
   });
 
-  it("dbRatio가 더 큰 경우도 차이 초과이면 warn 반환", () => {
+  it("차이가 10pp 이상이면 block mismatch 반환", () => {
+    const result = comparePhase2Ratio(55, 65, 2);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("phase2_ratio");
+    expect(result!.severity).toBe("block");
+  });
+
+  it("차이가 정확히 10pp이면 block mismatch 반환 (경계값)", () => {
+    const result = comparePhase2Ratio(55, 65, 2);
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("block");
+  });
+
+  it("차이가 9pp이면 warn mismatch 반환 (block 미만)", () => {
+    const result = comparePhase2Ratio(55, 64, 2);
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("warn");
+  });
+
+  it("dbRatio가 더 큰 경우도 차이 초과이면 warn 반환 (10pp 미만)", () => {
     const result = comparePhase2Ratio(60, 55, 2);
     expect(result).not.toBeNull();
     expect(result!.severity).toBe("warn");
+  });
+
+  it("dbRatio가 더 클 때도 10pp 이상이면 block 반환", () => {
+    const result = comparePhase2Ratio(70, 55, 2);
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("block");
   });
 
   it("기본 tolerance(2)로 동작", () => {
@@ -264,40 +289,73 @@ describe("aggregateSeverity", () => {
     expect(aggregateSeverity([])).toBe("ok");
   });
 
-  it("mismatch 1개이면 'warn' 반환", () => {
+  it("warn mismatch 1개이면 'warn' 반환", () => {
     const mismatches: Mismatch[] = [
       {
-        type: "sector_list",
-        field: "leadingSectors",
-        expected: "Technology",
-        actual: "Energy",
+        type: "symbol_phase",
+        field: "NVDA.phase",
+        expected: 2,
+        actual: 3,
         severity: "warn",
       },
     ];
     expect(aggregateSeverity(mismatches)).toBe("warn");
   });
 
-  it("mismatch 2개이면 'block' 반환", () => {
+  it("block mismatch 1개이면 즉시 'block' 반환 (개수 무관)", () => {
     const mismatches: Mismatch[] = [
       {
         type: "sector_list",
         field: "leadingSectors",
         expected: "Technology",
         actual: "Energy",
+        severity: "block",
+      },
+    ];
+    expect(aggregateSeverity(mismatches)).toBe("block");
+  });
+
+  it("warn mismatch 2개이면 'block' 반환", () => {
+    const mismatches: Mismatch[] = [
+      {
+        type: "symbol_phase",
+        field: "NVDA.phase",
+        expected: 2,
+        actual: 3,
         severity: "warn",
       },
       {
         type: "phase2_ratio",
         field: "phase2Ratio",
         expected: 55,
-        actual: 65,
+        actual: 60,
         severity: "warn",
       },
     ];
     expect(aggregateSeverity(mismatches)).toBe("block");
   });
 
-  it("mismatch 5개이면 'block' 반환", () => {
+  it("block + warn 혼합이면 'block' 반환", () => {
+    const mismatches: Mismatch[] = [
+      {
+        type: "sector_list",
+        field: "leadingSectors",
+        expected: "Technology",
+        actual: "Energy",
+        severity: "block",
+      },
+      {
+        type: "symbol_rs",
+        field: "NVDA.rsScore",
+        expected: 90,
+        actual: 80,
+        severity: "warn",
+      },
+    ];
+    expect(aggregateSeverity(mismatches)).toBe("block");
+  });
+
+  it("warn mismatch 5개이면 'block' 반환", () => {
     const mismatches: Mismatch[] = Array.from({ length: 5 }, (_, i) => ({
       type: "symbol_phase" as const,
       field: `STOCK${i}.phase`,
@@ -413,6 +471,20 @@ describe("runFactCheck", () => {
     expect(symbolMismatches).toHaveLength(0);
   });
 
+  it("섹터 오분류(block) 단독으로도 severity block 반환", () => {
+    const reportData: ReportData = {
+      ...baseReportData,
+      marketSummary: {
+        ...baseReportData.marketSummary,
+        leadingSectors: ["Financials", "Materials", "Utilities"], // 섹터 완전 불일치
+      },
+    };
+    const result = runFactCheck(baseDbData, reportData);
+    expect(result.severity).toBe("block");
+    const sectorMismatch = result.mismatches.find((m) => m.type === "sector_list");
+    expect(sectorMismatch?.severity).toBe("block");
+  });
+
   it("다수 불일치 시 severity block 반환", () => {
     const reportData: ReportData = {
       ...baseReportData,
@@ -421,8 +493,8 @@ describe("runFactCheck", () => {
         { symbol: "AAPL", phase: 3, rsScore: 75, sector: "Technology" }, // phase+rs 불일치
       ],
       marketSummary: {
-        phase2Ratio: 70, // 불일치
-        leadingSectors: ["Financials", "Materials", "Utilities"], // 불일치
+        phase2Ratio: 70, // 불일치 15pp → block
+        leadingSectors: ["Financials", "Materials", "Utilities"], // 섹터 오분류 → block
         totalAnalyzed: 500,
       },
     };

@@ -24,6 +24,7 @@ import {
   type ReportDraft,
 } from "./reviewAgent";
 import { runDailyQA, type DailyQAResult } from "./dailyQA";
+import { reportQAIssue } from "./lib/qaIssueReporter";
 import type { AgentTool } from "./tools/types";
 import type { ReportData } from "./lib/factChecker";
 import {
@@ -248,6 +249,7 @@ async function main() {
         const level = qaResult.severity === "block" ? "BLOCK" : "WARN";
         logger.warn("DailyQA", `${level} — 경고 문구를 리포트에 삽입합니다`);
         finalDrafts = withQAWarning(reportDrafts, qaResult);
+        await reportQAIssue(qaResult, targetDate, "daily");
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
