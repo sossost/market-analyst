@@ -431,6 +431,81 @@ describe("promote-learnings logic", () => {
     });
   });
 
+  describe("bootstrap — EXPIRED thesis 부정 신호 제외 (#360)", () => {
+    it("EXPIRED theses가 hitRate를 희석하면 bootstrap 승격 불가 (fix 전 동작 재현)", () => {
+      // 1 confirmed + 2 expired(=negative) = hitRate 33% < 55% → 승격 불가
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
+      ];
+      const expiredAsNegative = Array.from({ length: 2 }, (_, i) =>
+        makeThesis({ id: 200 + i, agentPersona: "sentiment", verificationMetric: "VIX", status: "EXPIRED" }),
+      );
+
+      // fix 전: allNegativeTheses = [...invalidated, ...expired] 전달
+      const result = buildPromotionCandidates(confirmed, expiredAsNegative, new Set(), 0);
+      expect(result).toHaveLength(0); // hitRate 33% < 55%
+    });
+
+    it("EXPIRED 제외 시 동일 데이터에서 bootstrap 승격 가능 (fix 후 동작)", () => {
+      // main()에서 bootstrap일 때 expired를 제외하고 invalidated만 전달
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
+      ];
+      // expired는 전달하지 않음 (main에서 필터링)
+      const onlyInvalidated: ReturnType<typeof makeThesis>[] = [];
+
+      const result = buildPromotionCandidates(confirmed, onlyInvalidated, new Set(), 0);
+      expect(result).toHaveLength(1);
+      expect(result[0].hitCount).toBe(1);
+      expect(result[0].missCount).toBe(0);
+    });
+
+    it("EXPIRED 제외해도 진짜 INVALIDATED는 여전히 반영", () => {
+      // 1 confirmed + 1 invalidated = hitRate 50% < 55% → 탈락 (정상)
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
+      ];
+      const invalidated = [
+        makeThesis({ id: 100, agentPersona: "sentiment", verificationMetric: "VIX", status: "INVALIDATED" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 0);
+      expect(result).toHaveLength(0); // 50% < 55%
+    });
+
+    it("EXPIRED 제외 시 다른 그룹은 독립적으로 승격 가능", () => {
+      // sentiment::VIX → 1 confirmed (expired 제외됨) → hitRate 100% → 승격
+      // macro::S&P 500 → 1 confirmed + 1 invalidated → hitRate 50% → 탈락
+      const confirmed = [
+        makeThesis({ id: 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
+        makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "S&P 500" }),
+      ];
+      const invalidated = [
+        makeThesis({ id: 100, agentPersona: "macro", verificationMetric: "S&P 500", status: "INVALIDATED" }),
+      ];
+
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 0);
+      expect(result).toHaveLength(1);
+      expect(result[0].persona).toBe("sentiment");
+      expect(result[0].metric).toBe("VIX");
+    });
+
+    it("growth 단계(5건+)에서는 EXPIRED를 포함해야 함 (caller 책임)", () => {
+      // growth에서는 main()이 allNegativeTheses를 전달하므로 expired 포함
+      const confirmed = Array.from({ length: 5 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
+      );
+      const negativesIncludingExpired = Array.from({ length: 4 }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "GDP", status: i < 2 ? "INVALIDATED" : "EXPIRED" }),
+      );
+
+      // 5 confirmed + 4 negative = 56% hitRate, total=9 >= 8
+      // growth 기준: minHits=5, minHitRate=0.65 → 56% < 65% → 탈락
+      const result = buildPromotionCandidates(confirmed, negativesIncludingExpired, new Set(), 5);
+      expect(result).toHaveLength(0);
+    });
+  });
+
   describe("BEAR_KEYWORDS_FOR_PRIORITY", () => {
     it("contains expected bear keywords", () => {
       expect(BEAR_KEYWORDS_FOR_PRIORITY).toContain("하락");
