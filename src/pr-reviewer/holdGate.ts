@@ -20,6 +20,7 @@ const execFileAsync = promisify(execFile)
 const TAG = 'HOLD_GATE'
 
 const GH_TIMEOUT_MS = 30_000
+const AUTO_BLOCKED_LABEL = 'auto:blocked'
 
 /** Strategic Reviewer 출력에서 종합 판정을 추출하는 정규식 */
 const VERDICT_PATTERN = /^종합:\s*(PROCEED|HOLD|REJECT)/m
@@ -75,7 +76,7 @@ export async function applyHoldGate(
 
   // Step 2: auto:blocked 라벨 부착
   try {
-    await ghRun(['pr', 'edit', String(prNumber), '--add-label', 'auto:blocked'])
+    await ghRun(['pr', 'edit', String(prNumber), '--add-label', AUTO_BLOCKED_LABEL])
     logger.info(TAG, `PR #${prNumber} auto:blocked 라벨 부착 완료`)
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
