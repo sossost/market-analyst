@@ -9,13 +9,16 @@
  */
 
 import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { logger } from '@/lib/logger.js'
 import { removePrThreadMapping } from '../issue-processor/prThreadStore.js'
+import { REPO } from './types.js'
 import type { StrategicVerdict } from './types.js'
+
+const execFileAsync = promisify(execFile)
 
 const TAG = 'HOLD_GATE'
 
-const REPO = 'sossost/market-analyst'
 const GH_TIMEOUT_MS = 30_000
 
 /** Strategic Reviewer 출력에서 종합 판정을 추출하는 정규식 */
@@ -24,23 +27,10 @@ const VERDICT_PATTERN = /^종합:\s*(PROCEED|HOLD|REJECT)/m
 /**
  * gh CLI 헬퍼 — Draft 전환 및 라벨 부착용
  */
-function ghRun(args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      'gh',
-      args,
-      {
-        timeout: GH_TIMEOUT_MS,
-        env: { ...process.env, GH_REPO: REPO },
-      },
-      (error) => {
-        if (error != null) {
-          reject(error)
-          return
-        }
-        resolve()
-      },
-    )
+async function ghRun(args: string[]): Promise<void> {
+  await execFileAsync('gh', args, {
+    timeout: GH_TIMEOUT_MS,
+    env: { ...process.env, GH_REPO: REPO },
   })
 }
 

@@ -22,10 +22,10 @@ import {
 } from './prThreadStore.js'
 import { getAllowedUserIds } from './discordAuth.js'
 import type { PrThreadMapping } from './types.js'
+import { REPO } from '../pr-reviewer/types.js'
 
 const TAG = 'LOOP_ORCHESTRATOR'
 
-const REPO = 'sossost/market-analyst'
 const GH_TIMEOUT_MS = 30_000
 
 /**
@@ -95,7 +95,7 @@ async function filterMergeableMappings(
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err)
         logger.warn(TAG, `PR #${mapping.prNumber} 상태 조회 실패 — 머지 가능으로 간주: ${reason}`)
-        // 조회 실패 시 보수적으로 머지 가능 처리
+        // 조회 실패 시 머지 가능으로 간주 — 파이프라인 멈춤 방지 우선
         return mapping
       }
     }),
