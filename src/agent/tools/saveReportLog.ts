@@ -1,5 +1,6 @@
 import { pool } from "@/db/client";
 import { saveReportLog } from "@/agent/reportLog";
+import { logger } from "@/lib/logger";
 import type { DailyReportLog } from "@/types";
 import type { AgentTool } from "./types";
 import { validateDate } from "./validation";
@@ -106,6 +107,21 @@ export const saveReportLogTool: AgentTool = {
         executionTime: 0,
       },
     };
+
+    // 저장 전 완전성 검증 (warn-only, 저장은 계속)
+    if (reportWithMetadata.reportedSymbols.length === 0) {
+      logger.warn("SaveReportLog", `${date}: reportedSymbols 빈 배열 — 종목이 선정되지 않은 리포트`);
+    } else {
+      const symbolSet = new Set(reportWithMetadata.reportedSymbols.map((s) => s.symbol));
+      const fullContent = reportWithMetadata.fullContent ?? "";
+      const hasSymbolMention = [...symbolSet].some((sym) => fullContent.includes(sym));
+      if (!hasSymbolMention) {
+        logger.warn(
+          "SaveReportLog",
+          `${date}: fullContent에 reportedSymbols 종목(${[...symbolSet].join(", ")})이 하나도 언급되지 않음 — 리포트 내용 확인 필요`,
+        );
+      }
+    }
 
     await saveReportLog(reportWithMetadata);
 

@@ -123,7 +123,7 @@ describe('postReviewComment', () => {
     vi.clearAllMocks()
   })
 
-  it('gh pr comment를 올바른 인자로 호출한다', async () => {
+  it('gh pr review --comment를 올바른 인자로 호출한다', async () => {
     const { execFile } = await import('node:child_process')
     vi.mocked(execFile).mockImplementation((_cmd, _args, _options, callback) => {
       const cb = callback as (err: null, stdout: string, stderr: string) => void
@@ -138,7 +138,8 @@ describe('postReviewComment', () => {
     const [cmd, args] = calls[0]
     expect(cmd).toBe('gh')
     expect(args).toContain('pr')
-    expect(args).toContain('comment')
+    expect(args).toContain('review')
+    expect(args).toContain('--comment')
     expect(args).toContain('10')
     expect(args).toContain('--body')
   })

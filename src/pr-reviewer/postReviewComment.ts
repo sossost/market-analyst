@@ -85,8 +85,9 @@ export async function postReviewComment(
   try {
     await gh([
       'pr',
-      'comment',
+      'review',
       String(prNumber),
+      '--comment',
       '--body',
       body,
     ])

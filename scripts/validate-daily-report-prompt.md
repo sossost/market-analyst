@@ -54,7 +54,7 @@
 }
 
 판단 기준:
-- hasIssue = true 조건: 어느 하나라도 6점 미만이거나 totalScore ≤ 28
-- novelty가 null이면 totalScore는 나머지 3항목 합산으로만 판단 (21점 이하면 hasIssue)
+- hasIssue = true 조건: totalScore ≤ 32 OR factConsistency < 7 OR (bullBias < 5 OR structure < 5 OR novelty < 5)
+- novelty가 null이면 totalScore는 나머지 3항목 합산으로만 판단 (24점 이하면 hasIssue)
 - issueBody에는 감점 항목별 근거, 재발 방지 제안 포함
-- 모든 점수 ≥ 7이고 totalScore ≥ 30이면 hasIssue = false
+- 모든 점수 ≥ 7이고 totalScore ≥ 33이면 hasIssue = false

@@ -51,6 +51,45 @@ trap 'rm -f "$PROMPT_FILE" "$CLAUDE_RAW_FILE" "$ISSUE_BODY_FILE"' EXIT
 
 log "=== 투자 브리핑 품질 검증 시작 ==="
 
+MARKET_EVENTS_FILE="$PROJECT_DIR/data/market-events.json"
+
+# --- Step 0: 당일 시장 이벤트 조회 ---
+EVENT_CONTEXT=""
+if [ -f "$MARKET_EVENTS_FILE" ]; then
+  TODAY=$(date +%Y-%m-%d)
+
+  # Python으로 JSON 파싱하여 당일 이벤트 추출
+  EVENT_LINES=$(python3 -c "
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+today = sys.argv[2]
+events = [e for e in data.get('events', []) if e.get('date') == today]
+
+if events:
+    lines = []
+    for e in events:
+        lines.append(f\"- {e['name']}: {e['impact']}\")
+    print('\n'.join(lines))
+" "$MARKET_EVENTS_FILE" "$TODAY" 2>/dev/null || echo "")
+
+  if [ -n "$EVENT_LINES" ]; then
+    EVENT_CONTEXT="## 오늘의 주요 매크로 이벤트
+
+다음 이벤트가 오늘 예정되어 있습니다. 브리핑이 이 이벤트를 인지하고 있는지 확인하세요:
+
+${EVENT_LINES}
+"
+    log "✓ 당일 이벤트 감지: $EVENT_LINES"
+  else
+    log "✓ 당일 주요 이벤트 없음"
+  fi
+else
+  log "시장 이벤트 파일 없음 ($MARKET_EVENTS_FILE) — 이벤트 컨텍스트 생략"
+fi
+
 # --- Step 1: 최신 투자 브리핑 조회 ---
 log "▶ 최신 투자 브리핑 조회"
 REPORT_JSON=$(npx tsx src/scripts/get-latest-debate-report.ts 2>>"$LOG_FILE")
@@ -95,15 +134,19 @@ PROMPT="${PROMPT//\{REPORT_DATE\}/$REPORT_DATE}"
 PROMPT="${PROMPT//\{PREV_DATE\}/$PREV_DATE}"
 PROMPT="${PROMPT//\{THESES_COUNT\}/$THESES_COUNT}"
 
-# content는 특수문자 포함 가능 → Python으로 안전한 치환
+# content와 EVENT_CONTEXT는 특수문자 포함 가능 → Python으로 안전한 치환
 python3 -c "
 import sys
 template = sys.stdin.read()
 report = open('/dev/fd/3').read()
 prev = open('/dev/fd/4').read()
-result = template.replace('{REPORT_CONTENT}', report).replace('{PREV_REPORT_CONTENT}', prev)
+event_ctx = open('/dev/fd/5').read()
+result = (template
+    .replace('{REPORT_CONTENT}', report)
+    .replace('{PREV_REPORT_CONTENT}', prev)
+    .replace('{EVENT_CONTEXT}', event_ctx))
 sys.stdout.write(result)
-" <<< "$PROMPT" 3< <(echo "$REPORT_CONTENT") 4< <(echo "$PREV_CONTENT") > "$PROMPT_FILE"
+" <<< "$PROMPT" 3< <(echo "$REPORT_CONTENT") 4< <(echo "$PREV_CONTENT") 5< <(printf '%s' "$EVENT_CONTEXT") > "$PROMPT_FILE"
 
 # prev 없으면 프롬프트에 안내 추가
 if [ "$HAS_PREV" = "false" ]; then

@@ -36,6 +36,9 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 일간 리포트 품질 검증 파이프라인 (Claude Code CLI 기반)
    → 조건부 발송 게이트: 품질 미달 시 발송 차단
    → bull-bias 감지 + Phase 2 ratio 이중 변환 방어
+   → QA 이슈 기준 강화: 총점 ≤32 OR factConsistency < 7 → GitHub 이슈 자동 생성
+   → 교차 리포트 정합성: 일간/토론 reported_symbols 불일치 감지 (warn-only)
+   → 급락 종목 경고: -5% + 거래량 1.5x 시 Discord 경고 카테고리 삽입
 
 6. 기업 애널리스트 (추천 종목별 자동 생성)
    → 피어 멀티플(P/E·EV/EBITDA·P/S) 가중 평균 기반 정량 목표주가 산출

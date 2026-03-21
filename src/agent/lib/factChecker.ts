@@ -66,7 +66,7 @@ export interface FactCheckResult {
  * - 순서 무관
  * - 어느 한쪽이 빈 배열이면 스킵 (mismatch 없음)
  * - 겹침 비율 = |교집합| / |합집합|
- * - 50% 미만이면 warn mismatch 1개 반환
+ * - 50% 미만이면 block mismatch 1개 반환 (섹터 오분류는 심각한 팩트 오류)
  */
 export function compareSectors(
   dbTopSectors: string[],
@@ -90,7 +90,7 @@ export function compareSectors(
         field: "leadingSectors",
         expected: dbTopSectors.join(", "),
         actual: reportLeadingSectors.join(", "),
-        severity: "warn",
+        severity: "block",
       },
     ];
   }
@@ -102,10 +102,13 @@ export function compareSectors(
 // comparePhase2Ratio
 // ---------------------------------------------------------------------------
 
+const PHASE2_RATIO_BLOCK_THRESHOLD = 10;
+
 /**
  * Phase 2 비율의 DB 값과 리포트 값을 비교한다.
  * - NaN 방어: 어느 한쪽이 NaN이면 null 반환
- * - 절댓값 차이가 tolerance 초과 시 warn mismatch 반환
+ * - 절댓값 차이가 tolerance 초과 시 mismatch 반환
+ * - 차이가 10pp 이상이면 block, 미만이면 warn
  */
 export function comparePhase2Ratio(
   dbRatio: number,
@@ -121,12 +124,14 @@ export function comparePhase2Ratio(
     return null;
   }
 
+  const severity: "warn" | "block" = diff >= PHASE2_RATIO_BLOCK_THRESHOLD ? "block" : "warn";
+
   return {
     type: "phase2_ratio",
     field: "phase2Ratio",
     expected: dbRatio,
     actual: reportRatio,
-    severity: "warn",
+    severity,
   };
 }
 
@@ -197,13 +202,19 @@ export function compareSymbolRs(
 /**
  * mismatch 목록을 바탕으로 전체 심각도를 결정한다.
  * - 0개: 'ok'
- * - 1개: 'warn'
- * - 2개 이상: 'block'
+ * - block severity mismatch 1개 이상: 즉시 'block'
+ * - warn mismatch만 존재하는 경우: 1개 → 'warn', 2개 이상 → 'block'
  */
 export function aggregateSeverity(mismatches: Mismatch[]): Severity {
   if (mismatches.length === 0) {
     return "ok";
   }
+
+  const hasBlockMismatch = mismatches.some((m) => m.severity === "block");
+  if (hasBlockMismatch) {
+    return "block";
+  }
+
   if (mismatches.length === 1) {
     return "warn";
   }

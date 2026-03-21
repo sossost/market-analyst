@@ -27,6 +27,7 @@ import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord
 import { createGist } from "./gist";
 import { logger } from "./logger";
 import { runDebateQA, type DebateQAResult } from "./debateQA";
+import { reportQAIssue } from "./lib/qaIssueReporter";
 import { runReviewPipeline, draftsToFullContent, type ReportDraft } from "./reviewAgent";
 import { loadFundamentalData } from "../lib/fundamental-data-loader";
 import { scoreFundamentals, promoteTopToS } from "../lib/fundamental-scorer";
@@ -453,6 +454,26 @@ async function main() {
     .filter((s) => s.length > 0)
     .join("\n\n");
 
+  // 4.5. 마켓 스냅샷 ETL 실패 시그널 검증
+  // phase2Ratio === 0 && totalStocks === 0 은 ETL 미완료 또는 데이터 누락을 의미한다.
+  const ETL_FAILURE_MARKER = 0;
+  const breadth = marketSnapshot.breadth;
+  const isEtlFailed = breadth != null &&
+    (breadth.phase2Ratio === ETL_FAILURE_MARKER || breadth.phase2Ratio == null) &&
+    breadth.totalStocks === ETL_FAILURE_MARKER;
+
+  if (isEtlFailed) {
+    logger.error(
+      "DebateIntegrity",
+      `ETL 실패 시그널 감지 (${debateDate}): phase2Ratio=0, totalStocks=0 — 토론 데이터 신뢰 불가. 프로세스를 중단합니다.`,
+    );
+    await sendDiscordError(
+      `ETL 실패 감지 (${debateDate}): market breadth 데이터가 비어 있습니다. phase2Ratio=0, totalStocks=0. ETL 파이프라인을 즉시 점검하세요.`,
+    );
+    await pool.end();
+    process.exit(1);
+  }
+
   // 5. 토론 실행
   logger.step(`[5/7] Running debate for ${debateDate}...`);
 
@@ -514,6 +535,19 @@ async function main() {
     });
   } catch (err) {
     logger.warn("Session", `Failed to save session: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 6.5. 토론 데이터 완전성 검증 (저장 후, 발송 전)
+  const allTickersEmpty = result.round3.theses.length > 0 &&
+    result.round3.theses.every((t) => (t.beneficiaryTickers ?? []).length === 0);
+  if (allTickersEmpty) {
+    logger.warn("DebateIntegrity", "모든 thesis의 beneficiaryTickers가 빈 배열 — 종목 추출 실패 가능성");
+    await sendDiscordMessage(
+      `⚠️ **[토론 데이터 경고]** ${debateDate}: 모든 thesis의 beneficiaryTickers가 비어 있습니다. 종목 추출 로직을 점검하세요.`,
+    ).catch((err) => {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn("DebateIntegrity", `경고 Discord 발송 실패: ${reason}`);
+    });
   }
 
   // 7. 조건부 Discord 발송 (QA + 리뷰 파이프라인 적용)
@@ -581,11 +615,17 @@ async function main() {
       },
     ];
 
-    // QA 경고가 있으면 draft에 경고 블록 삽입
+    // QA 경고가 있으면 draft에 경고 블록 삽입 + 이슈 생성
     if (debateQAResult != null && (debateQAResult.severity === "block" || debateQAResult.severity === "warn")) {
       const level = debateQAResult.severity === "block" ? "BLOCK" : "WARN";
       logger.warn("DebateQA", `${level} — 경고 문구를 브리핑에 삽입합니다`);
       drafts = withDebateQAWarning(drafts, debateQAResult);
+      try {
+        await reportQAIssue(debateQAResult, debateDate, "debate");
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        logger.warn("DebateQA", `QA 이슈 생성 실패 (비블로킹): ${reason}`);
+      }
     }
 
     // 9. 리뷰 파이프라인 → 최종 발송

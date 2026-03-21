@@ -24,6 +24,8 @@ import {
   type ReportDraft,
 } from "./reviewAgent";
 import { runDailyQA, type DailyQAResult } from "./dailyQA";
+import { reportQAIssue } from "./lib/qaIssueReporter";
+import { filterDeclinedSymbols, formatDeclineWarning } from "./lib/priceDeclineFilter";
 import type { AgentTool } from "./tools/types";
 import type { ReportData } from "./lib/factChecker";
 import {
@@ -248,6 +250,7 @@ async function main() {
         const level = qaResult.severity === "block" ? "BLOCK" : "WARN";
         logger.warn("DailyQA", `${level} — 경고 문구를 리포트에 삽입합니다`);
         finalDrafts = withQAWarning(reportDrafts, qaResult);
+        await reportQAIssue(qaResult, targetDate, "daily");
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -255,6 +258,24 @@ async function main() {
     }
   } else {
     logger.info("DailyQA", "reportData 미캡처 — QA 스킵");
+  }
+
+  // 8-B. 급락 종목 경고 — QA 이후 실행 (비블로킹)
+  if (capturedReport.data != null && capturedReport.data.reportedSymbols.length > 0) {
+    try {
+      const reportedSymbolNames = capturedReport.data.reportedSymbols.map((s) => s.symbol);
+      const declined = await filterDeclinedSymbols(reportedSymbolNames, targetDate);
+
+      if (declined.length > 0 && finalDrafts.length > 0) {
+        const warningSection = formatDeclineWarning(declined, targetDate);
+        const [first, ...rest] = finalDrafts;
+        finalDrafts = [{ ...first, message: `${first.message}\n\n${warningSection}` }, ...rest];
+        logger.warn("PriceDeclineFilter", `급락 경고 ${declined.length}건 — 리포트에 섹션 추가`);
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn("PriceDeclineFilter", `급락 필터 실패 (발송은 계속 진행): ${reason}`);
+    }
   }
 
   // 9. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
