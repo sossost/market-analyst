@@ -12,7 +12,7 @@ vi.mock("@/db/client", () => ({
 }));
 
 // logger mock
-vi.mock("@/agent/logger", () => ({
+vi.mock("@/lib/logger", () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -168,11 +168,11 @@ describe("validateCrossReport", () => {
   it("DB 조회 실패 시 예외 전파 없이 ok 반환", async () => {
     mockQuery.mockRejectedValueOnce(new Error("DB connection failed"));
 
-    await expect(validateCrossReport("2026-03-21")).resolves.not.toThrow();
+    const result = await validateCrossReport("2026-03-21");
 
-    const result = await validateCrossReport("2026-03-21").catch(() => null);
-    // Promise가 reject되지 않아야 함
+    // Promise가 reject되지 않고 ok를 반환해야 함
     expect(result).not.toBeNull();
+    expect(result.severity).toBe("ok");
   });
 
   // ────────────────────────────────────────────

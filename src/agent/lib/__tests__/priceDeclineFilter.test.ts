@@ -12,7 +12,7 @@ vi.mock("@/db/client", () => ({
 }));
 
 // logger mock
-vi.mock("@/agent/logger", () => ({
+vi.mock("@/lib/logger", () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),

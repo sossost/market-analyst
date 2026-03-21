@@ -5,8 +5,11 @@
 // DRY_RUN=1 환경변수로 실제 이슈 생성 없이 로그만 출력.
 // ---------------------------------------------------------------------------
 
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { logger } from "@/lib/logger";
+
+const execFileAsync = promisify(execFile);
 import type { DailyQAResult } from "../dailyQA";
 import type { DebateQAResult } from "../debateQA";
 
@@ -74,19 +77,22 @@ export function buildIssueTitle(
 }
 
 // ---------------------------------------------------------------------------
-// Issue creation — exec을 콜백 기반으로 직접 래핑 (테스트 가능성 확보)
+// Issue creation — execFile로 셸 인젝션 구조적 차단
 // ---------------------------------------------------------------------------
 
-function execCommand(command: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, _stderr) => {
-      if (error != null) {
-        reject(error);
-        return;
-      }
-      resolve(stdout);
-    });
-  });
+async function findExistingIssue(titleKeyword: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("gh", [
+      "issue", "list",
+      "--search", `${titleKeyword} in:title`,
+      "--state", "open",
+      "--limit", "1",
+    ]);
+    return stdout.trim().length > 0;
+  } catch {
+    // 탐색 실패 시 중복 체크 스킵 — 이슈 생성 계속 진행
+    return false;
+  }
 }
 
 async function createGitHubIssue(
@@ -101,13 +107,18 @@ async function createGitHubIssue(
     return;
   }
 
-  const labelArgs = labels.map((l) => `--label "${l}"`).join(" ");
-  const escapedTitle = title.replace(/"/g, '\\"');
-  const escapedBody = body.replace(/"/g, '\\"').replace(/\n/g, "\\n");
+  const alreadyExists = await findExistingIssue(title);
+  if (alreadyExists) {
+    logger.info("QAIssueReporter", `중복 이슈 감지 — 생성 스킵: "${title}"`);
+    return;
+  }
 
-  const command = `gh issue create --title "${escapedTitle}" --body "${escapedBody}" ${labelArgs}`;
-
-  const stdout = await execCommand(command);
+  const { stdout } = await execFileAsync("gh", [
+    "issue", "create",
+    "--title", title,
+    "--body", body,
+    ...labels.flatMap((l) => ["--label", l]),
+  ]);
   const issueUrl = stdout.trim();
   logger.info("QAIssueReporter", `이슈 생성 완료: ${issueUrl}`);
 }

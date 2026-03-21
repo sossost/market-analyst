@@ -456,10 +456,11 @@ async function main() {
 
   // 4.5. 마켓 스냅샷 ETL 실패 시그널 검증
   // phase2Ratio === 0 && totalStocks === 0 은 ETL 미완료 또는 데이터 누락을 의미한다.
+  const ETL_FAILURE_MARKER = 0;
   const breadth = marketSnapshot.breadth;
   const isEtlFailed = breadth != null &&
-    (breadth.phase2Ratio === 0 || breadth.phase2Ratio == null) &&
-    breadth.totalStocks === 0;
+    (breadth.phase2Ratio === ETL_FAILURE_MARKER || breadth.phase2Ratio == null) &&
+    breadth.totalStocks === ETL_FAILURE_MARKER;
 
   if (isEtlFailed) {
     logger.error(
@@ -619,7 +620,12 @@ async function main() {
       const level = debateQAResult.severity === "block" ? "BLOCK" : "WARN";
       logger.warn("DebateQA", `${level} — 경고 문구를 브리핑에 삽입합니다`);
       drafts = withDebateQAWarning(drafts, debateQAResult);
-      await reportQAIssue(debateQAResult, debateDate, "debate");
+      try {
+        await reportQAIssue(debateQAResult, debateDate, "debate");
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        logger.warn("DebateQA", `QA 이슈 생성 실패 (비블로킹): ${reason}`);
+      }
     }
 
     // 9. 리뷰 파이프라인 → 최종 발송

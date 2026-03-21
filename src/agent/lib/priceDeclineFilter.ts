@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import { pool } from "@/db/client";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -49,9 +49,6 @@ async function fetchPriceData(symbols: string[], date: string): Promise<PriceRow
     return [];
   }
 
-  // PostgreSQL $1, $2, ... 파라미터 생성
-  const symbolParams = symbols.map((_, i) => `$${i + 2}`).join(", ");
-
   const result = await pool.query<PriceRow>(
     `SELECT
        dp.symbol,
@@ -72,8 +69,8 @@ async function fetchPriceData(symbols: string[], date: string): Promise<PriceRow
        ON dm.symbol = dp.symbol
        AND dm.date = $1
      WHERE dp.date = $1
-       AND dp.symbol = ANY(ARRAY[${symbolParams}])`,
-    [date, ...symbols],
+       AND dp.symbol = ANY($2::text[])`,
+    [date, symbols],
   );
 
   return result.rows;
