@@ -34,7 +34,7 @@ export function extractBranchType(title: string): BranchType {
   return match[1].toLowerCase() as BranchType
 }
 
-function buildClaudePrompt(issue: GitHubIssue, branchType: BranchType): string {
+export function buildClaudePrompt(issue: GitHubIssue, branchType: BranchType): string {
   const branchName = `${branchType}/issue-${issue.number}`
 
   return `## 미션
@@ -55,20 +55,28 @@ ${issue.body || '(본문 없음)'}
 ## 실행 순서
 
 1. \`git checkout -b ${branchName}\` 브랜치 생성
-2. 이슈 내용을 분석하고 구현
-3. 테스트가 통과하는지 확인
-4. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함)
-5. \`git push -u origin ${branchName}\`
-6. PR 생성:
+2. 이슈 분석 후 \`docs/features/[feature-name]/plan.md\` 기획서 작성:
+   - feature-name은 이슈 타이틀에서 kebab-case로 도출
+   - 포함 항목: 문제 정의, Before→After, 변경 사항, 작업 계획, 리스크
+3. 기획서 자체 검증:
+   - 골 정렬: "Phase 2 주도섹터/주도주 초입 포착" 목표와의 관계 (ALIGNED/SUPPORT/NEUTRAL/MISALIGNED)
+   - 무효 판정: LLM 백테스트 등 무효 패턴 해당 여부
+   - 구현 범위: 불필요한 제약 조건 없는지 확인. MISALIGNED이면 구현 중단 후 PR body에 이유 기재.
+4. 기획서 기반 구현
+5. 테스트가 통과하는지 확인 (커버리지 80%+)
+6. 코드 셀프 리뷰: CRITICAL/HIGH 이슈 있으면 수정 후 재확인
+7. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함, 기획서도 함께 커밋)
+8. \`git push -u origin ${branchName}\`
+9. PR 생성:
    - \`.github/PULL_REQUEST_TEMPLATE.md\` 파일을 읽고 그 형식에 맞춰 PR body를 작성하라
    - body 첫 줄에 반드시 \`Closes #${issue.number}\` 포함
-   - "전략비서 체크" 섹션은 CLAUDE.md의 프로젝트 골을 기준으로 자체 판단:
-     - 골 정렬: "Phase 2 주도섹터/주도주 초입 포착" 목표에 부합하는지
+   - "전략비서 체크" 섹션은 기획서 검증 결과를 그대로 반영:
+     - 골 정렬: 기획서의 골 정렬 판정 (ALIGNED/SUPPORT/NEUTRAL/MISALIGNED)
      - 무기 품질: 구현 품질 (타입 안전성, 테스트 커버리지, 에러 핸들링)
-     - 무효 판정: LLM 백테스트 등 무효 패턴에 해당하지 않는지
+     - 무효 판정: 기획서의 무효 판정 결과
      - 종합: PROCEED / HOLD / REJECT
-   - \`gh pr create --title "..." --body "..."\`로 PR 생성
-7. **반드시** \`git checkout main\`을 실행하여 main 브랜치로 복귀하라. PR 생성 후 피처 브랜치에 잔류하면 이후 cron 작업 전체가 장애 난다.
+   - \`gh pr create --title "..." --body "..."\` 로 PR 생성
+10. **반드시** \`git checkout main\`을 실행하여 main 브랜치로 복귀하라. PR 생성 후 피처 브랜치에 잔류하면 이후 cron 작업 전체가 장애 난다.
 
 ## 규칙
 - main 브랜치에 직접 커밋하지 마라
