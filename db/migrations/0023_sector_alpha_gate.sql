@@ -1,0 +1,1 @@
+ALTER TABLE "narrative_chains" ADD COLUMN "alpha_compatible" boolean;

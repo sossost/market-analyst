@@ -6,6 +6,10 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../logger.js";
 import type { Thesis } from "../../types/debate.js";
+import {
+  runSectorAlphaGate,
+  STRUCTURAL_OBSERVATION_TAG,
+} from "../tools/sectorAlphaGate.js";
 
 /**
  * Jaccard word similarity between two strings.
@@ -184,6 +188,13 @@ export async function recordNarrativeChain(
 
     const existing = await findMatchingChain(info.megatrend, info.bottleneck);
 
+    // Sector Alpha Gate — 수혜 섹터 SEPA 적합성 평가
+    const alphaGateResult = info.beneficiarySectors.length > 0
+      ? await runSectorAlphaGate(info.beneficiarySectors)
+      : null;
+
+    const alphaCompatible = alphaGateResult?.alphaCompatible ?? null;
+
     if (existing != null) {
       // Update existing chain
       const updatedThesisIds = [...new Set([...existing.linkedThesisIds, thesisId])];
@@ -207,6 +218,7 @@ export async function recordNarrativeChain(
             ...(info.nextBottleneck != null && { nextBottleneck: info.nextBottleneck }),
             ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
             ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
+            ...(alphaCompatible != null && { alphaCompatible }),
           })
           .where(eq(narrativeChains.id, existing.id));
       } else {
@@ -218,13 +230,14 @@ export async function recordNarrativeChain(
             ...(info.nextBottleneck != null && { nextBottleneck: info.nextBottleneck }),
             ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
             ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
+            ...(alphaCompatible != null && { alphaCompatible }),
           })
           .where(eq(narrativeChains.id, existing.id));
       }
 
       logger.info(
         "NarrativeChain",
-        `Updated chain #${existing.id} (status: ${info.status}, theses: ${updatedThesisIds.length})`,
+        `Updated chain #${existing.id} (status: ${info.status}, theses: ${updatedThesisIds.length}${alphaCompatible === false ? `, ${STRUCTURAL_OBSERVATION_TAG}` : ""})`,
       );
     } else {
       // Create new chain
@@ -241,12 +254,13 @@ export async function recordNarrativeChain(
           beneficiarySectors: info.beneficiarySectors,
           beneficiaryTickers: info.beneficiaryTickers,
           linkedThesisIds: [thesisId],
+          ...(alphaCompatible != null && { alphaCompatible }),
         })
         .returning({ id: narrativeChains.id });
 
       logger.info(
         "NarrativeChain",
-        `Created chain #${result[0]?.id} for "${info.bottleneck}" (megatrend: ${info.megatrend})`,
+        `Created chain #${result[0]?.id} for "${info.bottleneck}" (megatrend: ${info.megatrend}${alphaCompatible === false ? `, ${STRUCTURAL_OBSERVATION_TAG}` : ""})`,
       );
     }
   } catch (err) {
