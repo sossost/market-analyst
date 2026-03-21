@@ -163,7 +163,7 @@
 | Phase 2 ratio 방어 | 이중 변환 방어 + bull-bias 감지 (PR #151) |
 | 수치 기준 명시 강제 | 프롬프트에 정량 근거 의무화 (PR #161) |
 | 조건부 발송 게이트 | 품질 미달 시 발송 차단 (PR #162) |
-| Auto Issue Processor | GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성 (PR #154) |
+| Auto Issue Processor | GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성 (PR #154); 10단계 프로토콜 강화 — plan.md 작성 → 골 정렬 검증 → 구현 → 셀프 리뷰 (PR #371) |
 | Auto PR Reviewer | 이슈 프로세서 생성 PR → Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (PR #364) |
 | QA 에이전트 고도화 | 이슈 기준 강화(총점 ≤32) + severity 세분화(섹터 오분류→block) + 교차 리포트 정합성 검증 + 급락 필터 + 저장 전 완전성 검증 (PR #362) |
 

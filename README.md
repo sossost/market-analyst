@@ -320,7 +320,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **Phase N** Narrative Layer — 수요-공급-병목 서사 프레임 + thesis 카테고리 분리 + N+1 병목 예측 + 합의도 추적 + 실패 패턴 축적 + 병목 체인 추적 (N-1, Wave 2a/2b 완료)
 - [x] **Sector Lag Pattern** — 섹터 간 Phase 전이 시차 축적 + 선행 경보 → 주간 에이전트 연동
 - [x] **일간 품질 검증** — Claude Code CLI 기반 리포트 QA + 조건부 발송 게이트 + bull-bias 감지
-- [x] **자율 이슈 처리** — Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
+- [x] **자율 이슈 처리** — Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성 (10단계 프로토콜: plan.md 작성 → 골 정렬 검증 → 구현 → 셀프 리뷰 → PR)
 - [x] **자동 PR 리뷰** — Auto PR Reviewer: 이슈 프로세서 생성 PR → Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (#364)
 
 ### Next (진행 예정)
