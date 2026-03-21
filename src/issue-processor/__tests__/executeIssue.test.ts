@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { extractBranchType } from '../executeIssue.js'
+import { extractBranchType, buildClaudePrompt } from '../executeIssue.js'
 
 // ---------------------------------------------------------------------------
 // 모킹
@@ -30,6 +30,44 @@ vi.mock('../prThreadStore.js', () => ({
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }))
+
+// ---------------------------------------------------------------------------
+// buildClaudePrompt — 프로토콜 통일 검증
+// ---------------------------------------------------------------------------
+
+describe('buildClaudePrompt — 프로토콜 통일 검증', () => {
+  const issue = { number: 99, title: 'feat: 테스트', body: '테스트 본문', labels: [], author: 'test' }
+  const prompt = buildClaudePrompt(issue, 'feat')
+
+  it('기획서(plan.md) 작성 지시를 포함한다', () => {
+    expect(prompt).toContain('plan.md')
+    expect(prompt).toContain('기획서')
+  })
+
+  it('코드 셀프 리뷰 지시를 포함한다', () => {
+    expect(prompt).toContain('셀프 리뷰')
+  })
+
+  it('main 복귀 지시를 포함한다', () => {
+    expect(prompt).toContain('git checkout main')
+  })
+
+  it('이슈 번호와 브랜치 이름을 프롬프트에 삽입한다', () => {
+    expect(prompt).toContain(`#${issue.number}`)
+    expect(prompt).toContain('feat/issue-99')
+    expect(prompt).toContain(`Closes #${issue.number}`)
+  })
+
+  it('이슈 본문을 untrusted-issue 블록 안에 격리한다', () => {
+    const blockStart = prompt.indexOf('<untrusted-issue>')
+    const blockEnd = prompt.indexOf('</untrusted-issue>')
+    const bodyPosition = prompt.indexOf('테스트 본문')
+    expect(blockStart).toBeGreaterThan(-1)
+    expect(blockEnd).toBeGreaterThan(blockStart)
+    expect(bodyPosition).toBeGreaterThan(blockStart)
+    expect(bodyPosition).toBeLessThan(blockEnd)
+  })
+})
 
 // ---------------------------------------------------------------------------
 // extractBranchType 테스트
