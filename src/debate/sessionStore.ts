@@ -2,6 +2,7 @@ import { db } from "@/db/client";
 import { debateSessions } from "@/db/schema/analyst";
 import { eq, desc, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { extractDailyInsight } from "./insightExtractor.js";
 import type { DebateResult } from "@/types/debate";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 
@@ -192,4 +193,42 @@ export async function buildFewShotContext(
   lines.push("</past-sessions>");
 
   return lines.join("\n");
+}
+
+/**
+ * 일간 에이전트가 오늘의 토론 인사이트를 조회한다.
+ * debate_sessions 테이블에서 해당 날짜의 synthesisReport를 읽어 핵심 인사이트를 추출한다.
+ *
+ * 토론이 완료되지 않았거나 세션이 없으면 빈 문자열을 반환한다.
+ * fail-open 설계: 인사이트 없이도 일간 브리핑이 발송 가능하도록 예외를 잡는다.
+ *
+ * @param date - 조회할 날짜 (YYYY-MM-DD)
+ * @returns 추출된 핵심 인사이트. 세션 없음 또는 오류 시 빈 문자열.
+ */
+export async function loadTodayDebateInsight(date: string): Promise<string> {
+  try {
+    const rows = await db
+      .select({ synthesisReport: debateSessions.synthesisReport })
+      .from(debateSessions)
+      .where(eq(debateSessions.date, date))
+      .limit(1);
+
+    const session = rows[0] ?? null;
+    if (session == null) {
+      logger.info("SessionStore", `No debate session for ${date} — insight skipped`);
+      return "";
+    }
+
+    const insight = extractDailyInsight(session.synthesisReport);
+    if (insight.length === 0) {
+      logger.info("SessionStore", `Debate session found for ${date} but no insight extractable`);
+    }
+    return insight;
+  } catch (err) {
+    logger.warn(
+      "SessionStore",
+      `loadTodayDebateInsight failed for ${date}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return "";
+  }
 }
