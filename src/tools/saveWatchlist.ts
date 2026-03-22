@@ -6,7 +6,7 @@
  * 중복 등록(동일 symbol의 ACTIVE 항목)은 차단한다.
  */
 
-import { db } from "@/db/client";
+import { db, pool } from "@/db/client";
 import { watchlistStocks } from "@/db/schema/analyst";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
@@ -20,6 +20,7 @@ import {
 } from "@/db/repositories/watchlistRepository.js";
 import { calculateTrackingEndDate } from "@/lib/watchlistTracker.js";
 import { logger } from "@/lib/logger";
+import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -251,6 +252,25 @@ async function executeRegister(
     "SaveWatchlist",
     `${symbol}: 관심종목 등록 완료 (SEPA: ${sepaGrade ?? "N/A"}, Phase: ${phase}, RS: ${rsScore ?? "N/A"}, thesis: ${thesisId ?? "없음"})`,
   );
+
+  // 종목 심층 리포트 생성 (fire-and-forget)
+  // 관심종목 등록 성공 시 corporate analyst를 비동기로 실행한다.
+  // 실패가 관심종목 저장 성공에 영향을 주지 않도록 await 없이 실행.
+  runCorporateAnalyst(symbol, date, pool)
+    .then((result) => {
+      if (result.success === false) {
+        logger.warn(
+          "CorporateAnalyst",
+          `${symbol} 관심종목 등록 후 심층 리포트 생성 실패: ${result.error}`,
+        );
+      }
+    })
+    .catch((err) =>
+      logger.error(
+        "CorporateAnalyst",
+        `${symbol} 관심종목 등록 후 예상치 못한 에러: ${String(err)}`,
+      ),
+    );
 
   return JSON.stringify({
     success: true,

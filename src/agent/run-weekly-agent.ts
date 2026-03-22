@@ -19,8 +19,10 @@ import { getStockDetail } from "@/tools/getStockDetail";
 import { searchCatalyst } from "@/tools/searchCatalyst";
 import { readReportHistory } from "@/tools/readReportHistory";
 import { saveReportLogTool } from "@/tools/saveReportLog";
-import { saveRecommendations } from "@/tools/saveRecommendations";
-import { readRecommendationPerformance } from "@/tools/readRecommendationPerformance";
+// saveRecommendations, readRecommendationPerformance: 주간 에이전트 도구에서 제거됨.
+// 코드 파일은 ETL 의존성이 있으므로 유지.
+import { saveWatchlist } from "@/tools/saveWatchlist";
+import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
 import { readRegimePerformance } from "@/tools/readRegimePerformance";
 import {
   createDraftCaptureTool,
@@ -172,21 +174,28 @@ async function main() {
     logger.info("Signal", "백테스트 성과 요약 로드 완료");
   }
 
-  // 3.10. 추천 성과 피드백 로드
-  let recommendationPerformance = "";
+  // 3.10. 관심종목 현황 사전 로드 (에이전트 컨텍스트 주입용 — 에이전트도 get_watchlist_status로 재조회)
+  let watchlistContext = "";
   try {
-    const perfRaw = await readRecommendationPerformance.execute({ status: "ALL" });
-    const perf = JSON.parse(perfRaw) as { summary: { closedCount: number; winRate: number; avgPnlPercent: number; avgDaysHeld: number } };
-    const s = perf.summary;
-    if (s.closedCount > 0) {
-      recommendationPerformance = `최근 ${s.closedCount}건 종료 기준 — 승률 ${s.winRate}%, 평균 PnL ${s.avgPnlPercent}%, 평균 보유 ${s.avgDaysHeld}일`;
-      if (s.winRate < 50) {
-        recommendationPerformance += "\n⚠️ 승률 50% 미만 — 보수적 기준 적용 권장";
+    const watchlistRaw = await getWatchlistStatus.execute({ include_trajectory: false });
+    const watchlistData = JSON.parse(watchlistRaw) as {
+      count?: number;
+      summary?: { totalActive: number; phaseChanges: unknown[] };
+      items?: unknown[];
+    };
+    const totalActive = watchlistData.summary?.totalActive ?? watchlistData.count ?? 0;
+    if (totalActive > 0) {
+      watchlistContext = `현재 ACTIVE 관심종목 ${totalActive}개 추적 중`;
+      const phaseChanges = watchlistData.summary?.phaseChanges;
+      if (Array.isArray(phaseChanges) && phaseChanges.length > 0) {
+        watchlistContext += ` (Phase 전이 ${phaseChanges.length}건 감지)`;
       }
-      logger.info("RecPerf", `추천 성과 로드 완료: 승률 ${s.winRate}%, ${s.closedCount}건`);
+      logger.info("Watchlist", `관심종목 현황 로드 완료: ACTIVE ${totalActive}개`);
+    } else {
+      logger.info("Watchlist", "ACTIVE 관심종목 없음 — 컨텍스트 생략");
     }
   } catch (err) {
-    logger.warn("RecPerf", `추천 성과 로드 실패 (에이전트는 계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+    logger.warn("Watchlist", `관심종목 현황 로드 실패 (에이전트는 계속 진행): ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // 4. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
@@ -196,7 +205,15 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildWeeklySystemPrompt({ fundamentalSupplement, thesesContext, signalPerformance, narrativeChainsSummary, sectorLagContext, regimeContext, recommendationPerformance }),
+    systemPrompt: buildWeeklySystemPrompt({
+      fundamentalSupplement,
+      thesesContext,
+      signalPerformance,
+      narrativeChainsSummary,
+      sectorLagContext,
+      regimeContext,
+      watchlistContext,
+    }),
     tools: [
       getIndexReturns,
       getMarketBreadth,
@@ -208,11 +225,11 @@ async function main() {
       getStockDetail,
       searchCatalyst,
       readReportHistory,
-      readRecommendationPerformance,
       readRegimePerformance,
+      getWatchlistStatus,
+      saveWatchlist,
       createDraftCaptureTool(reportDrafts),
       saveReportLogTool,
-      saveRecommendations,
     ],
     model: MODEL,
     maxTokens: MAX_TOKENS,
