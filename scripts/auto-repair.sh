@@ -36,7 +36,6 @@ fi
 # --- Setup ---
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BRANCH_NAME="auto-repair/${REPAIR_JOB_NAME}-${TIMESTAMP}"
 PROMPT_TEMPLATE="${REPO_ROOT}/scripts/etl-repair-prompt.md"
 ERROR_LOG_FILE="/tmp/etl-repair-error-${TIMESTAMP}.log"
 REPAIR_SUCCESS=false
@@ -55,10 +54,19 @@ cleanup() {
     git branch -D "${BRANCH_NAME}" 2>/dev/null || true
   fi
   if [[ -n "${STASHED}" ]]; then
-    git stash pop 2>/dev/null || true
+    # Only pop stash if we're back on main
+    local current_branch
+    current_branch="$(git branch --show-current 2>/dev/null || echo "")"
+    if [[ "${current_branch}" == "main" ]]; then
+      git stash pop 2>/dev/null || true
+    fi
   fi
 }
 trap cleanup EXIT
+
+# --- Sanitize job name for branch/git safety ---
+JOB_SAFE="${REPAIR_JOB_NAME//[^a-zA-Z0-9_-]/_}"
+BRANCH_NAME="auto-repair/${JOB_SAFE}-${TIMESTAMP}"
 
 # --- Ensure clean working tree ---
 cd "${REPO_ROOT}"
@@ -85,7 +93,7 @@ git checkout -b "${BRANCH_NAME}"
 echo "Starting Claude Code auto-repair for: ${REPAIR_JOB_NAME}"
 
 claude -p "${PROMPT}" \
-  --allowedTools "Edit,Read,Grep,Glob,Write,Bash(git:*),Bash(gh pr create:*)" \
+  --allowedTools "Edit,Read,Grep,Glob,Write" \
   --output-format text \
   2>&1 || {
     echo "Claude Code CLI failed" >&2
