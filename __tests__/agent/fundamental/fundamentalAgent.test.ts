@@ -25,21 +25,19 @@ function makeInput(): FundamentalInput {
   return {
     symbol: "NVDA",
     quarters: [
-      { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 35_100_000_000, netIncome: 20_000_000_000, epsDiluted: 1.89, netMargin: 0.57 },
-      { periodEndDate: "2025-09-30", asOfQ: "Q3 2025", revenue: 30_000_000_000, netIncome: 16_000_000_000, epsDiluted: 1.27, netMargin: 0.15 },
+      { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 35_100_000_000, netIncome: 20_000_000_000, epsDiluted: 1.89, netMargin: 57.0 },
+      { periodEndDate: "2025-09-30", asOfQ: "Q3 2025", revenue: 30_000_000_000, netIncome: 16_000_000_000, epsDiluted: 1.27, netMargin: 15.0 },
     ],
   };
 }
 
 describe("buildUserMessage", () => {
-  it("formats netMargin as percentage (×100 conversion)", () => {
+  it("formats netMargin as percentage (already in percent form)", () => {
     const msg = buildUserMessage(makeScore(), makeInput());
 
-    // 0.57 → 57.0%, 0.15 → 15.0%
+    // netMargin은 이미 percent 단위 (normalizeMargin에서 변환 완료)
     expect(msg).toContain("마진 57.0%");
     expect(msg).toContain("마진 15.0%");
-    expect(msg).not.toContain("마진 0.57%");
-    expect(msg).not.toContain("마진 0.15%");
   });
 
   it("includes technical data section when provided", () => {
