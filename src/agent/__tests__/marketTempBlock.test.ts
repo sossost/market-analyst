@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Mock the DB-dependent module before importing
-vi.mock("../debate/marketDataLoader.js", () => ({
+vi.mock("@/debate/marketDataLoader.js", () => ({
   loadMarketSnapshot: vi.fn(),
 }));
 

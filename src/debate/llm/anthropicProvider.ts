@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicClient } from "@/lib/anthropic-client";
 import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { ConfigurationError, LLMProviderError } from "./types.js";
