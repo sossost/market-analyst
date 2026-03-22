@@ -5,9 +5,8 @@ You are fixing a failed ETL job in the market-analyst project.
 - **Branch**: {{BRANCH_NAME}}
 
 ## Error Log
-```
-{{ERROR_LOG}}
-```
+
+Error log is at file: {{ERROR_LOG_FILE}}. Read this file first.
 
 ## Related Files
 {{RELATED_FILES}}

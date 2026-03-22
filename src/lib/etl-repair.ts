@@ -1,14 +1,19 @@
-import { execSync, type ExecSyncOptions } from "node:child_process";
+import { execFile, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { logger } from "@/lib/logger";
+
+const execFileAsync = promisify(execFile);
 
 const TAG = "ETL_REPAIR";
 
 const LOCK_DIR = "/tmp";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPAIR_SCRIPT_PATH = path.resolve(
-  process.cwd(),
-  "scripts/auto-repair.sh",
+  __dirname,
+  "../../scripts/auto-repair.sh",
 );
 
 /**
@@ -22,8 +27,10 @@ const ENVIRONMENT_ERROR_PATTERNS = [
   "ECONNRESET",
   "rate limit",
   "quota exceeded",
-  "401",
-  "403",
+  "status 401",
+  "HTTP 401",
+  "status 403",
+  "HTTP 403",
   "authentication",
   "unauthorized",
   "forbidden",
@@ -189,23 +196,21 @@ export async function triggerRepair(
     // 5. Execute repair script
     logger.info(TAG, `Starting auto-repair for ${jobName}`);
 
-    const execOptions: ExecSyncOptions = {
-      cwd: process.cwd(),
-      timeout: 5 * 60 * 1_000, // 5 minute timeout
-      env: {
-        ...process.env,
-        REPAIR_JOB_NAME: jobName,
-        REPAIR_ERROR_LOG: errorLog,
-        REPAIR_RELATED_FILES: relatedFiles.join(","),
+    const { stdout: output } = await execFileAsync(
+      "bash",
+      [REPAIR_SCRIPT_PATH],
+      {
+        cwd: process.cwd(),
+        timeout: 5 * 60 * 1_000, // 5 minute timeout
+        env: {
+          ...process.env,
+          REPAIR_JOB_NAME: jobName,
+          REPAIR_ERROR_LOG: errorLog,
+          REPAIR_RELATED_FILES: relatedFiles.join(","),
+        },
+        encoding: "utf-8",
       },
-      stdio: "pipe",
-      encoding: "utf-8",
-    };
-
-    const output = execSync(
-      `bash "${REPAIR_SCRIPT_PATH}"`,
-      execOptions,
-    ) as unknown as string;
+    );
 
     // 6. Parse PR URL from output
     const prUrl = extractPrUrl(output);

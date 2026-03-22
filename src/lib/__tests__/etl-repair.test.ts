@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import {
   isEnvironmentError,
@@ -13,9 +13,37 @@ import {
 } from "../etl-repair.js";
 
 // Mock child_process
+// - execSync: used by isClaudeCliAvailable (which claude)
+// - execFile: used by triggerRepair (bash auto-repair.sh) via promisify
 vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
+  execFile: vi.fn(),
 }));
+
+// Mock node:util so that promisify(execFile) returns a function
+// that delegates to the CURRENT execFile mock — not a snapshot at load time.
+// This allows per-test control of execFile behavior.
+vi.mock("node:util", async () => {
+  const actual = await vi.importActual<typeof import("node:util")>("node:util");
+  return {
+    ...actual,
+    promisify: (fn: (...args: unknown[]) => unknown) => {
+      // Return an async function that calls the current mock via callback contract
+      return (...args: unknown[]): Promise<unknown> =>
+        new Promise((resolve, reject) => {
+          fn(...args, (err: Error | null, ...results: unknown[]) => {
+            if (err != null) {
+              reject(err);
+            } else {
+              resolve(
+                results.length === 1 ? results[0] : { stdout: results[0], stderr: results[1] },
+              );
+            }
+          });
+        });
+    },
+  };
+});
 
 // Mock fs selectively — keep real implementation for most operations
 vi.mock("node:fs", async () => {
@@ -47,9 +75,41 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-const { execSync } = await import("node:child_process");
-const mockedExecSync = vi.mocked(execSync);
+const childProcess = await import("node:child_process");
+const mockedExecSync = vi.mocked(childProcess.execSync);
+const mockedExecFile = vi.mocked(childProcess.execFile);
 const mockedFs = vi.mocked(fs);
+
+type ExecFileCallback = (
+  err: Error | null,
+  stdout: string,
+  stderr: string,
+) => void;
+
+/**
+ * Configure mockedExecFile to simulate promisify behavior.
+ * promisify(execFile) calls execFile with (file, args, options, callback).
+ * We intercept the callback and resolve/reject based on the provided handler.
+ */
+function mockExecFileResolve(stdout: string): void {
+  mockedExecFile.mockImplementation(
+    (...args: unknown[]) => {
+      const callback = args[args.length - 1] as ExecFileCallback;
+      callback(null, stdout, "");
+      return undefined as unknown as ReturnType<typeof childProcess.execFile>;
+    },
+  );
+}
+
+function mockExecFileReject(err: Error): void {
+  mockedExecFile.mockImplementation(
+    (...args: unknown[]) => {
+      const callback = args[args.length - 1] as ExecFileCallback;
+      callback(err, "", "");
+      return undefined as unknown as ReturnType<typeof childProcess.execFile>;
+    },
+  );
+}
 
 describe("isEnvironmentError", () => {
   it("detects ECONNREFUSED as environment error", () => {
@@ -64,11 +124,19 @@ describe("isEnvironmentError", () => {
     expect(isEnvironmentError("API rate limit exceeded")).toBe(true);
   });
 
-  it("detects 401 unauthorized as environment error", () => {
+  it("detects status 401 as environment error", () => {
     expect(isEnvironmentError("Request failed with status 401")).toBe(true);
   });
 
-  it("detects 403 forbidden as environment error", () => {
+  it("detects HTTP 401 as environment error", () => {
+    expect(isEnvironmentError("HTTP 401 Unauthorized")).toBe(true);
+  });
+
+  it("detects status 403 as environment error", () => {
+    expect(isEnvironmentError("Request failed with status 403")).toBe(true);
+  });
+
+  it("detects HTTP 403 as environment error", () => {
     expect(isEnvironmentError("HTTP 403 Forbidden")).toBe(true);
   });
 
@@ -78,6 +146,11 @@ describe("isEnvironmentError", () => {
 
   it("detects SSL errors", () => {
     expect(isEnvironmentError("SSL certificate problem")).toBe(true);
+  });
+
+  it("returns false for plain digits 401/403 not in http context", () => {
+    // "401" alone should NOT trigger (e.g. in a stack trace line number)
+    expect(isEnvironmentError("error at line 401 in foo.ts")).toBe(false);
   });
 
   it("returns false for code errors", () => {
@@ -245,19 +318,13 @@ describe("triggerRepair", () => {
 
   it("skips when CLI not available", async () => {
     // No lock
-    mockedFs.existsSync.mockImplementation((p) => {
-      if (String(p).includes(".lock")) return false;
-      return false;
-    });
+    mockedFs.existsSync.mockReturnValue(false);
     mockedFs.writeFileSync.mockImplementation(() => {});
     mockedFs.unlinkSync.mockImplementation(() => {});
 
-    // CLI not found
-    mockedExecSync.mockImplementation((cmd) => {
-      if (String(cmd) === "which claude") {
-        throw new Error("not found");
-      }
-      return Buffer.from("");
+    // CLI not found — execSync throws
+    mockedExecSync.mockImplementation(() => {
+      throw new Error("not found");
     });
 
     const result = await triggerRepair(baseRequest);
@@ -267,7 +334,7 @@ describe("triggerRepair", () => {
   });
 
   it("skips when repair script not found", async () => {
-    // No lock
+    // No lock, script does not exist
     mockedFs.existsSync.mockImplementation((p) => {
       if (String(p).includes(".lock")) return false;
       if (String(p).includes("auto-repair.sh")) return false;
@@ -277,12 +344,7 @@ describe("triggerRepair", () => {
     mockedFs.unlinkSync.mockImplementation(() => {});
 
     // CLI found
-    mockedExecSync.mockImplementation((cmd) => {
-      if (String(cmd) === "which claude") {
-        return Buffer.from("/usr/local/bin/claude");
-      }
-      return Buffer.from("");
-    });
+    mockedExecSync.mockReturnValue(Buffer.from("/usr/local/bin/claude"));
 
     const result = await triggerRepair(baseRequest);
 
@@ -299,18 +361,13 @@ describe("triggerRepair", () => {
     mockedFs.writeFileSync.mockImplementation(() => {});
     mockedFs.unlinkSync.mockImplementation(() => {});
 
-    // CLI found, repair succeeds with PR URL
-    // execSync with encoding: "utf-8" returns string, not Buffer
-    mockedExecSync.mockImplementation((cmd) => {
-      const cmdStr = String(cmd);
-      if (cmdStr === "which claude") {
-        return Buffer.from("/usr/local/bin/claude");
-      }
-      if (cmdStr.includes("auto-repair.sh")) {
-        return "Repair done\nhttps://github.com/sossost/market-analyst/pull/999\n" as never;
-      }
-      return Buffer.from("");
-    });
+    // CLI found
+    mockedExecSync.mockReturnValue(Buffer.from("/usr/local/bin/claude"));
+
+    // execFile (via promisify) resolves with PR URL in stdout
+    mockExecFileResolve(
+      "Repair done\nhttps://github.com/sossost/market-analyst/pull/999\n",
+    );
 
     const result = await triggerRepair(baseRequest);
 
@@ -330,16 +387,9 @@ describe("triggerRepair", () => {
     mockedFs.writeFileSync.mockImplementation(() => {});
     mockedFs.unlinkSync.mockImplementation(() => {});
 
-    mockedExecSync.mockImplementation((cmd) => {
-      const cmdStr = String(cmd);
-      if (cmdStr === "which claude") {
-        return Buffer.from("/usr/local/bin/claude");
-      }
-      if (cmdStr.includes("auto-repair.sh")) {
-        return "No changes made by Claude Code" as never;
-      }
-      return Buffer.from("");
-    });
+    mockedExecSync.mockReturnValue(Buffer.from("/usr/local/bin/claude"));
+
+    mockExecFileResolve("No changes made by Claude Code");
 
     const result = await triggerRepair(baseRequest);
 
@@ -356,16 +406,9 @@ describe("triggerRepair", () => {
     mockedFs.writeFileSync.mockImplementation(() => {});
     mockedFs.unlinkSync.mockImplementation(() => {});
 
-    mockedExecSync.mockImplementation((cmd) => {
-      const cmdStr = String(cmd);
-      if (cmdStr === "which claude") {
-        return Buffer.from("/usr/local/bin/claude");
-      }
-      if (cmdStr.includes("auto-repair.sh")) {
-        throw new Error("Script crashed");
-      }
-      return Buffer.from("");
-    });
+    mockedExecSync.mockReturnValue(Buffer.from("/usr/local/bin/claude"));
+
+    mockExecFileReject(new Error("Script crashed"));
 
     const result = await triggerRepair(baseRequest);
 
@@ -382,13 +425,9 @@ describe("triggerRepair", () => {
     mockedFs.writeFileSync.mockImplementation(() => {});
     mockedFs.unlinkSync.mockImplementation(() => {});
 
-    mockedExecSync.mockImplementation((cmd) => {
-      const cmdStr = String(cmd);
-      if (cmdStr === "which claude") {
-        return Buffer.from("/usr/local/bin/claude");
-      }
-      throw new Error("fail");
-    });
+    mockedExecSync.mockReturnValue(Buffer.from("/usr/local/bin/claude"));
+
+    mockExecFileReject(new Error("fail"));
 
     await triggerRepair(baseRequest);
 
