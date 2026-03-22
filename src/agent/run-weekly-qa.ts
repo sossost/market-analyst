@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pool } from "@/db/client";
 import { sendDiscordError } from "./discord";
-import { logger } from "./logger";
-import { ClaudeCliProvider } from "./debate/llm/claudeCliProvider.js";
-import { AnthropicProvider } from "./debate/llm/anthropicProvider.js";
-import { FallbackProvider } from "./debate/llm/fallbackProvider.js";
+import { logger } from "@/lib/logger";
+import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider.js";
+import { AnthropicProvider } from "@/debate/llm/anthropicProvider.js";
+import { FallbackProvider } from "@/debate/llm/fallbackProvider.js";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
 

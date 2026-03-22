@@ -3,8 +3,8 @@ import {
   parseQuantitativeCondition,
   evaluateQuantitativeCondition,
   tryQuantitativeVerification,
-} from "@/agent/debate/quantitativeVerifier";
-import type { MarketSnapshot } from "@/agent/debate/marketDataLoader";
+} from "@/debate/quantitativeVerifier";
+import type { MarketSnapshot } from "@/debate/marketDataLoader";
 import type { Thesis } from "@/types/debate";
 
 // ---------------------------------------------------------------------------

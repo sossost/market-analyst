@@ -16,16 +16,16 @@ vi.mock("../../../src/lib/fundamental-scorer.js", () => ({
   promoteTopToS: vi.fn(),
 }));
 
-vi.mock("../../../src/agent/fundamental/fundamentalAgent.js", () => ({
+vi.mock("@/fundamental/fundamentalAgent.js", () => ({
   analyzeFundamentals: vi.fn(),
 }));
 
-vi.mock("../../../src/agent/fundamental/stockReport.js", () => ({
+vi.mock("@/fundamental/stockReport.js", () => ({
   generateStockReport: vi.fn(),
   publishStockReport: vi.fn(),
 }));
 
-vi.mock("../../../src/agent/fundamental/stockReportQA.js", () => ({
+vi.mock("@/fundamental/stockReportQA.js", () => ({
   runStockReportQA: vi.fn().mockReturnValue({ passed: true, symbol: "TEST", date: "2026-01-01", issues: [] }),
   reportQAIssueToGitHub: vi.fn().mockResolvedValue(undefined),
 }));
@@ -47,9 +47,9 @@ vi.mock("../../../src/agent/logger.js", () => ({
 import { db } from "../../../src/db/client.js";
 import { loadFundamentalData } from "../../../src/lib/fundamental-data-loader.js";
 import { scoreFundamentals, promoteTopToS } from "../../../src/lib/fundamental-scorer.js";
-import { analyzeFundamentals } from "../../../src/agent/fundamental/fundamentalAgent.js";
-import { generateStockReport, publishStockReport } from "../../../src/agent/fundamental/stockReport.js";
-import { runFundamentalValidation } from "../../../src/agent/fundamental/runFundamentalValidation.js";
+import { analyzeFundamentals } from "@/fundamental/fundamentalAgent.js";
+import { generateStockReport, publishStockReport } from "@/fundamental/stockReport.js";
+import { runFundamentalValidation } from "@/fundamental/runFundamentalValidation.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 

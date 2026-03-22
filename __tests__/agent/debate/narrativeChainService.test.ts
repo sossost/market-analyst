@@ -64,7 +64,7 @@ import {
   parseBottleneckFromThesis,
   findMatchingChain,
   recordNarrativeChain,
-} from "../../../src/agent/debate/narrativeChainService.js";
+} from "@/debate/narrativeChainService.js";
 
 describe("narrativeChainService", () => {
   beforeEach(() => {

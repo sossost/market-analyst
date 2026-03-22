@@ -25,7 +25,7 @@ vi.mock("@/etl/utils/retry", () => ({
   retryDatabaseOperation: vi.fn((fn: () => unknown) => fn()),
   DEFAULT_RETRY_OPTIONS: {},
 }));
-vi.mock("@/agent/logger", () => ({
+vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock("@/etl/utils/common", () => ({

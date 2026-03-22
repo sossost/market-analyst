@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { executeTool } from "@/agent/tools/index";
-import type { AgentTool } from "@/agent/tools/types";
+import { executeTool } from "@/tools/index";
+import type { AgentTool } from "@/tools/types";
 
 function createMockTool(
   name: string,

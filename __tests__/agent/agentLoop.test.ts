@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentConfig } from "@/agent/tools/types";
-import type { AgentTool } from "@/agent/tools/types";
+import type { AgentConfig } from "@/tools/types";
+import type { AgentTool } from "@/tools/types";
 
 // Mock the Anthropic SDK
 const mockCreate = vi.fn();

@@ -9,9 +9,9 @@
 import "dotenv/config";
 import pLimit from "p-limit";
 import { pool } from "@/db/client";
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 import { sendDiscordMessage, sendDiscordError } from "./discord";
-import { runCorporateAnalyst } from "./corporateAnalyst/runCorporateAnalyst.js";
+import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
 
 // ------- 상수 -------
 const CONCURRENCY_LIMIT = 2;

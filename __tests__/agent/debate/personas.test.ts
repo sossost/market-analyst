@@ -4,7 +4,7 @@ import {
   loadModeratorPersona,
   loadAllPersonas,
   getAvailableAgentFiles,
-} from "../../../src/agent/debate/personas.js";
+} from "@/debate/personas.js";
 import type { AgentPersona } from "../../../src/types/debate.js";
 
 describe("personas", () => {

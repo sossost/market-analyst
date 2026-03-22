@@ -6,7 +6,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "MIGRATE";
 

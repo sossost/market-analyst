@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { and, desc, eq } from "drizzle-orm";
 import type { DailyReportLog } from "@/types";
-import { db } from "../db/client.js";
-import { dailyReports } from "../db/schema/analyst.js";
-import { logger } from "./logger";
+import { db } from "@/db/client.js";
+import { dailyReports } from "@/db/schema/analyst.js";
+import { logger } from "@/lib/logger";
 
 const REPORTS_DIR = path.resolve(process.cwd(), "data/reports");
 

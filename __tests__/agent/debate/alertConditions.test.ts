@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { DebateResult, Thesis } from "../../../src/types/debate.js";
-import type { MarketSnapshot } from "../../../src/agent/debate/marketDataLoader.js";
+import type { MarketSnapshot } from "@/debate/marketDataLoader.js";
 import { sanitizeErrorForDiscord } from "@/agent/discord";
 
 // Minimal snapshot type for testing (matches MarketSnapshot shape)

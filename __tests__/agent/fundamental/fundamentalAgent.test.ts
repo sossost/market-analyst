@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildUserMessage } from "../../../src/agent/fundamental/fundamentalAgent.js";
+import { buildUserMessage } from "@/fundamental/fundamentalAgent.js";
 import type { FundamentalScore, FundamentalInput } from "../../../src/types/fundamental.js";
 
 function makeScore(overrides: Partial<FundamentalScore> = {}): FundamentalScore {

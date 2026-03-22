@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const connectionString = process.env.DATABASE_URL;
 if (connectionString == null || connectionString === "") {

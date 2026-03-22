@@ -1,40 +1,40 @@
 import "dotenv/config";
 import { pool } from "@/db/client";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
-import { runDebate } from "./debate/debateEngine";
-import { buildMemoryContext } from "./debate/memoryLoader";
-import { loadMarketSnapshot, formatMarketSnapshot } from "./debate/marketDataLoader";
-import { collectNews, formatNewsForPersona } from "./debate/newsCollector";
-import { loadNewsForPersona } from "./debate/newsLoader";
-import { saveTheses, resolveOrExpireStaleTheses, getThesisStats } from "./debate/thesisStore";
+import { runDebate } from "@/debate/debateEngine";
+import { buildMemoryContext } from "@/debate/memoryLoader";
+import { loadMarketSnapshot, formatMarketSnapshot } from "@/debate/marketDataLoader";
+import { collectNews, formatNewsForPersona } from "@/debate/newsCollector";
+import { loadNewsForPersona } from "@/debate/newsLoader";
+import { saveTheses, resolveOrExpireStaleTheses, getThesisStats } from "@/debate/thesisStore";
 import {
   validateRegimeInput,
   saveRegimePending,
   applyHysteresis,
   loadConfirmedRegime,
-} from "./debate/regimeStore";
+} from "@/debate/regimeStore";
 import {
   getRegimePerformanceSummary,
   formatRegimePerformanceForPrompt,
-} from "./debate/regimeThesisAnalyzer";
+} from "@/debate/regimeThesisAnalyzer";
 import {
   getCalibrationResult,
   formatCalibrationForPrompt,
   buildPerAgentCalibrationContexts,
-} from "./debate/confidenceCalibrator";
-import { verifyTheses } from "./debate/thesisVerifier";
-import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
+} from "@/debate/confidenceCalibrator";
+import { verifyTheses } from "@/debate/thesisVerifier";
+import { saveDebateSession, buildFewShotContext } from "@/debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
 import { createGist } from "./gist";
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 import { runDebateQA, type DebateQAResult } from "./debateQA";
-import { reportQAIssue } from "./lib/qaIssueReporter";
+import { reportQAIssue } from "@/lib/qaIssueReporter";
 import { runReviewPipeline, draftsToFullContent, type ReportDraft } from "./reviewAgent";
-import { loadFundamentalData } from "../lib/fundamental-data-loader";
-import { scoreFundamentals, promoteTopToS } from "../lib/fundamental-scorer";
-import { formatFundamentalContext } from "./debate/round3-synthesis";
-import type { DebateResult, RoundOutput } from "../types/debate";
-import type { MarketSnapshot } from "./debate/marketDataLoader";
+import { loadFundamentalData } from "@/lib/fundamental-data-loader";
+import { scoreFundamentals, promoteTopToS } from "@/lib/fundamental-scorer";
+import { formatFundamentalContext } from "@/debate/round3-synthesis";
+import type { DebateResult, RoundOutput } from "@/types/debate";
+import type { MarketSnapshot } from "@/debate/marketDataLoader";
 
 interface AlertDecision {
   send: boolean;

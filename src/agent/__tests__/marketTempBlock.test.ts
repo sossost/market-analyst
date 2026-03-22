@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Mock the DB-dependent module before importing
-vi.mock("../debate/marketDataLoader.js", () => ({
+vi.mock("@/debate/marketDataLoader.js", () => ({
   loadMarketSnapshot: vi.fn(),
 }));
 
 import { formatMarketTempBlock } from "../marketTempBlock.js";
-import type { MarketSnapshot } from "../debate/marketDataLoader.js";
+import type { MarketSnapshot } from "@/debate/marketDataLoader.js";
 
 function createFullSnapshot(overrides?: Partial<MarketSnapshot>): MarketSnapshot {
   return {

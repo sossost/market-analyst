@@ -37,18 +37,18 @@ vi.mock("@/etl/utils/common", () => ({
   },
 }));
 
-vi.mock("@/agent/debate/regimeStore", () => ({
+vi.mock("@/debate/regimeStore", () => ({
   loadConfirmedRegime: vi.fn().mockResolvedValue(null),
   loadPendingRegimes: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/agent/tools/bearExceptionGate", () => ({
+vi.mock("@/tools/bearExceptionGate", () => ({
   evaluateBearException: vi.fn(),
   tagBearExceptionReason: vi.fn((r: string | null) => r),
   BEAR_EXCEPTION_TAG: "[Bear 예외]",
 }));
 
-vi.mock("@/agent/logger", () => ({
+vi.mock("@/lib/logger", () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -56,11 +56,11 @@ vi.mock("@/agent/logger", () => ({
   },
 }));
 
-vi.mock("@/agent/corporateAnalyst/runCorporateAnalyst", () => ({
+vi.mock("@/corporate-analyst/runCorporateAnalyst", () => ({
   runCorporateAnalyst: vi.fn().mockResolvedValue({ success: true }),
 }));
 
-import { saveRecommendations } from "@/agent/tools/saveRecommendations";
+import { saveRecommendations } from "@/tools/saveRecommendations";
 
 describe("saveRecommendations", () => {
   function setupPoolMocks() {

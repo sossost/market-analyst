@@ -10,8 +10,8 @@ import {
   type ReportData,
   type Mismatch,
   type Severity,
-} from "./lib/factChecker.js";
-import { logger } from "./logger";
+} from "@/lib/factChecker";
+import { logger } from "@/lib/logger";
 
 // ────────────────────────────────────────────
 // Public interface

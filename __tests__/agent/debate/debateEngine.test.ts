@@ -34,7 +34,7 @@ process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
 process.env.OPENAI_API_KEY = "test-openai-key";
 process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test-google-key";
 
-import { runDebate } from "../../../src/agent/debate/debateEngine.js";
+import { runDebate } from "@/debate/debateEngine.js";
 
 // ─── Response factories ───────────────────────────────────────────────────────
 

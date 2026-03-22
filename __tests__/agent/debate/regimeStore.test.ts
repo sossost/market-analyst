@@ -20,7 +20,7 @@ import {
   formatRegimeForPrompt,
   areDatesConsecutive,
   type MarketRegimeRow,
-} from "../../../src/agent/debate/regimeStore.js";
+} from "@/debate/regimeStore.js";
 import type { MarketRegimeType } from "../../../src/db/schema/analyst.js";
 
 // ─── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────

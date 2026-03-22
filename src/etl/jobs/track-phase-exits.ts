@@ -7,7 +7,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { collectFailureConditions } from "@/lib/marketConditionCollector";
 import { eq, sql, isNull, and } from "drizzle-orm";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "TRACK_PHASE_EXITS";
 

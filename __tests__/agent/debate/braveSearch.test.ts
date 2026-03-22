@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { executeDebateTool, DEBATE_TOOLS } from "../../../src/agent/debate/braveSearch.js";
+import { executeDebateTool, DEBATE_TOOLS } from "@/debate/braveSearch.js";
 
 describe("braveSearch", () => {
   const originalEnv = process.env.BRAVE_API_KEY;

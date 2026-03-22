@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { generateStockReport } from "../../../src/agent/fundamental/stockReport.js";
+import { generateStockReport } from "@/fundamental/stockReport.js";
 import type { FundamentalScore, FundamentalInput, QuarterlyData } from "../../../src/types/fundamental.js";
-import type { StockReportContext } from "../../../src/agent/fundamental/stockReport.js";
+import type { StockReportContext } from "@/fundamental/stockReport.js";
 
 function makeScore(overrides: Partial<FundamentalScore> = {}): FundamentalScore {
   return {

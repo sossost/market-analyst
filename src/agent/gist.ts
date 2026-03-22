@@ -1,4 +1,4 @@
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const GITHUB_API = "https://api.github.com/gists";

@@ -4,7 +4,7 @@ import { sectorPhaseEvents } from "@/db/schema/analyst";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "DETECT_SECTOR_PHASE_EVENTS";
 

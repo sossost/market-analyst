@@ -8,7 +8,7 @@ import { calculateSignalStats } from "@/lib/signal-performance-stats";
 import { buildCeoWeeklyReport } from "@/agent/ceo-weekly-report";
 import { sendDiscordMessage } from "@/agent/discord";
 import type { ParamChangeRow } from "@/agent/ceo-weekly-report";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "GENERATE_CEO_REPORT";
 

@@ -7,9 +7,9 @@
  * DB 쿼리 실패 시에도 severity 'warn'으로 graceful 반환 — QA 실패가 발송을 막지 않는다.
  */
 import { pool } from "@/db/client";
-import { logger } from "./logger";
-import type { Thesis } from "../types/debate";
-import type { Mismatch, Severity } from "./lib/factChecker";
+import { logger } from "@/lib/logger";
+import type { Thesis } from "@/types/debate";
+import type { Mismatch, Severity } from "@/lib/factChecker";
 
 // ────────────────────────────────────────────
 // Public interface

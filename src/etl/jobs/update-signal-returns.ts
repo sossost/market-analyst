@@ -7,7 +7,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { computeSignalReturns } from "@/lib/signal-logic";
 import { eq } from "drizzle-orm";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "UPDATE_SIGNAL_RETURNS";
 

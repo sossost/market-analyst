@@ -7,7 +7,7 @@ export const BEAR_KEYWORDS_FOR_PRIORITY = ["하락", "약세", "부정", "조정
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { binomialTest } from "@/lib/statisticalTests";
 import { detectBullBias } from "@/lib/biasDetector";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "PROMOTE_LEARNINGS";
 

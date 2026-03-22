@@ -3,7 +3,7 @@ import { db, pool } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { assertValidEnvironment } from "@/etl/utils/validation";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "VERIFY_THESES";
 

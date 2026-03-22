@@ -3,7 +3,7 @@ import { db, pool } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { lt } from "drizzle-orm";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "CLEANUP_NEWS_ARCHIVE";
 

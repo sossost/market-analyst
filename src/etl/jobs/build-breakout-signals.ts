@@ -4,7 +4,7 @@ import { db, pool } from "@/db/client";
 import { dailyBreakoutSignals } from "@/db/schema/market";
 import { getLatestPriceDate, getPreviousTradeDate } from "@/etl/utils/date-helpers";
 import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "BUILD_BREAKOUT_SIGNALS";
 

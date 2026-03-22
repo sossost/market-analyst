@@ -7,7 +7,7 @@ import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
 import { asQuarter } from "@/etl/utils/date";
 import { ensureSymbol } from "@/etl/utils/db";
 import { deduplicateByQuarter } from "@/etl/utils/quarter-deduplication";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "LOAD_QUARTERLY_FINANCIALS";
 

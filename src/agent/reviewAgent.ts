@@ -1,11 +1,11 @@
 import { sendDiscordFile, sendDiscordMessage } from "./discord";
-import { createProvider } from "./debate/llm/providerFactory.js";
-import type { LLMProvider } from "./debate/llm/types.js";
+import { createProvider } from "@/debate/llm/providerFactory.js";
+import type { LLMProvider } from "@/debate/llm/types.js";
 import { createGist } from "./gist";
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from "./reviewFeedback";
-import { SEND_DISCORD_REPORT_SCHEMA } from "./tools/sendDiscordReport";
-import type { AgentTool } from "./tools/types";
+import { SEND_DISCORD_REPORT_SCHEMA } from "@/tools/sendDiscordReport";
+import type { AgentTool } from "@/tools/types";
 
 // ---------------------------------------------------------------------------
 // Types

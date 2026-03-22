@@ -9,7 +9,7 @@ import {
   DEFAULT_RETRY_OPTIONS,
 } from "@/etl/utils/retry";
 import { validateMovingAverageData } from "@/etl/utils/validation";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "BUILD_DAILY_MA";
 

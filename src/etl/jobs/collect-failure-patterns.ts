@@ -5,7 +5,7 @@ import { assertValidEnvironment } from "@/etl/utils/validation";
 import { binomialTest } from "@/lib/statisticalTests";
 import { eq, sql } from "drizzle-orm";
 import type { FailureConditions } from "@/types/failure";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "COLLECT_FAILURE_PATTERNS";
 

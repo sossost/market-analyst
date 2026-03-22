@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 
 const FALLBACK_DIR = path.resolve(process.cwd(), "data/reports/fallback");
 const FETCH_TIMEOUT_MS = 10_000;

@@ -2,7 +2,7 @@ import "dotenv/config";
 import { pool } from "@/db/client";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "VALIDATE_DATA";
 
