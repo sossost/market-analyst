@@ -10,9 +10,11 @@
  * 3. Phase 2 지속성 5일 이상 — 일반 기준(2일)보다 엄격
  */
 
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { logger } from "@/lib/logger";
+import { findSectorRsRankWithTotal } from "@/db/repositories/sectorRepository.js";
+import { findLatestFundamentalGrade } from "@/db/repositories/fundamentalRepository.js";
+import { findPhase2PersistenceBySymbol } from "@/db/repositories/stockPhaseRepository.js";
 
 /** Bear 예외 통과에 필요한 Phase 2 지속 최소 일수 (일반 기준 2일보다 엄격) */
 export const BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS = 5;
@@ -150,24 +152,17 @@ async function querySectorRsRank(
   date: string,
 ): Promise<{ rank: number | null; totalSectors: number | null }> {
   try {
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<{ rs_rank: string; total_sectors: string }>(
-        `SELECT
-           srd.rs_rank,
-           (SELECT COUNT(*) FROM sector_rs_daily WHERE date = $2) AS total_sectors
-         FROM sector_rs_daily srd
-         WHERE srd.sector = $1 AND srd.date = $2`,
-        [sector, date],
-      ),
+    const row = await retryDatabaseOperation(() =>
+      findSectorRsRankWithTotal(sector, date),
     );
 
-    if (rows.length === 0) {
+    if (row == null) {
       return { rank: null, totalSectors: null };
     }
 
     return {
-      rank: Number(rows[0].rs_rank),
-      totalSectors: Number(rows[0].total_sectors),
+      rank: Number(row.rs_rank),
+      totalSectors: Number(row.total_sectors),
     };
   } catch (err) {
     logger.error(
@@ -183,17 +178,11 @@ async function queryFundamentalGrade(
   date: string,
 ): Promise<string | null> {
   try {
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<{ grade: string }>(
-        `SELECT grade FROM fundamental_scores
-         WHERE symbol = $1 AND scored_date <= $2
-         ORDER BY scored_date DESC
-         LIMIT 1`,
-        [symbol, date],
-      ),
+    const row = await retryDatabaseOperation(() =>
+      findLatestFundamentalGrade(symbol, date),
     );
 
-    return rows[0]?.grade ?? null;
+    return row?.grade ?? null;
   } catch (err) {
     logger.error(
       "BearExceptionGate",
@@ -209,19 +198,11 @@ async function queryPhase2Persistence(
   endDate: string,
 ): Promise<number> {
   try {
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<{ phase2_count: string }>(
-        `SELECT COUNT(*) AS phase2_count
-         FROM stock_phases
-         WHERE symbol = $1
-           AND date >= $2
-           AND date <= $3
-           AND phase >= 2`,
-        [symbol, startDate, endDate],
-      ),
+    const row = await retryDatabaseOperation(() =>
+      findPhase2PersistenceBySymbol(symbol, startDate, endDate),
     );
 
-    return Number(rows[0]?.phase2_count ?? 0);
+    return Number(row.phase2_count);
   } catch (err) {
     logger.error(
       "BearExceptionGate",

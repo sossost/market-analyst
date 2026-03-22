@@ -1,21 +1,15 @@
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateNumber } from "./validation";
+import { findFundamentalAcceleration } from "@/db/repositories/fundamentalRepository.js";
+
+import type { FundamentalAccelerationRow } from "@/db/repositories/types.js";
 
 const DEFAULT_LIMIT = 20;
 const MIN_QUARTERS = 3;
 
-interface QuarterRow {
-  symbol: string;
-  period_end_date: string;
-  eps_diluted: string | null;
-  revenue: string | null;
-  net_income: string | null;
-  sector: string | null;
-  industry: string | null;
-}
+type QuarterRow = FundamentalAccelerationRow;
 
 interface AccelerationResult {
   symbol: string;
@@ -54,32 +48,8 @@ export const getFundamentalAcceleration: AgentTool = {
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
     // 최근 8분기 실적 데이터 — Phase 1 or 2 종목만
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<QuarterRow>(
-        `WITH latest_date AS (
-           SELECT MAX(date) AS d FROM stock_phases
-         ),
-         target_symbols AS (
-           SELECT sp.symbol
-           FROM stock_phases sp, latest_date ld
-           WHERE sp.date = ld.d
-             AND sp.phase IN (1, 2)
-             AND sp.rs_score >= 20
-         )
-         SELECT
-           qf.symbol,
-           qf.period_end_date,
-           qf.eps_diluted::text,
-           qf.revenue::text,
-           qf.net_income::text,
-           s.sector,
-           s.industry
-         FROM quarterly_financials qf
-         JOIN target_symbols ts ON qf.symbol = ts.symbol
-         JOIN symbols s ON qf.symbol = s.symbol
-         WHERE qf.period_end_date >= (CURRENT_DATE - INTERVAL '2 years')::text
-         ORDER BY qf.symbol, qf.period_end_date DESC`,
-      ),
+    const rows = await retryDatabaseOperation(() =>
+      findFundamentalAcceleration(),
     );
 
     // 종목별 그룹화

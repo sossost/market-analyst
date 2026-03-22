@@ -5,6 +5,7 @@ import { assertValidEnvironment } from "@/etl/utils/validation";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { logger } from "@/lib/logger";
+import { findSectorPhaseTransitions, findIndustryPhaseTransitions } from "@/db/repositories/index.js";
 
 const TAG = "DETECT_SECTOR_PHASE_EVENTS";
 
@@ -62,24 +63,9 @@ async function querySectorTransitions(
   mode: "backfill" | "incremental",
   targetDate?: string,
 ): Promise<RawPhaseTransition[]> {
-  const baseQuery = `SELECT date, sector AS entity_name,
-              prev_group_phase AS from_phase, group_phase AS to_phase,
-              avg_rs::text, phase2_ratio::text
-       FROM sector_rs_daily
-       WHERE prev_group_phase IS NOT NULL
-         AND group_phase != prev_group_phase`;
-
-  if (mode === "incremental" && targetDate != null) {
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<RawPhaseTransition>(`${baseQuery} AND date = $1 ORDER BY date`, [targetDate]),
-    );
-    return rows;
-  }
-
-  const { rows } = await retryDatabaseOperation(() =>
-    pool.query<RawPhaseTransition>(`${baseQuery} ORDER BY date`),
+  return retryDatabaseOperation(() =>
+    findSectorPhaseTransitions(mode, targetDate),
   );
-  return rows;
 }
 
 /**
@@ -89,24 +75,9 @@ async function queryIndustryTransitions(
   mode: "backfill" | "incremental",
   targetDate?: string,
 ): Promise<RawPhaseTransition[]> {
-  const baseQuery = `SELECT date, industry AS entity_name,
-              prev_group_phase AS from_phase, group_phase AS to_phase,
-              avg_rs::text, phase2_ratio::text
-       FROM industry_rs_daily
-       WHERE prev_group_phase IS NOT NULL
-         AND group_phase != prev_group_phase`;
-
-  if (mode === "incremental" && targetDate != null) {
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<RawPhaseTransition>(`${baseQuery} AND date = $1 ORDER BY date`, [targetDate]),
-    );
-    return rows;
-  }
-
-  const { rows } = await retryDatabaseOperation(() =>
-    pool.query<RawPhaseTransition>(`${baseQuery} ORDER BY date`),
+  return retryDatabaseOperation(() =>
+    findIndustryPhaseTransitions(mode, targetDate),
   );
-  return rows;
 }
 
 /**

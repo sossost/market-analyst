@@ -8,6 +8,10 @@ import { toNum } from "@/etl/utils/common";
 import { computeSignalReturns } from "@/lib/signal-logic";
 import { eq } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import {
+  findCurrentPriceAndPhase,
+  findTradingDaysBetween,
+} from "@/db/repositories/index.js";
 
 const TAG = "UPDATE_SIGNAL_RETURNS";
 
@@ -51,18 +55,8 @@ async function main() {
   const symbols = activeSignals.map((s) => s.symbol);
 
   // 2. 현재 종가 + Phase 조회
-  const { rows: dataRows } = await retryDatabaseOperation(() =>
-    pool.query<{
-      symbol: string;
-      close: string;
-      phase: number | null;
-    }>(
-      `SELECT p.symbol, p.close::text, sp.phase
-       FROM daily_prices p
-       LEFT JOIN stock_phases sp ON p.symbol = sp.symbol AND p.date = sp.date
-       WHERE p.symbol = ANY($1) AND p.date = $2`,
-      [symbols, targetDate],
-    ),
+  const dataRows = await retryDatabaseOperation(() =>
+    findCurrentPriceAndPhase(symbols, targetDate),
   );
   const dataBySymbol = new Map(
     dataRows.map((r) => [
@@ -73,19 +67,8 @@ async function main() {
 
   // 3. 거래일 수 계산용: entry_date ~ targetDate 사이 거래일 수 일괄 조회
   const entryDates = [...new Set(activeSignals.map((s) => s.entryDate))];
-  const { rows: tradingDayRows } = await retryDatabaseOperation(() =>
-    pool.query<{ entry_date: string; trading_days: string }>(
-      `SELECT
-         ed.entry_date,
-         COALESCE(COUNT(DISTINCT dp.date), 0)::text AS trading_days
-       FROM (SELECT unnest($1::text[]) AS entry_date) ed
-       LEFT JOIN daily_prices dp
-         ON dp.date > ed.entry_date
-         AND dp.date <= $2
-         AND dp.symbol = (SELECT symbol FROM daily_prices WHERE date = $2 LIMIT 1)
-       GROUP BY ed.entry_date`,
-      [entryDates, targetDate],
-    ),
+  const tradingDayRows = await retryDatabaseOperation(() =>
+    findTradingDaysBetween(entryDates, targetDate),
   );
   const tradingDaysByEntry = new Map(
     tradingDayRows.map((r) => [r.entry_date, Number(r.trading_days)]),

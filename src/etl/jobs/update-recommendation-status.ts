@@ -7,6 +7,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { findRecommendationCurrentData } from "@/db/repositories/index.js";
 
 const TAG = "UPDATE_RECOMMENDATION_STATUS";
 
@@ -102,19 +103,8 @@ async function main() {
   const symbols = activeRecs.map((r) => r.symbol);
 
   // 2. 현재 종가 + Phase/RS 조회 (JOIN으로 단일 쿼리)
-  const { rows: dataRows } = await retryDatabaseOperation(() =>
-    pool.query<{
-      symbol: string;
-      close: string;
-      phase: number | null;
-      rs_score: number | null;
-    }>(
-      `SELECT p.symbol, p.close::text, sp.phase, sp.rs_score
-       FROM daily_prices p
-       LEFT JOIN stock_phases sp ON p.symbol = sp.symbol AND p.date = sp.date
-       WHERE p.symbol = ANY($1) AND p.date = $2`,
-      [symbols, targetDate],
-    ),
+  const dataRows = await retryDatabaseOperation(() =>
+    findRecommendationCurrentData(symbols, targetDate),
   );
   const dataBySymbol = new Map(
     dataRows.map((r) => [

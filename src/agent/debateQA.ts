@@ -6,10 +6,13 @@
  *
  * DB 쿼리 실패 시에도 severity 'warn'으로 graceful 반환 — QA 실패가 발송을 막지 않는다.
  */
-import { pool } from "@/db/client";
 import { logger } from "@/lib/logger";
 import type { Thesis } from "@/types/debate";
 import type { Mismatch, Severity } from "@/lib/factChecker";
+import {
+  findSectorPhasesForQa,
+  findStockPhasesForQa,
+} from "@/db/repositories/index.js";
 
 // ────────────────────────────────────────────
 // Public interface
@@ -85,17 +88,6 @@ interface SectorRow {
   group_phase: number;
 }
 
-async function fetchSectorPhases(date: string): Promise<SectorRow[]> {
-  const { rows } = await pool.query<SectorRow>(
-    `SELECT sector, group_phase
-     FROM sector_rs_daily
-     WHERE date = $1
-     ORDER BY avg_rs DESC`,
-    [date],
-  );
-  return rows;
-}
-
 /**
  * thesis에서 언급된 beneficiarySectors가 실제 DB의 섹터 목록에 존재하는지 검증.
  * DB에 없는 섹터를 언급하면 warn.
@@ -134,21 +126,6 @@ interface StockPhaseRow {
   symbol: string;
   phase: number;
   rs_score: number | null;
-}
-
-async function fetchStockPhases(
-  date: string,
-  symbols: string[],
-): Promise<StockPhaseRow[]> {
-  if (symbols.length === 0) return [];
-
-  const { rows } = await pool.query<StockPhaseRow>(
-    `SELECT symbol, phase, rs_score
-     FROM stock_phases
-     WHERE date = $1 AND symbol = ANY($2)`,
-    [date, symbols],
-  );
-  return rows;
 }
 
 /**
@@ -229,8 +206,8 @@ export async function runDebateQA(
     const mentionedTickers = new Set(theses.flatMap((t) => t.beneficiaryTickers ?? []));
 
     const [sectorRows, stockRows] = await Promise.all([
-      fetchSectorPhases(date),
-      fetchStockPhases(date, [...mentionedTickers]),
+      findSectorPhasesForQa(date),
+      findStockPhasesForQa(date, [...mentionedTickers]),
     ]);
 
     // 3. Sector accuracy

@@ -9,6 +9,7 @@ import type { Pool } from "pg";
 import { loadAnalysisInputs } from "./loadAnalysisInputs.js";
 import { generateAnalysisReport, CORPORATE_ANALYST_MODEL } from "./corporateAnalyst.js";
 import { logger } from "@/lib/logger.js";
+import { upsertStockAnalysisReport } from "@/db/repositories/index.js";
 
 export interface CorporateAnalystResult {
   success: boolean;
@@ -42,59 +43,27 @@ export async function runCorporateAnalyst(
     );
 
     // 3. DB UPSERT
-    await pool.query(
-      `INSERT INTO stock_analysis_reports (
-        symbol, recommendation_date,
-        investment_summary, technical_analysis, fundamental_trend,
-        valuation_analysis, sector_positioning, market_context, risk_factors,
-        earnings_call_highlights,
-        price_target, price_target_upside, price_target_data, price_target_analysis,
-        model_used, tokens_input, tokens_output, generated_at
-      ) VALUES (
-        $1, $2,
-        $3, $4, $5,
-        $6, $7, $8, $9,
-        $10,
-        $11, $12, $13, $14,
-        $15, $16, $17, NOW()
-      )
-      ON CONFLICT (symbol, recommendation_date)
-      DO UPDATE SET
-        investment_summary       = EXCLUDED.investment_summary,
-        technical_analysis       = EXCLUDED.technical_analysis,
-        fundamental_trend        = EXCLUDED.fundamental_trend,
-        valuation_analysis       = EXCLUDED.valuation_analysis,
-        sector_positioning       = EXCLUDED.sector_positioning,
-        market_context           = EXCLUDED.market_context,
-        risk_factors             = EXCLUDED.risk_factors,
-        earnings_call_highlights = EXCLUDED.earnings_call_highlights,
-        price_target             = EXCLUDED.price_target,
-        price_target_upside      = EXCLUDED.price_target_upside,
-        price_target_data        = EXCLUDED.price_target_data,
-        price_target_analysis    = EXCLUDED.price_target_analysis,
-        model_used               = EXCLUDED.model_used,
-        tokens_input             = EXCLUDED.tokens_input,
-        tokens_output            = EXCLUDED.tokens_output,
-        generated_at             = NOW()`,
-      [
-        symbol,                                                                          // $1
-        recommendationDate,                                                              // $2
-        report.investmentSummary,                                                        // $3
-        report.technicalAnalysis,                                                        // $4
-        report.fundamentalTrend,                                                         // $5
-        report.valuationAnalysis,                                                        // $6
-        report.sectorPositioning,                                                        // $7
-        report.marketContext,                                                            // $8
-        report.riskFactors,                                                              // $9
-        report.earningsCallHighlights ?? null,                                           // $10
-        priceTargetResult?.finalTarget ?? null,                                          // $11
-        priceTargetResult?.finalUpside ?? null,                                          // $12
-        priceTargetResult != null ? JSON.stringify(priceTargetResult) : null,            // $13
-        report.priceTargetAnalysis ?? null,                                              // $14
-        CORPORATE_ANALYST_MODEL,                                                         // $15
-        tokensInput,                                                                     // $16
-        tokensOutput,                                                                    // $17
-      ],
+    await upsertStockAnalysisReport(
+      {
+        symbol,
+        recommendationDate,
+        investmentSummary: report.investmentSummary,
+        technicalAnalysis: report.technicalAnalysis,
+        fundamentalTrend: report.fundamentalTrend,
+        valuationAnalysis: report.valuationAnalysis,
+        sectorPositioning: report.sectorPositioning,
+        marketContext: report.marketContext,
+        riskFactors: report.riskFactors,
+        earningsCallHighlights: report.earningsCallHighlights ?? null,
+        priceTarget: priceTargetResult?.finalTarget ?? null,
+        priceTargetUpside: priceTargetResult?.finalUpside ?? null,
+        priceTargetData: priceTargetResult != null ? JSON.stringify(priceTargetResult) : null,
+        priceTargetAnalysis: report.priceTargetAnalysis ?? null,
+        modelUsed: CORPORATE_ANALYST_MODEL,
+        tokensInput,
+        tokensOutput,
+      },
+      pool,
     );
 
     logger.info(

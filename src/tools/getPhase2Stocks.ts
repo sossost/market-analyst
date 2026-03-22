@@ -1,5 +1,5 @@
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
+import { findPhase2Stocks } from "@/db/repositories/index.js";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateDate, validateNumber, MAX_RS_SCORE } from "./validation";
@@ -50,37 +50,8 @@ export const getPhase2Stocks: AgentTool = {
     const maxRs = validateNumber(input.max_rs, DEFAULT_MAX_RS);
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<{
-        symbol: string;
-        phase: number;
-        prev_phase: number | null;
-        rs_score: number;
-        ma150_slope: string | null;
-        pct_from_high_52w: string | null;
-        pct_from_low_52w: string | null;
-        conditions_met: string | null;
-        vol_ratio: string | null;
-        volume_confirmed: boolean | null;
-        sector: string | null;
-        industry: string | null;
-      }>(
-        `SELECT
-           sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
-           sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
-           sp.conditions_met,
-           sp.vol_ratio::text, sp.volume_confirmed,
-           s.sector, s.industry
-         FROM stock_phases sp
-         JOIN symbols s ON sp.symbol = s.symbol
-         WHERE sp.date = $1
-           AND sp.phase = 2
-           AND sp.rs_score >= $2
-           AND sp.rs_score <= $4
-         ORDER BY sp.rs_score DESC
-         LIMIT $3`,
-        [date, minRs, limit, maxRs],
-      ),
+    const rows = await retryDatabaseOperation(() =>
+      findPhase2Stocks({ date, minRs, maxRs, limit }),
     );
 
     const stocks = rows.map((r) => {

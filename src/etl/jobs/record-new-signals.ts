@@ -13,6 +13,10 @@ import {
 import type { RawSignal } from "@/lib/signal-logic";
 import { sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import {
+  findPhase1to2Transitions,
+  findExistingSignals,
+} from "@/db/repositories/index.js";
 
 const TAG = "RECORD_NEW_SIGNALS";
 
@@ -37,33 +41,8 @@ async function main() {
   logger.info(TAG, `Target date: ${targetDate}`);
 
   // 1. Phase 1→2 전환 시그널 조회
-  const { rows: rawRows } = await retryDatabaseOperation(() =>
-    pool.query<{
-      symbol: string;
-      close: string;
-      rs_score: number | null;
-      volume_confirmed: boolean | null;
-      sector_group_phase: number | null;
-      sector: string | null;
-      industry: string | null;
-    }>(
-      `SELECT
-         sp.symbol,
-         dp.close::text,
-         sp.rs_score,
-         sp.volume_confirmed,
-         srd.group_phase AS sector_group_phase,
-         sym.sector,
-         sym.industry
-       FROM stock_phases sp
-       JOIN daily_prices dp ON sp.symbol = dp.symbol AND sp.date = dp.date
-       JOIN symbols sym ON sp.symbol = sym.symbol
-       LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = sym.sector
-       WHERE sp.date = $1
-         AND sp.phase = 2
-         AND sp.prev_phase IS DISTINCT FROM 2`,
-      [targetDate],
-    ),
+  const rawRows = await retryDatabaseOperation(() =>
+    findPhase1to2Transitions(targetDate),
   );
 
   if (rawRows.length === 0) {
@@ -76,12 +55,8 @@ async function main() {
 
   // 2. 이미 기록된 시그널 제외
   const symbols = rawRows.map((r) => r.symbol);
-  const { rows: existingRows } = await retryDatabaseOperation(() =>
-    pool.query<{ symbol: string }>(
-      `SELECT symbol FROM signal_log
-       WHERE symbol = ANY($1) AND entry_date = $2`,
-      [symbols, targetDate],
-    ),
+  const existingRows = await retryDatabaseOperation(() =>
+    findExistingSignals(symbols, targetDate),
   );
   const existingSymbols = new Set(existingRows.map((r) => r.symbol));
 

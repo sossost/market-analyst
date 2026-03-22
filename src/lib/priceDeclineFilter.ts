@@ -8,8 +8,8 @@
 // DB 조회 실패 시 빈 배열 반환 (graceful).
 // ---------------------------------------------------------------------------
 
-import { pool } from "@/db/client";
 import { logger } from "@/lib/logger";
+import { fetchPriceData as fetchPriceDataFromRepo } from "@/db/repositories/index.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -28,52 +28,12 @@ export interface DeclinedSymbol {
   volumeRatio: number;
 }
 
-// ---------------------------------------------------------------------------
-// DB Query
-// ---------------------------------------------------------------------------
-
 interface PriceRow {
   symbol: string;
   close: string | null;
   prev_close: string | null;
   volume: string | null;
   vol_ma30: string | null;
-}
-
-/**
- * daily_prices와 daily_ma를 JOIN하여 당일 종가, 전일 종가, 거래량, 20일 평균 거래량을 조회한다.
- * 지정된 symbols 목록 내에서만 조회한다.
- */
-async function fetchPriceData(symbols: string[], date: string): Promise<PriceRow[]> {
-  if (symbols.length === 0) {
-    return [];
-  }
-
-  const result = await pool.query<PriceRow>(
-    `SELECT
-       dp.symbol,
-       dp.close,
-       prev_dp.close AS prev_close,
-       dp.volume,
-       dm.vol_ma30
-     FROM daily_prices dp
-     LEFT JOIN daily_prices prev_dp
-       ON prev_dp.symbol = dp.symbol
-       AND prev_dp.date = (
-         SELECT MAX(date)
-         FROM daily_prices
-         WHERE symbol = dp.symbol
-           AND date < $1
-       )
-     LEFT JOIN daily_ma dm
-       ON dm.symbol = dp.symbol
-       AND dm.date = $1
-     WHERE dp.date = $1
-       AND dp.symbol = ANY($2::text[])`,
-    [date, symbols],
-  );
-
-  return result.rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +98,7 @@ export async function filterDeclinedSymbols(
   let rows: PriceRow[];
 
   try {
-    rows = await fetchPriceData(symbols, date);
+    rows = await fetchPriceDataFromRepo(symbols, date);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("PriceDeclineFilter", `DB 조회 실패 (필터 스킵): ${reason}`);

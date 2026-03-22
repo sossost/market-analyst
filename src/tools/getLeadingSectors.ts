@@ -1,38 +1,20 @@
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
+import {
+  findTopSectors,
+  findTopIndustries,
+  findPrevWeekDate,
+  findSectorsByDate,
+} from "@/db/repositories/index.js";
+import type { SectorRsRow, IndustryRsRow } from "@/db/repositories/index.js";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { clampPercent, validateDate, validateNumber } from "./validation";
 
 const DEFAULT_LIMIT = 10;
 
-interface SectorRow {
-  sector: string;
-  avg_rs: string;
-  rs_rank: number;
-  stock_count: number;
-  change_4w: string | null;
-  change_8w: string | null;
-  change_12w: string | null;
-  group_phase: number;
-  prev_group_phase: number | null;
-  phase2_ratio: string;
-  ma_ordered_ratio: string;
-  phase1to2_count_5d: number;
-}
-
-interface IndustryRow {
-  sector: string;
-  industry: string;
-  avg_rs: string;
-  rs_rank: number;
-  group_phase: number;
-  phase2_ratio: string;
-}
-
 function mapSectorRow(
-  s: SectorRow,
-  industryBySector: Map<string, IndustryRow[]>,
+  s: SectorRsRow,
+  industryBySector: Map<string, IndustryRsRow[]>,
 ) {
   return {
     sector: s.sector,
@@ -67,20 +49,14 @@ function mapSectorRow(
 
 async function fetchTopIndustries(
   date: string,
-  sectorRows: SectorRow[],
-): Promise<Map<string, IndustryRow[]>> {
+  sectorRows: SectorRsRow[],
+): Promise<Map<string, IndustryRsRow[]>> {
   const sectorNames = sectorRows.map((s) => s.sector);
-  const { rows: industryRows } = await retryDatabaseOperation(() =>
-    pool.query<IndustryRow>(
-      `SELECT sector, industry, avg_rs::text, rs_rank, group_phase, phase2_ratio::text
-       FROM industry_rs_daily
-       WHERE date = $1 AND sector = ANY($2)
-       ORDER BY sector, avg_rs::numeric DESC`,
-      [date, sectorNames],
-    ),
+  const industryRows = await retryDatabaseOperation(() =>
+    findTopIndustries(date, sectorNames),
   );
 
-  const industryBySector = new Map<string, IndustryRow[]>();
+  const industryBySector = new Map<string, IndustryRsRow[]>();
   for (const row of industryRows) {
     const arr = industryBySector.get(row.sector) ?? [];
     if (arr.length < 3) {
@@ -131,19 +107,8 @@ export const getLeadingSectors: AgentTool = {
     const mode = input.mode === "weekly" ? "weekly" : "daily";
 
     // 섹터 RS 랭킹
-    const { rows: sectorRows } = await retryDatabaseOperation(() =>
-      pool.query<SectorRow>(
-        `SELECT sector, avg_rs::text, rs_rank, stock_count,
-                change_4w::text, change_8w::text, change_12w::text,
-                group_phase, prev_group_phase,
-                phase2_ratio::text, ma_ordered_ratio::text,
-                phase1to2_count_5d
-         FROM sector_rs_daily
-         WHERE date = $1
-         ORDER BY avg_rs::numeric DESC
-         LIMIT $2`,
-        [date, limit],
-      ),
+    const sectorRows = await retryDatabaseOperation(() =>
+      findTopSectors(date, limit),
     );
 
     // 각 상위 섹터의 상위 3개 업종
@@ -161,16 +126,11 @@ export const getLeadingSectors: AgentTool = {
     }
 
     // weekly: 전주 날짜 조회
-    const { rows: prevDateRows } = await retryDatabaseOperation(() =>
-      pool.query<{ prev_week_date: string | null }>(
-        `SELECT MAX(date) AS prev_week_date
-         FROM sector_rs_daily
-         WHERE date < ($1::date - INTERVAL '5 days')`,
-        [date],
-      ),
+    const prevDateRow = await retryDatabaseOperation(() =>
+      findPrevWeekDate(date),
     );
 
-    const prevWeekDate = prevDateRows[0]?.prev_week_date ?? null;
+    const prevWeekDate = prevDateRow.prev_week_date ?? null;
 
     if (prevWeekDate == null) {
       const sectors = sectorRows.map((s) =>
@@ -189,15 +149,8 @@ export const getLeadingSectors: AgentTool = {
     }
 
     // 전주 섹터 랭킹 조회
-    const { rows: prevSectorRows } = await retryDatabaseOperation(() =>
-      pool.query<{ sector: string; avg_rs: string; rs_rank: number }>(
-        `SELECT sector, avg_rs::text, rs_rank
-         FROM sector_rs_daily
-         WHERE date = $1
-         ORDER BY avg_rs::numeric DESC
-         LIMIT $2`,
-        [prevWeekDate, limit],
-      ),
+    const prevSectorRows = await retryDatabaseOperation(() =>
+      findSectorsByDate(prevWeekDate, limit),
     );
 
     const prevRankMap = new Map<string, { rank: number; avgRs: number }>();

@@ -13,8 +13,8 @@
  * 3. 비즈니스 모델 플래그 — 규제 산업/유틸리티 등 구조적 부적합 업종
  */
 
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
+import { findSectorSepaStats } from "@/db/repositories/index.js";
 import { logger } from "@/lib/logger";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -151,33 +151,8 @@ export async function querySectorSepaStats(
   if (sectors.length === 0) return [];
 
   try {
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<{
-        industry: string;
-        total_stocks: string;
-        sa_grade_count: string;
-        avg_score: string;
-      }>(
-        `WITH latest_scores AS (
-           SELECT DISTINCT ON (fs.symbol)
-             fs.symbol,
-             fs.grade,
-             fs.total_score,
-             COALESCE(cp.industry, cp.sector) AS industry
-           FROM fundamental_scores fs
-           JOIN company_profiles cp ON cp.symbol = fs.symbol
-           WHERE COALESCE(cp.industry, cp.sector) = ANY($1)
-           ORDER BY fs.symbol, fs.scored_date DESC
-         )
-         SELECT
-           industry,
-           COUNT(*)::text AS total_stocks,
-           COUNT(*) FILTER (WHERE grade IN ('S', 'A'))::text AS sa_grade_count,
-           COALESCE(AVG(total_score), 0)::text AS avg_score
-         FROM latest_scores
-         GROUP BY industry`,
-        [sectors],
-      ),
+    const rows = await retryDatabaseOperation(() =>
+      findSectorSepaStats(sectors),
     );
 
     return sectors.map((sector) => {

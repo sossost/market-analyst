@@ -1,8 +1,8 @@
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateDate, validateNumber } from "./validation";
+import { findRisingRsStocks } from "@/db/repositories/stockPhaseRepository.js";
 
 const DEFAULT_LIMIT = 30;
 const RS_MIN = 30;
@@ -44,56 +44,14 @@ export const getRisingRS: AgentTool = {
 
     // RS 30~60 종목 중, 4주 전 대비 RS가 상승한 종목
     // 섹터 RS도 상승 중이면 우선 정렬
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<{
-        symbol: string;
-        phase: number;
-        rs_score: number;
-        rs_score_4w_ago: number | null;
-        rs_change: number | null;
-        ma150_slope: string | null;
-        pct_from_low_52w: string | null;
-        vol_ratio: string | null;
-        sector: string | null;
-        industry: string | null;
-        sector_avg_rs: string | null;
-        sector_change_4w: string | null;
-        sector_group_phase: number | null;
-      }>(
-        `WITH rs_4w AS (
-           SELECT sp.symbol, sp.rs_score AS rs_score_4w_ago
-           FROM stock_phases sp
-           WHERE sp.date = (
-             SELECT MAX(date) FROM stock_phases
-             WHERE date <= ($1::date - INTERVAL '28 days')::text
-           )
-         )
-         SELECT
-           sp.symbol, sp.phase, sp.rs_score,
-           r4w.rs_score_4w_ago,
-           (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) AS rs_change,
-           sp.ma150_slope::text,
-           sp.pct_from_low_52w::text,
-           sp.vol_ratio::text,
-           s.sector, s.industry,
-           srd.avg_rs::text AS sector_avg_rs,
-           srd.change_4w::text AS sector_change_4w,
-           srd.group_phase AS sector_group_phase
-         FROM stock_phases sp
-         JOIN symbols s ON sp.symbol = s.symbol
-         LEFT JOIN rs_4w r4w ON r4w.symbol = sp.symbol
-         LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
-         WHERE sp.date = $1
-           AND sp.rs_score >= $2
-           AND sp.rs_score <= $3
-           AND (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) >= $5
-         ORDER BY
-           CASE WHEN srd.change_4w::numeric > 0 THEN 0 ELSE 1 END,
-           (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) DESC,
-           sp.rs_score DESC
-         LIMIT $4`,
-        [date, RS_MIN, RS_MAX, limit, MIN_RS_CHANGE],
-      ),
+    const rows = await retryDatabaseOperation(() =>
+      findRisingRsStocks({
+        date,
+        rsMin: RS_MIN,
+        rsMax: RS_MAX,
+        limit,
+        minRsChange: MIN_RS_CHANGE,
+      }),
     );
 
     const stocks = rows.map((r) => {

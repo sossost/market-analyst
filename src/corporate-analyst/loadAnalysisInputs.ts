@@ -11,6 +11,25 @@
  */
 import type { Pool } from "pg";
 import { logger } from "@/lib/logger";
+import {
+  findRecommendationFactors,
+  findSymbolInfo,
+  findQuarterlyFinancials,
+  findQuarterlyRatios,
+  findMarketRegimeByDate,
+  findDebateSessionByDateRange,
+  findCompanyProfile,
+  findAnnualFinancials,
+  findEarningCallTranscript,
+  findAnalystEstimates,
+  findEpsSurprises,
+  findPeerGroup,
+  findPriceTargetConsensus,
+  findCurrentPriceFromStockPhases,
+  findSectorRsByDate,
+  findIndustryRsByDate,
+  findPeerRatios,
+} from "@/db/repositories/index.js";
 
 /** 최근 토론 synthesis를 사용하는 최대 일수 */
 const DEBATE_LOOKBACK_DAYS = 7;
@@ -317,12 +336,11 @@ function toNumOrNull(v: unknown): number | null {
 }
 
 async function safeQuery<T>(
-  fn: () => Promise<{ rows: T[] }>,
+  fn: () => Promise<T[]>,
   context: string,
 ): Promise<T[] | null> {
   try {
-    const result = await fn();
-    return result.rows;
+    return await fn();
   } catch (err) {
     logger.warn("loadAnalysisInputs", `쿼리 실패 (${context}): ${String(err)}`);
     return null;
@@ -364,170 +382,59 @@ export async function loadAnalysisInputs(
     currentPriceRows,
   ] = await Promise.all([
     safeQuery<RecommendationFactorsRow>(
-      () =>
-        pool.query(
-          `SELECT rs_score, phase, ma150_slope, vol_ratio,
-                  pct_from_high_52w, pct_from_low_52w, conditions_met, volume_confirmed,
-                  sector_rs, sector_group_phase, industry_rs, industry_group_phase
-           FROM recommendation_factors
-           WHERE symbol = $1 AND recommendation_date = $2
-           LIMIT 1`,
-          [symbol, recommendationDate],
-        ),
+      () => findRecommendationFactors(symbol, recommendationDate, pool),
       "recommendation_factors",
     ),
     safeQuery<SymbolRow>(
-      () =>
-        pool.query(
-          `SELECT company_name, sector, industry FROM symbols WHERE symbol = $1 LIMIT 1`,
-          [symbol],
-        ),
+      () => findSymbolInfo(symbol, pool),
       "symbols",
     ),
     safeQuery<FinancialsRow>(
-      () =>
-        pool.query(
-          `SELECT period_end_date, revenue, net_income, eps_diluted,
-                  ebitda, free_cash_flow, gross_profit
-           FROM quarterly_financials
-           WHERE symbol = $1
-           ORDER BY period_end_date DESC
-           LIMIT $2`,
-          [symbol, FINANCIALS_QUARTERS],
-        ),
+      () => findQuarterlyFinancials(symbol, FINANCIALS_QUARTERS, pool),
       "quarterly_financials",
     ),
     safeQuery<RatiosRow>(
-      () =>
-        pool.query(
-          `SELECT pe_ratio, ps_ratio, pb_ratio, ev_ebitda,
-                  gross_margin, op_margin, net_margin, debt_equity
-           FROM quarterly_ratios
-           WHERE symbol = $1
-           ORDER BY period_end_date DESC
-           LIMIT 1`,
-          [symbol],
-        ),
+      () => findQuarterlyRatios(symbol, pool),
       "quarterly_ratios",
     ),
     safeQuery<MarketRegimeRow>(
-      () =>
-        pool.query(
-          `SELECT regime, rationale, confidence
-           FROM market_regimes
-           WHERE regime_date <= $1
-           ORDER BY regime_date DESC
-           LIMIT 1`,
-          [recommendationDate],
-        ),
+      () => findMarketRegimeByDate(recommendationDate, pool),
       "market_regimes",
     ),
     safeQuery<DebateSessionRow>(
-      () =>
-        pool.query(
-          `SELECT synthesis_report
-           FROM debate_sessions
-           WHERE date >= $1 AND date <= $2
-           ORDER BY date DESC
-           LIMIT 1`,
-          [debateCutoff, recommendationDate],
-        ),
+      () => findDebateSessionByDateRange(debateCutoff, recommendationDate, pool),
       "debate_sessions",
     ),
     safeQuery<CompanyProfileRow>(
-      () =>
-        pool.query(
-          `SELECT description, ceo, employees, market_cap,
-                  website, country, exchange, ipo_date
-           FROM company_profiles
-           WHERE symbol = $1
-           LIMIT 1`,
-          [symbol],
-        ),
+      () => findCompanyProfile(symbol, pool),
       "company_profiles",
     ),
     safeQuery<AnnualFinancialsRow>(
-      () =>
-        pool.query(
-          `SELECT fiscal_year, revenue, net_income, eps_diluted,
-                  gross_profit, operating_income, ebitda, free_cash_flow
-           FROM annual_financials
-           WHERE symbol = $1
-           ORDER BY fiscal_year DESC
-           LIMIT $2`,
-          [symbol, ANNUAL_FINANCIALS_YEARS],
-        ),
+      () => findAnnualFinancials(symbol, ANNUAL_FINANCIALS_YEARS, pool),
       "annual_financials",
     ),
     safeQuery<EarningCallTranscriptRow>(
-      () =>
-        pool.query(
-          `SELECT quarter, year, date, transcript
-           FROM earning_call_transcripts
-           WHERE symbol = $1
-           ORDER BY year DESC, quarter DESC
-           LIMIT 1`,
-          [symbol],
-        ),
+      () => findEarningCallTranscript(symbol, pool),
       "earning_call_transcripts",
     ),
     safeQuery<AnalystEstimatesRow>(
-      () =>
-        pool.query(
-          `SELECT period, estimated_eps_avg, estimated_eps_high, estimated_eps_low,
-                  estimated_revenue_avg, number_analyst_estimated_eps
-           FROM analyst_estimates
-           WHERE symbol = $1
-           ORDER BY period DESC
-           LIMIT $2`,
-          [symbol, ANALYST_ESTIMATES_QUARTERS],
-        ),
+      () => findAnalystEstimates(symbol, ANALYST_ESTIMATES_QUARTERS, pool),
       "analyst_estimates",
     ),
     safeQuery<EpsSurprisesRow>(
-      () =>
-        pool.query(
-          `SELECT actual_date, actual_eps, estimated_eps
-           FROM eps_surprises
-           WHERE symbol = $1
-           ORDER BY actual_date DESC
-           LIMIT $2`,
-          [symbol, EPS_SURPRISES_QUARTERS],
-        ),
+      () => findEpsSurprises(symbol, EPS_SURPRISES_QUARTERS, pool),
       "eps_surprises",
     ),
     safeQuery<PeerGroupRow>(
-      () =>
-        pool.query(
-          `SELECT peers
-           FROM peer_groups
-           WHERE symbol = $1
-           LIMIT 1`,
-          [symbol],
-        ),
+      () => findPeerGroup(symbol, pool),
       "peer_groups",
     ),
     safeQuery<PriceTargetConsensusRow>(
-      () =>
-        pool.query(
-          `SELECT target_high, target_low, target_mean, target_median
-           FROM price_target_consensus
-           WHERE symbol = $1
-           LIMIT 1`,
-          [symbol],
-        ),
+      () => findPriceTargetConsensus(symbol, pool),
       "price_target_consensus",
     ),
     safeQuery<StockPhasesCloseRow>(
-      () =>
-        pool.query(
-          `SELECT close
-           FROM stock_phases
-           WHERE symbol = $1 AND date <= $2
-           ORDER BY date DESC
-           LIMIT 1`,
-          [symbol, recommendationDate],
-        ),
+      () => findCurrentPriceFromStockPhases(symbol, recommendationDate, pool),
       "stock_phases (currentPrice)",
     ),
   ]);
@@ -546,27 +453,13 @@ export async function loadAnalysisInputs(
     const [sectorRows, industryRowsResult] = await Promise.all([
       sector != null
         ? safeQuery<SectorRsRow>(
-            () =>
-              pool.query(
-                `SELECT avg_rs, group_phase, change_4w, change_8w
-                 FROM sector_rs_daily
-                 WHERE sector = $1 AND date = $2
-                 LIMIT 1`,
-                [sector, recommendationDate],
-              ),
+            () => findSectorRsByDate(sector, recommendationDate, pool),
             "sector_rs_daily",
           )
         : Promise.resolve(null),
       industry != null
         ? safeQuery<IndustryRsRow>(
-            () =>
-              pool.query(
-                `SELECT avg_rs, group_phase
-                 FROM industry_rs_daily
-                 WHERE industry = $1 AND date = $2
-                 LIMIT 1`,
-                [industry, recommendationDate],
-              ),
+            () => findIndustryRsByDate(industry, recommendationDate, pool),
             "industry_rs_daily",
           )
         : Promise.resolve(null),
@@ -822,14 +715,7 @@ async function loadPeerGroupMultiples(
   const peerSymbols = peerRow.peers;
 
   const peerRatioResults = await safeQuery<PeerRatiosRow>(
-    () =>
-      pool.query(
-        `SELECT DISTINCT ON (symbol) symbol, pe_ratio, ev_ebitda, ps_ratio
-         FROM quarterly_ratios
-         WHERE symbol = ANY($1)
-         ORDER BY symbol, period_end_date DESC`,
-        [peerSymbols],
-      ),
+    () => findPeerRatios(peerSymbols, pool),
     "quarterly_ratios (peers)",
   );
 

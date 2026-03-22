@@ -1,6 +1,10 @@
 import { db, pool } from "../db/client.js";
 import { sectorPhaseEvents, sectorLagPatterns } from "../db/schema/analyst.js";
 import { eq, and, gte } from "drizzle-orm";
+import {
+  findCurrentPhase2Sectors,
+  findCurrentPhase2Industries,
+} from "../db/repositories/index.js";
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -192,16 +196,10 @@ export async function getActiveLeadingAlerts(
   if (reliablePatterns.length === 0) return [];
 
   // 3. 현재 Phase 2인 엔티티 조회 (sector_rs_daily + industry_rs_daily)
-  const { rows: sectorPhase2Rows } = await pool.query<{ entity_name: string }>(
-    `SELECT DISTINCT sector AS entity_name FROM sector_rs_daily
-     WHERE date = (SELECT MAX(date) FROM sector_rs_daily)
-       AND group_phase = 2`,
-  );
-  const { rows: industryPhase2Rows } = await pool.query<{ entity_name: string }>(
-    `SELECT DISTINCT industry AS entity_name FROM industry_rs_daily
-     WHERE date = (SELECT MAX(date) FROM industry_rs_daily)
-       AND group_phase = 2`,
-  );
+  const [sectorPhase2Rows, industryPhase2Rows] = await Promise.all([
+    findCurrentPhase2Sectors(),
+    findCurrentPhase2Industries(),
+  ]);
 
   const alreadyPhase2 = new Set([
     ...sectorPhase2Rows.map((r) => `sector:${r.entity_name}`),

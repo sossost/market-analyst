@@ -8,6 +8,7 @@ import { toNum } from "@/etl/utils/common";
 import { collectFailureConditions } from "@/lib/marketConditionCollector";
 import { eq, sql, isNull, and } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { findPhaseAndLowSinceEntry } from "@/db/repositories/index.js";
 
 const TAG = "TRACK_PHASE_EXITS";
 
@@ -99,30 +100,8 @@ async function main() {
 
   // 2. 각 종목의 현재 phase 일괄 조회
   const symbols = pendingSignals.map((s) => s.symbol);
-  const { rows: phaseRows } = await retryDatabaseOperation(() =>
-    pool.query<{
-      symbol: string;
-      phase: number | null;
-      low_since_entry: string | null;
-    }>(
-      `SELECT
-         sp.symbol,
-         sp.phase,
-         (
-           SELECT MIN(dp.low)::text
-           FROM daily_prices dp
-           WHERE dp.symbol = sp.symbol
-             AND dp.date >= ANY(
-               SELECT sl.entry_date FROM signal_log sl
-               WHERE sl.symbol = sp.symbol AND sl.phase2_reverted IS NULL AND sl.status = 'ACTIVE'
-               LIMIT 1
-             )
-             AND dp.date <= $2
-         ) AS low_since_entry
-       FROM stock_phases sp
-       WHERE sp.symbol = ANY($1) AND sp.date = $2`,
-      [symbols, targetDate],
-    ),
+  const phaseRows = await retryDatabaseOperation(() =>
+    findPhaseAndLowSinceEntry(symbols, targetDate),
   );
 
   const phaseBySymbol = new Map(
