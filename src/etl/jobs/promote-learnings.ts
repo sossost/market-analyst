@@ -178,9 +178,20 @@ async function main() {
     logger.warn(TAG, `BIAS WARNING (pre-promote): Bull-bias ${(preBias.bullRatio * 100).toFixed(0)}% > 80% — bear 후보 우선 승격`);
   }
 
+  // Bootstrap/Cold start 단계에서는 EXPIRED thesis를 부정 신호에서 제외.
+  // EXPIRED = "검증 시한 초과" (ambiguous) ≠ "예측 실패" (negative).
+  // 학습 0~4건 상태에서 EXPIRED를 부정으로 계산하면 hitRate가 희석되어
+  // bootstrap이 영구적으로 불가능해진다. (#360)
+  const isEarlyPhase = activeCountAfterDemotion < COLD_START_THRESHOLD;
+  const negativesForPromotion = isEarlyPhase ? invalidatedTheses : allNegativeTheses;
+
+  if (isEarlyPhase && expiredTheses.length > 0) {
+    logger.info(TAG, `Early phase (${activeCountAfterDemotion} learnings): EXPIRED ${expiredTheses.length}건을 부정 신호에서 제외`);
+  }
+
   const candidates = buildPromotionCandidates(
     confirmedTheses,
-    allNegativeTheses,
+    negativesForPromotion,
     existingSourceIds,
     activeCountAfterDemotion,
   );
