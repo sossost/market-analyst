@@ -68,7 +68,7 @@ vi.mock("../../../src/db/client.js", () => ({
   },
 }));
 
-import { buildMemoryContext, loadCausalAnalysis, loadBullBiasWarning, loadConfidenceCalibration } from "../../../src/agent/debate/memoryLoader.js";
+import { buildMemoryContext, loadCausalAnalysis, loadBullBiasWarning, loadConfidenceCalibration } from "@/debate/memoryLoader.js";
 
 describe("memoryLoader", () => {
   beforeEach(() => {

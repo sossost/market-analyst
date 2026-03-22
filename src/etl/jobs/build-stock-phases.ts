@@ -8,7 +8,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { chunk, toNum, resolveVolumeConfirmed } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
 import type { PhaseInput } from "@/types";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "BUILD_STOCK_PHASES";
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractThesesFromText, extractDebateOutput } from "../../../src/agent/debate/round3-synthesis.js";
+import { extractThesesFromText, extractDebateOutput } from "@/debate/round3-synthesis.js";
 import type { MarketRegimeRaw } from "../../../src/types/debate.js";
 
 // helper: nextBottleneck/dissentReason를 포함한 유효한 thesis JSON 생성

@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { executeTool } from "./tools/index";
-import { callWithRetry } from "./debate/callAgent.js";
-import { logger } from "./logger";
-import type { AgentConfig, AgentResult } from "./tools/types";
+import { getAnthropicClient } from "@/lib/anthropic-client";
+import { executeTool } from "@/tools/index";
+import { callWithRetry } from "@/debate/callAgent.js";
+import { logger } from "@/lib/logger";
+import type { AgentConfig, AgentResult } from "@/tools/types";
 
 /**
  * Run the Tool-use Agent loop.
@@ -16,7 +17,7 @@ import type { AgentConfig, AgentResult } from "./tools/types";
  * input token costs by ~90% on iterations 2+.
  */
 export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
-  const client = new Anthropic();
+  const client = getAnthropicClient();
   const startTime = Date.now();
 
   const messages: Anthropic.MessageParam[] = [

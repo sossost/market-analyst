@@ -3,7 +3,7 @@ import { db, pool } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { classifyCategory, classifySentiment } from "@/lib/newsClassifier";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "COLLECT_NEWS";
 

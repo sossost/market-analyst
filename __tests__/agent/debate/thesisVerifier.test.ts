@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseJudgments, calcElapsedDays } from "@/agent/debate/thesisVerifier";
+import { parseJudgments, calcElapsedDays } from "@/debate/thesisVerifier";
 
 describe("parseJudgments", () => {
   const validIds = [1, 2, 3, 5];

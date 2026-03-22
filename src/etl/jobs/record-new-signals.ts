@@ -12,7 +12,7 @@ import {
 } from "@/lib/signal-logic";
 import type { RawSignal } from "@/lib/signal-logic";
 import { sql } from "drizzle-orm";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "RECORD_NEW_SIGNALS";
 

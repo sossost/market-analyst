@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeYoYGrowths,
   isAccelerating,
-} from "@/agent/tools/getFundamentalAcceleration";
+} from "@/tools/getFundamentalAcceleration";
 
 function makeQuarter(
   symbol: string,

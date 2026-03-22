@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatFundamentalSupplement } from "../../../src/agent/fundamental/runFundamentalValidation.js";
+import { formatFundamentalSupplement } from "@/fundamental/runFundamentalValidation.js";
 import type { FundamentalScore, CriteriaResult } from "../../../src/types/fundamental.js";
 
 const emptyCriteria: CriteriaResult = { passed: false, value: null, detail: "" };

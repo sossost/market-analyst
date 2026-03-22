@@ -13,7 +13,7 @@ import 'dotenv/config'
 import { fetchUnprocessedIssues } from './githubClient.js'
 import { executeIssue } from './executeIssue.js'
 import { MAX_ISSUES_PER_CYCLE } from './types.js'
-import { logger } from '@/agent/logger'
+import { logger } from '@/lib/logger'
 
 const TAG = 'ISSUE_PROCESSOR'
 

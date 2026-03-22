@@ -1,5 +1,5 @@
-import { loadMarketSnapshot } from "./debate/marketDataLoader.js";
-import type { MarketSnapshot } from "./debate/marketDataLoader.js";
+import { loadMarketSnapshot } from "@/debate/marketDataLoader.js";
+import type { MarketSnapshot } from "@/debate/marketDataLoader.js";
 
 export type { MarketSnapshot };
 

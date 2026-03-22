@@ -18,7 +18,7 @@ const mockGroupBy = vi.fn();
 const mockOrderBy = vi.fn();
 
 // Mock narrativeChainService — error-isolated, no-op in thesis tests
-vi.mock("../../../src/agent/debate/narrativeChainService.js", () => ({
+vi.mock("@/debate/narrativeChainService.js", () => ({
   recordNarrativeChain: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -100,7 +100,7 @@ import {
   getThesisStats,
   getThesisStatsByCategory,
   getConsensusByHitRate,
-} from "../../../src/agent/debate/thesisStore.js";
+} from "@/debate/thesisStore.js";
 
 describe("thesisStore", () => {
   beforeEach(() => {

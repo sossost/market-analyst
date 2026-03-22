@@ -6,7 +6,7 @@ import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { eq, sql } from "drizzle-orm";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "UPDATE_RECOMMENDATION_STATUS";
 

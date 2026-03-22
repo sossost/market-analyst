@@ -1,5 +1,5 @@
 import { pool } from "@/db/client";
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 
 export interface SendGateResult {
   shouldSend: boolean;

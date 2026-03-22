@@ -21,7 +21,7 @@ vi.mock("@/etl/utils/common", () => ({
   },
 }));
 
-import { getPhase1LateStocks } from "@/agent/tools/getPhase1LateStocks";
+import { getPhase1LateStocks } from "@/tools/getPhase1LateStocks";
 
 const makeRow = (overrides: Record<string, unknown> = {}) => ({
   symbol: "AAPL",

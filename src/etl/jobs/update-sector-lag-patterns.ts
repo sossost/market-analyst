@@ -8,7 +8,7 @@ import {
   calculateLagStats,
 } from "@/lib/sectorLagStats";
 import { eq, and, sql } from "drizzle-orm";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "UPDATE_SECTOR_LAG_PATTERNS";
 

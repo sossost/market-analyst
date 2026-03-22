@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { logger } from "./logger";
+import { logger } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Types

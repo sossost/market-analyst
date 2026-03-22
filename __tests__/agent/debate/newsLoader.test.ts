@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { NewsArchiveRow } from "../../../src/agent/debate/newsLoader.js";
+import type { NewsArchiveRow } from "@/debate/newsLoader.js";
 
 const mockRows: NewsArchiveRow[] = [];
 
@@ -26,7 +26,7 @@ vi.mock("../../../src/agent/logger.js", () => ({
   },
 }));
 
-import { loadNewsForPersona } from "../../../src/agent/debate/newsLoader.js";
+import { loadNewsForPersona } from "@/debate/newsLoader.js";
 
 describe("newsLoader", () => {
   beforeEach(() => {

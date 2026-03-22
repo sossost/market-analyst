@@ -7,7 +7,7 @@ import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { chunk } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "BUILD_INDUSTRY_RS";
 

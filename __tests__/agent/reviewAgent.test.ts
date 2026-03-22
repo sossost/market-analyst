@@ -7,7 +7,7 @@ import type { ReportDraft } from "@/agent/reviewAgent";
 
 const mockCall = vi.fn();
 
-vi.mock("@/agent/debate/llm/providerFactory", () => ({
+vi.mock("@/debate/llm/providerFactory", () => ({
   createProvider: () => ({ call: mockCall }),
 }));
 

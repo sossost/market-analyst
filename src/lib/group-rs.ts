@@ -3,7 +3,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { detectGroupPhase } from "@/lib/group-phase";
 import type { GroupBy, GroupRsConfig, GroupRsRow, Phase } from "@/types";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "GROUP_RS";
 

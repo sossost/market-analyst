@@ -14,7 +14,7 @@ import {
   checkTickerAccuracy,
 } from "../debateQA.js";
 import { pool } from "@/db/client";
-import type { Thesis } from "../../types/debate";
+import type { Thesis } from "@/types/debate";
 
 const mockQuery = vi.mocked(pool.query);
 

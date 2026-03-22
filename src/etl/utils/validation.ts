@@ -1,4 +1,4 @@
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "VALIDATION";
 

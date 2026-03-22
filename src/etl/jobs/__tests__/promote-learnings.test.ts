@@ -47,7 +47,7 @@ vi.mock("@/lib/statisticalTests", () => ({
 vi.mock("@/lib/biasDetector", () => ({
   detectBullBias: vi.fn().mockReturnValue({ bullRatio: 0.5, bullCount: 5, bearCount: 5, totalLearnings: 10, isSkewed: false }),
 }));
-vi.mock("@/agent/logger", () => ({
+vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 

@@ -32,7 +32,7 @@ vi.mock("@/etl/utils/common", () => ({
   },
 }));
 
-import { readRecommendationPerformance } from "@/agent/tools/readRecommendationPerformance";
+import { readRecommendationPerformance } from "@/tools/readRecommendationPerformance";
 
 function makeRec(overrides: Record<string, unknown> = {}) {
   return {

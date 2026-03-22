@@ -12,7 +12,7 @@ import {
   retryDatabaseOperation,
   DEFAULT_RETRY_OPTIONS,
 } from "@/etl/utils/retry";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "LOAD_EARNINGS_TRANSCRIPTS";
 

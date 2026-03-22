@@ -3,7 +3,7 @@ import { db } from "@/db/client";
 import { eq, or, inArray } from "drizzle-orm";
 import { symbols } from "@/db/schema/market";
 import { isValidTicker } from "@/etl/utils/common";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "CLEANUP_INVALID_SYMBOLS";
 

@@ -6,7 +6,7 @@ vi.mock("../debate/marketDataLoader.js", () => ({
 }));
 
 import { formatMarketTempBlock } from "../marketTempBlock.js";
-import type { MarketSnapshot } from "../debate/marketDataLoader.js";
+import type { MarketSnapshot } from "@/debate/marketDataLoader.js";
 
 function createFullSnapshot(overrides?: Partial<MarketSnapshot>): MarketSnapshot {
   return {

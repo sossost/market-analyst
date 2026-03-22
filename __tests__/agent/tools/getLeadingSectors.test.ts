@@ -21,7 +21,7 @@ vi.mock("@/etl/utils/common", () => ({
   },
 }));
 
-import { getLeadingSectors } from "@/agent/tools/getLeadingSectors";
+import { getLeadingSectors } from "@/tools/getLeadingSectors";
 
 const makeSectorRow = (overrides: Record<string, unknown> = {}) => ({
   sector: "Technology",

@@ -2,7 +2,7 @@ import "dotenv/config";
 import { db } from "@/db/client";
 import { sql } from "drizzle-orm";
 import { validateDatabaseOnlyEnvironment } from "@/etl/utils/validation";
-import { logger } from "@/agent/logger";
+import { logger } from "@/lib/logger";
 
 const TAG = "BUILD_RS";
 

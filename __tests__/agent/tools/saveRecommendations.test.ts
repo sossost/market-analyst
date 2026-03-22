@@ -42,7 +42,7 @@ vi.mock("@/agent/debate/regimeStore", () => ({
   loadPendingRegimes: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/agent/tools/bearExceptionGate", () => ({
+vi.mock("@/tools/bearExceptionGate", () => ({
   evaluateBearException: vi.fn(),
   tagBearExceptionReason: vi.fn((r: string | null) => r),
   BEAR_EXCEPTION_TAG: "[Bear 예외]",
@@ -60,7 +60,7 @@ vi.mock("@/agent/corporateAnalyst/runCorporateAnalyst", () => ({
   runCorporateAnalyst: vi.fn().mockResolvedValue({ success: true }),
 }));
 
-import { saveRecommendations } from "@/agent/tools/saveRecommendations";
+import { saveRecommendations } from "@/tools/saveRecommendations";
 
 describe("saveRecommendations", () => {
   function setupPoolMocks() {

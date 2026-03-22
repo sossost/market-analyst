@@ -21,7 +21,7 @@ vi.mock("@/etl/utils/common", () => ({
   },
 }));
 
-import { getMarketBreadth } from "@/agent/tools/getMarketBreadth";
+import { getMarketBreadth } from "@/tools/getMarketBreadth";
 
 // --- helpers ---
 

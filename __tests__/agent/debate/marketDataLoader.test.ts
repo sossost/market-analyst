@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatMarketSnapshot, type MarketSnapshot } from "../../../src/agent/debate/marketDataLoader.js";
+import { formatMarketSnapshot, type MarketSnapshot } from "@/debate/marketDataLoader.js";
 
 function createSnapshot(overrides: Partial<MarketSnapshot> = {}): MarketSnapshot {
   return {

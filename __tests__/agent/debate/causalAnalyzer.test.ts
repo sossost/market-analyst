@@ -9,7 +9,7 @@ vi.mock("node:child_process", () => ({
   execFile: mockExecFile,
 }));
 
-vi.mock("../../../src/agent/debate/sessionStore.js", () => ({
+vi.mock("@/debate/sessionStore.js", () => ({
   findSessionByDate: mockFindSession,
 }));
 
@@ -17,7 +17,7 @@ import {
   analyzeCauses,
   parseCausalAnalysis,
   type CausalAnalysisInput,
-} from "../../../src/agent/debate/causalAnalyzer.js";
+} from "@/debate/causalAnalyzer.js";
 
 /**
  * execFile mock helper — CLI provider 성공 응답 시뮬레이션.

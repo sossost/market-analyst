@@ -63,12 +63,12 @@ function makeFailedResponse(status = 500) {
 }
 
 describe("getIndexReturns", () => {
-  let getIndexReturns: typeof import("@/agent/tools/getIndexReturns").getIndexReturns;
+  let getIndexReturns: typeof import("@/tools/getIndexReturns").getIndexReturns;
 
   beforeEach(async () => {
     vi.resetModules();
     mockFetch.mockReset();
-    const mod = await import("@/agent/tools/getIndexReturns");
+    const mod = await import("@/tools/getIndexReturns");
     getIndexReturns = mod.getIndexReturns;
   });
 
