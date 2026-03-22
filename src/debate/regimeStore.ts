@@ -24,6 +24,13 @@ const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
 const CONFIRMATION_DAYS = 3;
 
 /**
+ * 레짐 전환 확정 후 다른 레짐으로의 전환을 차단하는 최소 유지 기간 (달력일).
+ * 7달력일 ≈ 5거래일. 변동성 높은 시장에서 레짐이 매일 바뀌는 것을 방지한다.
+ * 동일 레짐 재확정은 쿨다운 미적용.
+ */
+const MIN_HOLD_CALENDAR_DAYS = 7;
+
+/**
  * 허용된 레짐 전환 맵.
  * 확정된 레짐(confirmed)에서 전환 가능한 레짐 목록을 정의한다.
  * 이 맵에 없는 전환은 CONFIRMATION_DAYS를 채워도 확정되지 않는다.
@@ -123,6 +130,8 @@ export async function saveRegimePending(
         isConfirmed: false,
         confirmedAt: null,
       },
+      // 이미 확정된 레코드는 덮어쓰지 않는다 — 재실행 시 confirmed 보호
+      where: eq(marketRegimes.isConfirmed, false),
     });
 
   logger.info(
@@ -149,6 +158,20 @@ function getWindowStart(date: string, windowDays: number): string {
  *
  * @internal exported for testing only
  */
+/**
+ * 두 YYYY-MM-DD 날짜 간 달력일 차이를 반환한다.
+ * from이 to보다 과거이면 양수를 반환한다.
+ *
+ * @internal exported for testing only
+ */
+export function calendarDaysBetween(from: string, to: string): number {
+  const fromDate = new Date(`${from}T00:00:00Z`);
+  const toDate = new Date(`${to}T00:00:00Z`);
+  return Math.floor(
+    (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
+}
+
 export function areDatesConsecutive(dates: string[]): boolean {
   for (let i = 0; i < dates.length - 1; i++) {
     const newer = new Date(`${dates[i]}T00:00:00Z`);
@@ -224,20 +247,34 @@ export async function applyHysteresis(
     confirmedRegime.regime === latestPendingRegime ||
     ALLOWED_TRANSITIONS[confirmedRegime.regime].has(latestPendingRegime);
 
+  // 쿨다운 검증 — 레짐 전환 확정 후 MIN_HOLD_CALENDAR_DAYS 이내 재전환 차단
+  // 동일 레짐 재확정은 쿨다운 미적용 (레짐 유지 강화)
+  const isInCooldown =
+    confirmedRegime != null &&
+    confirmedRegime.regime !== latestPendingRegime &&
+    calendarDaysBetween(
+      confirmedRegime.confirmedAt ?? confirmedRegime.regimeDate,
+      date,
+    ) < MIN_HOLD_CALENDAR_DAYS;
+
   const canConfirm =
     (shouldConfirmImmediately ||
       (allSameRegime && datesConsecutive && hasEnoughPending)) &&
-    isTransitionAllowed;
+    isTransitionAllowed &&
+    !isInCooldown;
 
   if (!canConfirm) {
-    // 연속 판정 불충족 또는 허용되지 않은 전환 — 기존 확정 레짐 유지
+    // 연속 판정 불충족, 허용되지 않은 전환, 또는 쿨다운 — 기존 확정 레짐 유지
     const transitionNote =
       !isTransitionAllowed
         ? ` 허용되지 않은 전환: ${confirmedRegime?.regime} → ${latestPendingRegime}`
         : "";
+    const cooldownNote = isInCooldown
+      ? ` 쿨다운 중: ${confirmedRegime?.confirmedAt ?? confirmedRegime?.regimeDate}부터 ${MIN_HOLD_CALENDAR_DAYS}일 미경과`
+      : "";
     logger.info(
       "RegimeStore",
-      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${CONFIRMATION_DAYS}${transitionNote}). 확정 대기 중.`,
+      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${CONFIRMATION_DAYS}${transitionNote}${cooldownNote}). 확정 대기 중.`,
     );
     return confirmedRegime;
   }

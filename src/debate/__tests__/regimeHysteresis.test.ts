@@ -313,7 +313,7 @@ describe("applyHysteresis", () => {
     const day1 = makeRow({ regimeDate: "2026-03-12", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const day2 = makeRow({ regimeDate: "2026-03-13", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const day3 = makeRow({ regimeDate: "2026-03-14", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
-    const prevConfirmed = makeRow({ regimeDate: "2026-03-11", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-11" });
+    const prevConfirmed = makeRow({ regimeDate: "2026-03-04", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-04" });
 
     const selectCallbacks = [
       [prevConfirmed],       // 1st: loadConfirmedRegime
@@ -419,7 +419,7 @@ describe("applyHysteresis", () => {
     const earlyBearDay1 = makeRow({ regimeDate: "2026-03-12", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const earlyBearDay2 = makeRow({ regimeDate: "2026-03-13", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const earlyBearDay3 = makeRow({ regimeDate: "2026-03-14", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
-    const midBullConfirmed = makeRow({ regimeDate: "2026-03-11", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-11" });
+    const midBullConfirmed = makeRow({ regimeDate: "2026-03-04", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-04" });
 
     const selectCallbacks = [
       [midBullConfirmed],                          // 1st: loadConfirmedRegime → MID_BULL confirmed
@@ -449,7 +449,7 @@ describe("applyHysteresis", () => {
     const day1 = makeRow({ regimeDate: "2026-03-12", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const day2 = makeRow({ regimeDate: "2026-03-13", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const day3 = makeRow({ regimeDate: "2026-03-14", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
-    const lateBullConfirmed = makeRow({ regimeDate: "2026-03-11", regime: "LATE_BULL", isConfirmed: true, confirmedAt: "2026-03-11" });
+    const lateBullConfirmed = makeRow({ regimeDate: "2026-03-04", regime: "LATE_BULL", isConfirmed: true, confirmedAt: "2026-03-04" });
 
     const selectCallbacks = [
       [lateBullConfirmed],   // 1st: loadConfirmedRegime → LATE_BULL confirmed
@@ -537,7 +537,7 @@ describe("applyHysteresis", () => {
     const fridayPending = makeRow({ regimeDate: "2026-03-13", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const mondayPending = makeRow({ regimeDate: "2026-03-16", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
     const tuesdayPending = makeRow({ regimeDate: "2026-03-17", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
-    const prevConfirmed = makeRow({ regimeDate: "2026-03-12", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-12" });
+    const prevConfirmed = makeRow({ regimeDate: "2026-03-05", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-05" });
 
     const selectCallbacks = [
       [prevConfirmed],                              // 1st: loadConfirmedRegime
@@ -559,6 +559,95 @@ describe("applyHysteresis", () => {
 
     // 주말을 사이에 두고도 연속 거래일로 인식 → 확정
     expect(result?.regime).toBe("EARLY_BEAR");
+    expect(result?.isConfirmed).toBe(true);
+    expect(db.update).toHaveBeenCalled();
+  });
+
+  it("쿨다운 기간 내 다른 레짐 전환 → 차단, 이전 confirmed 반환", async () => {
+    // confirmedAt: 3/11, 처리일: 3/14 → 3일 차이 (< 7일 쿨다운)
+    const day1 = makeRow({ regimeDate: "2026-03-12", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
+    const day2 = makeRow({ regimeDate: "2026-03-13", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
+    const day3 = makeRow({ regimeDate: "2026-03-14", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
+    const recentConfirmed = makeRow({ regimeDate: "2026-03-11", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-11" });
+
+    const selectCallbacks = [
+      [recentConfirmed],       // 1st: loadConfirmedRegime → 최근 확정 (3일 전)
+      [day3, day2, day1],      // 2nd: pending 3건 — EARLY_BEAR 연속
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    const result = await applyHysteresis("2026-03-14");
+
+    // 쿨다운 기간 내이므로 전환 차단 — 이전 confirmed(MID_BULL) 반환
+    expect(result?.regime).toBe("MID_BULL");
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("쿨다운 경과 후 다른 레짐 3일 연속 → 전환 확정", async () => {
+    // confirmedAt: 3/04, 처리일: 3/14 → 10일 차이 (>= 7일 쿨다운)
+    const day1 = makeRow({ regimeDate: "2026-03-12", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
+    const day2 = makeRow({ regimeDate: "2026-03-13", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
+    const day3 = makeRow({ regimeDate: "2026-03-14", regime: "EARLY_BEAR", isConfirmed: false, confirmedAt: null });
+    const oldConfirmed = makeRow({ regimeDate: "2026-03-04", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-04" });
+
+    const selectCallbacks = [
+      [oldConfirmed],          // 1st: loadConfirmedRegime → 10일 전 확정
+      [day3, day2, day1],      // 2nd: pending 3건 — EARLY_BEAR 연속
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.update).mockReturnValue(makeUpdateChain() as any);
+
+    const result = await applyHysteresis("2026-03-14");
+
+    // 쿨다운 경과 → 전환 확정
+    expect(result?.regime).toBe("EARLY_BEAR");
+    expect(result?.isConfirmed).toBe(true);
+    expect(db.update).toHaveBeenCalled();
+  });
+
+  it("동일 레짐 재확정은 쿨다운 무관 — 항상 허용", async () => {
+    // confirmedAt: 3/11, 처리일: 3/14 → 3일 차이 (< 7일 쿨다운이지만 동일 레짐)
+    const day1 = makeRow({ regimeDate: "2026-03-12", regime: "MID_BULL", isConfirmed: false, confirmedAt: null });
+    const day2 = makeRow({ regimeDate: "2026-03-13", regime: "MID_BULL", isConfirmed: false, confirmedAt: null });
+    const day3 = makeRow({ regimeDate: "2026-03-14", regime: "MID_BULL", isConfirmed: false, confirmedAt: null });
+    const recentConfirmed = makeRow({ regimeDate: "2026-03-11", regime: "MID_BULL", isConfirmed: true, confirmedAt: "2026-03-11" });
+
+    const selectCallbacks = [
+      [recentConfirmed],       // 1st: loadConfirmedRegime → 최근 확정 동일 레짐
+      [day3, day2, day1],      // 2nd: pending 3건 — 동일 레짐 MID_BULL 연속
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.update).mockReturnValue(makeUpdateChain() as any);
+
+    const result = await applyHysteresis("2026-03-14");
+
+    // 동일 레짐이므로 쿨다운 미적용 → 확정
+    expect(result?.regime).toBe("MID_BULL");
     expect(result?.isConfirmed).toBe(true);
     expect(db.update).toHaveBeenCalled();
   });
