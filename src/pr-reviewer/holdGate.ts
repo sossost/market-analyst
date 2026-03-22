@@ -22,8 +22,8 @@ const TAG = 'HOLD_GATE'
 const GH_TIMEOUT_MS = 30_000
 const AUTO_BLOCKED_LABEL = 'auto:blocked'
 
-/** Strategic Reviewer 출력에서 종합 판정을 추출하는 정규식 */
-const VERDICT_PATTERN = /^종합:\s*(PROCEED|HOLD|REJECT)/m
+/** Strategic Reviewer 출력에서 종합 판정을 추출하는 정규식 (마크다운 볼드 허용) */
+const VERDICT_PATTERN = /^종합:\s*\*{0,2}(PROCEED|HOLD|REJECT)\*{0,2}/m
 
 /**
  * gh CLI 헬퍼 — Draft 전환 및 라벨 부착용

@@ -102,6 +102,13 @@ describe('parseStrategicVerdict', () => {
     const output = '앞줄 내용\n종합: REJECT\n뒷줄 내용'
     expect(parseStrategicVerdict(output)).toBe('REJECT')
   })
+
+  it('마크다운 볼드(**) 감싸진 판정을 파싱한다', async () => {
+    const { parseStrategicVerdict } = await import('../holdGate.js')
+    expect(parseStrategicVerdict('종합: **HOLD**')).toBe('HOLD')
+    expect(parseStrategicVerdict('종합: **PROCEED**')).toBe('PROCEED')
+    expect(parseStrategicVerdict('종합: **REJECT**')).toBe('REJECT')
+  })
 })
 
 // ---------------------------------------------------------------------------
