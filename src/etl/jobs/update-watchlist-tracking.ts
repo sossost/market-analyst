@@ -40,11 +40,11 @@ async function main() {
   await pool.end();
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   logger.error(
     TAG,
     `update-watchlist-tracking failed: ${err instanceof Error ? err.message : String(err)}`,
   );
-  pool.end();
+  await pool.end();
   process.exit(1);
 });

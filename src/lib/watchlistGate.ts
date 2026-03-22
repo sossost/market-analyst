@@ -3,8 +3,8 @@
  *
  * 관심종목 등록 전 5가지 조건을 모두 통과해야 한다:
  * 1. Phase 2 확인
- * 2. 섹터 RS 상위 (SECTOR_RS_TOP_PERCENTILE 이상)
- * 3. 개별 RS 상위 (MIN_RS_SCORE 이상)
+ * 2. 섹터 RS 상위 (MIN_SECTOR_RS 이상)
+ * 3. 개별 RS 상위 (MIN_INDIVIDUAL_RS 이상)
  * 4. 서사적 근거 — thesis_id가 존재하는지 (구조적 전환 포착 여부)
  * 5. SEPA 펀더멘탈 S 또는 A 등급
  *

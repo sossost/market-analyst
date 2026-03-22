@@ -161,7 +161,7 @@ async function executeRegister(
 
   const rsScore = typeof rawInput.rs_score === "number" ? rawInput.rs_score : null;
   const sectorRs = typeof rawInput.sector_rs === "number" ? rawInput.sector_rs : null;
-  const sepaGrade = typeof rawInput.sepa_grade === "string" ? rawInput.sepa_grade : null;
+  const sepaGrade = typeof rawInput.sepa_grade === "string" ? rawInput.sepa_grade.toUpperCase() : null;
   const thesisId = typeof rawInput.thesis_id === "number" ? rawInput.thesis_id : null;
   const sector = typeof rawInput.sector === "string" ? rawInput.sector : null;
   const industry = typeof rawInput.industry === "string" ? rawInput.industry : null;
@@ -216,8 +216,8 @@ async function executeRegister(
   // tracking_end_date 계산
   const trackingEndDate = calculateTrackingEndDate(date);
 
-  // DB 저장
-  await retryDatabaseOperation(() =>
+  // DB 저장 — returning으로 실제 삽입 여부 확인
+  const insertedRows = await retryDatabaseOperation(() =>
     db
       .insert(watchlistStocks)
       .values({
@@ -245,8 +245,23 @@ async function executeRegister(
       })
       .onConflictDoNothing({
         target: [watchlistStocks.symbol, watchlistStocks.entryDate],
-      }),
+      })
+      .returning({ id: watchlistStocks.id }),
   );
+
+  // onConflictDoNothing 발동 시 returning이 빈 배열 → 동시 요청에 의한 중복
+  if (insertedRows.length === 0) {
+    logger.warn(
+      "SaveWatchlist",
+      `${symbol}: 동시 요청에 의한 중복 등록 감지 — 실제 삽입 없음`,
+    );
+    return JSON.stringify({
+      success: false,
+      blocked: true,
+      symbol,
+      message: `${symbol} 등록이 동시 요청으로 인해 스킵되었습니다.`,
+    });
+  }
 
   logger.info(
     "SaveWatchlist",
@@ -254,7 +269,7 @@ async function executeRegister(
   );
 
   // 종목 심층 리포트 생성 (fire-and-forget)
-  // 관심종목 등록 성공 시 corporate analyst를 비동기로 실행한다.
+  // 실제 삽입이 확인된 경우에만 corporate analyst를 비동기로 실행한다.
   // 실패가 관심종목 저장 성공에 영향을 주지 않도록 await 없이 실행.
   runCorporateAnalyst(symbol, date, pool)
     .then((result) => {
