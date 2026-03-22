@@ -805,6 +805,58 @@ export const stockAnalysisReports = pgTable(
   }),
 );
 
+/**
+ * watchlist_stocks — 관심종목 등록/해제/이력.
+ * 5중 교집합 게이트(Phase 2 + 섹터RS + 개별RS + 서사 근거 + SEPA S/A)를 통과한 종목만 등록.
+ * 90일 고정 윈도우로 Phase 궤적을 추적하며, 추천 승률이 아닌 포착 선행성이 핵심 KPI.
+ */
+export const watchlistStocks = pgTable(
+  "watchlist_stocks",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    status: text("status").notNull().default("ACTIVE"), // 'ACTIVE' | 'EXITED'
+    entryDate: text("entry_date").notNull(), // 등록일 (YYYY-MM-DD)
+    exitDate: text("exit_date"), // 해제일 (null이면 활성)
+    exitReason: text("exit_reason"), // 해제 사유
+
+    // 등록 시점 팩터 스냅샷
+    entryPhase: smallint("entry_phase").notNull(),
+    entryRsScore: integer("entry_rs_score"),
+    entrySectorRs: numeric("entry_sector_rs"),
+    entrySepaGrade: text("entry_sepa_grade"), // 'S' | 'A' | 'B' | 'C' | 'F'
+    entryThesisId: integer("entry_thesis_id"), // 연결된 thesis (nullable)
+    entrySector: text("entry_sector"),
+    entryIndustry: text("entry_industry"),
+    entryReason: text("entry_reason"), // 서사적 등록 근거 (자유 텍스트)
+
+    // 90일 윈도우 트래킹
+    trackingEndDate: text("tracking_end_date"), // entry_date + 90일
+    currentPhase: smallint("current_phase"),
+    currentRsScore: integer("current_rs_score"),
+    phaseTrajectory: jsonb("phase_trajectory").$type<
+      Array<{ date: string; phase: number; rsScore: number | null }>
+    >(), // [{date, phase, rsScore}] — 매일 ETL 누적
+    sectorRelativePerf: numeric("sector_relative_perf"), // 섹터 대비 상대 성과 (%)
+    priceAtEntry: numeric("price_at_entry"),
+    currentPrice: numeric("current_price"),
+    pnlPercent: numeric("pnl_percent"), // 참고 지표만
+    maxPnlPercent: numeric("max_pnl_percent"),
+    daysTracked: integer("days_tracked").default(0),
+    lastUpdated: text("last_updated"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_watchlist_stocks_symbol_date").on(t.symbol, t.entryDate),
+    idxStatus: index("idx_watchlist_stocks_status").on(t.status),
+    idxEntryDate: index("idx_watchlist_stocks_entry_date").on(t.entryDate),
+    idxSymbol: index("idx_watchlist_stocks_symbol").on(t.symbol),
+  }),
+);
+
 // ==================== Phase B: FMP API 확장 데이터 ====================
 
 /**

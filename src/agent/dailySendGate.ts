@@ -4,6 +4,7 @@ import {
   findRecentRegimes,
   countUnusualPhaseStocks,
   findPhase1to2SurgeSectors,
+  findActiveWatchlist,
 } from "@/db/repositories/index.js";
 import { logger } from "@/lib/logger";
 
@@ -17,7 +18,7 @@ const UNUSUAL_STOCK_THRESHOLD = 3;
 
 /**
  * 투자 브리핑 발송 게이트.
- * 5개 OR 조건 중 하나라도 충족하면 shouldSend: true.
+ * 6개 OR 조건 중 하나라도 충족하면 shouldSend: true.
  * DB 오류 시 안전하게 shouldSend: true 반환 (발송 누락 방지).
  */
 export async function evaluateDailySendGate(
@@ -32,6 +33,7 @@ export async function evaluateDailySendGate(
       checkRegimeChange(targetDate),
       checkUnusualPhaseStocks(targetDate),
       checkPhase1to2Surge(targetDate),
+      checkWatchlistPhaseChange(),
     ]);
 
     let hasError = false;
@@ -106,4 +108,19 @@ async function checkPhase1to2Surge(date: string): Promise<string | null> {
   if (total < PHASE1_TO_2_THRESHOLD) return null;
 
   return `Phase 1→2 다수 전환: 상위 2개 섹터 합산 ${total}개`;
+}
+
+/** 조건 6: ACTIVE 관심종목 중 Phase 전이 발생 (entryPhase ≠ currentPhase) */
+async function checkWatchlistPhaseChange(): Promise<string | null> {
+  const items = await findActiveWatchlist();
+
+  const changed = items.filter(
+    (item) =>
+      item.current_phase != null && item.current_phase !== item.entry_phase,
+  );
+
+  if (changed.length === 0) return null;
+
+  const symbols = changed.map((item) => item.symbol).join(", ");
+  return `관심종목 Phase 전이: ${symbols}`;
 }

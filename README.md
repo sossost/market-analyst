@@ -47,8 +47,8 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 어닝콜 핵심 발언, 포워드 EPS, 피어 비교 등 Seeking Alpha 수준 리포트
 
 7. 에이전트 리포트
-   → 일간: 시장 온도 + 특이종목 브리핑 (조건부 발송)
-   → 주간: Phase 2 주도주 심층 분석 + 펀더멘탈 검증 (SEPA)
+   → 일간: 시장 온도 + 토론 핵심 발견 + 관심종목 현황 브리핑 (조건부 발송)
+   → 주간: 주간 구조 변화 + 관심종목 궤적 + thesis 적중률 + 시스템 성과
    → S등급(Top 3): 개별 종목 심층 리포트 발행
 
 8. 전략 참모 (매일 04:00)
@@ -311,6 +311,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **F8** Report/Debate Archive Dashboard — Next.js 16 + Supabase Auth + 리포트/토론 아카이브 UI
 - [x] **F9** Strategic Auto-Review — 매일 시스템 분석 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거)
 - [x] **F10** Corporate Analyst — 종목별 심층 분석 리포트 + 정량 목표주가 산출 (피어 멀티플 + 컨센서스 교차 검증)
+- [ ] **F11** Insight Briefing Pivot — 추천 시스템 → 관심종목 + 인사이트 브리핑 중심 전환 (KPI: thesis 적중률 + 포착 선행성)
 
 ### Enhancement Phases (완료)
 

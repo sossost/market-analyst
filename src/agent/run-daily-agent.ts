@@ -16,6 +16,7 @@ import { getUnusualStocks } from "@/tools/getUnusualStocks";
 import { getPhase1LateStocks } from "@/tools/getPhase1LateStocks";
 import { getRisingRS } from "@/tools/getRisingRS";
 import { searchCatalyst } from "@/tools/searchCatalyst";
+import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
 import { saveReportLogTool } from "@/tools/saveReportLog";
 import {
   createDraftCaptureTool,
@@ -34,6 +35,7 @@ import {
 } from "@/debate/thesisStore";
 import { formatChainsForDailyPrompt } from "@/lib/narrativeChainStats";
 import { evaluateDailySendGate } from "./dailySendGate";
+import { loadTodayDebateInsight } from "@/debate/sessionStore";
 import { buildMarketTempBlock } from "./marketTempBlock";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
@@ -116,7 +118,7 @@ async function main() {
 
   // 1. 환경변수 검증
   validateAgentEnvironment();
-  logger.step("[1/9] Environment validated");
+  logger.step("[1/10] Environment validated");
 
   // 2. 최신 거래일 확인
   const targetDate = await getLatestPriceDate();
@@ -126,7 +128,7 @@ async function main() {
     await pool.end();
     return;
   }
-  logger.step(`[2/9] Target date: ${targetDate}`);
+  logger.step(`[2/10] Target date: ${targetDate}`);
 
   // 3. 애널리스트 토론 전망 로드
   let thesesContext = "";
@@ -141,7 +143,7 @@ async function main() {
   } catch (err) {
     logger.warn("Thesis", `Failed to load theses: ${err instanceof Error ? err.message : String(err)}`);
   }
-  logger.step("[3/9] Theses loaded");
+  logger.step("[3/10] Theses loaded");
 
   // 4. 활성 서사 체인 로드
   let narrativeChainsContext = "";
@@ -154,31 +156,40 @@ async function main() {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("NarrativeChain", `로드 실패 (에이전트는 계속 진행): ${reason}`);
   }
-  logger.step("[4/9] Narrative chains loaded");
+  logger.step("[4/10] Narrative chains loaded");
 
-  // 5. 발송 게이트 평가 (인사이트 없으면 에이전트 루프 스킵)
+  // 5. 오늘의 토론 인사이트 로드 (fail-open — 없으면 빈 문자열)
+  const debateInsight = await loadTodayDebateInsight(targetDate);
+  if (debateInsight !== "") {
+    logger.info("DebateInsight", "오늘의 토론 인사이트 로드 완료");
+  } else {
+    logger.info("DebateInsight", "오늘의 토론 인사이트 없음 — [중단] 섹션 생략됨");
+  }
+  logger.step("[5/10] Debate insight loaded");
+
+  // 6. 발송 게이트 평가 (인사이트 없으면 에이전트 루프 스킵)
   if (process.env.SKIP_DAILY_GATE !== "true") {
     const gate = await evaluateDailySendGate(targetDate);
     if (!gate.shouldSend) {
-      logger.step("[5/9] Send gate: SKIP — 시장 온도 간소 발송");
+      logger.step("[6/10] Send gate: SKIP — 시장 온도 간소 발송");
       await sendMarketTempOnly(targetDate);
       await pool.end();
       return;
     }
-    logger.step(`[5/9] Send gate: PASS — ${gate.reasons.join(" | ")}`);
+    logger.step(`[6/10] Send gate: PASS — ${gate.reasons.join(" | ")}`);
   } else {
-    logger.step("[5/9] Send gate: BYPASSED (SKIP_DAILY_GATE=true)");
+    logger.step("[6/10] Send gate: BYPASSED (SKIP_DAILY_GATE=true)");
   }
 
-  // 6. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
-  logger.step("[6/9] Running agent loop...\n");
+  // 7. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
+  logger.step("[7/10] Running agent loop...\n");
 
   const reportDrafts: ReportDraft[] = [];
   const capturedReport: { data: ReportData | null } = { data: null };
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext }),
+    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext, debateInsight }),
     tools: [
       getIndexReturns,
       getMarketBreadth,
@@ -188,6 +199,7 @@ async function main() {
       getRisingRS,
       searchCatalyst,
       getStockDetail,
+      getWatchlistStatus,
       createDraftCaptureTool(reportDrafts),
       createReportLogCaptureTool(capturedReport),
     ],
@@ -201,7 +213,7 @@ async function main() {
   try {
     const result = await runAgentLoop(config);
 
-    logger.step("\n[7/9] Agent result:");
+    logger.step("\n[8/10] Agent result:");
     logger.info("Result", `Success: ${result.success}`);
     logger.info(
       "Result",
@@ -238,10 +250,10 @@ async function main() {
     logger.error("Agent", `Agent loop crashed: ${loopError}`);
   }
 
-  // 8. QA: DB 원본 수치와 리포트 데이터 대조
+  // 9. QA: DB 원본 수치와 리포트 데이터 대조
   let finalDrafts = reportDrafts;
   if (capturedReport.data != null) {
-    logger.step("[8/9] Running daily QA...");
+    logger.step("[9/10] Running daily QA...");
     try {
       const qaResult = await runDailyQA(targetDate, capturedReport.data);
       logger.info("DailyQA", `severity: ${qaResult.severity}, mismatches: ${qaResult.mismatches.length}, checked: ${qaResult.checkedItems}`);
@@ -278,9 +290,9 @@ async function main() {
     }
   }
 
-  // 9. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
+  // 10. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (finalDrafts.length > 0) {
-    logger.step("[9/9] Running review pipeline...");
+    logger.step("[10/10] Running review pipeline...");
     const sentDrafts = await runReviewPipeline(finalDrafts, "DISCORD_WEBHOOK_URL", { reportType: "daily" });
 
     // full_content DB 저장

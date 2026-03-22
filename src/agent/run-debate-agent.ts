@@ -24,8 +24,7 @@ import {
 } from "@/debate/confidenceCalibrator";
 import { verifyTheses } from "@/debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "@/debate/sessionStore";
-import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "@/lib/discord";
-import { createGist } from "@/lib/gist";
+import { sendDiscordMessage, sendDiscordError } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import { runDebateQA, type DebateQAResult } from "./debateQA";
 import { reportQAIssue } from "@/lib/qaIssueReporter";
@@ -33,6 +32,9 @@ import { runReviewPipeline, draftsToFullContent, type ReportDraft } from "./revi
 import { loadFundamentalData } from "@/lib/fundamental-data-loader";
 import { scoreFundamentals, promoteTopToS } from "@/lib/fundamental-scorer";
 import { formatFundamentalContext } from "@/debate/round3-synthesis";
+// extractDailyInsight는 insightExtractor에서 관리 — 순환 참조 방지를 위해 분리
+export { extractDailyInsight } from "@/debate/insightExtractor";
+
 import type { DebateResult, RoundOutput } from "@/types/debate";
 import type { MarketSnapshot } from "@/debate/marketDataLoader";
 
@@ -52,6 +54,8 @@ interface AlertDecision {
  *
  * 이전 조건 3 (thesis >= 3)은 Claude가 매번 3~4개를 생성하여 100% 충족,
  * 게이트 역할을 하지 못해 제거됨. (#313)
+ *
+ * @deprecated DEBATE_SEND_MODE=legacy 에서만 사용. 기본 경로에서 토론 발송은 폐지됨.
  */
 function checkAlertConditions(
   result: DebateResult,
@@ -92,6 +96,8 @@ function checkAlertConditions(
 /**
  * 리포트에서 "핵심 요약" 섹션을 추출하여 Discord 메시지에 포함.
  * 못 찾으면 리포트 첫 300자를 사용.
+ *
+ * @deprecated legacy 발송 경로(DEBATE_SEND_MODE=legacy)에서만 사용.
  */
 function extractCoreInsight(report: string): string {
   // "## 1. 핵심 요약" ~ 다음 "##" 사이 추출
@@ -114,6 +120,8 @@ const PERSONA_LABELS: Record<string, string> = {
 
 /**
  * 각 애널리스트의 Round 1 분석에서 핵심 인사이트(첫 의미 있는 문단)를 추출.
+ *
+ * @deprecated legacy 발송 경로(DEBATE_SEND_MODE=legacy)에서만 사용.
  */
 function extractPersonaInsights(outputs: RoundOutput[]): string {
   return outputs
@@ -152,6 +160,8 @@ function extractFirstInsight(content: string): string {
 
 /**
  * Round 2 교차 토론에서 애널리스트 간 핵심 쟁점을 추출.
+ *
+ * @deprecated legacy 발송 경로(DEBATE_SEND_MODE=legacy)에서만 사용.
  */
 function extractKeyDebatePoint(outputs: RoundOutput[]): string | null {
   // Round 2에서 "반박", "동의하지 않", "다른 시각", "우려" 등 충돌 키워드가 있는 문장 추출
@@ -296,6 +306,117 @@ function validateEnvironment(): void {
   }
   if (process.env.ANTHROPIC_API_KEY == null || process.env.ANTHROPIC_API_KEY === "") {
     logger.warn("Env", "ANTHROPIC_API_KEY 미설정 — Claude CLI only (API 폴백 불가)");
+  }
+}
+
+/**
+ * legacy 발송 경로에서 Discord로 투자 브리핑을 전송한다.
+ * DEBATE_SEND_MODE=legacy 환경변수 설정 시 실행됨.
+ * 기본 경로에서 토론 발송은 폐지됨 — 일간 에이전트가 인사이트를 통합 발송한다.
+ */
+async function sendLegacyDebateReport(
+  result: DebateResult,
+  marketSnapshot: MarketSnapshot,
+  debateDate: string,
+): Promise<void> {
+  const report = result.round3.report;
+  const shouldAlert = checkAlertConditions(result, marketSnapshot);
+
+  if (!shouldAlert.send) {
+    logger.info("Alert", "No alert conditions met — results saved to DB only");
+    return;
+  }
+
+  logger.info("Alert", `Sending report (legacy): ${shouldAlert.reason}`);
+
+  // 투자 브리핑 QA (데이터 정합성 + bull-bias 감지)
+  logger.step("[8/9] Running debate QA...");
+  let debateQAResult: DebateQAResult | null = null;
+  try {
+    debateQAResult = await runDebateQA(debateDate, result.round3.theses);
+    logger.info(
+      "DebateQA",
+      `severity: ${debateQAResult.severity}, mismatches: ${debateQAResult.mismatches.length}, checked: ${debateQAResult.checkedItems}`,
+    );
+  } catch (err) {
+    logger.warn(
+      "DebateQA",
+      `QA 실패 (발송 계속): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // Discord 메시지 구성
+  const coreInsight = extractCoreInsight(report);
+  const personaInsights = extractPersonaInsights(result.round1.outputs);
+  const debatePoint = extractKeyDebatePoint(result.round2.outputs);
+
+  const thesesSummary = result.round3.theses
+    .map((t) => {
+      const confidence = t.confidence === "high" ? "🔴" : t.confidence === "medium" ? "🟡" : "⚪";
+      const timeframe = `${t.timeframeDays}일`;
+      return `${confidence} ${t.thesis} _(${timeframe}, ${t.consensusLevel} 합의)_`;
+    })
+    .join("\n");
+
+  const sections = [
+    `📊 **시황 브리핑** (${debateDate})`,
+    "",
+    coreInsight,
+    "",
+    "---",
+    "",
+    "**애널리스트 인사이트**",
+    personaInsights,
+  ];
+
+  if (debatePoint != null) {
+    sections.push("", "**핵심 쟁점**", debatePoint);
+  }
+
+  sections.push("", "---", "", "**검증 가능한 전망**", thesesSummary);
+
+  const summary = sections.join("\n");
+
+  // ReportDraft 구성 (리뷰 파이프라인 입력)
+  let drafts: ReportDraft[] = [
+    {
+      message: sanitizeDiscordMentions(summary),
+      markdownContent: report,
+      filename: `briefing-${debateDate}.md`,
+    },
+  ];
+
+  // QA 경고가 있으면 draft에 경고 블록 삽입 + 이슈 생성
+  if (debateQAResult != null && (debateQAResult.severity === "block" || debateQAResult.severity === "warn")) {
+    const level = debateQAResult.severity === "block" ? "BLOCK" : "WARN";
+    logger.warn("DebateQA", `${level} — 경고 문구를 브리핑에 삽입합니다`);
+    drafts = withDebateQAWarning(drafts, debateQAResult);
+    try {
+      await reportQAIssue(debateQAResult, debateDate, "debate");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn("DebateQA", `QA 이슈 생성 실패 (비블로킹): ${reason}`);
+    }
+  }
+
+  // 리뷰 파이프라인 → 최종 발송
+  logger.step("[9/9] Running review pipeline...");
+  const sentDrafts = await runReviewPipeline(drafts, "DISCORD_DEBATE_WEBHOOK_URL", {
+    reportType: "debate",
+  });
+
+  // full_content DB 저장 (debate 타입으로 daily_reports에 저장)
+  if (sentDrafts.length > 0) {
+    const { saveReportLog } = await import("@/lib/reportLog");
+    const fullContent = draftsToFullContent(sentDrafts);
+    await saveReportLog({
+      date: debateDate,
+      type: "debate",
+      reportedSymbols: [],
+      marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
+      fullContent,
+      metadata: { model: "debate-pipeline", tokensUsed: result.metadata.totalTokens, toolCalls: 0, executionTime: result.metadata.totalDurationMs },
+    });
   }
 }
 
@@ -546,7 +667,7 @@ async function main() {
     logger.warn("Session", `Failed to save session: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 6.5. 토론 데이터 완전성 검증 (저장 후, 발송 전)
+  // 6.5. 토론 데이터 완전성 검증 (저장 후)
   const allTickersEmpty = result.round3.theses.length > 0 &&
     result.round3.theses.every((t) => (t.beneficiaryTickers ?? []).length === 0);
   if (allTickersEmpty) {
@@ -559,105 +680,16 @@ async function main() {
     });
   }
 
-  // 7. 조건부 Discord 발송 (QA + 리뷰 파이프라인 적용)
-  logger.step("[7/9] Checking alert conditions...");
-  const report = result.round3.report;
-  const shouldAlert = checkAlertConditions(result, marketSnapshot);
+  // 7. 발송 경로 결정
+  // DEBATE_SEND_MODE=legacy: 기존 조건부 Discord 발송 (롤백 안전장치)
+  // 기본(생략): 발송 없음 — 일간 에이전트가 debate_sessions에서 인사이트를 읽어 통합 발송
+  const isLegacyMode = process.env.DEBATE_SEND_MODE === "legacy";
 
-  if (shouldAlert.send) {
-    logger.info("Alert", `Sending report: ${shouldAlert.reason}`);
-
-    // 8. 투자 브리핑 QA (데이터 정합성 + bull-bias 감지)
-    logger.step("[8/9] Running debate QA...");
-    let debateQAResult: DebateQAResult | null = null;
-    try {
-      debateQAResult = await runDebateQA(debateDate, result.round3.theses);
-      logger.info(
-        "DebateQA",
-        `severity: ${debateQAResult.severity}, mismatches: ${debateQAResult.mismatches.length}, checked: ${debateQAResult.checkedItems}`,
-      );
-    } catch (err) {
-      logger.warn(
-        "DebateQA",
-        `QA 실패 (발송 계속): ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    // Discord 메시지 구성
-    const coreInsight = extractCoreInsight(report);
-    const personaInsights = extractPersonaInsights(result.round1.outputs);
-    const debatePoint = extractKeyDebatePoint(result.round2.outputs);
-
-    const thesesSummary = result.round3.theses
-      .map((t) => {
-        const confidence = t.confidence === "high" ? "🔴" : t.confidence === "medium" ? "🟡" : "⚪";
-        const timeframe = `${t.timeframeDays}일`;
-        return `${confidence} ${t.thesis} _(${timeframe}, ${t.consensusLevel} 합의)_`;
-      })
-      .join("\n");
-
-    const sections = [
-      `📊 **시황 브리핑** (${debateDate})`,
-      "",
-      coreInsight,
-      "",
-      "---",
-      "",
-      "**애널리스트 인사이트**",
-      personaInsights,
-    ];
-
-    if (debatePoint != null) {
-      sections.push("", "**핵심 쟁점**", debatePoint);
-    }
-
-    sections.push("", "---", "", "**검증 가능한 전망**", thesesSummary);
-
-    const summary = sections.join("\n");
-
-    // ReportDraft 구성 (리뷰 파이프라인 입력)
-    let drafts: ReportDraft[] = [
-      {
-        message: sanitizeDiscordMentions(summary),
-        markdownContent: report,
-        filename: `briefing-${debateDate}.md`,
-      },
-    ];
-
-    // QA 경고가 있으면 draft에 경고 블록 삽입 + 이슈 생성
-    if (debateQAResult != null && (debateQAResult.severity === "block" || debateQAResult.severity === "warn")) {
-      const level = debateQAResult.severity === "block" ? "BLOCK" : "WARN";
-      logger.warn("DebateQA", `${level} — 경고 문구를 브리핑에 삽입합니다`);
-      drafts = withDebateQAWarning(drafts, debateQAResult);
-      try {
-        await reportQAIssue(debateQAResult, debateDate, "debate");
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        logger.warn("DebateQA", `QA 이슈 생성 실패 (비블로킹): ${reason}`);
-      }
-    }
-
-    // 9. 리뷰 파이프라인 → 최종 발송
-    logger.step("[9/9] Running review pipeline...");
-    const sentDrafts = await runReviewPipeline(drafts, "DISCORD_DEBATE_WEBHOOK_URL", {
-      reportType: "debate",
-    });
-
-    // full_content DB 저장 (debate 타입으로 daily_reports에 저장)
-    if (sentDrafts.length > 0) {
-      const { saveReportLog } = await import("@/lib/reportLog");
-      const fullContent = draftsToFullContent(sentDrafts);
-      await saveReportLog({
-        date: debateDate,
-        type: "debate",
-        reportedSymbols: [],
-        marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
-        fullContent,
-        metadata: { model: "debate-pipeline", tokensUsed: { input: 0, output: 0 }, toolCalls: 0, executionTime: 0 },
-      });
-    }
+  if (isLegacyMode) {
+    logger.step("[7/7] Legacy send mode — running conditional Discord send...");
+    await sendLegacyDebateReport(result, marketSnapshot, debateDate);
   } else {
-    logger.info("Alert", "No alert conditions met — results saved to DB only");
+    logger.step("[7/7] Default mode — thesis/regime/session saved. Daily agent will integrate insights.");
   }
 
   await pool.end();
