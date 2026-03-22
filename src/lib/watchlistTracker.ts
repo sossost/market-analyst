@@ -38,7 +38,7 @@ export interface TrajectoryPoint {
 
 export interface TrackingUpdateResult {
   symbol: string;
-  action: "updated" | "exited";
+  action: "updated" | "exited" | "failed";
   exitReason?: string;
 }
 
@@ -316,16 +316,17 @@ export async function runWatchlistTracking(date: string): Promise<TrackerRunResu
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.error("WatchlistTracker", `${item.symbol}: 처리 실패 — ${reason}`);
-      details.push({ symbol: item.symbol, action: "updated" });
+      details.push({ symbol: item.symbol, action: "failed" });
     }
   }
 
   const exited = details.filter((d) => d.action === "exited").length;
   const updated = details.filter((d) => d.action === "updated").length;
+  const failed = details.filter((d) => d.action === "failed").length;
 
   logger.info(
     "WatchlistTracker",
-    `트래킹 완료: ${updated}건 갱신, ${exited}건 만료`,
+    `트래킹 완료: ${updated}건 갱신, ${exited}건 만료${failed > 0 ? `, ${failed}건 실패` : ""}`,
   );
 
   return {

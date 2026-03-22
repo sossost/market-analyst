@@ -415,7 +415,7 @@ async function sendLegacyDebateReport(
       reportedSymbols: [],
       marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
       fullContent,
-      metadata: { model: "debate-pipeline", tokensUsed: { input: 0, output: 0 }, toolCalls: 0, executionTime: 0 },
+      metadata: { model: "debate-pipeline", tokensUsed: result.metadata.totalTokens, toolCalls: 0, executionTime: result.metadata.totalDurationMs },
     });
   }
 }
