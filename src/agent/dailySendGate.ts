@@ -1,4 +1,10 @@
-import { pool } from "@/db/client";
+import {
+  findSectorsWithPhaseTransition,
+  findRsNewEntrants,
+  findRecentRegimes,
+  countUnusualPhaseStocks,
+  findPhase1to2SurgeSectors,
+} from "@/db/repositories/index.js";
 import { logger } from "@/lib/logger";
 
 export interface SendGateResult {
@@ -53,11 +59,7 @@ export async function evaluateDailySendGate(
 
 /** 조건 1: 섹터 group_phase 1→2 전환 */
 async function checkSectorTransition(date: string): Promise<string | null> {
-  const { rows } = await pool.query<{ sector: string }>(
-    `SELECT sector FROM sector_rs_daily
-     WHERE date = $1 AND group_phase = 2 AND prev_group_phase = 1`,
-    [date],
-  );
+  const rows = await findSectorsWithPhaseTransition(date);
 
   if (rows.length === 0) return null;
 
@@ -67,25 +69,7 @@ async function checkSectorTransition(date: string): Promise<string | null> {
 
 /** 조건 2: change_4w 상위 3위에 새 섹터 진입 */
 async function checkRsNewEntrant(date: string): Promise<string | null> {
-  const { rows } = await pool.query<{ sector: string; is_new: boolean }>(
-    `WITH today AS (
-       SELECT sector, change_4w::numeric AS c4w,
-              ROW_NUMBER() OVER (ORDER BY change_4w::numeric DESC) AS rn
-       FROM sector_rs_daily WHERE date = $1
-     ),
-     prev AS (
-       SELECT sector, change_4w::numeric AS c4w,
-              ROW_NUMBER() OVER (ORDER BY change_4w::numeric DESC) AS rn
-       FROM sector_rs_daily WHERE date = (
-         SELECT MAX(date) FROM sector_rs_daily WHERE date < $1
-       )
-     )
-     SELECT t.sector, NOT EXISTS (
-       SELECT 1 FROM prev p WHERE p.sector = t.sector AND p.rn <= 3
-     ) AS is_new
-     FROM today t WHERE t.rn <= 3`,
-    [date],
-  );
+  const rows = await findRsNewEntrants(date);
 
   const newEntrants = rows.filter((r) => r.is_new);
   if (newEntrants.length === 0) return null;
@@ -96,12 +80,7 @@ async function checkRsNewEntrant(date: string): Promise<string | null> {
 
 /** 조건 3: 최근 2일간 레짐 변경 */
 async function checkRegimeChange(date: string): Promise<string | null> {
-  const { rows } = await pool.query<{ regime: string }>(
-    `SELECT regime FROM market_regimes
-     WHERE regime_date <= $1
-     ORDER BY regime_date DESC LIMIT 2`,
-    [date],
-  );
+  const rows = await findRecentRegimes(date, 2);
 
   if (rows.length < 2) return null;
   if (rows[0].regime === rows[1].regime) return null;
@@ -111,15 +90,9 @@ async function checkRegimeChange(date: string): Promise<string | null> {
 
 /** 조건 4: Phase 1→2 전환 + 거래량 2배 이상 종목 N개 이상 */
 async function checkUnusualPhaseStocks(date: string): Promise<string | null> {
-  const { rows } = await pool.query<{ cnt: string }>(
-    `SELECT COUNT(*)::text AS cnt FROM stock_phases
-     WHERE date = $1
-       AND phase = 2 AND prev_phase = 1
-       AND vol_ratio >= 2.0`,
-    [date],
-  );
+  const row = await countUnusualPhaseStocks(date);
 
-  const count = Number(rows[0]?.cnt ?? 0);
+  const count = Number(row.cnt ?? 0);
   if (count < UNUSUAL_STOCK_THRESHOLD) return null;
 
   return `Phase 1→2 전환 + 거래량 급증 종목 ${count}개`;
@@ -127,18 +100,9 @@ async function checkUnusualPhaseStocks(date: string): Promise<string | null> {
 
 /** 조건 5: phase1to2_count_5d 상위 2개 섹터 합산 N개 이상 */
 async function checkPhase1to2Surge(date: string): Promise<string | null> {
-  const { rows } = await pool.query<{ total: string }>(
-    `SELECT COALESCE(SUM(phase1to2_count_5d), 0)::text AS total
-     FROM (
-       SELECT phase1to2_count_5d FROM sector_rs_daily
-       WHERE date = $1
-       ORDER BY phase1to2_count_5d DESC
-       LIMIT 2
-     ) sub`,
-    [date],
-  );
+  const row = await findPhase1to2SurgeSectors(date);
 
-  const total = Number(rows[0]?.total ?? 0);
+  const total = Number(row.total ?? 0);
   if (total < PHASE1_TO_2_THRESHOLD) return null;
 
   return `Phase 1→2 다수 전환: 상위 2개 섹터 합산 ${total}개`;
