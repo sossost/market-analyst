@@ -3,4 +3,7 @@ export * from "./sectorRepository.js";
 export * from "./marketBreadthRepository.js";
 export * from "./priceRepository.js";
 export * from "./groupRsRepository.js";
+export * from "./recommendationRepository.js";
+export * from "./symbolRepository.js";
+export * from "./fundamentalRepository.js";
 export type * from "./types.js";

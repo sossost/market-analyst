@@ -1,8 +1,8 @@
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { validateDate, validateNumber } from "./validation";
+import { findPhase1LateStocks } from "@/db/repositories/stockPhaseRepository.js";
 
 const DEFAULT_LIMIT = 30;
 
@@ -41,42 +41,8 @@ export const getPhase1LateStocks: AgentTool = {
     // Phase 1 종목 중 MA150 기울기가 양전환 조짐 (기울기 > -0.001, 즉 거의 0이거나 양수)
     // + 거래량 비율 1.5x 이상 (의미 있는 거래량 증가는 1.5배 이상)
     // + RS 30 이상 (false positive 감소: 20은 너무 관대)
-    const { rows } = await retryDatabaseOperation(() =>
-      pool.query<{
-        symbol: string;
-        phase: number;
-        prev_phase: number | null;
-        rs_score: number;
-        ma150_slope: string | null;
-        pct_from_high_52w: string | null;
-        pct_from_low_52w: string | null;
-        conditions_met: string | null;
-        vol_ratio: string | null;
-        sector: string | null;
-        industry: string | null;
-        sector_group_phase: number | null;
-        sector_avg_rs: string | null;
-      }>(
-        `SELECT
-           sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
-           sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
-           sp.conditions_met, sp.vol_ratio::text,
-           s.sector, s.industry,
-           srd.group_phase AS sector_group_phase,
-           srd.avg_rs::text AS sector_avg_rs
-         FROM stock_phases sp
-         JOIN symbols s ON sp.symbol = s.symbol
-         LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
-         WHERE sp.date = $1
-           AND sp.phase = 1
-           AND (sp.prev_phase IS NULL OR sp.prev_phase = 1)
-           AND sp.ma150_slope::numeric > -0.001
-           AND sp.rs_score >= 30
-           AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.5
-         ORDER BY sp.ma150_slope::numeric DESC, sp.rs_score DESC
-         LIMIT $2`,
-        [date, limit],
-      ),
+    const rows = await retryDatabaseOperation(() =>
+      findPhase1LateStocks(date, limit),
     );
 
     const stocks = rows.map((r) => {

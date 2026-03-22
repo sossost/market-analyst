@@ -246,3 +246,154 @@ export interface GroupPrevPhaseRow {
   group_name: string;
   group_phase: number;
 }
+
+// ─── recommendationRepository ─────────────────────────────────────────────────
+
+export interface ActiveRecommendationRow {
+  symbol: string;
+}
+
+export interface RecentlyClosedRow {
+  symbol: string;
+}
+
+export interface Phase2PersistenceRow {
+  symbol: string;
+  phase2_count: string;
+}
+
+// ─── symbolRepository ─────────────────────────────────────────────────────────
+
+export interface SymbolMetaRow {
+  sector: string | null;
+  industry: string | null;
+  market_cap: string | null;
+}
+
+// ─── fundamentalRepository ────────────────────────────────────────────────────
+
+export interface FundamentalGradeRow {
+  grade: string;
+}
+
+export interface FundamentalAccelerationRow {
+  symbol: string;
+  period_end_date: string;
+  eps_diluted: string | null;
+  revenue: string | null;
+  net_income: string | null;
+  sector: string | null;
+  industry: string | null;
+}
+
+// ─── stockPhaseRepository (Phase 3 추가) ──────────────────────────────────────
+
+export interface StockPhaseDetailRow {
+  rs_score: number | null;
+  phase: number;
+  ma150_slope: string | null;
+  vol_ratio: string | null;
+  volume_confirmed: boolean | null;
+  pct_from_high_52w: string | null;
+  pct_from_low_52w: string | null;
+  conditions_met: string | null;
+}
+
+export interface StockPhaseFullRow {
+  phase: number;
+  prev_phase: number | null;
+  rs_score: number;
+  ma150: string | null;
+  ma150_slope: string | null;
+  pct_from_high_52w: string | null;
+  pct_from_low_52w: string | null;
+  conditions_met: string | null;
+}
+
+export interface MarketPhase2RatioRow {
+  phase2_ratio: string | null;
+}
+
+export interface Phase2PersistenceBySymbolRow {
+  phase2_count: string;
+}
+
+export interface UnusualStockRow {
+  symbol: string;
+  close: string;
+  prev_close: string;
+  daily_return: string;
+  volume: string;
+  vol_ma30: string;
+  vol_ratio: string;
+  phase: number;
+  prev_phase: number | null;
+  rs_score: number;
+  sector: string;
+  industry: string;
+  company_name: string;
+}
+
+export interface RisingRsStockRow {
+  symbol: string;
+  phase: number;
+  rs_score: number;
+  rs_score_4w_ago: number | null;
+  rs_change: number | null;
+  ma150_slope: string | null;
+  pct_from_low_52w: string | null;
+  vol_ratio: string | null;
+  sector: string | null;
+  industry: string | null;
+  sector_avg_rs: string | null;
+  sector_change_4w: string | null;
+  sector_group_phase: number | null;
+}
+
+export interface Phase1LateStockRow {
+  symbol: string;
+  phase: number;
+  prev_phase: number | null;
+  rs_score: number;
+  ma150_slope: string | null;
+  pct_from_high_52w: string | null;
+  pct_from_low_52w: string | null;
+  conditions_met: string | null;
+  vol_ratio: string | null;
+  sector: string | null;
+  industry: string | null;
+  sector_group_phase: number | null;
+  sector_avg_rs: string | null;
+}
+
+// ─── sectorRepository (Phase 3 추가) ──────────────────────────────────────────
+
+export interface SectorRsContextRow {
+  avg_rs: string | null;
+  group_phase: number | null;
+}
+
+export interface SectorRsDetailContextRow {
+  avg_rs: string;
+  rs_rank: number;
+  group_phase: number;
+}
+
+export interface SectorRsRankWithTotalRow {
+  rs_rank: string;
+  total_sectors: string;
+}
+
+// ─── priceRepository (Phase 3 추가) ───────────────────────────────────────────
+
+export interface PriceWithMaRow {
+  close: string;
+  volume: string;
+  ma50: string | null;
+  ma200: string | null;
+}
+
+export interface LatestCloseRow {
+  symbol: string;
+  close: string;
+}

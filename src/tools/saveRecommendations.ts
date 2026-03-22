@@ -8,6 +8,25 @@ import { loadConfirmedRegime, loadPendingRegimes } from "@/debate/regimeStore";
 import { evaluateBearException, tagBearExceptionReason, BEAR_EXCEPTION_TAG } from "./bearExceptionGate";
 import { logger } from "@/lib/logger";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
+import {
+  findActiveRecommendations,
+  findRecentlyClosed,
+  findPhase2Persistence,
+} from "@/db/repositories/recommendationRepository.js";
+import {
+  findStockPhaseDetail,
+  findMarketPhase2Ratio,
+} from "@/db/repositories/stockPhaseRepository.js";
+import {
+  findSymbolMeta,
+} from "@/db/repositories/symbolRepository.js";
+import {
+  findSectorRsByName,
+  findIndustryRsByName,
+} from "@/db/repositories/sectorRepository.js";
+import {
+  findLatestClose,
+} from "@/db/repositories/priceRepository.js";
 
 interface RecommendationInput {
   symbol: string;
@@ -194,37 +213,13 @@ export const saveRecommendations: AgentTool = {
     const persistenceStart = getDateOffset(date, PHASE2_PERSISTENCE_DAYS);
 
     const [
-      { rows: activeRows },
-      { rows: cooldownRows },
-      { rows: persistenceRows },
+      activeRows,
+      cooldownRows,
+      persistenceRows,
     ] = await Promise.all([
-      retryDatabaseOperation(() =>
-        pool.query<{ symbol: string }>(
-          `SELECT symbol FROM recommendations WHERE status = 'ACTIVE' AND symbol = ANY($1)`,
-          [symbols],
-        ),
-      ),
-      retryDatabaseOperation(() =>
-        pool.query<{ symbol: string }>(
-          `SELECT DISTINCT symbol FROM recommendations
-           WHERE status <> 'ACTIVE'
-             AND close_date >= $1
-             AND symbol = ANY($2)`,
-          [cooldownStart, symbols],
-        ),
-      ),
-      retryDatabaseOperation(() =>
-        pool.query<{ symbol: string; phase2_count: string }>(
-          `SELECT symbol, COUNT(*) AS phase2_count
-           FROM stock_phases
-           WHERE symbol = ANY($1)
-             AND date >= $2
-             AND date <= $3
-             AND phase >= 2
-           GROUP BY symbol`,
-          [symbols, persistenceStart, date],
-        ),
-      ),
+      retryDatabaseOperation(() => findActiveRecommendations(symbols)),
+      retryDatabaseOperation(() => findRecentlyClosed(cooldownStart, symbols)),
+      retryDatabaseOperation(() => findPhase2Persistence(symbols, persistenceStart, date)),
     ]);
     const activeSymbols = new Set(activeRows.map((r) => r.symbol));
     const cooldownSymbols = new Set(cooldownRows.map((r) => r.symbol));
@@ -233,11 +228,8 @@ export const saveRecommendations: AgentTool = {
     );
 
     // 진입가 검증: 추천일 종가 사전 일괄 조회
-    const { rows: priceRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; close: string }>(
-        `SELECT symbol, close FROM daily_prices WHERE symbol = ANY($1) AND date = $2`,
-        [symbols, date],
-      ),
+    const priceRows = await retryDatabaseOperation(() =>
+      findLatestClose(symbols, date),
     );
     const dbPriceMap = new Map(
       priceRows.map((r) => [r.symbol, toNum(r.close)]),
@@ -483,47 +475,14 @@ async function saveFactorSnapshot(
   date: string,
 ): Promise<void> {
   // 독립 쿼리 3개 병렬 실행
-  const [{ rows: phaseRows }, { rows: symbolRows }, { rows: breadthRows }] =
-    await Promise.all([
-      retryDatabaseOperation(() =>
-        pool.query<{
-          rs_score: number | null;
-          phase: number;
-          ma150_slope: string | null;
-          vol_ratio: string | null;
-          volume_confirmed: boolean | null;
-          pct_from_high_52w: string | null;
-          pct_from_low_52w: string | null;
-          conditions_met: string | null;
-        }>(
-          `SELECT rs_score, phase, ma150_slope, vol_ratio, volume_confirmed,
-                  pct_from_high_52w, pct_from_low_52w, conditions_met
-           FROM stock_phases WHERE symbol = $1 AND date = $2`,
-          [symbol, date],
-        ),
-      ),
-      retryDatabaseOperation(() =>
-        pool.query<{ sector: string | null; industry: string | null }>(
-          `SELECT sector, industry FROM symbols WHERE symbol = $1`,
-          [symbol],
-        ),
-      ),
-      retryDatabaseOperation(() =>
-        pool.query<{ phase2_ratio: string | null }>(
-          `SELECT
-             ROUND(COUNT(*) FILTER (WHERE phase = 2)::numeric / NULLIF(COUNT(*), 0) * 100, 1)::text AS phase2_ratio
-           FROM stock_phases WHERE date = $1`,
-          [date],
-        ),
-      ),
-    ]);
+  const [stockFactor, symbolInfo, breadthRow] = await Promise.all([
+    retryDatabaseOperation(() => findStockPhaseDetail(symbol, date)),
+    retryDatabaseOperation(() => findSymbolMeta(symbol)),
+    retryDatabaseOperation(() => findMarketPhase2Ratio(date)),
+  ]);
 
-  const stockFactor = phaseRows[0] ?? null;
-  const symbolInfo = symbolRows[0] ?? null;
   const marketPhase2Ratio =
-    breadthRows[0]?.phase2_ratio != null
-      ? toNum(breadthRows[0].phase2_ratio)
-      : null;
+    breadthRow.phase2_ratio != null ? toNum(breadthRow.phase2_ratio) : null;
 
   // 섹터/업종 팩터 병렬 조회 (symbolInfo 의존)
   let sectorRs: number | null = null;
@@ -536,15 +495,11 @@ async function saveFactorSnapshot(
   if (symbolInfo?.sector != null) {
     groupQueries.push(
       retryDatabaseOperation(() =>
-        pool.query<{ avg_rs: string | null; group_phase: number | null }>(
-          `SELECT avg_rs, group_phase FROM sector_rs_daily
-           WHERE sector = $1 AND date = $2`,
-          [symbolInfo.sector, date],
-        ),
-      ).then(({ rows }) => {
-        if (rows[0] != null) {
-          sectorRs = toNum(rows[0].avg_rs);
-          sectorGroupPhase = rows[0].group_phase;
+        findSectorRsByName(symbolInfo.sector!, date),
+      ).then((row) => {
+        if (row != null) {
+          sectorRs = toNum(row.avg_rs);
+          sectorGroupPhase = row.group_phase;
         }
       }),
     );
@@ -553,15 +508,11 @@ async function saveFactorSnapshot(
   if (symbolInfo?.industry != null) {
     groupQueries.push(
       retryDatabaseOperation(() =>
-        pool.query<{ avg_rs: string | null; group_phase: number | null }>(
-          `SELECT avg_rs, group_phase FROM industry_rs_daily
-           WHERE industry = $1 AND date = $2`,
-          [symbolInfo.industry, date],
-        ),
-      ).then(({ rows }) => {
-        if (rows[0] != null) {
-          industryRs = toNum(rows[0].avg_rs);
-          industryGroupPhase = rows[0].group_phase;
+        findIndustryRsByName(symbolInfo.industry!, date),
+      ).then((row) => {
+        if (row != null) {
+          industryRs = toNum(row.avg_rs);
+          industryGroupPhase = row.group_phase;
         }
       }),
     );

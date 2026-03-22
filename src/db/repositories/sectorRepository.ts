@@ -9,6 +9,9 @@ import type {
   MarketRegimeRow,
   SectorSepaStatsRow,
   PrevWeekDateRow,
+  SectorRsContextRow,
+  SectorRsDetailContextRow,
+  SectorRsRankWithTotalRow,
 } from "./types.js";
 
 /**
@@ -171,6 +174,91 @@ export async function findRecentRegimes(
   );
 
   return rows;
+}
+
+/**
+ * 단일 섹터의 avg_rs, group_phase를 조회한다 (saveRecommendations 팩터 저장용).
+ */
+export async function findSectorRsByName(
+  sector: string,
+  date: string,
+): Promise<SectorRsContextRow | null> {
+  const { rows } = await pool.query<SectorRsContextRow>(
+    `SELECT avg_rs, group_phase FROM sector_rs_daily
+     WHERE sector = $1 AND date = $2`,
+    [sector, date],
+  );
+
+  return rows[0] ?? null;
+}
+
+/**
+ * 단일 업종의 avg_rs, group_phase를 조회한다 (saveRecommendations 팩터 저장용).
+ */
+export async function findIndustryRsByName(
+  industry: string,
+  date: string,
+): Promise<SectorRsContextRow | null> {
+  const { rows } = await pool.query<SectorRsContextRow>(
+    `SELECT avg_rs, group_phase FROM industry_rs_daily
+     WHERE industry = $1 AND date = $2`,
+    [industry, date],
+  );
+
+  return rows[0] ?? null;
+}
+
+/**
+ * 단일 섹터의 RS 랭크 + 전체 섹터 수를 조회한다 (bearExceptionGate 전용).
+ */
+export async function findSectorRsRankWithTotal(
+  sector: string,
+  date: string,
+): Promise<SectorRsRankWithTotalRow | null> {
+  const { rows } = await pool.query<SectorRsRankWithTotalRow>(
+    `SELECT
+       srd.rs_rank,
+       (SELECT COUNT(*) FROM sector_rs_daily WHERE date = $2) AS total_sectors
+     FROM sector_rs_daily srd
+     WHERE srd.sector = $1 AND srd.date = $2`,
+    [sector, date],
+  );
+
+  return rows[0] ?? null;
+}
+
+/**
+ * 단일 섹터의 avg_rs, rs_rank, group_phase를 조회한다 (getStockDetail 컨텍스트용).
+ */
+export async function findSectorRsDetail(
+  sector: string,
+  date: string,
+): Promise<SectorRsDetailContextRow | null> {
+  const { rows } = await pool.query<SectorRsDetailContextRow>(
+    `SELECT avg_rs::text, rs_rank, group_phase
+     FROM sector_rs_daily
+     WHERE date = $1 AND sector = $2`,
+    [date, sector],
+  );
+
+  return rows[0] ?? null;
+}
+
+/**
+ * 단일 업종의 avg_rs, rs_rank, group_phase를 조회한다 (getStockDetail 컨텍스트용).
+ */
+export async function findIndustryRsDetail(
+  industry: string,
+  date: string,
+): Promise<SectorRsDetailContextRow | null> {
+  const { rows } = await pool.query<SectorRsDetailContextRow>(
+    `SELECT avg_rs::text, rs_rank, group_phase
+     FROM industry_rs_daily
+     WHERE date = $1 AND industry = $2`,
+    [date, industry],
+  );
+
+  return rows[0] ?? null;
 }
 
 /**
