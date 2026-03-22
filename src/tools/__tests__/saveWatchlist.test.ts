@@ -26,6 +26,10 @@ vi.mock("@/db/repositories/watchlistRepository.js", () => ({
   exitWatchlistItem: vi.fn(),
 }));
 
+vi.mock("@/corporate-analyst/runCorporateAnalyst.js", () => ({
+  runCorporateAnalyst: vi.fn().mockResolvedValue({ success: true }),
+}));
+
 // drizzle schema 컬럼 참조를 mock — onConflictDoNothing target에서 사용
 vi.mock("@/db/schema/analyst", () => ({
   watchlistStocks: {
@@ -75,15 +79,19 @@ function makeValidRegisterInput() {
   };
 }
 
-function makeInsertChain() {
+function makeInsertChain(inserted = true) {
+  const returningMock = vi.fn().mockResolvedValue(inserted ? [{ id: 1 }] : []);
+  const conflictChain = {
+    returning: returningMock,
+  };
   const valuesChain = {
-    onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+    onConflictDoNothing: vi.fn().mockReturnValue(conflictChain),
   };
   const insertChain = {
     values: vi.fn().mockReturnValue(valuesChain),
   };
   mockDb.insert.mockReturnValue(insertChain);
-  return { insertChain, valuesChain };
+  return { insertChain, valuesChain, returningMock };
 }
 
 // ─── 등록 (register) ──────────────────────────────────────────────────────────
@@ -157,6 +165,16 @@ describe("saveWatchlist.execute — register", () => {
     expect(result.success).toBe(false);
     expect(result.blocked).toBe(true);
     expect(result.message).toContain("ACTIVE");
+  });
+
+  it("동시 요청에 의한 중복 시 returning 빈 배열 → 실패 반환", async () => {
+    makeInsertChain(false); // returning이 빈 배열 반환
+    const result = JSON.parse(
+      await saveWatchlist.execute(makeValidRegisterInput()),
+    );
+    expect(result.success).toBe(false);
+    expect(result.blocked).toBe(true);
+    expect(result.message).toContain("동시 요청");
   });
 
   it("action이 없으면 에러 반환", async () => {
