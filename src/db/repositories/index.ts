@@ -7,4 +7,5 @@ export * from "./recommendationRepository.js";
 export * from "./symbolRepository.js";
 export * from "./fundamentalRepository.js";
 export * from "./corporateRepository.js";
+export * from "./watchlistRepository.js";
 export type * from "./types.js";
