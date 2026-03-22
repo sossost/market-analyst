@@ -122,3 +122,4 @@ CEO가 미션을 내리면 즉시 실행하지 않는다:
 - `docs/features/` — 기능별 스펙/결정/플랜 문서
 - `memory/chief-of-staff.md` — 매니저 성장 로그
 - `memory/MEMORY.md` — 프로젝트 히스토리 & 진행 상황
+- `memory/reference_system_operations.md` — 실행 가능 시스템, 명령어, 스케줄, 실행 위치. **스크립트 실행/운영 요청 시 먼저 읽는다.**
