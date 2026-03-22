@@ -90,7 +90,7 @@ export function generateStockReport(ctx: StockReportContext): string {
     const eps = q.epsDiluted != null ? `$${q.epsDiluted}` : "N/A";
     const rev = q.revenue != null ? `$${formatB(q.revenue)}` : "N/A";
     const ni = q.netIncome != null ? `$${formatB(q.netIncome)}` : "N/A";
-    const margin = q.netMargin != null ? `${(q.netMargin * 100).toFixed(1)}%` : "N/A";
+    const margin = q.netMargin != null ? `${q.netMargin.toFixed(1)}%` : "N/A";
     lines.push(`| ${q.asOfQ} | ${eps} | ${rev} | ${ni} | ${margin} |`);
   }
 

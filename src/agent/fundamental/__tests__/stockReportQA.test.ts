@@ -102,6 +102,29 @@ describe("runStockReportQA", () => {
     });
   });
 
+  describe("MARGIN_OVERFLOW", () => {
+    it("이익률 열에 100% 초과 값(3965.8%) → 이슈 검출", () => {
+      const report = buildValidReport().replace(
+        "| 2024Q3 | $0.74 | $30.0B | $19.3B | 64.3% |",
+        "| 2024Q3 | $0.74 | $30.0B | $19.3B | 3965.8% |",
+      );
+      const result = runStockReportQA("NVDA", report);
+
+      const issue = result.issues.find((i) => i.checkId === "MARGIN_OVERFLOW");
+      expect(issue).toBeDefined();
+      expect(issue?.severity).toBe("HIGH");
+      expect(issue?.description).toContain("3965.8%");
+    });
+
+    it("이익률이 정상 범위(64.3%) → MARGIN_OVERFLOW 없음", () => {
+      const report = buildValidReport();
+      const result = runStockReportQA("NVDA", report);
+
+      const issue = result.issues.find((i) => i.checkId === "MARGIN_OVERFLOW");
+      expect(issue).toBeUndefined();
+    });
+  });
+
   describe("SECTION_MISSING", () => {
     it("## 4. 섹션 누락 → SECTION_MISSING 검출", () => {
       const report = buildValidReport().replace(

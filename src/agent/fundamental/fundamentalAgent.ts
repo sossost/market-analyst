@@ -147,7 +147,7 @@ export function buildUserMessage(
   for (const q of input.quarters) {
     const eps = q.epsDiluted != null ? `EPS $${q.epsDiluted}` : "EPS N/A";
     const rev = q.revenue != null ? `매출 $${formatLargeNumber(q.revenue)}` : "매출 N/A";
-    const margin = q.netMargin != null ? `마진 ${(q.netMargin * 100).toFixed(1)}%` : "마진 N/A";
+    const margin = q.netMargin != null ? `마진 ${q.netMargin.toFixed(1)}%` : "마진 N/A";
     const ni = q.netIncome != null ? `순이익 $${formatLargeNumber(q.netIncome)}` : "순이익 N/A";
     lines.push(`- ${q.asOfQ} (${q.periodEndDate}): ${eps}, ${rev}, ${ni}, ${margin}`);
   }

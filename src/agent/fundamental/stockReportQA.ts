@@ -15,6 +15,7 @@ const execFileAsync = promisify(execFile);
 // ─── 체크 ID 상수 ─────────────────────────────────────────────────────
 
 const CHECK_MARGIN_RAW_DECIMAL = "MARGIN_RAW_DECIMAL";
+const CHECK_MARGIN_OVERFLOW = "MARGIN_OVERFLOW";
 const CHECK_SECTION_MISSING = "SECTION_MISSING";
 const CHECK_NO_RISK_MENTION = "NO_RISK_MENTION";
 const CHECK_EPS_INCONSISTENCY = "EPS_INCONSISTENCY";
@@ -56,6 +57,7 @@ export function runStockReportQA(symbol: string, reportMd: string): QAResult {
   const date = new Date().toISOString().slice(0, 10);
   const issues: QAIssue[] = [
     checkMarginRawDecimal(reportMd),
+    checkMarginOverflow(reportMd),
     checkSectionMissing(reportMd),
     checkNoRiskMention(reportMd),
     checkEpsInconsistency(reportMd),
@@ -91,6 +93,35 @@ function checkMarginRawDecimal(reportMd: string): QAIssue | null {
     checkId: CHECK_MARGIN_RAW_DECIMAL,
     severity: "HIGH",
     description: `이익률 열에 소수점 미변환 값 발견: \`${match[0].trim()}\` — 퍼센트 변환이 적용되지 않았을 가능성`,
+  };
+}
+
+/**
+ * 이익률 열에 100%를 초과하는 비정상 값이 있는지 탐지.
+ *
+ * 정상: `| 39.7% |`
+ * 이상: `| 3965.8% |` (이중 ×100 적용 등)
+ *
+ * 이익률이 100%를 초과하는 것은 순이익 > 매출을 의미하므로 비정상.
+ */
+function checkMarginOverflow(reportMd: string): QAIssue | null {
+  // 분기별 실적 테이블의 이익률 열 값 탐색: `| 숫자% |` 패턴
+  const pattern = /\|\s*([\d,]+\.?\d*)%\s*\|/g;
+  const overflowValues: string[] = [];
+
+  for (const match of reportMd.matchAll(pattern)) {
+    const value = parseFloat(match[1].replace(/,/g, ""));
+    if (Number.isFinite(value) && value > 100) {
+      overflowValues.push(`${match[1]}%`);
+    }
+  }
+
+  if (overflowValues.length === 0) return null;
+
+  return {
+    checkId: CHECK_MARGIN_OVERFLOW,
+    severity: "HIGH",
+    description: `이익률 100% 초과 값 발견: ${overflowValues.slice(0, 3).join(", ")} — 이중 변환(×100) 가능성`,
   };
 }
 
