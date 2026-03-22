@@ -1,8 +1,18 @@
-import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { clampPercent, validateDate } from "./validation";
+import {
+  findTradingDates,
+  findWeeklyTrend,
+  findWeeklyPhase1to2Transitions,
+  findPhaseDistribution,
+  findPrevDayPhase2Ratio,
+  findMarketAvgRs,
+  findAdvanceDecline,
+  findNewHighLow,
+  findBreadthTopSectors,
+} from "@/db/repositories/index.js";
 
 /**
  * 전체 시장 브레드스 지표를 조회한다.
@@ -41,14 +51,8 @@ export const getMarketBreadth: AgentTool = {
 
     if (mode === "weekly") {
       // 5거래일 날짜 목록 조회
-      const { rows: dateRows } = await retryDatabaseOperation(() =>
-        pool.query<{ date: string }>(
-          `SELECT DISTINCT date::text FROM stock_phases
-           WHERE date <= $1
-           ORDER BY date DESC
-           LIMIT 5`,
-          [date],
-        ),
+      const dateRows = await retryDatabaseOperation(() =>
+        findTradingDates(date, 5),
       );
 
       const dates = dateRows.map((r) => r.date).reverse();
@@ -58,28 +62,8 @@ export const getMarketBreadth: AgentTool = {
       }
 
       // 각 날짜의 Phase 2 비율 + 시장 RS 일괄 조회
-      const { rows: trendRows } = await retryDatabaseOperation(() =>
-        pool.query<{
-          date: string;
-          total: string;
-          phase2_count: string;
-          avg_rs: string;
-        }>(
-          `SELECT
-             sp.date::text,
-             COUNT(*)::text AS total,
-             COUNT(*) FILTER (WHERE sp.phase = 2)::text AS phase2_count,
-             AVG(sp.rs_score)::numeric(10,2)::text AS avg_rs
-           FROM stock_phases sp
-           JOIN symbols s ON sp.symbol = s.symbol
-           WHERE sp.date = ANY($1::date[])
-             AND s.is_actively_trading = true
-             AND s.is_etf = false
-             AND s.is_fund = false
-           GROUP BY sp.date
-           ORDER BY sp.date ASC`,
-          [dates],
-        ),
+      const trendRows = await retryDatabaseOperation(() =>
+        findWeeklyTrend(dates),
       );
 
       const weeklyTrend = trendRows.map((r) => {
@@ -95,40 +79,18 @@ export const getMarketBreadth: AgentTool = {
       });
 
       // 주간 Phase 1→2 전환 종목 수 합계
-      const { rows: transRows } = await retryDatabaseOperation(() =>
-        pool.query<{ transitions: string }>(
-          `SELECT COUNT(*)::text AS transitions
-           FROM stock_phases sp
-           JOIN symbols s ON sp.symbol = s.symbol
-           WHERE sp.date = ANY($1::date[])
-             AND sp.phase = 2
-             AND sp.prev_phase = 1
-             AND s.is_actively_trading = true
-             AND s.is_etf = false
-             AND s.is_fund = false`,
-          [dates],
-        ),
+      const transRow = await retryDatabaseOperation(() =>
+        findWeeklyPhase1to2Transitions(dates),
       );
 
-      const phase1to2Transitions = toNum(transRows[0]?.transitions);
+      const phase1to2Transitions = toNum(transRow.transitions);
 
       // 가장 최근 날짜 기준으로 daily 상세 데이터 조회
       const latestDate = dates[dates.length - 1];
 
       // Phase 분포
-      const { rows: phaseRows } = await retryDatabaseOperation(() =>
-        pool.query<{ phase: number; count: string }>(
-          `SELECT sp.phase, COUNT(*)::text AS count
-           FROM stock_phases sp
-           JOIN symbols s ON sp.symbol = s.symbol
-           WHERE sp.date = $1
-             AND s.is_actively_trading = true
-             AND s.is_etf = false
-             AND s.is_fund = false
-           GROUP BY sp.phase
-           ORDER BY sp.phase`,
-          [latestDate],
-        ),
+      const phaseRows = await retryDatabaseOperation(() =>
+        findPhaseDistribution(latestDate),
       );
 
       const total = phaseRows.reduce((sum, r) => sum + toNum(r.count), 0);
@@ -150,71 +112,29 @@ export const getMarketBreadth: AgentTool = {
           : 0;
 
       // A/D ratio (최신 날짜)
-      const { rows: adRows } = await retryDatabaseOperation(() =>
-        pool.query<{ advancers: string; decliners: string; unchanged: string }>(
-          `SELECT
-             COUNT(*) FILTER (WHERE dp.close::numeric > dp_prev.close::numeric)::text AS advancers,
-             COUNT(*) FILTER (WHERE dp.close::numeric < dp_prev.close::numeric)::text AS decliners,
-             COUNT(*) FILTER (WHERE dp.close::numeric = dp_prev.close::numeric)::text AS unchanged
-           FROM daily_prices dp
-           JOIN daily_prices dp_prev
-             ON dp.symbol = dp_prev.symbol
-             AND dp_prev.date = (SELECT MAX(date) FROM daily_prices WHERE date < $1)
-           JOIN symbols s ON dp.symbol = s.symbol
-           WHERE dp.date = $1
-             AND s.is_actively_trading = true
-             AND s.is_etf = false
-             AND s.is_fund = false`,
-          [latestDate],
-        ),
+      const adRow = await retryDatabaseOperation(() =>
+        findAdvanceDecline(latestDate),
       );
 
-      const advancers = toNum(adRows[0]?.advancers);
-      const decliners = toNum(adRows[0]?.decliners);
-      const unchanged = toNum(adRows[0]?.unchanged);
+      const advancers = toNum(adRow.advancers);
+      const decliners = toNum(adRow.decliners);
+      const unchanged = toNum(adRow.unchanged);
       const adRatio =
         decliners > 0
           ? Number((advancers / decliners).toFixed(2))
           : null;
 
       // 52주 신고가/신저가 (최신 날짜)
-      const { rows: hlRows } = await retryDatabaseOperation(() =>
-        pool.query<{ new_highs: string; new_lows: string }>(
-          `WITH yearly_range AS (
-             SELECT symbol,
-               MAX(high::numeric) AS high_52w,
-               MIN(low::numeric) AS low_52w
-             FROM daily_prices
-             WHERE date::date BETWEEN ($1::date - INTERVAL '365 days')::date AND ($1::date - INTERVAL '1 day')::date
-             GROUP BY symbol
-           )
-           SELECT
-             COUNT(*) FILTER (WHERE dp.close::numeric >= yr.high_52w)::text AS new_highs,
-             COUNT(*) FILTER (WHERE dp.close::numeric <= yr.low_52w)::text AS new_lows
-           FROM daily_prices dp
-           JOIN yearly_range yr ON dp.symbol = yr.symbol
-           JOIN symbols s ON dp.symbol = s.symbol
-           WHERE dp.date = $1
-             AND s.is_actively_trading = true
-             AND s.is_etf = false
-             AND s.is_fund = false`,
-          [latestDate],
-        ),
+      const hlRow = await retryDatabaseOperation(() =>
+        findNewHighLow(latestDate),
       );
 
-      const newHighs = toNum(hlRows[0]?.new_highs);
-      const newLows = toNum(hlRows[0]?.new_lows);
+      const newHighs = toNum(hlRow.new_highs);
+      const newLows = toNum(hlRow.new_lows);
 
       // 상위 섹터 요약 (최신 날짜)
-      const { rows: topSectors } = await retryDatabaseOperation(() =>
-        pool.query<{ sector: string; avg_rs: string; group_phase: number }>(
-          `SELECT sector, avg_rs::text, group_phase
-           FROM sector_rs_daily
-           WHERE date = $1
-           ORDER BY avg_rs::numeric DESC
-           LIMIT 5`,
-          [latestDate],
-        ),
+      const topSectors = await retryDatabaseOperation(() =>
+        findBreadthTopSectors(latestDate, 5),
       );
 
       return JSON.stringify({
@@ -251,19 +171,8 @@ export const getMarketBreadth: AgentTool = {
     // daily 모드 (기존 로직)
 
     // Phase 분포
-    const { rows: phaseRows } = await retryDatabaseOperation(() =>
-      pool.query<{ phase: number; count: string }>(
-        `SELECT sp.phase, COUNT(*)::text AS count
-         FROM stock_phases sp
-         JOIN symbols s ON sp.symbol = s.symbol
-         WHERE sp.date = $1
-           AND s.is_actively_trading = true
-           AND s.is_etf = false
-           AND s.is_fund = false
-         GROUP BY sp.phase
-         ORDER BY sp.phase`,
-        [date],
-      ),
+    const phaseRows = await retryDatabaseOperation(() =>
+      findPhaseDistribution(date),
     );
 
     const total = phaseRows.reduce((sum, r) => sum + toNum(r.count), 0);
@@ -274,107 +183,40 @@ export const getMarketBreadth: AgentTool = {
     const phase2Ratio = total > 0 ? phase2Count / total : 0;
 
     // 전일 Phase 2 비율 (변화 계산용)
-    const { rows: prevRows } = await retryDatabaseOperation(() =>
-      pool.query<{ phase2_count: string; total_count: string }>(
-        `SELECT
-           COUNT(*) FILTER (WHERE sp.phase = 2)::text AS phase2_count,
-           COUNT(*)::text AS total_count
-         FROM stock_phases sp
-         JOIN symbols s ON sp.symbol = s.symbol
-         WHERE sp.date = (SELECT MAX(sp2.date) FROM stock_phases sp2
-                         JOIN symbols s2 ON sp2.symbol = s2.symbol
-                         WHERE sp2.date < $1
-                           AND s2.is_actively_trading = true
-                           AND s2.is_etf = false
-                           AND s2.is_fund = false)
-           AND s.is_actively_trading = true
-           AND s.is_etf = false
-           AND s.is_fund = false`,
-        [date],
-      ),
+    const prevRow = await retryDatabaseOperation(() =>
+      findPrevDayPhase2Ratio(date),
     );
 
-    const prevTotal = toNum(prevRows[0]?.total_count);
-    const prevPhase2Count = toNum(prevRows[0]?.phase2_count);
+    const prevTotal = toNum(prevRow.total_count);
+    const prevPhase2Count = toNum(prevRow.phase2_count);
     const prevPhase2Ratio = prevTotal > 0 ? prevPhase2Count / prevTotal : 0;
 
     // 시장 평균 RS
-    const { rows: rsRows } = await retryDatabaseOperation(() =>
-      pool.query<{ avg_rs: string }>(
-        `SELECT AVG(sp.rs_score)::numeric(10,2)::text AS avg_rs
-         FROM stock_phases sp
-         JOIN symbols s ON sp.symbol = s.symbol
-         WHERE sp.date = $1
-           AND s.is_actively_trading = true
-           AND s.is_etf = false
-           AND s.is_fund = false`,
-        [date],
-      ),
+    const rsRow = await retryDatabaseOperation(() =>
+      findMarketAvgRs(date),
     );
 
     // 상승/하락/보합 종목수 (Advance/Decline)
-    const { rows: adRows } = await retryDatabaseOperation(() =>
-      pool.query<{ advancers: string; decliners: string; unchanged: string }>(
-        `SELECT
-           COUNT(*) FILTER (WHERE dp.close::numeric > dp_prev.close::numeric)::text AS advancers,
-           COUNT(*) FILTER (WHERE dp.close::numeric < dp_prev.close::numeric)::text AS decliners,
-           COUNT(*) FILTER (WHERE dp.close::numeric = dp_prev.close::numeric)::text AS unchanged
-         FROM daily_prices dp
-         JOIN daily_prices dp_prev
-           ON dp.symbol = dp_prev.symbol
-           AND dp_prev.date = (SELECT MAX(date) FROM daily_prices WHERE date < $1)
-         JOIN symbols s ON dp.symbol = s.symbol
-         WHERE dp.date = $1
-           AND s.is_actively_trading = true
-           AND s.is_etf = false
-           AND s.is_fund = false`,
-        [date],
-      ),
+    const adRow = await retryDatabaseOperation(() =>
+      findAdvanceDecline(date),
     );
 
-    const advancers = toNum(adRows[0]?.advancers);
-    const decliners = toNum(adRows[0]?.decliners);
-    const unchanged = toNum(adRows[0]?.unchanged);
+    const advancers = toNum(adRow.advancers);
+    const decliners = toNum(adRow.decliners);
+    const unchanged = toNum(adRow.unchanged);
     const adRatio = decliners > 0 ? Number((advancers / decliners).toFixed(2)) : null;
 
     // 52주 신고가/신저가
-    const { rows: hlRows } = await retryDatabaseOperation(() =>
-      pool.query<{ new_highs: string; new_lows: string }>(
-        `WITH yearly_range AS (
-           SELECT symbol,
-             MAX(high::numeric) AS high_52w,
-             MIN(low::numeric) AS low_52w
-           FROM daily_prices
-           WHERE date::date BETWEEN ($1::date - INTERVAL '365 days')::date AND ($1::date - INTERVAL '1 day')::date
-           GROUP BY symbol
-         )
-         SELECT
-           COUNT(*) FILTER (WHERE dp.close::numeric >= yr.high_52w)::text AS new_highs,
-           COUNT(*) FILTER (WHERE dp.close::numeric <= yr.low_52w)::text AS new_lows
-         FROM daily_prices dp
-         JOIN yearly_range yr ON dp.symbol = yr.symbol
-         JOIN symbols s ON dp.symbol = s.symbol
-         WHERE dp.date = $1
-           AND s.is_actively_trading = true
-           AND s.is_etf = false
-           AND s.is_fund = false`,
-        [date],
-      ),
+    const hlRow = await retryDatabaseOperation(() =>
+      findNewHighLow(date),
     );
 
-    const newHighs = toNum(hlRows[0]?.new_highs);
-    const newLows = toNum(hlRows[0]?.new_lows);
+    const newHighs = toNum(hlRow.new_highs);
+    const newLows = toNum(hlRow.new_lows);
 
     // 상위 섹터 요약
-    const { rows: topSectors } = await retryDatabaseOperation(() =>
-      pool.query<{ sector: string; avg_rs: string; group_phase: number }>(
-        `SELECT sector, avg_rs::text, group_phase
-         FROM sector_rs_daily
-         WHERE date = $1
-         ORDER BY avg_rs::numeric DESC
-         LIMIT 5`,
-        [date],
-      ),
+    const topSectors = await retryDatabaseOperation(() =>
+      findBreadthTopSectors(date, 5),
     );
 
     return JSON.stringify({
@@ -389,7 +231,7 @@ export const getMarketBreadth: AgentTool = {
       phase2RatioChange: Number(
         ((phase2Ratio - prevPhase2Ratio) * 100).toFixed(1),
       ),
-      marketAvgRs: toNum(rsRows[0]?.avg_rs),
+      marketAvgRs: toNum(rsRow.avg_rs),
       advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
       newHighLow: { newHighs, newLows, ratio: newLows > 0 ? Number((newHighs / newLows).toFixed(2)) : null },
       topSectors: topSectors.map((s) => ({

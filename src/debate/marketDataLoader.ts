@@ -1,6 +1,16 @@
-import { pool } from "@/db/client";
 import { clampPercent } from "@/tools/validation";
 import { logger } from "@/lib/logger";
+import {
+  findSectorSnapshot,
+  findNewPhase2Stocks,
+  findTopPhase2Stocks,
+  findMarketBreadthPhaseDistribution,
+  findMarketBreadthPrevPhase2,
+  findMarketBreadthAvgRs,
+  findMarketBreadthAdvanceDecline,
+  findMarketBreadthNewHighLow,
+  findLatestDataDate,
+} from "@/db/repositories/index.js";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -82,25 +92,7 @@ function toNum(val: string | null | undefined): number {
  * Returns all sectors sorted by RS descending.
  */
 async function loadSectorSnapshot(date: string): Promise<SectorSnapshot[]> {
-  const { rows } = await pool.query<{
-    sector: string;
-    avg_rs: string;
-    rs_rank: number;
-    group_phase: number;
-    prev_group_phase: number | null;
-    change_4w: string | null;
-    change_12w: string | null;
-    phase2_ratio: string;
-    phase1to2_count_5d: number;
-  }>(
-    `SELECT sector, avg_rs::text, rs_rank, group_phase, prev_group_phase,
-            change_4w::text, change_12w::text,
-            phase2_ratio::text, phase1to2_count_5d
-     FROM sector_rs_daily
-     WHERE date = $1
-     ORDER BY avg_rs::numeric DESC`,
-    [date],
-  );
+  const rows = await findSectorSnapshot(date);
 
   return rows.map((r) => ({
     sector: r.sector,
@@ -125,7 +117,12 @@ async function loadPhase2Stocks(date: string): Promise<{
   newEntries: Phase2Stock[];
   topRs: Phase2Stock[];
 }> {
-  type Phase2Row = {
+  const [newRows, topRows] = await Promise.all([
+    findNewPhase2Stocks(date, MIN_MARKET_CAP),
+    findTopPhase2Stocks(date, MIN_MARKET_CAP),
+  ]);
+
+  const mapStock = (r: {
     symbol: string;
     rs_score: number;
     prev_phase: number | null;
@@ -136,65 +133,7 @@ async function loadPhase2Stocks(date: string): Promise<{
     market_cap: string | null;
     price_change_5d: string | null;
     price_change_20d: string | null;
-  };
-
-  const MOMENTUM_JOIN = `
-    LEFT JOIN LATERAL (
-      SELECT
-        (dp_now.close - dp_5d.close) / NULLIF(dp_5d.close, 0) AS change_5d,
-        (dp_now.close - dp_20d.close) / NULLIF(dp_20d.close, 0) AS change_20d
-      FROM daily_prices dp_now
-      LEFT JOIN LATERAL (
-        SELECT close FROM daily_prices
-        WHERE symbol = sp.symbol AND date < $1
-        ORDER BY date DESC OFFSET 4 LIMIT 1
-      ) dp_5d ON true
-      LEFT JOIN LATERAL (
-        SELECT close FROM daily_prices
-        WHERE symbol = sp.symbol AND date < $1
-        ORDER BY date DESC OFFSET 19 LIMIT 1
-      ) dp_20d ON true
-      WHERE dp_now.symbol = sp.symbol AND dp_now.date = $1
-    ) momentum ON true`;
-
-  // New Phase 2 entries (prev_phase != 2, i.e. just entered Phase 2)
-  const { rows: newRows } = await pool.query<Phase2Row>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
-            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text,
-            momentum.change_5d::text AS price_change_5d,
-            momentum.change_20d::text AS price_change_20d
-     FROM stock_phases sp
-     JOIN symbols s ON sp.symbol = s.symbol
-     ${MOMENTUM_JOIN}
-     WHERE sp.date = $1
-       AND sp.phase = 2
-       AND sp.prev_phase IS NOT NULL
-       AND sp.prev_phase != 2
-       AND (s.market_cap IS NULL OR s.market_cap::numeric >= $2)
-     ORDER BY sp.rs_score DESC
-     LIMIT 20`,
-    [date, MIN_MARKET_CAP],
-  );
-
-  // Top Phase 2 by RS (regardless of when they entered)
-  const { rows: topRows } = await pool.query<Phase2Row>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
-            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text,
-            momentum.change_5d::text AS price_change_5d,
-            momentum.change_20d::text AS price_change_20d
-     FROM stock_phases sp
-     JOIN symbols s ON sp.symbol = s.symbol
-     ${MOMENTUM_JOIN}
-     WHERE sp.date = $1
-       AND sp.phase = 2
-       AND sp.rs_score >= 80
-       AND (s.market_cap IS NULL OR s.market_cap::numeric >= $2)
-     ORDER BY sp.rs_score DESC
-     LIMIT 15`,
-    [date, MIN_MARKET_CAP],
-  );
-
-  const mapStock = (r: Phase2Row): Phase2Stock => ({
+  }): Phase2Stock => ({
     symbol: r.symbol,
     rsScore: r.rs_score,
     prevPhase: r.prev_phase,
@@ -225,12 +164,7 @@ async function loadPhase2Stocks(date: string): Promise<{
  * Load market breadth from stock_phases.
  */
 async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | null> {
-  const { rows: phaseRows } = await pool.query<{ phase: number; count: string }>(
-    `SELECT phase, COUNT(*)::text AS count
-     FROM stock_phases WHERE date = $1
-     GROUP BY phase ORDER BY phase`,
-    [date],
-  );
+  const phaseRows = await findMarketBreadthPhaseDistribution(date);
 
   if (phaseRows.length === 0) return null;
 
@@ -242,43 +176,18 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   const phase2RatioRaw = total > 0 ? (phase2Count / total) * 100 : 0;
 
   // Previous day comparison
-  const { rows: prevRows } = await pool.query<{ phase2_count: string; total_count: string }>(
-    `SELECT
-       COUNT(*) FILTER (WHERE phase = 2)::text AS phase2_count,
-       COUNT(*)::text AS total_count
-     FROM stock_phases
-     WHERE date = (SELECT MAX(date) FROM stock_phases WHERE date < $1)`,
-    [date],
-  );
-  const prevTotal = toNum(prevRows[0]?.total_count);
-  const prevPhase2 = toNum(prevRows[0]?.phase2_count);
+  const prevRow = await findMarketBreadthPrevPhase2(date);
+  const prevTotal = toNum(prevRow.total_count);
+  const prevPhase2 = toNum(prevRow.phase2_count);
   const prevPhase2RatioRaw = prevTotal > 0 ? (prevPhase2 / prevTotal) * 100 : 0;
 
   // Market avg RS
-  const { rows: rsRows } = await pool.query<{ avg_rs: string }>(
-    `SELECT AVG(rs_score)::numeric(10,2)::text AS avg_rs FROM stock_phases WHERE date = $1`,
-    [date],
-  );
+  const rsRow = await findMarketBreadthAvgRs(date);
 
   // A/D ratio (상승/하락 종목수)
-  const { rows: adRows } = await pool.query<{
-    advancers: string;
-    decliners: string;
-  }>(
-    `SELECT
-       COUNT(*) FILTER (WHERE dp.close::numeric > dp_prev.close::numeric)::text AS advancers,
-       COUNT(*) FILTER (WHERE dp.close::numeric < dp_prev.close::numeric)::text AS decliners
-     FROM daily_prices dp
-     JOIN daily_prices dp_prev
-       ON dp.symbol = dp_prev.symbol
-       AND dp_prev.date = (SELECT MAX(date) FROM daily_prices WHERE date < $1)
-     JOIN symbols s ON dp.symbol = s.symbol
-     WHERE dp.date = $1
-       AND s.is_actively_trading = true
-       AND s.is_etf = false
-       AND s.is_fund = false`,
-    [date],
-  ).catch(() => ({ rows: [] as { advancers: string; decliners: string }[] }));
+  // graceful degradation: .catch 패턴 호출부에서 유지
+  const adRows = await findMarketBreadthAdvanceDecline(date)
+    .catch(() => [] as { advancers: string; decliners: string }[]);
 
   const advancers = adRows.length > 0 ? toNum(adRows[0].advancers) : null;
   const decliners = adRows.length > 0 ? toNum(adRows[0].decliners) : null;
@@ -288,30 +197,9 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
       : null;
 
   // 52주 신고가/신저가
-  const { rows: hlRows } = await pool.query<{
-    new_highs: string;
-    new_lows: string;
-  }>(
-    `WITH yearly_range AS (
-       SELECT symbol,
-         MAX(high::numeric) AS high_52w,
-         MIN(low::numeric) AS low_52w
-       FROM daily_prices
-       WHERE date::date BETWEEN ($1::date - INTERVAL '365 days')::date AND ($1::date - INTERVAL '1 day')::date
-       GROUP BY symbol
-     )
-     SELECT
-       COUNT(*) FILTER (WHERE dp.close::numeric >= yr.high_52w)::text AS new_highs,
-       COUNT(*) FILTER (WHERE dp.close::numeric <= yr.low_52w)::text AS new_lows
-     FROM daily_prices dp
-     JOIN yearly_range yr ON dp.symbol = yr.symbol
-     JOIN symbols s ON dp.symbol = s.symbol
-     WHERE dp.date = $1
-       AND s.is_actively_trading = true
-       AND s.is_etf = false
-       AND s.is_fund = false`,
-    [date],
-  ).catch(() => ({ rows: [] as { new_highs: string; new_lows: string }[] }));
+  // graceful degradation: .catch 패턴 호출부에서 유지
+  const hlRows = await findMarketBreadthNewHighLow(date)
+    .catch(() => [] as { new_highs: string; new_lows: string }[]);
 
   const newHighs = hlRows.length > 0 ? toNum(hlRows[0].new_highs) : null;
   const newLows = hlRows.length > 0 ? toNum(hlRows[0].new_lows) : null;
@@ -321,7 +209,7 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
     phaseDistribution,
     phase2Ratio: clampPercent(Number(phase2RatioRaw.toFixed(1)), "breadth:phase2Ratio"),
     phase2RatioChange: Number((phase2RatioRaw - prevPhase2RatioRaw).toFixed(1)),
-    marketAvgRs: toNum(rsRows[0]?.avg_rs),
+    marketAvgRs: toNum(rsRow.avg_rs),
     advancers,
     decliners,
     adRatio,
@@ -430,11 +318,8 @@ async function fetchFearGreed(): Promise<FearGreedSnapshot | null> {
  * Find the latest date with data if the requested date has no data.
  */
 async function resolveDataDate(requestedDate: string): Promise<string> {
-  const { rows } = await pool.query<{ date: string }>(
-    `SELECT MAX(date) AS date FROM stock_phases WHERE date <= $1`,
-    [requestedDate],
-  );
-  return rows[0]?.date ?? requestedDate;
+  const row = await findLatestDataDate(requestedDate);
+  return row.date ?? requestedDate;
 }
 
 /**
