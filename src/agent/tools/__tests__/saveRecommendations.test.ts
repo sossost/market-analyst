@@ -97,18 +97,19 @@ function makeInsertChain(rowCount: number) {
   };
 }
 
-function setupDefaultPoolMocks() {
+function setupDefaultPoolMocks(overrides?: { persistenceRows?: { symbol: string; phase2_count: string }[] }) {
   // pool.query 호출 순서 (Promise.all 병렬이지만 mock은 순차 소비):
   // 1. activeRows (ACTIVE symbol)
   // 2. cooldownRows (CLOSED/CLOSED_PHASE_EXIT/CLOSED_TRAILING_STOP/CLOSED_STOP_LOSS symbol in cooldown)
   // 3. persistenceRows (stock_phases phase >= 2)  ← activeRows/cooldownRows와 병렬
   // 4. priceRows (daily_prices)
   // saveFactorSnapshot 내부 쿼리는 별도
+  const defaultPersistence = overrides?.persistenceRows ?? [{ symbol: "AAPL", phase2_count: "3" }];
   mockPool.query
-    .mockResolvedValueOnce({ rows: [] })   // activeRows
-    .mockResolvedValueOnce({ rows: [] })   // cooldownRows
-    .mockResolvedValueOnce({ rows: [] })   // persistenceRows
-    .mockResolvedValueOnce({ rows: [] });  // priceRows
+    .mockResolvedValueOnce({ rows: [] })                // activeRows
+    .mockResolvedValueOnce({ rows: [] })                // cooldownRows
+    .mockResolvedValueOnce({ rows: defaultPersistence }) // persistenceRows
+    .mockResolvedValueOnce({ rows: [] });               // priceRows
 }
 
 beforeEach(() => {
@@ -307,7 +308,7 @@ describe("Phase 1: 레짐 하드 게이트 + Bear 예외", () => {
 
     const result = await saveRecommendations.execute({
       date: "2026-03-10",
-      recommendations: [makeRec({ symbol: "AAPL" })],
+      recommendations: [makeRec({ symbol: "AAPL", entry_price: 100 })],
     });
 
     const parsed = JSON.parse(result);
@@ -447,10 +448,10 @@ describe("Phase 2: 쿨다운 게이트", () => {
 });
 
 // =============================================================================
-// Phase 3: Phase 2 지속성 태깅
+// Phase 3: Phase 2 지속성 하드 블록
 // =============================================================================
 
-describe("Phase 3: Phase 2 지속성 태깅", () => {
+describe("Phase 3: Phase 2 지속성 하드 블록", () => {
   beforeEach(() => {
     mockLoadConfirmedRegime.mockResolvedValue({
       regime: "MID_BULL",
@@ -462,7 +463,7 @@ describe("Phase 3: Phase 2 지속성 태깅", () => {
     });
   });
 
-  it("Phase 2 지속성이 2일 이상이면 [지속성 미확인] 태그를 추가하지 않는다", async () => {
+  it("Phase 2 지속성이 2일 이상이면 정상 저장한다", async () => {
     mockPool.query
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
@@ -473,63 +474,58 @@ describe("Phase 3: Phase 2 지속성 태깅", () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
-    let capturedReason: string | undefined;
-    let firstInsertCalled = false;
-    mockDb.insert.mockImplementation(() => ({
-      values: vi.fn((data: Record<string, unknown>) => {
-        if (!firstInsertCalled) {
-          firstInsertCalled = true;
-          capturedReason = data.reason as string | undefined;
-        }
-        return {
-          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
-        };
-      }),
-    }));
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
 
-    await saveRecommendations.execute({
+    const result = await saveRecommendations.execute({
       date: "2026-03-10",
       recommendations: [makeRec({ symbol: "AAPL", reason: "강한 모멘텀" })],
     });
 
-    expect(capturedReason).toBeDefined();
-    expect(capturedReason).not.toContain("[지속성 미확인]");
-    expect(capturedReason).toBe("강한 모멘텀");
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByPersistence).toBe(0);
   });
 
-  it("Phase 2 지속성이 1일이면 reason에 [지속성 미확인] 접두사를 추가한다", async () => {
+  it("Phase 2 지속성이 1일이면 blockedByPersistence로 차단한다", async () => {
     mockPool.query
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "1" }] })  // persistenceRows: 1일
-      .mockResolvedValueOnce({ rows: [] })  // priceRows
-      // saveFactorSnapshot
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] });  // priceRows
 
-    let capturedReason: string | undefined;
-    let firstInsertCalled = false;
-    mockDb.insert.mockImplementation(() => ({
-      values: vi.fn((data: Record<string, unknown>) => {
-        if (!firstInsertCalled) {
-          firstInsertCalled = true;
-          capturedReason = data.reason as string | undefined;
-        }
-        return {
-          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
-        };
-      }),
-    }));
-
-    await saveRecommendations.execute({
+    const result = await saveRecommendations.execute({
       date: "2026-03-10",
       recommendations: [makeRec({ symbol: "AAPL", reason: "모멘텀 상승" })],
     });
 
-    expect(capturedReason).toBeDefined();
-    expect(capturedReason).toContain("[지속성 미확인]");
-    expect(capturedReason).toBe("[지속성 미확인] 모멘텀 상승");
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByPersistence).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("Phase 2 지속성"),
+    );
+  });
+
+  it("Phase 2 지속성이 0일이면 blockedByPersistence로 차단한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [] })  // persistenceRows: 0일
+      .mockResolvedValueOnce({ rows: [] });  // priceRows
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByPersistence).toBe(1);
   });
 });
 
@@ -556,10 +552,10 @@ describe("tagPersistenceReason", () => {
 });
 
 // =============================================================================
-// HIGH 3: 두 태그 동시 적용 + 레짐 null 케이스
+// HIGH 3: 지속성 하드 블록 + 기준 미달 태깅
 // =============================================================================
 
-describe("두 태그 동시 적용", () => {
+describe("지속성 하드 블록 + 기준 미달 태깅", () => {
   beforeEach(() => {
     mockLoadConfirmedRegime.mockResolvedValue({
       regime: "MID_BULL",
@@ -571,11 +567,30 @@ describe("두 태그 동시 적용", () => {
     });
   });
 
-  it("Phase < 2이면서 Phase 2 지속성도 부족하면 [지속성 미확인] [기준 미달] 순서로 두 태그가 모두 붙는다", async () => {
+  it("Phase < 2이면서 Phase 2 지속성도 부족하면 지속성 하드 블록으로 차단한다", async () => {
     mockPool.query
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [] })  // persistenceRows: count 0 (지속성 부족)
+      .mockResolvedValueOnce({ rows: [] });  // priceRows
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", phase: 1, rs_score: 80, reason: "사유" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByPersistence).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it("Phase < 2이지만 Phase 2 지속성 충분하면 [기준 미달] 태깅 후 저장한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows: 충분
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -601,9 +616,7 @@ describe("두 태그 동시 적용", () => {
       recommendations: [makeRec({ symbol: "AAPL", phase: 1, rs_score: 80, reason: "사유" })],
     });
 
-    // tagSubstandardReason 먼저 적용: "[기준 미달] 사유"
-    // tagPersistenceReason 이후 적용: "[지속성 미확인] [기준 미달] 사유"
-    expect(capturedReason).toBe("[지속성 미확인] [기준 미달] 사유");
+    expect(capturedReason).toBe("[기준 미달] 사유");
   });
 });
 
@@ -783,7 +796,7 @@ describe("RS 과열 게이트", () => {
   });
 
   it("RS > 95인 종목은 blockedByOverheatedRS로 차단한다", async () => {
-    setupDefaultPoolMocks();
+    setupDefaultPoolMocks({ persistenceRows: [] });
 
     const result = await saveRecommendations.execute({
       date: "2026-03-10",
@@ -851,5 +864,103 @@ describe("RS 과열 게이트", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(1);
     expect(parsed.blockedByOverheatedRS).toBe(2);
+  });
+});
+
+// =============================================================================
+// 저가주 하드 게이트
+// =============================================================================
+
+describe("저가주 하드 게이트", () => {
+  beforeEach(() => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+  });
+
+  it("entry_price < $5인 종목은 blockedByLowPrice로 차단한다", async () => {
+    setupDefaultPoolMocks({ persistenceRows: [{ symbol: "EONR", phase2_count: "3" }] });
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "EONR", entry_price: 1.53 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByLowPrice).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("저가주"),
+    );
+  });
+
+  it("entry_price = $4.99인 종목은 차단한다", async () => {
+    setupDefaultPoolMocks({ persistenceRows: [{ symbol: "DWSN", phase2_count: "3" }] });
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "DWSN", entry_price: 4.99 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.blockedByLowPrice).toBe(1);
+  });
+
+  it("entry_price = $5인 종목은 정상 저장한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "XYZ", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "XYZ", entry_price: 5.0 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByLowPrice).toBe(0);
+  });
+
+  it("저가주 2개 + 정상가 1개: 2건 차단, 1건 저장", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "MSFT", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [
+        makeRec({ symbol: "EONR", entry_price: 1.53 }),
+        makeRec({ symbol: "DWSN", entry_price: 4.42 }),
+        makeRec({ symbol: "MSFT", entry_price: 350 }),
+      ],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByLowPrice).toBe(2);
   });
 });

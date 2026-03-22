@@ -51,6 +51,13 @@ export const MIN_PHASE = 2;
 export const MIN_RS_SCORE = 60;
 
 /**
+ * 최소 진입가 — 이 가격 미만은 penny stock으로 분류, 추천 차단.
+ * 근거: EONR($1.53), DWSN($4.42) 등 $5 미만 소형주는 일일 변동성이 과도하여
+ * Phase 2 판정 신뢰 불가. 90일간 추천 중 저가주 전량 Phase Exit (#376).
+ */
+export const MIN_PRICE = 5;
+
+/**
  * RS 과열 상한 — 이 값을 초과하면 Phase 2 "말기"로 판단하여 추천 차단.
  * 근거: 최근 90일 추천 14건 중 12건이 RS 97~100에서 진입하여 즉시 Phase 3 이탈.
  * RS 95+ 종목은 이미 모멘텀 고점에 도달한 상태로, "초입" 포착 목표와 불일치.

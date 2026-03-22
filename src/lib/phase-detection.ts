@@ -16,11 +16,14 @@ const MA150_FLAT_THRESHOLD = 0.02; // ±2% considered flat
 const PRICE_NEAR_MA150_THRESHOLD = 0.05; // within 5% of MA150
 
 /**
- * Minimum Phase 2 conditions for "early" detection.
- * 8/8 = confirmed Phase 2, 6-7/8 with core conditions = Phase 2 early.
+ * Minimum Phase 2 conditions required (out of 8).
  * Core conditions (must ALL be met): price > MA150, MA150 > MA200, MA150 slope > 0.
+ *
+ * 변경 이력:
+ * - 6/8: 소형주에서 하루만에 조건 깨지는 false positive 양산 (승률 0%, #376)
+ * - 7/8: 초입 포착 유지하면서 최소 안정성 확보
  */
-const PHASE_2_MIN_CONDITIONS = 6;
+const PHASE_2_MIN_CONDITIONS = 7;
 
 /**
  * Detect Weinstein Phase for a stock.
