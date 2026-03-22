@@ -9,6 +9,16 @@ import { chunk, toNum, resolveVolumeConfirmed } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
 import type { PhaseInput } from "@/types";
 import { logger } from "@/lib/logger";
+import {
+  findActiveNonEtfSymbols,
+  findHighLowStartDate,
+  findClosePricesForBatch,
+  findMaDataForBatch,
+  findVolumeForBatch,
+  findRsScoresForBatch,
+  findHighLowForBatch,
+  findPrevPhasesForBatch,
+} from "@/db/repositories/index.js";
 
 const TAG = "BUILD_STOCK_PHASES";
 
@@ -28,28 +38,17 @@ async function main() {
   logger.info(TAG, `Target date: ${targetDate}`);
 
   // Get all active, non-ETF symbols
-  const { rows: symbolRows } = await retryDatabaseOperation(() =>
-    pool.query<{ symbol: string; sector: string | null; industry: string | null }>(
-      `SELECT symbol, sector, industry FROM symbols
-       WHERE is_actively_trading = true AND is_etf = false
-       ORDER BY symbol`,
-    ),
+  const symbolRows = await retryDatabaseOperation(() =>
+    findActiveNonEtfSymbols(),
   );
 
   logger.info(TAG, `Active symbols: ${symbolRows.length}`);
 
   // Pre-compute 52-week start date (shared across all batches)
-  const { rows: startDateRows } = await retryDatabaseOperation(() =>
-    pool.query<{ start_date: string }>(
-      `SELECT date::text AS start_date FROM (
-         SELECT DISTINCT date FROM daily_prices
-         WHERE date <= $1
-         ORDER BY date DESC LIMIT $2
-       ) sub ORDER BY date ASC LIMIT 1`,
-      [targetDate, HIGH_LOW_DAYS],
-    ),
+  const startDateRow = await retryDatabaseOperation(() =>
+    findHighLowStartDate(targetDate, HIGH_LOW_DAYS),
   );
-  const highLowStartDate = startDateRows[0]?.start_date ?? targetDate;
+  const highLowStartDate = startDateRow?.start_date ?? targetDate;
 
   const batches = chunk(symbolRows, BATCH_SIZE);
   let processed = 0;
@@ -65,13 +64,8 @@ async function main() {
     );
 
     // 1. Fetch close prices for MA150 calculation
-    const { rows: closeRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; date: string; close: string | null }>(
-        `SELECT symbol, date, close FROM daily_prices
-         WHERE symbol = ANY($1) AND date <= $2
-         ORDER BY symbol, date DESC`,
-        [batchSymbols, targetDate],
-      ),
+    const closeRows = await retryDatabaseOperation(() =>
+      findClosePricesForBatch(batchSymbols, targetDate),
     );
 
     const closesBySymbol = new Map<string, { date: string; close: number }[]>();
@@ -83,27 +77,14 @@ async function main() {
     }
 
     // 2. Fetch MA data (today) — includes vol_ma30 for volume ratio
-    const { rows: maRows } = await retryDatabaseOperation(() =>
-      pool.query<{
-        symbol: string;
-        ma50: string | null;
-        ma200: string | null;
-        vol_ma30: string | null;
-      }>(
-        `SELECT symbol, ma50, ma200, vol_ma30 FROM daily_ma
-         WHERE symbol = ANY($1) AND date = $2`,
-        [batchSymbols, targetDate],
-      ),
+    const maRows = await retryDatabaseOperation(() =>
+      findMaDataForBatch(batchSymbols, targetDate),
     );
     const maBySymbol = new Map(maRows.map((r) => [r.symbol, r]));
 
     // 2b. Fetch today's volume for vol_ratio calculation
-    const { rows: volRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; volume: string | null }>(
-        `SELECT symbol, volume::text FROM daily_prices
-         WHERE symbol = ANY($1) AND date = $2`,
-        [batchSymbols, targetDate],
-      ),
+    const volRows = await retryDatabaseOperation(() =>
+      findVolumeForBatch(batchSymbols, targetDate),
     );
     const volBySymbol = new Map<string, number>();
     for (const row of volRows) {
@@ -113,12 +94,8 @@ async function main() {
     }
 
     // 3. Fetch RS scores (today)
-    const { rows: rsRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; rs_score: number | null }>(
-        `SELECT symbol, rs_score FROM daily_prices
-         WHERE symbol = ANY($1) AND date = $2`,
-        [batchSymbols, targetDate],
-      ),
+    const rsRows = await retryDatabaseOperation(() =>
+      findRsScoresForBatch(batchSymbols, targetDate),
     );
     const rsBySymbol = new Map<string, number>();
     for (const row of rsRows) {
@@ -128,16 +105,8 @@ async function main() {
     }
 
     // 4. Fetch 52-week high/low (using pre-computed start date)
-    const { rows: highLowRows } = await retryDatabaseOperation(() =>
-      pool.query<{ symbol: string; high_52w: string; low_52w: string }>(
-        `SELECT symbol, MAX(high)::text AS high_52w, MIN(low)::text AS low_52w
-         FROM daily_prices
-         WHERE symbol = ANY($1)
-           AND date > $2
-           AND date <= $3
-         GROUP BY symbol`,
-        [batchSymbols, highLowStartDate, targetDate],
-      ),
+    const highLowRows = await retryDatabaseOperation(() =>
+      findHighLowForBatch(batchSymbols, highLowStartDate, targetDate),
     );
     const highLowBySymbol = new Map(
       highLowRows.map((r) => [
@@ -147,17 +116,8 @@ async function main() {
     );
 
     // 5. Fetch previous day's phases + volume_confirmed for transition detection
-    const { rows: prevPhaseRows } = await retryDatabaseOperation(() =>
-      pool.query<{
-        symbol: string;
-        phase: number;
-        volume_confirmed: boolean | null;
-      }>(
-        `SELECT symbol, phase, volume_confirmed FROM stock_phases
-         WHERE symbol = ANY($1)
-           AND date = (SELECT MAX(date) FROM stock_phases WHERE date < $2)`,
-        [batchSymbols, targetDate],
-      ),
+    const prevPhaseRows = await retryDatabaseOperation(() =>
+      findPrevPhasesForBatch(batchSymbols, targetDate),
     );
     const prevPhaseBySymbol = new Map(
       prevPhaseRows.map((r) => [r.symbol, r.phase]),

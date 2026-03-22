@@ -1,9 +1,9 @@
-import { pool } from "@/db/client";
 import { saveReportLog } from "@/lib/reportLog";
 import { logger } from "@/lib/logger";
 import type { DailyReportLog } from "@/types";
 import type { AgentTool } from "./types";
 import { validateDate } from "./validation";
+import { findPhase2CountForReport } from "@/db/repositories/index.js";
 
 /**
  * 당일 리포트 이력을 DB + JSON 파일(백업)로 저장한다.
@@ -78,14 +78,9 @@ export const saveReportLogTool: AgentTool = {
 
     // phase2Ratio를 DB 실측값으로 보정 — LLM이 잘못된 값을 넘기는 경우 방지
     try {
-      const { rows } = await pool.query<{ total: string; phase2_count: string }>(
-        `SELECT COUNT(*)::text AS total,
-                COUNT(*) FILTER (WHERE phase = 2)::text AS phase2_count
-         FROM stock_phases WHERE date = $1`,
-        [date],
-      );
-      const total = Number(rows[0]?.total ?? 0);
-      const phase2Count = Number(rows[0]?.phase2_count ?? 0);
+      const countRow = await findPhase2CountForReport(date);
+      const total = Number(countRow?.total ?? 0);
+      const phase2Count = Number(countRow?.phase2_count ?? 0);
       if (total > 0 && reportData.marketSummary != null) {
         reportData.marketSummary.phase2Ratio = Number(
           ((phase2Count / total) * 100).toFixed(1),

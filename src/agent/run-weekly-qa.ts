@@ -8,6 +8,16 @@ import { logger } from "@/lib/logger";
 import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider.js";
 import { AnthropicProvider } from "@/debate/llm/anthropicProvider.js";
 import { FallbackProvider } from "@/debate/llm/fallbackProvider.js";
+import {
+  queryWeeklyQaThesisWeekly,
+  queryWeeklyQaThesisOverall,
+  queryWeeklyQaRecommendations,
+  queryWeeklyQaLearnings,
+  queryWeeklyQaRecentReports,
+  queryWeeklyQaVerificationMethods,
+  queryWeeklyQaBiasMetrics,
+  upsertWeeklyQaReport,
+} from "@/db/repositories/index.js";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
@@ -69,9 +79,12 @@ interface CollectedData {
   biasMetrics: BiasMetricsRow[] | null;
 }
 
-async function queryOrNull<T>(label: string, sql: string): Promise<T[] | null> {
+async function queryOrNullFn<T>(
+  label: string,
+  fn: () => Promise<{ rows: unknown[] }>,
+): Promise<T[] | null> {
   try {
-    const result = await pool.query(sql);
+    const result = await fn();
     return result.rows as T[];
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -83,65 +96,33 @@ async function queryOrNull<T>(label: string, sql: string): Promise<T[] | null> {
 async function collectData(): Promise<CollectedData> {
   const [thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods, biasMetrics] =
     await Promise.all([
-      queryOrNull<ThesisWeeklyRow>(
+      queryOrNullFn<ThesisWeeklyRow>(
         "thesis_weekly",
-        `SELECT agent_persona, status, COUNT(*)::int as cnt
-         FROM theses
-         WHERE created_at > NOW() - INTERVAL '7 days'
-         GROUP BY agent_persona, status
-         ORDER BY agent_persona, status`,
+        () => queryWeeklyQaThesisWeekly(pool),
       ),
-      queryOrNull<ThesisOverallRow>(
+      queryOrNullFn<ThesisOverallRow>(
         "thesis_overall",
-        `SELECT agent_persona,
-           COUNT(*) FILTER (WHERE status = 'CONFIRMED')::int as confirmed,
-           COUNT(*) FILTER (WHERE status = 'INVALIDATED')::int as invalidated,
-           COUNT(*) FILTER (WHERE status = 'EXPIRED')::int as expired,
-           COUNT(*) FILTER (WHERE status = 'ACTIVE')::int as active,
-           COUNT(*)::int as total
-         FROM theses
-         GROUP BY agent_persona
-         ORDER BY agent_persona`,
+        () => queryWeeklyQaThesisOverall(pool),
       ),
-      queryOrNull<RecommendationRow>(
+      queryOrNullFn<RecommendationRow>(
         "recommendations",
-        `SELECT status,
-           COUNT(*)::int as cnt,
-           ROUND(AVG(pnl_percent)::numeric, 2)::float as avg_return
-         FROM recommendations
-         GROUP BY status
-         ORDER BY status`,
+        () => queryWeeklyQaRecommendations(pool),
       ),
-      queryOrNull<LearningRow>(
+      queryOrNullFn<LearningRow>(
         "learnings",
-        `SELECT category, COUNT(*)::int as cnt
-         FROM agent_learnings
-         WHERE is_active = true
-         GROUP BY category
-         ORDER BY category`,
+        () => queryWeeklyQaLearnings(pool),
       ),
-      queryOrNull<ReportLogRow>(
+      queryOrNullFn<ReportLogRow>(
         "recent_reports",
-        `SELECT report_date, type
-         FROM daily_reports
-         WHERE report_date::date > (NOW() - INTERVAL '7 days')::date
-         ORDER BY report_date DESC`,
+        () => queryWeeklyQaRecentReports(pool),
       ),
-      queryOrNull<VerificationMethodRow>(
+      queryOrNullFn<VerificationMethodRow>(
         "verification_methods",
-        `SELECT verification_method, status, COUNT(*)::int as cnt
-         FROM theses
-         WHERE status IN ('CONFIRMED', 'INVALIDATED')
-         GROUP BY verification_method, status
-         ORDER BY verification_method, status`,
+        () => queryWeeklyQaVerificationMethods(pool),
       ),
-      queryOrNull<BiasMetricsRow>(
+      queryOrNullFn<BiasMetricsRow>(
         "bias_metrics",
-        `SELECT verification_path, COUNT(*)::int as cnt
-         FROM agent_learnings
-         WHERE is_active = true
-         GROUP BY verification_path
-         ORDER BY verification_path`,
+        () => queryWeeklyQaBiasMetrics(pool),
       ),
     ]);
 
@@ -341,18 +322,17 @@ async function saveToDb(
   const ceoSummary = extractCeoSummary(report);
   const needsDecision = extractNeedsDecision(report);
 
-  await pool.query(
-    `INSERT INTO weekly_qa_reports
-       (qa_date, score, full_report, ceo_summary, needs_decision, tokens_input, tokens_output)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (qa_date) DO UPDATE SET
-       score = EXCLUDED.score,
-       full_report = EXCLUDED.full_report,
-       ceo_summary = EXCLUDED.ceo_summary,
-       needs_decision = EXCLUDED.needs_decision,
-       tokens_input = EXCLUDED.tokens_input,
-       tokens_output = EXCLUDED.tokens_output`,
-    [qaDate, score, report, ceoSummary, needsDecision, tokensInput, tokensOutput],
+  await upsertWeeklyQaReport(
+    {
+      qaDate,
+      score,
+      fullReport: report,
+      ceoSummary,
+      needsDecision,
+      tokensInput,
+      tokensOutput,
+    },
+    pool,
   );
 
   logger.info("QA-DB", `저장 완료: qaDate=${qaDate} score=${score ?? "파싱실패"} needsDecision=${needsDecision}`);

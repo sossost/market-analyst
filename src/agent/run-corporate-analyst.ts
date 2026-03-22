@@ -12,6 +12,11 @@ import { pool } from "@/db/client";
 import { logger } from "@/lib/logger";
 import { sendDiscordMessage, sendDiscordError } from "@/lib/discord";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
+import {
+  findAllActiveRecommendations,
+  findActiveRecommendationBySymbol,
+  findExistingAnalysisReports,
+} from "@/db/repositories/index.js";
 
 // ------- 상수 -------
 const CONCURRENCY_LIMIT = 2;
@@ -67,13 +72,7 @@ function validateEnvironment(): void {
 
 // ------- DB 쿼리: ACTIVE 추천 종목 전체 조회 -------
 async function fetchActiveRecommendations(): Promise<ActiveRecommendation[]> {
-  const result = await pool.query<ActiveRecommendation>(`
-    SELECT symbol, recommendation_date
-    FROM recommendations
-    WHERE status = 'ACTIVE'
-    ORDER BY recommendation_date DESC
-  `);
-  return result.rows;
+  return findAllActiveRecommendations(pool);
 }
 
 // ------- DB 쿼리: 이미 리포트가 있는 (symbol, date) 집합 조회 -------
@@ -84,20 +83,12 @@ async function fetchSymbolsWithReports(
     return new Set();
   }
 
-  // IN 절 파라미터 구성
-  const valuePlaceholders = candidates
-    .map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2})`)
-    .join(", ");
-  const params = candidates.flatMap((c) => [c.symbol, c.recommendation_date]);
-
-  const result = await pool.query<{ symbol: string; recommendation_date: string }>(
-    `SELECT symbol, recommendation_date
-     FROM stock_analysis_reports
-     WHERE (symbol, recommendation_date) IN (${valuePlaceholders})`,
-    params,
+  const rows = await findExistingAnalysisReports(
+    candidates.map((c) => ({ symbol: c.symbol, recommendation_date: c.recommendation_date })),
+    pool,
   );
 
-  return new Set(result.rows.map((r) => `${r.symbol}::${r.recommendation_date}`));
+  return new Set(rows.map((r) => `${r.symbol}::${r.recommendation_date}`));
 }
 
 // ------- 배치 모드 실행 -------
@@ -157,21 +148,14 @@ async function runBatchMode(all: boolean): Promise<BatchResult> {
 async function runSingleMode(symbol: string): Promise<BatchResult> {
   logger.step(`[1/2] ${symbol} ACTIVE 추천 조회 중...`);
 
-  const result = await pool.query<ActiveRecommendation>(
-    `SELECT symbol, recommendation_date
-     FROM recommendations
-     WHERE symbol = $1 AND status = 'ACTIVE'
-     ORDER BY recommendation_date DESC
-     LIMIT 1`,
-    [symbol],
-  );
+  const rows = await findActiveRecommendationBySymbol(symbol, pool);
 
-  if (result.rows.length === 0) {
+  if (rows.length === 0) {
     logger.warn("Single", `${symbol}: ACTIVE 추천 없음`);
     return { successCount: 0, failureCount: 1, failedSymbols: [symbol] };
   }
 
-  const rec = result.rows[0];
+  const rec = rows[0];
   logger.info("Single", `${symbol} (${rec.recommendation_date}) 리포트 생성 시작`);
 
   logger.step("[2/2] runCorporateAnalyst 실행 중...");

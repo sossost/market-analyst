@@ -3,6 +3,15 @@ import { pool } from "@/db/client";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { logger } from "@/lib/logger";
+import {
+  findPhaseCountsByDate,
+  countSectorRsByDate,
+  countIndustryRsByDate,
+  findBreadthCheckByDate,
+  countNullIndustrySymbols,
+  findTopSectorsByDate,
+  findKnownStocksByDate,
+} from "@/db/repositories/index.js";
 
 const TAG = "VALIDATE_DATA";
 
@@ -10,6 +19,7 @@ const MIN_EXPECTED_PHASES = 1_000;
 const MIN_SECTOR_COUNT = 10;
 const MIN_INDUSTRY_COUNT = 50;
 const MIN_KNOWN_STOCKS_FOUND = 4;
+const TOP_SECTOR_LIMIT = 3;
 
 async function main() {
   assertValidEnvironment();
@@ -24,12 +34,7 @@ async function main() {
   let hasErrors = false;
 
   // 1. Stock phases count
-  const { rows: phaseCounts } = await pool.query(
-    `SELECT phase, COUNT(*) as cnt
-     FROM stock_phases WHERE date = $1
-     GROUP BY phase ORDER BY phase`,
-    [targetDate],
-  );
+  const phaseCounts = await findPhaseCountsByDate(targetDate);
 
   const totalPhases = phaseCounts.reduce((s, r) => s + Number(r.cnt), 0);
   logger.info(TAG, `Stock Phases: ${totalPhases} total`);
@@ -43,11 +48,8 @@ async function main() {
   }
 
   // 2. Sector RS count
-  const { rows: sectorRows } = await pool.query(
-    `SELECT COUNT(*) as cnt FROM sector_rs_daily WHERE date = $1`,
-    [targetDate],
-  );
-  const sectorCount = Number(sectorRows[0].cnt);
+  const sectorCountRow = await countSectorRsByDate(targetDate);
+  const sectorCount = Number(sectorCountRow.cnt);
   logger.info(TAG, `Sector RS: ${sectorCount} rows`);
 
   if (sectorCount < MIN_SECTOR_COUNT) {
@@ -56,11 +58,8 @@ async function main() {
   }
 
   // 3. Industry RS count
-  const { rows: industryRows } = await pool.query(
-    `SELECT COUNT(*) as cnt FROM industry_rs_daily WHERE date = $1`,
-    [targetDate],
-  );
-  const industryCount = Number(industryRows[0].cnt);
+  const industryCountRow = await countIndustryRsByDate(targetDate);
+  const industryCount = Number(industryCountRow.cnt);
   logger.info(TAG, `Industry RS: ${industryCount} rows`);
 
   if (industryCount < MIN_INDUSTRY_COUNT) {
@@ -69,18 +68,10 @@ async function main() {
   }
 
   // 4. Breadth values in valid range (0-1)
-  const { rows: breadthCheck } = await pool.query(
-    `SELECT
-      MIN(phase2_ratio::numeric) as min_p2,
-      MAX(phase2_ratio::numeric) as max_p2,
-      MIN(rs_above50_ratio::numeric) as min_rs50,
-      MAX(rs_above50_ratio::numeric) as max_rs50
-     FROM sector_rs_daily WHERE date = $1`,
-    [targetDate],
-  );
+  const breadthCheck = await findBreadthCheckByDate(targetDate);
 
-  if (breadthCheck.length > 0) {
-    const b = breadthCheck[0];
+  if (breadthCheck != null) {
+    const b = breadthCheck;
     const min_p2 = Number(b.min_p2);
     const max_p2 = Number(b.max_p2);
     const min_rs50 = Number(b.min_rs50);
@@ -98,23 +89,14 @@ async function main() {
   }
 
   // 5. Null industry count in symbols
-  const { rows: nullIndustry } = await pool.query(
-    `SELECT COUNT(*) as cnt FROM symbols
-     WHERE is_actively_trading = true AND is_etf = false
-       AND (industry IS NULL OR industry = '')`,
-  );
+  const nullIndustryRow = await countNullIndustrySymbols();
   logger.info(
     TAG,
-    `Symbols with null/empty industry: ${nullIndustry[0].cnt}`,
+    `Symbols with null/empty industry: ${nullIndustryRow.cnt}`,
   );
 
   // 6. Top sector RS sanity
-  const { rows: topSectors } = await pool.query(
-    `SELECT sector, avg_rs::numeric as avg_rs, rs_rank, phase2_ratio::numeric as p2
-     FROM sector_rs_daily WHERE date = $1
-     ORDER BY rs_rank LIMIT 3`,
-    [targetDate],
-  );
+  const topSectors = await findTopSectorsByDate(targetDate, TOP_SECTOR_LIMIT);
   logger.info(TAG, "Top 3 sectors:");
   for (const s of topSectors) {
     logger.info(
@@ -125,12 +107,7 @@ async function main() {
 
   // 7. Known stock check
   const knownStocks = ["AAPL", "NVDA", "MSFT", "TSLA", "META"];
-  const { rows: knownResults } = await pool.query(
-    `SELECT symbol, phase, rs_score FROM stock_phases
-     WHERE date = $1 AND symbol = ANY($2)
-     ORDER BY symbol`,
-    [targetDate, knownStocks],
-  );
+  const knownResults = await findKnownStocksByDate(targetDate, knownStocks);
   logger.info(TAG, "Known stocks:");
   for (const r of knownResults) {
     logger.info(TAG, `  ${r.symbol}: Phase ${r.phase}, RS=${r.rs_score}`);

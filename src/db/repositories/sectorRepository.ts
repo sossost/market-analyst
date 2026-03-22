@@ -12,6 +12,7 @@ import type {
   SectorRsContextRow,
   SectorRsDetailContextRow,
   SectorRsRankWithTotalRow,
+  EtlSectorPhaseTransitionRow,
 } from "./types.js";
 
 /**
@@ -290,5 +291,63 @@ export async function findSectorSepaStats(
     [sectors],
   );
 
+  return rows;
+}
+
+// ─── detect-sector-phase-events 전용 ─────────────────────────────────────────
+
+/**
+ * sector_rs_daily에서 Phase 전이 이벤트를 조회한다 (detect-sector-phase-events 전용).
+ */
+export async function findSectorPhaseTransitions(
+  mode: "backfill" | "incremental",
+  targetDate?: string,
+): Promise<EtlSectorPhaseTransitionRow[]> {
+  const baseQuery = `SELECT date, sector AS entity_name,
+              prev_group_phase AS from_phase, group_phase AS to_phase,
+              avg_rs::text, phase2_ratio::text
+       FROM sector_rs_daily
+       WHERE prev_group_phase IS NOT NULL
+         AND group_phase != prev_group_phase`;
+
+  if (mode === "incremental" && targetDate != null) {
+    const { rows } = await pool.query<EtlSectorPhaseTransitionRow>(
+      `${baseQuery} AND date = $1 ORDER BY date`,
+      [targetDate],
+    );
+    return rows;
+  }
+
+  const { rows } = await pool.query<EtlSectorPhaseTransitionRow>(
+    `${baseQuery} ORDER BY date`,
+  );
+  return rows;
+}
+
+/**
+ * industry_rs_daily에서 Phase 전이 이벤트를 조회한다 (detect-sector-phase-events 전용).
+ */
+export async function findIndustryPhaseTransitions(
+  mode: "backfill" | "incremental",
+  targetDate?: string,
+): Promise<EtlSectorPhaseTransitionRow[]> {
+  const baseQuery = `SELECT date, industry AS entity_name,
+              prev_group_phase AS from_phase, group_phase AS to_phase,
+              avg_rs::text, phase2_ratio::text
+       FROM industry_rs_daily
+       WHERE prev_group_phase IS NOT NULL
+         AND group_phase != prev_group_phase`;
+
+  if (mode === "incremental" && targetDate != null) {
+    const { rows } = await pool.query<EtlSectorPhaseTransitionRow>(
+      `${baseQuery} AND date = $1 ORDER BY date`,
+      [targetDate],
+    );
+    return rows;
+  }
+
+  const { rows } = await pool.query<EtlSectorPhaseTransitionRow>(
+    `${baseQuery} ORDER BY date`,
+  );
   return rows;
 }

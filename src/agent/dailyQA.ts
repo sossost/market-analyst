@@ -3,7 +3,6 @@
  *
  * DB 쿼리 실패 시에도 severity 'warn'으로 graceful 반환 — QA 실패가 발송을 막지 않는다.
  */
-import { pool } from "@/db/client";
 import {
   runFactCheck,
   type DbData,
@@ -12,6 +11,11 @@ import {
   type Severity,
 } from "@/lib/factChecker";
 import { logger } from "@/lib/logger";
+import {
+  findTopSectorsForQa,
+  findPhase2RatioForQa,
+  findStockPhasesForQa,
+} from "@/db/repositories/index.js";
 
 // ────────────────────────────────────────────
 // Public interface
@@ -34,7 +38,7 @@ export interface DailyQAResult {
 const TOP_SECTOR_COUNT = 5;
 
 // ────────────────────────────────────────────
-// DB query helpers
+// Internal row types (kept local for QA-specific shape)
 // ────────────────────────────────────────────
 
 interface TopSectorRow {
@@ -42,58 +46,15 @@ interface TopSectorRow {
   avg_rs: string;
 }
 
-async function fetchTopSectors(date: string): Promise<TopSectorRow[]> {
-  const { rows } = await pool.query<TopSectorRow>(
-    `SELECT sector, avg_rs::text
-     FROM sector_rs_daily
-     WHERE date = $1
-     ORDER BY avg_rs::numeric DESC
-     LIMIT $2`,
-    [date, TOP_SECTOR_COUNT],
-  );
-  return rows;
-}
-
 interface Phase2RatioRow {
   total: string;
   phase2_count: string;
-}
-
-async function fetchPhase2Ratio(date: string): Promise<Phase2RatioRow | null> {
-  const { rows } = await pool.query<Phase2RatioRow>(
-    `SELECT
-       COUNT(*)::text AS total,
-       COUNT(*) FILTER (WHERE sp.phase = 2)::text AS phase2_count
-     FROM stock_phases sp
-     JOIN symbols s ON sp.symbol = s.symbol
-     WHERE sp.date = $1
-       AND s.is_actively_trading = true
-       AND s.is_etf = false
-       AND s.is_fund = false`,
-    [date],
-  );
-  return rows[0] ?? null;
 }
 
 interface StockPhaseRow {
   symbol: string;
   phase: number;
   rs_score: number | null;
-}
-
-async function fetchStockPhases(
-  date: string,
-  symbols: string[],
-): Promise<StockPhaseRow[]> {
-  if (symbols.length === 0) return [];
-
-  const { rows } = await pool.query<StockPhaseRow>(
-    `SELECT symbol, phase, rs_score
-     FROM stock_phases
-     WHERE date = $1 AND symbol = ANY($2)`,
-    [date, symbols],
-  );
-  return rows;
 }
 
 // ────────────────────────────────────────────
@@ -142,9 +103,9 @@ export async function runDailyQA(
     // DB 조회
     const symbols = reportData.reportedSymbols.map((s) => s.symbol);
     const [sectorRows, phase2Row, stockRows] = await Promise.all([
-      fetchTopSectors(date),
-      fetchPhase2Ratio(date),
-      fetchStockPhases(date, symbols),
+      findTopSectorsForQa(date, TOP_SECTOR_COUNT),
+      findPhase2RatioForQa(date),
+      findStockPhasesForQa(date, symbols),
     ]);
 
     if (sectorRows.length === 0) {

@@ -9,8 +9,11 @@
 //   - 따라서 불일치는 의도된 지연일 수 있으므로 차단이 아닌 모니터링
 // ---------------------------------------------------------------------------
 
-import { pool } from "@/db/client";
 import { logger } from "@/lib/logger";
+import {
+  findDailyReportedSymbols,
+  findThesisBeneficiaryTickers,
+} from "@/db/repositories/index.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,33 +32,17 @@ export interface CrossValidationResult {
 }
 
 // ---------------------------------------------------------------------------
-// DB Queries
+// DB Queries (Repository 위임)
 // ---------------------------------------------------------------------------
-
-interface DailyReportRow {
-  reported_symbols: unknown;
-}
-
-interface ThesisRow {
-  debate_date: string;
-  beneficiary_tickers: string | null;
-}
 
 /**
  * 지정 날짜의 일간 리포트에서 reported_symbols를 조회한다.
  * 없으면 빈 배열 반환.
  */
 async function fetchDailyReportedSymbols(date: string): Promise<string[]> {
-  const result = await pool.query<DailyReportRow>(
-    `SELECT reported_symbols
-     FROM daily_reports
-     WHERE report_date = $1
-       AND type = 'daily'
-     LIMIT 1`,
-    [date],
-  );
+  const rows = await findDailyReportedSymbols(date);
 
-  const row = result.rows[0];
+  const row = rows[0];
   if (row == null) {
     return [];
   }
@@ -84,24 +71,15 @@ async function fetchDailyReportedSymbols(date: string): Promise<string[]> {
  * thesis는 JSON text 컬럼이 아닌 theses 테이블에서 직접 조회.
  */
 async function fetchDebateBeneficiaryTickers(date: string): Promise<string[]> {
-  // debate_date = dailyDate 또는 바로 이전 날짜 (최근 2개 날짜 내)
-  const result = await pool.query<ThesisRow>(
-    `SELECT debate_date, beneficiary_tickers
-     FROM theses
-     WHERE debate_date >= ($1::date - INTERVAL '2 days')::text
-       AND debate_date <= $1
-       AND status = 'ACTIVE'
-     ORDER BY debate_date DESC`,
-    [date],
-  );
+  const rows = await findThesisBeneficiaryTickers(date);
 
-  if (result.rows.length === 0) {
+  if (rows.length === 0) {
     return [];
   }
 
   const tickers = new Set<string>();
 
-  for (const row of result.rows) {
+  for (const row of rows) {
     if (row.beneficiary_tickers == null || row.beneficiary_tickers === "") {
       continue;
     }
