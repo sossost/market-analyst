@@ -703,7 +703,7 @@ export interface LagStatsIndustryPhase2Row {
 // ─── crossReportValidator (Phase 4 추가) ──────────────────────────────────────
 
 export interface CrossReportDailyRow {
-  reported_symbols: unknown;
+  reported_symbols: unknown[];
 }
 
 export interface CrossReportThesisRow {

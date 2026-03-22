@@ -17,6 +17,13 @@ import {
   queryWeeklyQaVerificationMethods,
   queryWeeklyQaBiasMetrics,
   upsertWeeklyQaReport,
+  type WeeklyQaThesisWeeklyRow,
+  type WeeklyQaThesisOverallRow,
+  type WeeklyQaRecommendationRow,
+  type WeeklyQaLearningRow,
+  type WeeklyQaReportLogRow,
+  type WeeklyQaVerificationMethodRow,
+  type WeeklyQaBiasMetricsRow,
 } from "@/db/repositories/index.js";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
@@ -27,65 +34,22 @@ const SCORE_THRESHOLD_FOR_ISSUE = 6;
 
 // --- 데이터 수집 ---
 
-interface ThesisWeeklyRow {
-  agent_persona: string;
-  status: string;
-  cnt: number;
-}
-
-interface ThesisOverallRow {
-  agent_persona: string;
-  confirmed: number;
-  invalidated: number;
-  expired: number;
-  active: number;
-  total: number;
-}
-
-interface RecommendationRow {
-  status: string;
-  cnt: number;
-  avg_return: number | null;
-}
-
-interface LearningRow {
-  category: string;
-  cnt: number;
-}
-
-interface ReportLogRow {
-  report_date: string;
-  type: string;
-}
-
-interface VerificationMethodRow {
-  verification_method: string | null;
-  status: string;
-  cnt: number;
-}
-
-interface BiasMetricsRow {
-  verification_path: string | null;
-  cnt: number;
-}
-
 interface CollectedData {
-  thesisWeekly: ThesisWeeklyRow[] | null;
-  thesisOverall: ThesisOverallRow[] | null;
-  recommendations: RecommendationRow[] | null;
-  learnings: LearningRow[] | null;
-  recentReports: ReportLogRow[] | null;
-  verificationMethods: VerificationMethodRow[] | null;
-  biasMetrics: BiasMetricsRow[] | null;
+  thesisWeekly: WeeklyQaThesisWeeklyRow[] | null;
+  thesisOverall: WeeklyQaThesisOverallRow[] | null;
+  recommendations: WeeklyQaRecommendationRow[] | null;
+  learnings: WeeklyQaLearningRow[] | null;
+  recentReports: WeeklyQaReportLogRow[] | null;
+  verificationMethods: WeeklyQaVerificationMethodRow[] | null;
+  biasMetrics: WeeklyQaBiasMetricsRow[] | null;
 }
 
 async function queryOrNullFn<T>(
   label: string,
-  fn: () => Promise<{ rows: unknown[] }>,
+  fn: () => Promise<T[]>,
 ): Promise<T[] | null> {
   try {
-    const result = await fn();
-    return result.rows as T[];
+    return await fn();
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("QA-Data", `${label} 쿼리 실패: ${reason}`);
@@ -96,34 +60,13 @@ async function queryOrNullFn<T>(
 async function collectData(): Promise<CollectedData> {
   const [thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods, biasMetrics] =
     await Promise.all([
-      queryOrNullFn<ThesisWeeklyRow>(
-        "thesis_weekly",
-        () => queryWeeklyQaThesisWeekly(pool),
-      ),
-      queryOrNullFn<ThesisOverallRow>(
-        "thesis_overall",
-        () => queryWeeklyQaThesisOverall(pool),
-      ),
-      queryOrNullFn<RecommendationRow>(
-        "recommendations",
-        () => queryWeeklyQaRecommendations(pool),
-      ),
-      queryOrNullFn<LearningRow>(
-        "learnings",
-        () => queryWeeklyQaLearnings(pool),
-      ),
-      queryOrNullFn<ReportLogRow>(
-        "recent_reports",
-        () => queryWeeklyQaRecentReports(pool),
-      ),
-      queryOrNullFn<VerificationMethodRow>(
-        "verification_methods",
-        () => queryWeeklyQaVerificationMethods(pool),
-      ),
-      queryOrNullFn<BiasMetricsRow>(
-        "bias_metrics",
-        () => queryWeeklyQaBiasMetrics(pool),
-      ),
+      queryOrNullFn("thesis_weekly", () => queryWeeklyQaThesisWeekly(pool)),
+      queryOrNullFn("thesis_overall", () => queryWeeklyQaThesisOverall(pool)),
+      queryOrNullFn("recommendations", () => queryWeeklyQaRecommendations(pool)),
+      queryOrNullFn("learnings", () => queryWeeklyQaLearnings(pool)),
+      queryOrNullFn("recent_reports", () => queryWeeklyQaRecentReports(pool)),
+      queryOrNullFn("verification_methods", () => queryWeeklyQaVerificationMethods(pool)),
+      queryOrNullFn("bias_metrics", () => queryWeeklyQaBiasMetrics(pool)),
     ]);
 
   return { thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods, biasMetrics };

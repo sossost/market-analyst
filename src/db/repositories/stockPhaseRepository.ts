@@ -1,4 +1,5 @@
 import { pool } from "@/db/client";
+import type { Pool } from "pg";
 import type {
   StockPhaseRow,
   UnusualPhaseCountRow,
@@ -38,6 +39,13 @@ import type {
   CrossReportDailyRow,
   CrossReportThesisRow,
   ReportLogPhase2CountRow,
+  WeeklyQaThesisWeeklyRow,
+  WeeklyQaThesisOverallRow,
+  WeeklyQaRecommendationRow,
+  WeeklyQaLearningRow,
+  WeeklyQaReportLogRow,
+  WeeklyQaVerificationMethodRow,
+  WeeklyQaBiasMetricsRow,
 } from "./types.js";
 
 /**
@@ -841,18 +849,19 @@ export type { WeeklyQaThesisWeeklyRow, WeeklyQaThesisOverallRow, WeeklyQaRecomme
  * run-weekly-qa 전용: graceful degradation 래퍼와 함께 사용되는 raw SQL 쿼리들을 Pool을 통해 실행한다.
  * run-weekly-qa는 queryOrNull 패턴 사용 — pool을 인자로 받는다.
  */
-export async function queryWeeklyQaThesisWeekly(pool: { query: (sql: string) => Promise<{ rows: unknown[] }> }): Promise<{ rows: unknown[] }> {
-  return pool.query(
+export async function queryWeeklyQaThesisWeekly(pool: Pool): Promise<WeeklyQaThesisWeeklyRow[]> {
+  const { rows } = await pool.query<WeeklyQaThesisWeeklyRow>(
     `SELECT agent_persona, status, COUNT(*)::int as cnt
      FROM theses
      WHERE created_at > NOW() - INTERVAL '7 days'
      GROUP BY agent_persona, status
      ORDER BY agent_persona, status`,
   );
+  return rows;
 }
 
-export async function queryWeeklyQaThesisOverall(pool: { query: (sql: string) => Promise<{ rows: unknown[] }> }): Promise<{ rows: unknown[] }> {
-  return pool.query(
+export async function queryWeeklyQaThesisOverall(pool: Pool): Promise<WeeklyQaThesisOverallRow[]> {
+  const { rows } = await pool.query<WeeklyQaThesisOverallRow>(
     `SELECT agent_persona,
        COUNT(*) FILTER (WHERE status = 'CONFIRMED')::int as confirmed,
        COUNT(*) FILTER (WHERE status = 'INVALIDATED')::int as invalidated,
@@ -863,10 +872,11 @@ export async function queryWeeklyQaThesisOverall(pool: { query: (sql: string) =>
      GROUP BY agent_persona
      ORDER BY agent_persona`,
   );
+  return rows;
 }
 
-export async function queryWeeklyQaRecommendations(pool: { query: (sql: string) => Promise<{ rows: unknown[] }> }): Promise<{ rows: unknown[] }> {
-  return pool.query(
+export async function queryWeeklyQaRecommendations(pool: Pool): Promise<WeeklyQaRecommendationRow[]> {
+  const { rows } = await pool.query<WeeklyQaRecommendationRow>(
     `SELECT status,
        COUNT(*)::int as cnt,
        ROUND(AVG(pnl_percent)::numeric, 2)::float as avg_return
@@ -874,45 +884,50 @@ export async function queryWeeklyQaRecommendations(pool: { query: (sql: string) 
      GROUP BY status
      ORDER BY status`,
   );
+  return rows;
 }
 
-export async function queryWeeklyQaLearnings(pool: { query: (sql: string) => Promise<{ rows: unknown[] }> }): Promise<{ rows: unknown[] }> {
-  return pool.query(
+export async function queryWeeklyQaLearnings(pool: Pool): Promise<WeeklyQaLearningRow[]> {
+  const { rows } = await pool.query<WeeklyQaLearningRow>(
     `SELECT category, COUNT(*)::int as cnt
      FROM agent_learnings
      WHERE is_active = true
      GROUP BY category
      ORDER BY category`,
   );
+  return rows;
 }
 
-export async function queryWeeklyQaRecentReports(pool: { query: (sql: string) => Promise<{ rows: unknown[] }> }): Promise<{ rows: unknown[] }> {
-  return pool.query(
+export async function queryWeeklyQaRecentReports(pool: Pool): Promise<WeeklyQaReportLogRow[]> {
+  const { rows } = await pool.query<WeeklyQaReportLogRow>(
     `SELECT report_date, type
      FROM daily_reports
      WHERE report_date::date > (NOW() - INTERVAL '7 days')::date
      ORDER BY report_date DESC`,
   );
+  return rows;
 }
 
-export async function queryWeeklyQaVerificationMethods(pool: { query: (sql: string) => Promise<{ rows: unknown[] }> }): Promise<{ rows: unknown[] }> {
-  return pool.query(
+export async function queryWeeklyQaVerificationMethods(pool: Pool): Promise<WeeklyQaVerificationMethodRow[]> {
+  const { rows } = await pool.query<WeeklyQaVerificationMethodRow>(
     `SELECT verification_method, status, COUNT(*)::int as cnt
      FROM theses
      WHERE status IN ('CONFIRMED', 'INVALIDATED')
      GROUP BY verification_method, status
      ORDER BY verification_method, status`,
   );
+  return rows;
 }
 
-export async function queryWeeklyQaBiasMetrics(pool: { query: (sql: string) => Promise<{ rows: unknown[] }> }): Promise<{ rows: unknown[] }> {
-  return pool.query(
+export async function queryWeeklyQaBiasMetrics(pool: Pool): Promise<WeeklyQaBiasMetricsRow[]> {
+  const { rows } = await pool.query<WeeklyQaBiasMetricsRow>(
     `SELECT verification_path, COUNT(*)::int as cnt
      FROM agent_learnings
      WHERE is_active = true
      GROUP BY verification_path
      ORDER BY verification_path`,
   );
+  return rows;
 }
 
 export interface WeeklyQaUpsertInput {
