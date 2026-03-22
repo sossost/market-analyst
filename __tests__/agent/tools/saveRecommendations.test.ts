@@ -37,16 +37,46 @@ vi.mock("@/etl/utils/common", () => ({
   },
 }));
 
+vi.mock("@/agent/debate/regimeStore", () => ({
+  loadConfirmedRegime: vi.fn().mockResolvedValue(null),
+  loadPendingRegimes: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/agent/tools/bearExceptionGate", () => ({
+  evaluateBearException: vi.fn(),
+  tagBearExceptionReason: vi.fn((r: string | null) => r),
+  BEAR_EXCEPTION_TAG: "[Bear 예외]",
+}));
+
+vi.mock("@/agent/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+vi.mock("@/agent/corporateAnalyst/runCorporateAnalyst", () => ({
+  runCorporateAnalyst: vi.fn().mockResolvedValue({ success: true }),
+}));
+
 import { saveRecommendations } from "@/agent/tools/saveRecommendations";
 
 describe("saveRecommendations", () => {
+  function setupPoolMocks() {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValue({ rows: [] });     // priceRows + saveFactorSnapshot fallback
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockValues.mockReturnValue({
       onConflictDoNothing: mockOnConflictDoNothing,
     });
     mockOnConflictDoNothing.mockResolvedValue({ rowCount: 1 });
-    mockQuery.mockResolvedValue({ rows: [] });
   });
 
   it("has correct tool name", () => {
@@ -83,6 +113,7 @@ describe("saveRecommendations", () => {
   });
 
   it("saves valid recommendations", async () => {
+    setupPoolMocks();
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
       recommendations: [
@@ -106,6 +137,7 @@ describe("saveRecommendations", () => {
   });
 
   it("skips recommendations with zero entry price", async () => {
+    setupPoolMocks();
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
       recommendations: [
@@ -128,6 +160,7 @@ describe("saveRecommendations", () => {
   });
 
   it("skips recommendations with invalid symbol", async () => {
+    setupPoolMocks();
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
       recommendations: [
@@ -151,6 +184,7 @@ describe("saveRecommendations", () => {
 
   it("handles duplicate (onConflictDoNothing) as skip", async () => {
     mockOnConflictDoNothing.mockResolvedValue({ rowCount: 0 });
+    setupPoolMocks();
 
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
@@ -177,6 +211,7 @@ describe("saveRecommendations", () => {
     mockOnConflictDoNothing
       .mockResolvedValueOnce({ rowCount: 1 })
       .mockResolvedValueOnce({ rowCount: 1 });
+    setupPoolMocks();
 
     const result = await saveRecommendations.execute({
       date: "2026-03-05",

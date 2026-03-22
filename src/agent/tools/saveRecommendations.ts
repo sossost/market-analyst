@@ -3,7 +3,7 @@ import { recommendations, recommendationFactors } from "@/db/schema/analyst";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE, MAX_RS_SCORE } from "./validation";
+import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE, MAX_RS_SCORE, MIN_PRICE } from "./validation";
 import { loadConfirmedRegime, loadPendingRegimes } from "../debate/regimeStore";
 import { evaluateBearException, tagBearExceptionReason, BEAR_EXCEPTION_TAG } from "./bearExceptionGate";
 import { logger } from "@/agent/logger";
@@ -244,6 +244,8 @@ export const saveRecommendations: AgentTool = {
     let bearExceptionCount = 0;
     let blockedByCooldown = 0;
     let blockedByOverheatedRS = 0;
+    let blockedByLowPrice = 0;
+    let blockedByPersistence = 0;
 
     for (const rec of recs) {
       const symbol = validateSymbol(rec.symbol);
@@ -312,6 +314,16 @@ export const saveRecommendations: AgentTool = {
         continue;
       }
 
+      // Phase 2.7: 저가주 하드 게이트 — $5 미만 penny stock 추천 차단
+      if (llmPrice < MIN_PRICE) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: 진입가 $${llmPrice} < $${MIN_PRICE} 저가주, 추천 차단`,
+        );
+        blockedByLowPrice++;
+        continue;
+      }
+
       // 진입가 2중 방어: DB 종가와 비교 후 교정
       let entryPrice = llmPrice;
       const dbPrice = dbPriceMap.get(symbol);
@@ -341,15 +353,15 @@ export const saveRecommendations: AgentTool = {
       // 기준 미달 태깅 (Phase < 2 또는 RS < 60)
       taggedReason = tagSubstandardReason(taggedReason, rec.phase, rec.rs_score);
 
-      // Phase 3: Phase 2 지속성 소프트 태깅
+      // Phase 3: Phase 2 지속성 하드 블록 — 최소 2일 Phase 2 유지 필수
       const phase2Count = persistenceMap.get(symbol) ?? 0;
       if (phase2Count < MIN_PHASE2_PERSISTENCE_COUNT) {
         logger.warn(
           "QualityGate",
-          `${symbol}: Phase 2 지속성 ${phase2Count}일 (기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일 미만), [지속성 미확인] 태깅`,
+          `${symbol}: Phase 2 지속성 ${phase2Count}일 < 기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일, 추천 차단`,
         );
-        const reasonForPersistence = taggedReason ?? rec.reason ?? '';
-        taggedReason = tagPersistenceReason(reasonForPersistence);
+        blockedByPersistence++;
+        continue;
       }
 
       // 1. recommendations 테이블 INSERT
@@ -419,7 +431,9 @@ export const saveRecommendations: AgentTool = {
       bearExceptionCount,
       blockedByCooldown,
       blockedByOverheatedRS,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByOverheatedRS}개 RS 과열 차단`,
+      blockedByLowPrice,
+      blockedByPersistence,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단`,
     });
   },
 };

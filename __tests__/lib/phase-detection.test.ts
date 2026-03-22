@@ -13,7 +13,7 @@ import type { PhaseInput } from "@/types";
  * 7. price > 30% above 52-week low
  * 8. price within 25% of 52-week high
  *
- * Phase 2 판정: Core 3개(price > MA150, MA150 > MA200, slope > 0) + 총 6/8 이상
+ * Phase 2 판정: Core 3개(price > MA150, MA150 > MA200, slope > 0) + 총 7/8 이상 (#376)
  */
 
 function makePhase2Input(overrides: Partial<PhaseInput> = {}): PhaseInput {
@@ -49,6 +49,10 @@ describe("calculateMa150Slope", () => {
   it("handles small values without division issues", () => {
     const slope = calculateMa150Slope(0.5, 0.4);
     expect(slope).toBeCloseTo(0.25, 4);
+  });
+
+  it("returns 0 when ma150_20dAgo is 0 (division guard)", () => {
+    expect(calculateMa150Slope(130, 0)).toBe(0);
   });
 });
 
@@ -97,10 +101,10 @@ describe("detectPhase", () => {
       expect(result.detail.rsAbove50).toBe(false);
     });
 
-    it("returns Phase 2 with 6/8 conditions when core conditions met", () => {
+    it("does NOT return Phase 2 with 6/8 conditions (7/8 minimum required, #376)", () => {
       // Missing: MA50 > MA150 and RS > 50 → 6/8
       const result = detectPhase(makePhase2Input({ ma50: 130, rsScore: 40 }));
-      expect(result.phase).toBe(2);
+      expect(result.phase).not.toBe(2);
       expect(result.detail.phase2ConditionsMet).toBe(6);
     });
 
@@ -170,8 +174,9 @@ describe("detectPhase", () => {
       expect(result.detail.phase2ConditionsMet).toBe(7);
     });
 
-    it("captures Phase 1 → Phase 2 transition with 6/8 conditions", () => {
+    it("does NOT capture Phase 1 → Phase 2 transition with only 6/8 conditions (#376)", () => {
       // Emerging from base: core structural conditions met, but RS and MA50 still catching up
+      // 6/8 is no longer sufficient — must meet 7/8 minimum
       const result = detectPhase({
         price: 140,
         ma50: 130, // below MA150
@@ -182,7 +187,7 @@ describe("detectPhase", () => {
         high52w: 160,
         low52w: 80,
       });
-      expect(result.phase).toBe(2);
+      expect(result.phase).not.toBe(2);
       expect(result.detail.phase2ConditionsMet).toBe(6);
     });
   });
