@@ -50,6 +50,10 @@ describe("calculateMa150Slope", () => {
     const slope = calculateMa150Slope(0.5, 0.4);
     expect(slope).toBeCloseTo(0.25, 4);
   });
+
+  it("returns 0 when ma150_20dAgo is 0 (division guard)", () => {
+    expect(calculateMa150Slope(130, 0)).toBe(0);
+  });
 });
 
 describe("detectPhase", () => {
