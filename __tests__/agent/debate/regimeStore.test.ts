@@ -19,6 +19,7 @@ import {
   validateRegimeInput,
   formatRegimeForPrompt,
   areDatesConsecutive,
+  calendarDaysBetween,
   type MarketRegimeRow,
 } from "@/debate/regimeStore.js";
 import type { MarketRegimeType } from "../../../src/db/schema/analyst.js";
@@ -74,6 +75,31 @@ describe("areDatesConsecutive", () => {
     expect(
       areDatesConsecutive(["2026-03-17", "2026-03-16", "2026-03-10"]),
     ).toBe(false);
+  });
+});
+
+// ─── calendarDaysBetween ────────────────────────────────────────────────────
+
+describe("calendarDaysBetween", () => {
+  it("같은 날짜이면 0을 반환한다", () => {
+    expect(calendarDaysBetween("2026-03-14", "2026-03-14")).toBe(0);
+  });
+
+  it("1일 차이를 올바르게 계산한다", () => {
+    expect(calendarDaysBetween("2026-03-13", "2026-03-14")).toBe(1);
+  });
+
+  it("주말 포함 3일 차이를 올바르게 계산한다", () => {
+    // 금요일 → 월요일
+    expect(calendarDaysBetween("2026-03-13", "2026-03-16")).toBe(3);
+  });
+
+  it("7일(1주) 차이를 올바르게 계산한다", () => {
+    expect(calendarDaysBetween("2026-03-07", "2026-03-14")).toBe(7);
+  });
+
+  it("from이 to보다 미래이면 음수를 반환한다", () => {
+    expect(calendarDaysBetween("2026-03-14", "2026-03-10")).toBe(-4);
   });
 });
 
