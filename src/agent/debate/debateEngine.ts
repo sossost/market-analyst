@@ -20,6 +20,8 @@ interface DebateConfig {
   newsContext?: NewsContext;
   /** SEPA 기반 펀더멘탈 스코어 (XML 태그 래핑 텍스트) */
   fundamentalContext?: string;
+  /** Per-persona confidence 캘리브레이션 컨텍스트 */
+  calibrationContext?: Record<string, string>;
 }
 
 /**
@@ -40,6 +42,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     marketDataContext = "",
     newsContext = {},
     fundamentalContext,
+    calibrationContext = {},
   } = config;
   const startTime = Date.now();
 
@@ -73,6 +76,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     question: fullQuestion,
     memoryContext,
     newsContext,
+    calibrationContext,
   });
 
   const failedInRound1 = experts
