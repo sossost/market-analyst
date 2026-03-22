@@ -12,7 +12,7 @@ const PERSONA_FILE_MAP: Record<AgentPersona | "moderator", string> = {
   moderator: "moderator.md",
 };
 
-const EXPERT_PERSONAS: AgentPersona[] = ["macro", "tech", "geopolitics", "sentiment"];
+export const EXPERT_PERSONAS: AgentPersona[] = ["macro", "tech", "geopolitics", "sentiment"];
 
 interface Frontmatter {
   description: string;

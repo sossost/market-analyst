@@ -384,36 +384,28 @@ describe("getCalibrationResultForPersona", () => {
 
 describe("buildPerAgentCalibrationContexts", () => {
   it("충분한 데이터가 있는 에이전트만 컨텍스트를 포함한다", async () => {
-    // 4 persona × 1 call each
-    // geopolitics: 5건 — sufficient
+    // EXPERT_PERSONAS 순서: ["macro", "tech", "geopolitics", "sentiment"]
+    // macro: 3건 (insufficient, < 5)
     mockGroupBy.mockResolvedValueOnce([
       { confidence: "high", confirmed: 3, invalidated: 0 },
     ]);
-    // tech: 3건 — sufficient (>= 5? no, 3 < 5)
+    // tech: 10건 (sufficient)
     mockGroupBy.mockResolvedValueOnce([
       { confidence: "medium", confirmed: 6, invalidated: 4 },
     ]);
-    // macro: 0건 — insufficient
+    // geopolitics: 0건 (insufficient)
     mockGroupBy.mockResolvedValueOnce([]);
-    // sentiment: 8건 — sufficient
+    // sentiment: 8건 (sufficient)
     mockGroupBy.mockResolvedValueOnce([
       { confidence: "medium", confirmed: 4, invalidated: 4 },
     ]);
 
     const contexts = await buildPerAgentCalibrationContexts();
 
-    // macro has 3건 — not sufficient (3 < 5), should be excluded
-    // Wait: macro returns [], so 0건. tech returns 10건, geopolitics 3건.
-    // Let me re-check: the order is macro, tech, geopolitics, sentiment.
-    // First mock: macro gets { high: 3+0=3 } = 3건 → insufficient
-    // Second mock: tech gets { medium: 6+4=10 } = 10건 → sufficient
-    // Third mock: geopolitics gets [] = 0건 → insufficient
-    // Fourth mock: sentiment gets { medium: 4+4=8 } = 8건 → sufficient
-
-    // tech and sentiment have sufficient data and generate non-empty prompt
+    // tech(10건), sentiment(8건) — sufficient → 컨텍스트 포함
     expect("tech" in contexts).toBe(true);
     expect("sentiment" in contexts).toBe(true);
-    // macro (3건) and geopolitics (0건) don't have sufficient data
+    // macro(3건), geopolitics(0건) — insufficient → 제외
     expect("macro" in contexts).toBe(false);
     expect("geopolitics" in contexts).toBe(false);
   });

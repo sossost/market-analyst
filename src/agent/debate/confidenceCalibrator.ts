@@ -11,6 +11,7 @@ import { theses } from "../../db/schema/analyst.js";
 import { sql, eq, and, inArray } from "drizzle-orm";
 import { logger } from "../logger.js";
 import type { AgentPersona, Confidence } from "../../types/debate.js";
+import { EXPERT_PERSONAS } from "./personas.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -195,21 +196,29 @@ export async function getCalibrationResultForPersona(
 export async function buildPerAgentCalibrationContexts(): Promise<
   Record<string, string>
 > {
-  const personas: AgentPersona[] = ["macro", "tech", "geopolitics", "sentiment"];
   const results: Record<string, string> = {};
 
-  for (const persona of personas) {
-    try {
-      const result = await getCalibrationResultForPersona(persona);
-      const formatted = formatCalibrationForPrompt(result);
-      if (formatted.length > 0) {
-        results[persona] = formatted;
+  const entries = await Promise.all(
+    EXPERT_PERSONAS.map(async (persona) => {
+      try {
+        const result = await getCalibrationResultForPersona(persona);
+        const formatted = formatCalibrationForPrompt(result);
+        if (formatted.length > 0) {
+          return { persona, formatted };
+        }
+      } catch (err) {
+        logger.warn(
+          "Calibration",
+          `[${persona}] 캘리브레이션 로드 실패: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-    } catch (err) {
-      logger.warn(
-        "Calibration",
-        `[${persona}] 캘리브레이션 로드 실패: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      return null;
+    }),
+  );
+
+  for (const entry of entries) {
+    if (entry != null) {
+      results[entry.persona] = entry.formatted;
     }
   }
 
