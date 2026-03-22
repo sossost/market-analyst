@@ -31,6 +31,7 @@ vi.mock("../../../db/client.js", () => ({
 vi.mock("drizzle-orm", () => ({
   sql: (str: unknown) => str,
   eq: (col: unknown, val: unknown) => ({ col, val }),
+  and: (...args: unknown[]) => args,
   inArray: (col: unknown, vals: unknown) => ({ col, vals }),
 }));
 
@@ -38,6 +39,7 @@ vi.mock("../../../db/schema/analyst.js", () => ({
   theses: {
     confidence: "confidence",
     status: "status",
+    agentPersona: "agent_persona",
   },
 }));
 
@@ -53,9 +55,12 @@ vi.mock("../../logger.js", () => ({
 
 import {
   calcCalibrationBins,
+  calcCalibrationBinsForPersona,
   buildBinsFromRows,
   calcECE,
   getCalibrationResult,
+  getCalibrationResultForPersona,
+  buildPerAgentCalibrationContexts,
   formatCalibrationForPrompt,
   generateFeedback,
   type CalibrationBin,
@@ -314,5 +319,110 @@ describe("formatCalibrationForPrompt", () => {
     });
     const output = formatCalibrationForPrompt(perfectResult);
     expect(output).not.toContain("보정 지침");
+  });
+});
+
+// ─── calcCalibrationBinsForPersona ──────────────────────────────────────────
+
+describe("calcCalibrationBinsForPersona", () => {
+  it("특정 에이전트의 CalibrationBin을 반환한다", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { confidence: "high", confirmed: 1, invalidated: 0 },
+      { confidence: "medium", confirmed: 1, invalidated: 3 },
+    ]);
+
+    const bins = await calcCalibrationBinsForPersona("geopolitics");
+
+    expect(bins).toHaveLength(3);
+
+    const medium = bins.find((b) => b.confidence === "medium")!;
+    expect(medium.confirmed).toBe(1);
+    expect(medium.invalidated).toBe(3);
+    expect(medium.actualRate).toBe(0.25); // 1/4
+    expect(medium.gap).toBeCloseTo(0.35); // 0.6 - 0.25 = 과신
+  });
+
+  it("빈 결과 시 모든 레벨이 0건으로 반환", async () => {
+    mockGroupBy.mockResolvedValueOnce([]);
+
+    const bins = await calcCalibrationBinsForPersona("macro");
+
+    expect(bins).toHaveLength(3);
+    expect(bins.every((b) => b.total === 0)).toBe(true);
+  });
+});
+
+// ─── getCalibrationResultForPersona ─────────────────────────────────────────
+
+describe("getCalibrationResultForPersona", () => {
+  it("5건 이상이면 hasSufficientData=true (per-agent 기준)", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { confidence: "high", confirmed: 1, invalidated: 0 },
+      { confidence: "medium", confirmed: 1, invalidated: 3 },
+    ]);
+
+    const result = await getCalibrationResultForPersona("geopolitics");
+
+    expect(result.totalResolved).toBe(5);
+    expect(result.hasSufficientData).toBe(true);
+    expect(result.ece).not.toBeNull();
+  });
+
+  it("5건 미만이면 hasSufficientData=false", async () => {
+    mockGroupBy.mockResolvedValueOnce([
+      { confidence: "high", confirmed: 1, invalidated: 1 },
+    ]);
+
+    const result = await getCalibrationResultForPersona("tech");
+
+    expect(result.totalResolved).toBe(2);
+    expect(result.hasSufficientData).toBe(false);
+  });
+});
+
+// ─── buildPerAgentCalibrationContexts ───────────────────────────────────────
+
+describe("buildPerAgentCalibrationContexts", () => {
+  it("충분한 데이터가 있는 에이전트만 컨텍스트를 포함한다", async () => {
+    // 4 persona × 1 call each
+    // geopolitics: 5건 — sufficient
+    mockGroupBy.mockResolvedValueOnce([
+      { confidence: "high", confirmed: 3, invalidated: 0 },
+    ]);
+    // tech: 3건 — sufficient (>= 5? no, 3 < 5)
+    mockGroupBy.mockResolvedValueOnce([
+      { confidence: "medium", confirmed: 6, invalidated: 4 },
+    ]);
+    // macro: 0건 — insufficient
+    mockGroupBy.mockResolvedValueOnce([]);
+    // sentiment: 8건 — sufficient
+    mockGroupBy.mockResolvedValueOnce([
+      { confidence: "medium", confirmed: 4, invalidated: 4 },
+    ]);
+
+    const contexts = await buildPerAgentCalibrationContexts();
+
+    // macro has 3건 — not sufficient (3 < 5), should be excluded
+    // Wait: macro returns [], so 0건. tech returns 10건, geopolitics 3건.
+    // Let me re-check: the order is macro, tech, geopolitics, sentiment.
+    // First mock: macro gets { high: 3+0=3 } = 3건 → insufficient
+    // Second mock: tech gets { medium: 6+4=10 } = 10건 → sufficient
+    // Third mock: geopolitics gets [] = 0건 → insufficient
+    // Fourth mock: sentiment gets { medium: 4+4=8 } = 8건 → sufficient
+
+    // tech and sentiment have sufficient data and generate non-empty prompt
+    expect("tech" in contexts).toBe(true);
+    expect("sentiment" in contexts).toBe(true);
+    // macro (3건) and geopolitics (0건) don't have sufficient data
+    expect("macro" in contexts).toBe(false);
+    expect("geopolitics" in contexts).toBe(false);
+  });
+
+  it("모든 에이전트 데이터 부족 시 빈 객체 반환", async () => {
+    mockGroupBy.mockResolvedValue([]);
+
+    const contexts = await buildPerAgentCalibrationContexts();
+
+    expect(Object.keys(contexts)).toHaveLength(0);
   });
 });

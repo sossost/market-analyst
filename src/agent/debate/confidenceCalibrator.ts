@@ -8,9 +8,9 @@
  */
 import { db } from "../../db/client.js";
 import { theses } from "../../db/schema/analyst.js";
-import { sql, inArray } from "drizzle-orm";
+import { sql, eq, and, inArray } from "drizzle-orm";
 import { logger } from "../logger.js";
-import type { Confidence } from "../../types/debate.js";
+import type { AgentPersona, Confidence } from "../../types/debate.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,7 @@ const EXPECTED_RATES: Record<Confidence, number> = {
 };
 
 const MIN_TOTAL_RESOLVED = 20;
+const MIN_PERSONA_RESOLVED = 5;
 
 // ─── Core Query ─────────────────────────────────────────────────────────────────
 
@@ -139,6 +140,80 @@ export async function getCalibrationResult(): Promise<CalibrationResult> {
   );
 
   return { bins, ece, totalResolved, hasSufficientData };
+}
+
+// ─── Per-Persona Calibration ────────────────────────────────────────────────────
+
+/**
+ * 특정 에이전트의 confidence별 CONFIRMED/INVALIDATED 수를 집계한다.
+ */
+export async function calcCalibrationBinsForPersona(
+  persona: AgentPersona,
+): Promise<CalibrationBin[]> {
+  const rows = await db
+    .select({
+      confidence: theses.confidence,
+      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
+      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+    })
+    .from(theses)
+    .where(
+      and(
+        eq(theses.agentPersona, persona),
+        inArray(theses.status, ["CONFIRMED", "INVALIDATED"]),
+      ),
+    )
+    .groupBy(theses.confidence);
+
+  return buildBinsFromRows(rows);
+}
+
+/**
+ * 특정 에이전트의 캘리브레이션 결과를 생성한다.
+ * per-persona는 MIN_PERSONA_RESOLVED(5건)로 충분성 판단.
+ */
+export async function getCalibrationResultForPersona(
+  persona: AgentPersona,
+): Promise<CalibrationResult> {
+  const bins = await calcCalibrationBinsForPersona(persona);
+  const totalResolved = bins.reduce((sum, b) => sum + b.total, 0);
+  const ece = calcECE(bins);
+  const hasSufficientData = totalResolved >= MIN_PERSONA_RESOLVED;
+
+  logger.info(
+    "Calibration",
+    `[${persona}] 캘리브레이션: ${totalResolved}건 해소, ECE=${ece ?? "N/A"}, 충분=${hasSufficientData}`,
+  );
+
+  return { bins, ece, totalResolved, hasSufficientData };
+}
+
+/**
+ * 모든 에이전트의 per-persona 캘리브레이션 컨텍스트를 생성한다.
+ * Record<persona, formatted prompt string> 반환.
+ */
+export async function buildPerAgentCalibrationContexts(): Promise<
+  Record<string, string>
+> {
+  const personas: AgentPersona[] = ["macro", "tech", "geopolitics", "sentiment"];
+  const results: Record<string, string> = {};
+
+  for (const persona of personas) {
+    try {
+      const result = await getCalibrationResultForPersona(persona);
+      const formatted = formatCalibrationForPrompt(result);
+      if (formatted.length > 0) {
+        results[persona] = formatted;
+      }
+    } catch (err) {
+      logger.warn(
+        "Calibration",
+        `[${persona}] 캘리브레이션 로드 실패: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  return results;
 }
 
 // ─── Prompt Formatting ──────────────────────────────────────────────────────────

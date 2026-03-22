@@ -20,6 +20,7 @@ import {
 import {
   getCalibrationResult,
   formatCalibrationForPrompt,
+  buildPerAgentCalibrationContexts,
 } from "./debate/confidenceCalibrator";
 import { verifyTheses } from "./debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "./debate/sessionStore";
@@ -431,15 +432,22 @@ async function main() {
     );
   }
 
-  // Confidence 캘리브레이션 로드 (에러 격리)
+  // Confidence 캘리브레이션 로드 — per-agent (에러 격리)
+  // 글로벌 캘리브레이션은 enrichedMemory에 포함, per-agent는 각 에이전트 시스템 프롬프트에 주입
   let calibrationContext = "";
+  let perAgentCalibration: Record<string, string> = {};
   try {
-    const calibrationResult = await getCalibrationResult();
+    const [calibrationResult, perAgentContexts] = await Promise.all([
+      getCalibrationResult(),
+      buildPerAgentCalibrationContexts(),
+    ]);
     calibrationContext = formatCalibrationForPrompt(calibrationResult);
-    if (calibrationContext.length > 0) {
+    perAgentCalibration = perAgentContexts;
+    const agentCount = Object.keys(perAgentContexts).length;
+    if (calibrationContext.length > 0 || agentCount > 0) {
       logger.info(
         "Calibration",
-        `캘리브레이션 컨텍스트 로드: ${calibrationResult.totalResolved}건, ECE=${calibrationResult.ece ?? "N/A"}`,
+        `글로벌: ${calibrationResult.totalResolved}건 ECE=${calibrationResult.ece ?? "N/A"}, per-agent: ${agentCount}명 피드백`,
       );
     }
   } catch (err) {
@@ -449,7 +457,7 @@ async function main() {
     );
   }
 
-  // Combine memory + few-shot + regime performance + calibration into enriched memory context
+  // Combine memory + few-shot + regime performance + global calibration into enriched memory context
   const enrichedMemory = [memoryContext, fewShotContext, regimePerformanceContext, calibrationContext]
     .filter((s) => s.length > 0)
     .join("\n\n");
@@ -484,6 +492,7 @@ async function main() {
     marketDataContext,
     newsContext,
     fundamentalContext,
+    calibrationContext: perAgentCalibration,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);

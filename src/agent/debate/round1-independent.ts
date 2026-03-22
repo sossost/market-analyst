@@ -11,6 +11,8 @@ interface Round1Input {
   memoryContext: string;
   /** Per-persona news context, keyed by persona name */
   newsContext?: Record<string, string>;
+  /** Per-persona confidence 캘리브레이션 컨텍스트 */
+  calibrationContext?: Record<string, string>;
 }
 
 interface Round1Result {
@@ -24,7 +26,7 @@ interface Round1Result {
  * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound1(input: Round1Input): Promise<Round1Result> {
-  const { getProvider, experts, question, memoryContext, newsContext = {} } = input;
+  const { getProvider, experts, question, memoryContext, newsContext = {}, calibrationContext = {} } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -45,6 +47,12 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
         let systemPrompt = expert.systemPrompt;
         if (memoryContext.length > 0) {
           systemPrompt += `\n\n## 장기 기억 (검증된 원칙)\n${memoryContext}`;
+        }
+
+        // Per-agent confidence 캘리브레이션 주입
+        const personaCalibration = calibrationContext[expert.name] ?? "";
+        if (personaCalibration.length > 0) {
+          systemPrompt += `\n\n## 당신의 Thesis Confidence 캘리브레이션 (개인 성적)\n${personaCalibration}`;
         }
 
         // 애널리스트별 뉴스 컨텍스트를 질문에 추가
