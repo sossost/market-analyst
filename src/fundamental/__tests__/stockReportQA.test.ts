@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { runStockReportQA, bridgeQAToFeedback, type QAResult } from "../stockReportQA.js";
 
 // Mock reviewFeedback to intercept saveReviewFeedback calls
-vi.mock("@/agent/reviewFeedback", () => ({
+vi.mock("@/lib/reviewFeedback", () => ({
   saveReviewFeedback: vi.fn(),
 }));
 
-import { saveReviewFeedback } from "@/agent/reviewFeedback";
+import { saveReviewFeedback } from "@/lib/reviewFeedback";
 const mockSaveReviewFeedback = vi.mocked(saveReviewFeedback);
 
 beforeEach(() => {

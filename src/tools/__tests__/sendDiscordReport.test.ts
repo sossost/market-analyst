@@ -9,13 +9,13 @@ import {
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("@/agent/discord", () => ({
+vi.mock("@/lib/discord", () => ({
   sendDiscordMessage: vi.fn().mockResolvedValue(undefined),
   sendDiscordFile: vi.fn().mockResolvedValue(undefined),
   sendDiscordError: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@/agent/gist", () => ({
+vi.mock("@/lib/gist", () => ({
   createGist: vi.fn().mockResolvedValue({ id: "gist-1", url: "https://gist.github.com/1" }),
 }));
 
@@ -93,7 +93,7 @@ describe("createSendDiscordReport", () => {
   });
 
   it("includes validation warnings in gist markdown content", async () => {
-    const { createGist } = await import("@/agent/gist");
+    const { createGist } = await import("@/lib/gist");
     const mockCreateGist = vi.mocked(createGist);
     mockCreateGist.mockResolvedValue({ id: "g1", url: "https://gist.github.com/g1" });
 
@@ -115,7 +115,7 @@ describe("createSendDiscordReport", () => {
   });
 
   it("does not append warnings when report is balanced", async () => {
-    const { createGist } = await import("@/agent/gist");
+    const { createGist } = await import("@/lib/gist");
     const mockCreateGist = vi.mocked(createGist);
     mockCreateGist.mockClear();
     mockCreateGist.mockResolvedValue({ id: "g2", url: "https://gist.github.com/g2" });
@@ -136,7 +136,7 @@ describe("createSendDiscordReport", () => {
   });
 
   it("sends message-only without validation when no markdownContent", async () => {
-    const { sendDiscordMessage } = await import("@/agent/discord");
+    const { sendDiscordMessage } = await import("@/lib/discord");
     const mockSend = vi.mocked(sendDiscordMessage);
     mockSend.mockResolvedValue(undefined);
 
@@ -149,8 +149,8 @@ describe("createSendDiscordReport", () => {
   });
 
   it("includes warnings in fallback file when gist fails", async () => {
-    const { createGist } = await import("@/agent/gist");
-    const { sendDiscordFile } = await import("@/agent/discord");
+    const { createGist } = await import("@/lib/gist");
+    const { sendDiscordFile } = await import("@/lib/discord");
     const mockCreateGist = vi.mocked(createGist);
     const mockSendFile = vi.mocked(sendDiscordFile);
     mockCreateGist.mockResolvedValue(null);
@@ -177,8 +177,8 @@ describe("createSendDiscordReport", () => {
   // ---------------------------------------------------------------------------
 
   it("auto-corrects Phase 2 double conversion and sends successfully", async () => {
-    const { sendDiscordMessage, sendDiscordError } = await import("@/agent/discord");
-    const { createGist } = await import("@/agent/gist");
+    const { sendDiscordMessage, sendDiscordError } = await import("@/lib/discord");
+    const { createGist } = await import("@/lib/gist");
     const mockSend = vi.mocked(sendDiscordMessage);
     const mockError = vi.mocked(sendDiscordError);
     const mockGist = vi.mocked(createGist);
@@ -206,8 +206,8 @@ describe("createSendDiscordReport", () => {
   });
 
   it("returns success: false and does not send when validation errors exist", async () => {
-    const { sendDiscordMessage, sendDiscordError } = await import("@/agent/discord");
-    const { createGist } = await import("@/agent/gist");
+    const { sendDiscordMessage, sendDiscordError } = await import("@/lib/discord");
+    const { createGist } = await import("@/lib/gist");
     const mockSend = vi.mocked(sendDiscordMessage);
     const mockError = vi.mocked(sendDiscordError);
     const mockGist = vi.mocked(createGist);
@@ -233,8 +233,8 @@ describe("createSendDiscordReport", () => {
   });
 
   it("proceeds with send when only warnings exist (no errors)", async () => {
-    const { sendDiscordMessage, sendDiscordError } = await import("@/agent/discord");
-    const { createGist } = await import("@/agent/gist");
+    const { sendDiscordMessage, sendDiscordError } = await import("@/lib/discord");
+    const { createGist } = await import("@/lib/gist");
     const mockSend = vi.mocked(sendDiscordMessage);
     const mockError = vi.mocked(sendDiscordError);
     const mockGist = vi.mocked(createGist);

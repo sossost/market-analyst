@@ -3,7 +3,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pool } from "@/db/client";
-import { sendDiscordError } from "./discord";
+import { sendDiscordError } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider.js";
 import { AnthropicProvider } from "@/debate/llm/anthropicProvider.js";

@@ -1,9 +1,9 @@
-import { sendDiscordFile, sendDiscordMessage } from "./discord";
+import { sendDiscordFile, sendDiscordMessage } from "@/lib/discord";
 import { createProvider } from "@/debate/llm/providerFactory.js";
 import type { LLMProvider } from "@/debate/llm/types.js";
-import { createGist } from "./gist";
+import { createGist } from "@/lib/gist";
 import { logger } from "@/lib/logger";
-import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from "./reviewFeedback";
+import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from "@/lib/reviewFeedback";
 import { SEND_DISCORD_REPORT_SCHEMA } from "@/tools/sendDiscordReport";
 import type { AgentTool } from "@/tools/types";
 

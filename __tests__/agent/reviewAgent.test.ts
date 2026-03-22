@@ -14,20 +14,20 @@ vi.mock("@/debate/llm/providerFactory", () => ({
 const mockSendDiscordMessage = vi.fn();
 const mockSendDiscordFile = vi.fn();
 
-vi.mock("@/agent/discord", () => ({
+vi.mock("@/lib/discord", () => ({
   sendDiscordMessage: mockSendDiscordMessage,
   sendDiscordFile: mockSendDiscordFile,
 }));
 
 const mockCreateGist = vi.fn();
 
-vi.mock("@/agent/gist", () => ({
+vi.mock("@/lib/gist", () => ({
   createGist: mockCreateGist,
 }));
 
 const mockSaveReviewFeedback = vi.fn();
 
-vi.mock("@/agent/reviewFeedback", () => ({
+vi.mock("@/lib/reviewFeedback", () => ({
   saveReviewFeedback: mockSaveReviewFeedback,
 }));
 

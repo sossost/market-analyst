@@ -12,7 +12,7 @@ import {
   getVerdictStats,
   migrateFeedbackToType,
   type ReviewFeedbackEntry,
-} from "@/agent/reviewFeedback";
+} from "@/lib/reviewFeedback";
 
 // ---------------------------------------------------------------------------
 // Test fixtures

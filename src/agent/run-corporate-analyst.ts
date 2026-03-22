@@ -10,7 +10,7 @@ import "dotenv/config";
 import pLimit from "p-limit";
 import { pool } from "@/db/client";
 import { logger } from "@/lib/logger";
-import { sendDiscordMessage, sendDiscordError } from "./discord";
+import { sendDiscordMessage, sendDiscordError } from "@/lib/discord";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
 
 // ------- 상수 -------
