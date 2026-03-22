@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { sendDiscordError, sendDiscordFile, sendDiscordMessage } from "@/agent/discord";
-import { createGist } from "@/agent/gist";
+import { sendDiscordError, sendDiscordFile, sendDiscordMessage } from "@/lib/discord";
+import { createGist } from "@/lib/gist";
 import { sanitizePhase2Ratios, validateReport, type ReportType } from "@/lib/reportValidator";
 import { logger } from "@/lib/logger";
 import type { AgentTool } from "./types";

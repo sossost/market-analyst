@@ -3,7 +3,7 @@ import { pool } from "@/db/client";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { runAgentLoop } from "./agentLoop";
 import { buildDailySystemPrompt } from "./systemPrompt";
-import { sendDiscordError, sendDiscordMessage } from "./discord";
+import { sendDiscordError, sendDiscordMessage } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import type { AgentConfig } from "@/tools/types";
 
@@ -285,7 +285,7 @@ async function main() {
 
     // full_content DB 저장
     if (sentDrafts.length > 0) {
-      const { updateReportFullContent } = await import("./reportLog");
+      const { updateReportFullContent } = await import("@/lib/reportLog");
       const fullContent = draftsToFullContent(sentDrafts);
       await updateReportFullContent(targetDate, "daily", fullContent);
     }

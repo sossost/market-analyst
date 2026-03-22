@@ -7,8 +7,8 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { sendDiscordFile } from "@/agent/discord";
-import { createGist } from "@/agent/gist";
+import { sendDiscordFile } from "@/lib/discord";
+import { createGist } from "@/lib/gist";
 import { logger } from "@/lib/logger";
 import type { DataQualityVerdict, FundamentalScore, FundamentalInput } from "@/types/fundamental";
 

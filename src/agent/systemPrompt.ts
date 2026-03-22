@@ -4,7 +4,7 @@ import {
   getVerdictStats,
   loadRecentFeedback,
   type FeedbackReportType,
-} from "./reviewFeedback";
+} from "@/lib/reviewFeedback";
 
 /**
  * 피드백을 프롬프트에 계층적으로 주입한다.

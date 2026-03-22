@@ -24,8 +24,8 @@ import {
 } from "@/debate/confidenceCalibrator";
 import { verifyTheses } from "@/debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "@/debate/sessionStore";
-import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "./discord";
-import { createGist } from "./gist";
+import { sendDiscordMessage, sendDiscordError, sendDiscordFile } from "@/lib/discord";
+import { createGist } from "@/lib/gist";
 import { logger } from "@/lib/logger";
 import { runDebateQA, type DebateQAResult } from "./debateQA";
 import { reportQAIssue } from "@/lib/qaIssueReporter";
@@ -645,7 +645,7 @@ async function main() {
 
     // full_content DB 저장 (debate 타입으로 daily_reports에 저장)
     if (sentDrafts.length > 0) {
-      const { saveReportLog } = await import("./reportLog");
+      const { saveReportLog } = await import("@/lib/reportLog");
       const fullContent = draftsToFullContent(sentDrafts);
       await saveReportLog({
         date: debateDate,

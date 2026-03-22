@@ -9,7 +9,7 @@ const mockBuildMandatoryRules = vi.fn();
 const mockBuildAdvisoryFeedback = vi.fn();
 const mockGetVerdictStats = vi.fn().mockReturnValue({ total: 0, ok: 0, revise: 0, reject: 0, okRate: 0 });
 
-vi.mock("@/agent/reviewFeedback", () => ({
+vi.mock("@/lib/reviewFeedback", () => ({
   loadRecentFeedback: mockLoadRecentFeedback,
   buildMandatoryRules: mockBuildMandatoryRules,
   buildAdvisoryFeedback: mockBuildAdvisoryFeedback,

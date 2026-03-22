@@ -1,5 +1,5 @@
 import { pool } from "@/db/client";
-import { saveReportLog } from "@/agent/reportLog";
+import { saveReportLog } from "@/lib/reportLog";
 import { logger } from "@/lib/logger";
 import type { DailyReportLog } from "@/types";
 import type { AgentTool } from "./types";

@@ -56,13 +56,13 @@ vi.mock("../../src/db/client.js", () => ({
 
 describe("reportLog — file operations", () => {
   it("readReportLogs returns empty array when no files exist", async () => {
-    const { readReportLogs } = await import("@/agent/reportLog");
+    const { readReportLogs } = await import("@/lib/reportLog");
     const logs = readReportLogs(7);
     expect(Array.isArray(logs)).toBe(true);
   });
 
   it("saveReportLogToFile creates a valid JSON file", async () => {
-    const { saveReportLogToFile } = await import("@/agent/reportLog");
+    const { saveReportLogToFile } = await import("@/lib/reportLog");
 
     const log = createTestLog("2026-03-04");
     saveReportLogToFile(log);
@@ -83,7 +83,7 @@ describe("reportLog — file operations", () => {
   });
 
   it("saveReportLog saves to file and attempts DB insert", async () => {
-    const { saveReportLog } = await import("@/agent/reportLog");
+    const { saveReportLog } = await import("@/lib/reportLog");
     const { db } = await import("../../src/db/client.js");
 
     const log = createTestLog("2026-03-05");
@@ -115,7 +115,7 @@ describe("reportLog — file operations", () => {
       }),
     } as unknown as ReturnType<typeof db.insert>);
 
-    const { saveReportLog } = await import("@/agent/reportLog");
+    const { saveReportLog } = await import("@/lib/reportLog");
     const log = createTestLog("2026-03-06");
 
     // Should not throw even when DB fails
@@ -135,7 +135,7 @@ describe("reportLog — file operations", () => {
 
 describe("reportLog — DB read operations", () => {
   it("readReportLogsFromDb returns empty array when no rows", async () => {
-    const { readReportLogsFromDb } = await import("@/agent/reportLog");
+    const { readReportLogsFromDb } = await import("@/lib/reportLog");
     const logs = await readReportLogsFromDb(7);
     expect(logs).toEqual([]);
   });
@@ -184,7 +184,7 @@ describe("reportLog — DB read operations", () => {
       }),
     } as unknown as ReturnType<typeof db.select>);
 
-    const { readReportLogsFromDb } = await import("@/agent/reportLog");
+    const { readReportLogsFromDb } = await import("@/lib/reportLog");
     const logs = await readReportLogsFromDb(7);
 
     expect(logs).toHaveLength(1);
@@ -194,7 +194,7 @@ describe("reportLog — DB read operations", () => {
   });
 
   it("readReportByDate returns null when not found", async () => {
-    const { readReportByDate } = await import("@/agent/reportLog");
+    const { readReportByDate } = await import("@/lib/reportLog");
     const result = await readReportByDate("2099-01-01");
     expect(result).toBeNull();
   });
@@ -227,7 +227,7 @@ describe("reportLog — DB read operations", () => {
       }),
     } as unknown as ReturnType<typeof db.select>);
 
-    const { readReportLogsFromDb } = await import("@/agent/reportLog");
+    const { readReportLogsFromDb } = await import("@/lib/reportLog");
     const logs = await readReportLogsFromDb(7);
 
     expect(logs[0].metadata.model).toBe("unknown");

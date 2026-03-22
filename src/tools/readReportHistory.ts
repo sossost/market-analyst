@@ -1,4 +1,4 @@
-import { readReportLogs } from "@/agent/reportLog";
+import { readReportLogs } from "@/lib/reportLog";
 import type { AgentTool } from "./types";
 import { validateNumber } from "./validation";
 
