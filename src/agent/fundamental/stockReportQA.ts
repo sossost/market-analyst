@@ -107,10 +107,9 @@ function checkMarginRawDecimal(reportMd: string): QAIssue | null {
 function checkMarginOverflow(reportMd: string): QAIssue | null {
   // 분기별 실적 테이블의 이익률 열 값 탐색: `| 숫자% |` 패턴
   const pattern = /\|\s*([\d,]+\.?\d*)%\s*\|/g;
-  let match: RegExpExecArray | null;
   const overflowValues: string[] = [];
 
-  while ((match = pattern.exec(reportMd)) !== null) {
+  for (const match of reportMd.matchAll(pattern)) {
     const value = parseFloat(match[1].replace(/,/g, ""));
     if (Number.isFinite(value) && value > 100) {
       overflowValues.push(`${match[1]}%`);
