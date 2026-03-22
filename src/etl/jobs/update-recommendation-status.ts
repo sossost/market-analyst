@@ -21,18 +21,13 @@ const TAG = "UPDATE_RECOMMENDATION_STATUS";
  * - profitFloor: 해당 tier 진입 후 최소 보장 수익률(%)
  *
  * 근거: #359 — AAOI +27.4% → -5.7% 사례. Phase exit 의존 청산으로 수익 증발.
+ * 주의: AAOI/DWSN 2건 기반 초기 추정값. 운영 데이터 축적 후 조정 필요.
  */
 export const PROFIT_TIERS = [
   { minMaxPnl: 20, retracement: 0.25, profitFloor: 10 },
   { minMaxPnl: 10, retracement: 0.30, profitFloor: 3 },
   { minMaxPnl: 5, retracement: 0.40, profitFloor: 0 },
 ] as const;
-
-/** @deprecated 하위 호환용. PROFIT_TIERS[2].retracement 참조 */
-export const TRAILING_STOP_THRESHOLD = 0.25;
-
-/** @deprecated 하위 호환용. PROFIT_TIERS[2].minMaxPnl 참조 */
-export const MIN_MAX_PNL_FOR_TRAILING = 5;
 
 /**
  * 진입가 대비 최대 허용 손실(%).
