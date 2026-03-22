@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { tagPersistenceReason, tagSubstandardReason } from "../saveRecommendations";
+import { tagPersistenceReason } from "../saveRecommendations";
 
 /**
  * saveRecommendations execute() 통합 테스트.
@@ -463,11 +463,11 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
     });
   });
 
-  it("Phase 2 지속성이 2일 이상이면 정상 저장한다", async () => {
+  it("Phase 2 지속성이 3일 이상이면 정상 저장한다", async () => {
     mockPool.query
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
-      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "2" }] })  // persistenceRows: 2일
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows: 3일
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -487,11 +487,11 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
     expect(parsed.blockedByPersistence).toBe(0);
   });
 
-  it("Phase 2 지속성이 1일이면 blockedByPersistence로 차단한다", async () => {
+  it("Phase 2 지속성이 2일이면 blockedByPersistence로 차단한다", async () => {
     mockPool.query
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
-      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "1" }] })  // persistenceRows: 1일
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "2" }] })  // persistenceRows: 2일
       .mockResolvedValueOnce({ rows: [] });  // priceRows
 
     const result = await saveRecommendations.execute({
@@ -552,10 +552,10 @@ describe("tagPersistenceReason", () => {
 });
 
 // =============================================================================
-// HIGH 3: 지속성 하드 블록 + 기준 미달 태깅
+// Phase/RS 하드 게이트 (#366)
 // =============================================================================
 
-describe("지속성 하드 블록 + 기준 미달 태깅", () => {
+describe("Phase 하드 게이트", () => {
   beforeEach(() => {
     mockLoadConfirmedRegime.mockResolvedValue({
       regime: "MID_BULL",
@@ -567,12 +567,8 @@ describe("지속성 하드 블록 + 기준 미달 태깅", () => {
     });
   });
 
-  it("Phase < 2이면서 Phase 2 지속성도 부족하면 지속성 하드 블록으로 차단한다", async () => {
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [] })  // activeRows
-      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
-      .mockResolvedValueOnce({ rows: [] })  // persistenceRows: count 0 (지속성 부족)
-      .mockResolvedValueOnce({ rows: [] });  // priceRows
+  it("Phase < 2 종목은 blockedByPhase로 차단한다", async () => {
+    setupDefaultPoolMocks();
 
     const result = await saveRecommendations.execute({
       date: "2026-03-10",
@@ -582,41 +578,90 @@ describe("지속성 하드 블록 + 기준 미달 태깅", () => {
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(0);
-    expect(parsed.blockedByPersistence).toBe(1);
+    expect(parsed.blockedByPhase).toBe(1);
     expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("Phase 1 < 2"),
+    );
   });
 
-  it("Phase < 2이지만 Phase 2 지속성 충분하면 [기준 미달] 태깅 후 저장한다", async () => {
+  it("Phase = 2 종목은 Phase 하드 게이트를 통과한다", async () => {
     mockPool.query
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
-      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows: 충분
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
-    let capturedReason: string | undefined;
-    let firstInsertCalled = false;
-    mockDb.insert.mockImplementation(() => ({
-      values: vi.fn((data: Record<string, unknown>) => {
-        if (!firstInsertCalled) {
-          firstInsertCalled = true;
-          capturedReason = data.reason as string | undefined;
-        }
-        return {
-          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
-        };
-      }),
-    }));
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
 
-    await saveRecommendations.execute({
+    const result = await saveRecommendations.execute({
       date: "2026-03-10",
-      recommendations: [makeRec({ symbol: "AAPL", phase: 1, rs_score: 80, reason: "사유" })],
+      recommendations: [makeRec({ symbol: "AAPL", phase: 2, rs_score: 80 })],
     });
 
-    expect(capturedReason).toBe("[기준 미달] 사유");
+    const parsed = JSON.parse(result);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByPhase).toBe(0);
+  });
+});
+
+describe("RS 하한 하드 게이트", () => {
+  beforeEach(() => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+  });
+
+  it("RS < 60 종목은 blockedByLowRS로 차단한다", async () => {
+    setupDefaultPoolMocks();
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", phase: 2, rs_score: 55, reason: "사유" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByLowRS).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("RS 55 < 60"),
+    );
+  });
+
+  it("RS = 60 종목은 RS 하한 게이트를 통과한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL", phase: 2, rs_score: 60 })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByLowRS).toBe(0);
   });
 });
 

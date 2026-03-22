@@ -35,8 +35,13 @@ const COOLDOWN_CALENDAR_DAYS = 7;
 /** Phase 2 지속성 판단 기준 기간 (캘린더일) */
 const PHASE2_PERSISTENCE_DAYS = 5;
 
-/** Phase 2 지속성을 충족하는 최소 데이터 포인트 수 */
-const MIN_PHASE2_PERSISTENCE_COUNT = 2;
+/**
+ * Phase 2 지속성을 충족하는 최소 데이터 포인트 수.
+ * 변경 이력:
+ * - 2: Phase Exit 6건 발생, 승률 17% (#366)
+ * - 3: 지속성 기준 강화로 불안정 Phase 2 진입 차단
+ */
+const MIN_PHASE2_PERSISTENCE_COUNT = 3;
 
 /**
  * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
@@ -243,6 +248,8 @@ export const saveRecommendations: AgentTool = {
     let blockedByRegime = 0;
     let bearExceptionCount = 0;
     let blockedByCooldown = 0;
+    let blockedByPhase = 0;
+    let blockedByLowRS = 0;
     let blockedByOverheatedRS = 0;
     let blockedByLowPrice = 0;
     let blockedByPersistence = 0;
@@ -297,8 +304,29 @@ export const saveRecommendations: AgentTool = {
         );
       }
 
-      // Phase 2.5: RS 과열 게이트 — RS > 95 종목은 Phase 2 "말기"로 판단, 추천 차단
+      // Phase 2.5a: Phase 하드 게이트 — Phase 2 미만 종목 추천 차단
+      const phase = rec.phase ?? null;
+      if (phase != null && phase < MIN_PHASE) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: Phase ${phase} < ${MIN_PHASE}, 추천 차단`,
+        );
+        blockedByPhase++;
+        continue;
+      }
+
+      // Phase 2.5b: RS 하한 하드 게이트 — RS < 60 종목 추천 차단
       const rsScore = rec.rs_score ?? null;
+      if (rsScore != null && rsScore < MIN_RS_SCORE) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: RS ${rsScore} < ${MIN_RS_SCORE}, 추천 차단`,
+        );
+        blockedByLowRS++;
+        continue;
+      }
+
+      // Phase 2.5c: RS 과열 게이트 — RS > 95 종목은 Phase 2 "말기"로 판단, 추천 차단
       if (rsScore != null && rsScore > MAX_RS_SCORE) {
         logger.warn(
           "QualityGate",
@@ -349,9 +377,6 @@ export const saveRecommendations: AgentTool = {
       if (bearExceptionPassed) {
         taggedReason = tagBearExceptionReason(taggedReason);
       }
-
-      // 기준 미달 태깅 (Phase < 2 또는 RS < 60)
-      taggedReason = tagSubstandardReason(taggedReason, rec.phase, rec.rs_score);
 
       // Phase 3: Phase 2 지속성 하드 블록 — 최소 2일 Phase 2 유지 필수
       const phase2Count = persistenceMap.get(symbol) ?? 0;
@@ -430,10 +455,12 @@ export const saveRecommendations: AgentTool = {
       blockedByRegime,
       bearExceptionCount,
       blockedByCooldown,
+      blockedByPhase,
+      blockedByLowRS,
       blockedByOverheatedRS,
       blockedByLowPrice,
       blockedByPersistence,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단`,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단`,
     });
   },
 };
