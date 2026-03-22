@@ -4,7 +4,7 @@
 
 ## 문제 정의
 
-`agent_learnings` 테이블에 active 레코드 0건. 90일간 thesis 50건 생성, 11건 confirmed, 7건 invalidated 되었으나 학습으로 승격된 건이 없음.
+`agent_learnings` 테이블에 active 레코드 0건. 운용 17일간 thesis 50건 생성, 11건 confirmed, 7건 invalidated 되었으나 학습으로 승격된 건이 없음.
 
 ### 근본 원인
 
