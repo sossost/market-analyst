@@ -6,6 +6,8 @@ import type {
   RecommendationSummary,
   RecommendationStats,
   RecentRegime,
+  ThesisStats,
+  CaptureLeadStats,
 } from '../types'
 
 const CONFIDENCE_ORDER: Record<string, number> = {
@@ -183,6 +185,71 @@ export function calculateRecommendationStats(
     avgPnlPercent,
     avgDaysHeld,
     topItems,
+  }
+}
+
+const CAPTURE_LEAD_MIN_SAMPLES = 10
+
+export async function fetchThesisStats(): Promise<ThesisStats> {
+  const supabase = await createClient()
+
+  const statuses = ['CONFIRMED', 'INVALIDATED', 'ACTIVE', 'EXPIRED'] as const
+
+  const counts = await Promise.all(
+    statuses.map(async (status) => {
+      const { count, error } = await supabase
+        .from('theses')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', status)
+
+      if (error != null) {
+        throw new Error(`Thesis ${status} 건수 조회 실패: ${error.message}`)
+      }
+
+      return count ?? 0
+    }),
+  )
+
+  return {
+    confirmedCount: counts[0] ?? 0,
+    invalidatedCount: counts[1] ?? 0,
+    activeCount: counts[2] ?? 0,
+    expiredCount: counts[3] ?? 0,
+  }
+}
+
+export async function fetchCaptureLeadStats(): Promise<CaptureLeadStats> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('watchlist_stocks')
+    .select('entry_date, exit_date')
+    .eq('status', 'EXITED')
+    .not('exit_date', 'is', null)
+
+  if (error != null) {
+    throw new Error(`포착 선행성 조회 실패: ${error.message}`)
+  }
+
+  const resolved = data ?? []
+  const totalResolved = resolved.length
+  const measurable = totalResolved >= CAPTURE_LEAD_MIN_SAMPLES
+
+  if (!measurable) {
+    return { totalResolved, avgLeadDays: null, measurable }
+  }
+
+  const totalLeadDays = resolved.reduce((sum, row) => {
+    const entryMs = new Date(row.entry_date).getTime()
+    const exitMs = new Date(row.exit_date!).getTime()
+    const diffDays = Math.round((exitMs - entryMs) / (1000 * 60 * 60 * 24))
+    return sum + diffDays
+  }, 0)
+
+  return {
+    totalResolved,
+    avgLeadDays: Math.round(totalLeadDays / totalResolved),
+    measurable,
   }
 }
 
