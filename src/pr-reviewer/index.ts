@@ -76,15 +76,15 @@ export async function reviewPrs(): Promise<void> {
         logger.warn(TAG, `  ⚠ PR #${pr.number} 부분 리뷰 완료 (일부 실패)`)
       }
 
+      // Discord PR 스레드에 리뷰 완료 알림 (Hold Gate보다 먼저 — Gate가 매핑을 삭제하므로)
+      await notifyDiscordThread(pr.number)
+
       // Strategic 리뷰 성공 시 판정을 파싱하여 HOLD/REJECT면 Hold Gate 실행
       // 파싱 실패 시 PROCEED로 폴백하여 멀쩡한 PR이 Draft 전환되는 것을 방지
       if (strategic.success === true && strategic.output != null) {
         const verdict = parseStrategicVerdict(strategic.output) ?? 'PROCEED'
         await applyHoldGate(pr.number, verdict)
       }
-
-      // Discord PR 스레드에 리뷰 완료 알림
-      await notifyDiscordThread(pr.number)
     }),
   )
 }
