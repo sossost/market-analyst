@@ -65,9 +65,13 @@ ${issue.body || '(본문 없음)'}
 4. 기획서 기반 구현
 5. 테스트가 통과하는지 확인 (커버리지 80%+)
 6. 코드 셀프 리뷰: CRITICAL/HIGH 이슈 있으면 수정 후 재확인
-7. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함, 기획서도 함께 커밋)
-8. \`git push -u origin ${branchName}\`
-9. PR 생성:
+7. feat 또는 아키텍처 변경 이슈인 경우, 커밋 전에 README.md와 docs/ROADMAP.md를 업데이트하라:
+   - README.md: Feature Map, 주요 변경사항 반영
+   - docs/ROADMAP.md: 완료/진행 상태 갱신
+   - 단순 fix/test/chore 이슈는 문서 업데이트 불필요
+8. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함, 기획서와 문서도 함께 커밋)
+9. \`git push -u origin ${branchName}\`
+10. PR 생성:
    - \`.github/PULL_REQUEST_TEMPLATE.md\` 파일을 읽고 그 형식에 맞춰 PR body를 작성하라
    - body 첫 줄에 반드시 \`Closes #${issue.number}\` 포함
    - "전략비서 체크" 섹션은 기획서 검증 결과를 그대로 반영:
@@ -76,7 +80,7 @@ ${issue.body || '(본문 없음)'}
      - 무효 판정: 기획서의 무효 판정 결과
      - 종합: PROCEED / HOLD / REJECT
    - \`gh pr create --title "..." --body "..."\` 로 PR 생성
-10. **반드시** \`git checkout main\`을 실행하여 main 브랜치로 복귀하라. PR 생성 후 피처 브랜치에 잔류하면 이후 cron 작업 전체가 장애 난다.
+11. **반드시** \`git checkout main\`을 실행하여 main 브랜치로 복귀하라. PR 생성 후 피처 브랜치에 잔류하면 이후 cron 작업 전체가 장애 난다.
 
 ## 규칙
 - main 브랜치에 직접 커밋하지 마라
