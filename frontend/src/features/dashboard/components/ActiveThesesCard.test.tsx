@@ -2,17 +2,28 @@ import React from 'react'
 import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
-import type { ActiveThesis } from '../types'
+import type { ActiveThesis, ThesisStats } from '../types'
 
 vi.mock('../lib/supabase-queries', () => ({
   THESES_QUERY_LIMIT: 10,
   fetchActiveTheses: vi.fn(),
+  fetchThesisStats: vi.fn(),
 }))
 
-import { fetchActiveTheses } from '../lib/supabase-queries'
+import { fetchActiveTheses, fetchThesisStats } from '../lib/supabase-queries'
 import { ActiveThesesCard } from './ActiveThesesCard'
 
 const mockFetchActiveTheses = vi.mocked(fetchActiveTheses)
+const mockFetchThesisStats = vi.mocked(fetchThesisStats)
+
+function defaultThesisStats(): ThesisStats {
+  return {
+    confirmedCount: 0,
+    invalidatedCount: 0,
+    activeCount: 0,
+    expiredCount: 0,
+  }
+}
 
 function createThesis(overrides: Partial<ActiveThesis> = {}): ActiveThesis {
   return {
@@ -36,6 +47,11 @@ async function renderCard() {
 }
 
 describe('ActiveThesesCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFetchThesisStats.mockResolvedValue(defaultThesisStats())
+  })
+
   it('"Active Thesis" 타이틀 렌더링', async () => {
     mockFetchActiveTheses.mockResolvedValue({ items: [], totalCount: 0 })
 
@@ -108,5 +124,30 @@ describe('ActiveThesesCard', () => {
 
     expect(screen.getByText('기간: 30일')).toBeInTheDocument()
     expect(screen.getByText('합의: strong')).toBeInTheDocument()
+  })
+
+  it('적중/무효 비율 요약 표시', async () => {
+    mockFetchActiveTheses.mockResolvedValue({ items: [], totalCount: 0 })
+    mockFetchThesisStats.mockResolvedValue(
+      defaultThesisStats(),
+    )
+    // 0건이면 요약 미표시
+    const { unmount } = await renderCard()
+    expect(screen.queryByText(/적중/)).not.toBeInTheDocument()
+    unmount()
+
+    // 데이터 있으면 표시
+    mockFetchThesisStats.mockResolvedValue({
+      confirmedCount: 5,
+      invalidatedCount: 3,
+      activeCount: 10,
+      expiredCount: 2,
+    })
+    mockFetchActiveTheses.mockResolvedValue({ items: [], totalCount: 0 })
+    await renderCard()
+
+    expect(screen.getByText(/적중 5/)).toBeInTheDocument()
+    expect(screen.getByText(/무효 3/)).toBeInTheDocument()
+    expect(screen.getByText(/62\.5%/)).toBeInTheDocument()
   })
 })

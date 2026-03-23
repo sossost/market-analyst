@@ -35,3 +35,19 @@ export interface RecentRegime {
   rationale: string
   confidence: MarketRegimeSummary['confidence']
 }
+
+export interface ThesisStats {
+  confirmedCount: number
+  invalidatedCount: number
+  activeCount: number
+  expiredCount: number
+}
+
+export interface CaptureLeadStats {
+  totalResolved: number
+  avgLeadDays: number | null
+  measurable: boolean
+}
+
+export const MIN_THESIS_SAMPLES = 20
+export const CAPTURE_LEAD_MIN_SAMPLES = 10

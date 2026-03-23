@@ -1,11 +1,14 @@
 import { createClient } from '@/features/auth/lib/supabase-server'
 
-import type {
-  DashboardReport,
-  ActiveThesis,
-  RecommendationSummary,
-  RecommendationStats,
-  RecentRegime,
+import {
+  CAPTURE_LEAD_MIN_SAMPLES,
+  type DashboardReport,
+  type ActiveThesis,
+  type RecommendationSummary,
+  type RecommendationStats,
+  type RecentRegime,
+  type ThesisStats,
+  type CaptureLeadStats,
 } from '../types'
 
 const CONFIDENCE_ORDER: Record<string, number> = {
@@ -183,6 +186,72 @@ export function calculateRecommendationStats(
     avgPnlPercent,
     avgDaysHeld,
     topItems,
+  }
+}
+
+export async function fetchThesisStats(): Promise<ThesisStats> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('theses')
+    .select('status')
+
+  if (error != null) {
+    throw new Error(`Thesis 현황 조회 실패: ${error.message}`)
+  }
+
+  const rows = data ?? []
+  const counts = { CONFIRMED: 0, INVALIDATED: 0, ACTIVE: 0, EXPIRED: 0 }
+
+  for (const row of rows) {
+    const status = row.status as keyof typeof counts
+    if (status in counts) {
+      counts[status] += 1
+    }
+  }
+
+  return {
+    confirmedCount: counts.CONFIRMED,
+    invalidatedCount: counts.INVALIDATED,
+    activeCount: counts.ACTIVE,
+    expiredCount: counts.EXPIRED,
+  }
+}
+
+export async function fetchCaptureLeadStats(): Promise<CaptureLeadStats> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('watchlist_stocks')
+    .select('entry_date, exit_date')
+    .eq('status', 'EXITED')
+    .not('exit_date', 'is', null)
+
+  if (error != null) {
+    throw new Error(`포착 선행성 조회 실패: ${error.message}`)
+  }
+
+  const resolved = data ?? []
+  const totalResolved = resolved.length
+  const measurable = totalResolved >= CAPTURE_LEAD_MIN_SAMPLES
+
+  if (measurable === false) {
+    return { totalResolved, avgLeadDays: null, measurable }
+  }
+
+  const MS_PER_DAY = 1_000 * 60 * 60 * 24
+  const totalLeadDays = resolved.reduce((sum, row) => {
+    if (row.exit_date == null) return sum
+    const entryMs = new Date(row.entry_date).getTime()
+    const exitMs = new Date(row.exit_date).getTime()
+    const diffDays = Math.round((exitMs - entryMs) / MS_PER_DAY)
+    return sum + diffDays
+  }, 0)
+
+  return {
+    totalResolved,
+    avgLeadDays: Math.round(totalLeadDays / totalResolved),
+    measurable,
   }
 }
 
