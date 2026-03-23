@@ -67,6 +67,20 @@ describe('buildClaudePrompt — 프로토콜 통일 검증', () => {
     expect(bodyPosition).toBeGreaterThan(blockStart)
     expect(bodyPosition).toBeLessThan(blockEnd)
   })
+
+  it('feat 이슈일 때 README.md와 ROADMAP.md 문서 업데이트 지시를 포함한다', () => {
+    expect(prompt).toContain('README.md')
+    expect(prompt).toContain('docs/ROADMAP.md')
+    expect(prompt).toContain('feat 또는 아키텍처 변경 이슈인 경우')
+  })
+
+  it('fix 이슈일 때도 문서 업데이트 불필요 명시를 포함한다', () => {
+    const fixPrompt = buildClaudePrompt(
+      { number: 100, title: 'fix: 버그 수정', body: '', labels: [], author: 'test' },
+      'fix',
+    )
+    expect(fixPrompt).toContain('단순 fix/test/chore 이슈는 문서 업데이트 불필요')
+  })
 })
 
 // ---------------------------------------------------------------------------
