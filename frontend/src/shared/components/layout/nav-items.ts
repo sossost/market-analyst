@@ -1,4 +1,5 @@
 import {
+  Eye,
   FileText,
   Home,
   MessageSquare,
@@ -19,4 +20,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/debates', label: '토론', icon: MessageSquare },
   { href: '/stocks', label: '종목 검색', icon: Search },
   { href: '/recommendations', label: '추천 종목', icon: Star },
+  { href: '/watchlist', label: '관심종목', icon: Eye },
 ]
