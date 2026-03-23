@@ -1,12 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   BOOTSTRAP_THRESHOLD,
   COLD_START_THRESHOLD,
   GROWTH_PHASE_THRESHOLD,
+  MIN_MATURATION_HITS,
   getPromotionThresholds,
   buildPromotionCandidates,
   buildCautionPrinciple,
   normalizeMetricKey,
+  demoteImmatureLearnings,
 } from "../promote-learnings.js";
 
 // DB/외부 의존성 mock
@@ -443,5 +445,108 @@ describe("buildCautionPrinciple", () => {
     const result = buildCautionPrinciple("no_failure", 0, 10);
     expect(result).toContain("0%");
     expect(result).toContain("10회 관측");
+  });
+});
+
+// ─── MIN_MATURATION_HITS 상수 ────────────────────────────────────────────────
+
+describe("MIN_MATURATION_HITS 상수", () => {
+  it("MIN_MATURATION_HITS는 3이다", () => {
+    expect(MIN_MATURATION_HITS).toBe(3);
+  });
+});
+
+// ─── demoteImmatureLearnings ─────────────────────────────────────────────────
+
+function makeLearning(overrides: Partial<{
+  id: number;
+  hitCount: number;
+  category: string;
+  isActive: boolean;
+  principle: string;
+}> = {}) {
+  return {
+    id: 1,
+    principle: "[test] test learning",
+    category: "confirmed",
+    hitCount: 1,
+    missCount: 0,
+    hitRate: "1.00",
+    sourceThesisIds: "[]",
+    firstConfirmed: "2026-01-01",
+    lastVerified: "2026-03-01",
+    expiresAt: "2026-07-01",
+    isActive: true,
+    verificationPath: "quantitative",
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+describe("demoteImmatureLearnings", () => {
+  beforeEach(() => {
+    mockUpdate.mockClear();
+    mockUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+  });
+
+  it("activeLearningCount < COLD_START_THRESHOLD이면 강등하지 않는다 (bootstrap 보호)", async () => {
+    const learnings = [
+      makeLearning({ id: 1, hitCount: 1, category: "confirmed" }),
+    ];
+
+    const result = await demoteImmatureLearnings(learnings as never, COLD_START_THRESHOLD - 1);
+
+    expect(result).toBe(0);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("activeLearningCount >= COLD_START_THRESHOLD이고 hit_count < MIN_MATURATION_HITS이면 강등한다", async () => {
+    const learnings = [
+      makeLearning({ id: 1, hitCount: 1, category: "confirmed" }),
+      makeLearning({ id: 2, hitCount: 2, category: "confirmed" }),
+    ];
+
+    const result = await demoteImmatureLearnings(learnings as never, COLD_START_THRESHOLD);
+
+    expect(result).toBe(2);
+  });
+
+  it("hit_count >= MIN_MATURATION_HITS인 학습은 강등하지 않는다", async () => {
+    const learnings = [
+      makeLearning({ id: 1, hitCount: 3, category: "confirmed" }),
+      makeLearning({ id: 2, hitCount: 10, category: "confirmed" }),
+    ];
+
+    const result = await demoteImmatureLearnings(learnings as never, COLD_START_THRESHOLD);
+
+    expect(result).toBe(0);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("caution 카테고리는 성숙도 게이트 대상에서 제외한다", async () => {
+    const learnings = [
+      makeLearning({ id: 1, hitCount: 1, category: "caution" }),
+    ];
+
+    const result = await demoteImmatureLearnings(learnings as never, COLD_START_THRESHOLD);
+
+    expect(result).toBe(0);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("confirmed hit_count=1과 caution hit_count=1이 혼재 시 confirmed만 강등", async () => {
+    const learnings = [
+      makeLearning({ id: 1, hitCount: 1, category: "confirmed" }),
+      makeLearning({ id: 2, hitCount: 1, category: "caution" }),
+      makeLearning({ id: 3, hitCount: 5, category: "confirmed" }),
+    ];
+
+    const result = await demoteImmatureLearnings(learnings as never, COLD_START_THRESHOLD);
+
+    expect(result).toBe(1); // confirmed id=1만 강등
   });
 });

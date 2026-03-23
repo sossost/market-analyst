@@ -12,6 +12,16 @@ const BULL_BIAS_THRESHOLD = 0.8;
 const MEDIUM_CONFIDENCE_WARNING_THRESHOLD = 0.50;
 
 /**
+ * 관측 횟수 기반 근거 강도 레이블.
+ * LLM이 학습의 통계적 신뢰도를 판단할 수 있도록 명시적 구분. (#394)
+ */
+export function getEvidenceStrength(hitCount: number): string {
+  if (hitCount <= 2) return "⚠️ 약한 근거";
+  if (hitCount <= 4) return "중간 근거";
+  return "강한 근거";
+}
+
+/**
  * Load active learnings from DB and format as system prompt text.
  * Groups by category for better structure.
  */
@@ -31,9 +41,10 @@ async function loadLearnings(): Promise<string> {
 
   if (confirmed.length > 0) {
     lines.push("### 검증된 패턴 (과거 데이터에서 반복 확인됨)");
-    lines.push("아래 패턴을 분석 시 적극 활용하세요:");
+    lines.push("아래 패턴의 근거 강도에 따라 가중치를 조절하세요:");
     for (const r of confirmed) {
-      const rate = r.hitRate != null ? ` (적중률 ${(Number(r.hitRate) * 100).toFixed(0)}%, ${r.hitCount}회 관측)` : "";
+      const strength = getEvidenceStrength(r.hitCount ?? 0);
+      const rate = r.hitRate != null ? ` (적중률 ${(Number(r.hitRate) * 100).toFixed(0)}%, ${r.hitCount}회 관측, ${strength})` : "";
       lines.push(`- ${r.principle}${rate}`);
     }
   }
