@@ -14,6 +14,13 @@ const TAG = "PROMOTE_LEARNINGS";
 const LEARNING_EXPIRY_MONTHS = 6;
 const MAX_ACTIVE_LEARNINGS = 50;
 
+/**
+ * 성숙도 게이트: 시스템이 bootstrap/cold start를 탈출한 후,
+ * 관측 횟수가 이 값 미만인 confirmed 학습을 자동 강등한다.
+ * 단일 우연을 일반 원칙으로 오인하는 것을 방지. (#394)
+ */
+export const MIN_MATURATION_HITS = 3;
+
 export const BOOTSTRAP_THRESHOLD = 2;
 export const COLD_START_THRESHOLD = 5;
 export const GROWTH_PHASE_THRESHOLD = 15;
@@ -141,7 +148,12 @@ async function main() {
   logger.info(TAG, `Active learnings: ${activeLearnings.length}/${MAX_ACTIVE_LEARNINGS}`);
 
   // 2. 만료 강등 (6개월 초과)
-  const demotedCount = await demoteExpiredLearnings(activeLearnings, today);
+  const demotedIds = await demoteExpiredLearnings(activeLearnings, today);
+  const demotedCount = demotedIds.length;
+
+  // 강등된 항목을 in-memory 배열에서 제거 — 이후 단계에서 중복 처리 방지
+  const demotedIdSet = new Set(demotedIds);
+  const remainingLearnings = activeLearnings.filter((l) => !demotedIdSet.has(l.id));
 
   // 3. thesis 데이터 로드 (EXPIRED도 부정 신호로 포함)
   const [confirmedTheses, invalidatedTheses, expiredTheses] = await Promise.all([
@@ -155,7 +167,7 @@ async function main() {
   // 4. 기존 learnings의 hitCount/missCount 업데이트
   const allNegativeTheses = [...invalidatedTheses, ...expiredTheses];
   const updatedCount = await updateLearningStats(
-    activeLearnings.filter((l) => l.isActive !== false),
+    remainingLearnings,
     confirmedTheses,
     allNegativeTheses,
     today,
@@ -163,16 +175,26 @@ async function main() {
 
   // 5. 신규 learning 승격 (반복 적중 패턴)
   const existingSourceIds = new Set(
-    activeLearnings.flatMap((l) => {
+    remainingLearnings.flatMap((l) => {
       try { return JSON.parse(l.sourceThesisIds ?? "[]") as number[]; }
       catch { return []; }
     }),
   );
 
-  const activeCountAfterDemotion = activeLearnings.length - demotedCount;
+  let activeCountAfterDemotion = remainingLearnings.length;
+
+  // 4a. 성숙도 게이트 — bootstrap 졸업 후 관측 부족 학습 강등 (#394)
+  const maturationDemotedCount = await demoteImmatureLearnings(
+    remainingLearnings,
+    activeCountAfterDemotion,
+  );
+  if (maturationDemotedCount > 0) {
+    logger.info(TAG, `Maturation gate: ${maturationDemotedCount} immature learnings demoted (hit_count < ${MIN_MATURATION_HITS})`);
+    activeCountAfterDemotion -= maturationDemotedCount;
+  }
 
   // 5a. 현재 편향 체크 (승격 전 상태 기준 — bear-priority 정렬에 사용)
-  const prePrinciples = activeLearnings.map((l) => l.principle);
+  const prePrinciples = remainingLearnings.map((l) => l.principle);
   const preBias = detectBullBias(prePrinciples);
   if (preBias.isSkewed) {
     logger.warn(TAG, `BIAS WARNING (pre-promote): Bull-bias ${(preBias.bullRatio * 100).toFixed(0)}% > 80% — bear 후보 우선 승격`);
@@ -212,7 +234,7 @@ async function main() {
     logger.warn(TAG, `BIAS WARNING: Bull-bias ${(bias.bullRatio * 100).toFixed(0)}% > 80% 임계값`);
   }
 
-  logger.info(TAG, `Results: ${demotedCount} demoted, ${updatedCount} updated, ${promotedCount} promoted, ${cautionPromoted} caution`);
+  logger.info(TAG, `Results: ${demotedCount} expired-demoted, ${maturationDemotedCount} maturation-demoted, ${updatedCount} updated, ${promotedCount} promoted, ${cautionPromoted} caution`);
   logger.info(TAG, `Active learnings: ${latestLearnings.length}`);
 
   // 학습 루프 헬스체크 — 활성 학습 0건이면 경고
@@ -226,7 +248,7 @@ const CONCURRENCY_LIMIT = 5;
 async function demoteExpiredLearnings(
   learnings: typeof agentLearnings.$inferSelect[],
   today: string,
-): Promise<number> {
+): Promise<number[]> {
   const expiryThreshold = new Date(today);
   expiryThreshold.setMonth(expiryThreshold.getMonth() - LEARNING_EXPIRY_MONTHS);
   const expiryDateStr = expiryThreshold.toISOString().slice(0, 10);
@@ -253,6 +275,42 @@ async function demoteExpiredLearnings(
           .set({ isActive: false })
           .where(eq(agentLearnings.id, learning.id));
         logger.info(TAG, `  DEMOTED: ${learning.principle.slice(0, 60)}...`);
+      }),
+    );
+  }
+
+  return toDemote.map((l) => l.id);
+}
+
+/**
+ * 성숙도 게이트: bootstrap/cold start 이후에도 hit_count가 낮은 학습을 강등한다.
+ *
+ * Bootstrap 단계에서는 minHits=1로 학습 루프 시동을 허용하지만,
+ * 시스템이 COLD_START_THRESHOLD 이상으로 성장한 뒤에는
+ * MIN_MATURATION_HITS 미만의 학습을 자동 강등하여 통계적 신뢰성을 확보한다. (#394)
+ */
+export async function demoteImmatureLearnings(
+  learnings: typeof agentLearnings.$inferSelect[],
+  activeLearningCount: number,
+): Promise<number> {
+  if (activeLearningCount < COLD_START_THRESHOLD) {
+    return 0;
+  }
+
+  const toDemote = learnings.filter((learning) => {
+    if (learning.category !== "confirmed") return false;
+    return learning.hitCount < MIN_MATURATION_HITS;
+  });
+
+  for (let i = 0; i < toDemote.length; i += CONCURRENCY_LIMIT) {
+    const batch = toDemote.slice(i, i + CONCURRENCY_LIMIT);
+    await Promise.all(
+      batch.map(async (learning) => {
+        await db
+          .update(agentLearnings)
+          .set({ isActive: false })
+          .where(eq(agentLearnings.id, learning.id));
+        logger.info(TAG, `  MATURATION DEMOTED (hit_count=${learning.hitCount} < ${MIN_MATURATION_HITS}): ${learning.principle.slice(0, 60)}...`);
       }),
     );
   }
