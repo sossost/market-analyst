@@ -13,6 +13,8 @@ interface Round1Input {
   newsContext?: Record<string, string>;
   /** Per-persona confidence 캘리브레이션 컨텍스트 */
   calibrationContext?: Record<string, string>;
+  /** SEPA 기반 펀더멘탈 스코어 — 전문가 분석에 실적 데이터 제공 */
+  fundamentalContext?: string;
 }
 
 interface Round1Result {
@@ -26,7 +28,7 @@ interface Round1Result {
  * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound1(input: Round1Input): Promise<Round1Result> {
-  const { getProvider, experts, question, memoryContext, newsContext = {}, calibrationContext = {} } = input;
+  const { getProvider, experts, question, memoryContext, newsContext = {}, calibrationContext = {}, fundamentalContext = "" } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -57,8 +59,12 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
 
         // 애널리스트별 뉴스 컨텍스트를 질문에 추가
         const personaNews = newsContext[expert.name] ?? "";
-        const fullQuestion =
-          personaNews.length > 0 ? `${question}\n\n---\n\n${personaNews}` : question;
+        let fullQuestion = personaNews.length > 0 ? `${question}\n\n---\n\n${personaNews}` : question;
+
+        // SEPA 펀더멘탈 데이터 주입 — 전문가가 실적 기반 분석에 활용
+        if (fundamentalContext.length > 0) {
+          fullQuestion += `\n\n---\n\n<fundamental-data>\n## Phase 2 종목 펀더멘탈 데이터 (SEPA)\n\n분석 시 아래 실적 데이터를 참조하세요. B등급 미만 종목은 펀더멘탈 미검증 상태입니다.\n\n${fundamentalContext}\n</fundamental-data>`;
+        }
 
         const provider = getProvider(expert.model);
         const result = await provider.call({

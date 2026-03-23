@@ -77,6 +77,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     memoryContext,
     newsContext,
     calibrationContext,
+    fundamentalContext,
   });
 
   const failedInRound1 = experts
