@@ -43,7 +43,7 @@ async function loadLearnings(): Promise<string> {
     lines.push("### 검증된 패턴 (과거 데이터에서 반복 확인됨)");
     lines.push("아래 패턴의 근거 강도에 따라 가중치를 조절하세요:");
     for (const r of confirmed) {
-      const strength = getEvidenceStrength(r.hitCount ?? 0);
+      const strength = getEvidenceStrength(r.hitCount);
       const rate = r.hitRate != null ? ` (적중률 ${(Number(r.hitRate) * 100).toFixed(0)}%, ${r.hitCount}회 관측, ${strength})` : "";
       lines.push(`- ${r.principle}${rate}`);
     }

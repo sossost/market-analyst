@@ -148,7 +148,12 @@ async function main() {
   logger.info(TAG, `Active learnings: ${activeLearnings.length}/${MAX_ACTIVE_LEARNINGS}`);
 
   // 2. 만료 강등 (6개월 초과)
-  const demotedCount = await demoteExpiredLearnings(activeLearnings, today);
+  const demotedIds = await demoteExpiredLearnings(activeLearnings, today);
+  const demotedCount = demotedIds.length;
+
+  // 강등된 항목을 in-memory 배열에서 제거 — 이후 단계에서 중복 처리 방지
+  const demotedIdSet = new Set(demotedIds);
+  const remainingLearnings = activeLearnings.filter((l) => !demotedIdSet.has(l.id));
 
   // 3. thesis 데이터 로드 (EXPIRED도 부정 신호로 포함)
   const [confirmedTheses, invalidatedTheses, expiredTheses] = await Promise.all([
@@ -162,7 +167,7 @@ async function main() {
   // 4. 기존 learnings의 hitCount/missCount 업데이트
   const allNegativeTheses = [...invalidatedTheses, ...expiredTheses];
   const updatedCount = await updateLearningStats(
-    activeLearnings.filter((l) => l.isActive !== false),
+    remainingLearnings,
     confirmedTheses,
     allNegativeTheses,
     today,
@@ -170,17 +175,17 @@ async function main() {
 
   // 5. 신규 learning 승격 (반복 적중 패턴)
   const existingSourceIds = new Set(
-    activeLearnings.flatMap((l) => {
+    remainingLearnings.flatMap((l) => {
       try { return JSON.parse(l.sourceThesisIds ?? "[]") as number[]; }
       catch { return []; }
     }),
   );
 
-  let activeCountAfterDemotion = activeLearnings.length - demotedCount;
+  let activeCountAfterDemotion = remainingLearnings.length;
 
   // 4a. 성숙도 게이트 — bootstrap 졸업 후 관측 부족 학습 강등 (#394)
   const maturationDemotedCount = await demoteImmatureLearnings(
-    activeLearnings.filter((l) => l.isActive !== false),
+    remainingLearnings,
     activeCountAfterDemotion,
   );
   if (maturationDemotedCount > 0) {
@@ -189,7 +194,7 @@ async function main() {
   }
 
   // 5a. 현재 편향 체크 (승격 전 상태 기준 — bear-priority 정렬에 사용)
-  const prePrinciples = activeLearnings.map((l) => l.principle);
+  const prePrinciples = remainingLearnings.map((l) => l.principle);
   const preBias = detectBullBias(prePrinciples);
   if (preBias.isSkewed) {
     logger.warn(TAG, `BIAS WARNING (pre-promote): Bull-bias ${(preBias.bullRatio * 100).toFixed(0)}% > 80% — bear 후보 우선 승격`);
@@ -243,7 +248,7 @@ const CONCURRENCY_LIMIT = 5;
 async function demoteExpiredLearnings(
   learnings: typeof agentLearnings.$inferSelect[],
   today: string,
-): Promise<number> {
+): Promise<number[]> {
   const expiryThreshold = new Date(today);
   expiryThreshold.setMonth(expiryThreshold.getMonth() - LEARNING_EXPIRY_MONTHS);
   const expiryDateStr = expiryThreshold.toISOString().slice(0, 10);
@@ -274,7 +279,7 @@ async function demoteExpiredLearnings(
     );
   }
 
-  return toDemote.length;
+  return toDemote.map((l) => l.id);
 }
 
 /**
@@ -294,7 +299,7 @@ export async function demoteImmatureLearnings(
 
   const toDemote = learnings.filter((learning) => {
     if (learning.category !== "confirmed") return false;
-    return (learning.hitCount ?? 0) < MIN_MATURATION_HITS;
+    return learning.hitCount < MIN_MATURATION_HITS;
   });
 
   for (let i = 0; i < toDemote.length; i += CONCURRENCY_LIMIT) {
