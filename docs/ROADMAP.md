@@ -154,6 +154,7 @@
 | 테스트 인프라 | 유닛 138개(99%) + E2E 10케이스 (PR #135) |
 | 관심종목 페이지 | watchlistStocks 목록/상세, 90일 Phase 궤적 SVG 차트, 5중 교집합 근거 시각화 (#405) |
 | 학습 루프 현황 | agent_learnings hit rate 목록 + 요약 통계 (활성 원칙 수, 평균 hit rate, 최근 검증일) (#403) |
+| 서사 체인 시각화 | narrative_chains 목록 (상태 필터 + megatrend 그룹핑) + 상세 흐름도 (megatrend→demand→supply→bottleneck) + N+1 병목 예측 + Alpha Gate 적합성 (#402) |
 
 **스택:** Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR
 
