@@ -1,4 +1,5 @@
 import {
+  BrainCircuit,
   Eye,
   FileText,
   Home,
@@ -21,4 +22,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/stocks', label: '종목 검색', icon: Search },
   { href: '/recommendations', label: '추천 종목', icon: Star },
   { href: '/watchlist', label: '관심종목', icon: Eye },
+  { href: '/learnings', label: '학습 루프', icon: BrainCircuit },
 ]
