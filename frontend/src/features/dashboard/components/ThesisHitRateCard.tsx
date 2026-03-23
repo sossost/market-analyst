@@ -5,12 +5,14 @@ import {
   CardTitle,
 } from '@/shared/components/ui/card'
 
-import type { ThesisStats, CaptureLeadStats } from '../types'
+import {
+  MIN_THESIS_SAMPLES,
+  CAPTURE_LEAD_MIN_SAMPLES,
+  type ThesisStats,
+  type CaptureLeadStats,
+} from '../types'
 import { fetchThesisStats, fetchCaptureLeadStats } from '../lib/supabase-queries'
 import { MetricItem } from './MetricItem'
-
-const MIN_THESIS_SAMPLES = 20
-const CAPTURE_LEAD_MIN_SAMPLES = 10
 
 export async function ThesisHitRateCard() {
   const [thesisStats, captureLeadStats] = await Promise.all([
@@ -66,7 +68,7 @@ function ThesisHitRateSection({ stats }: { stats: ThesisStats }) {
           ({stats.confirmedCount}/{resolved}건)
         </span>
       </div>
-      {!hasEnoughData && (
+      {hasEnoughData === false && (
         <span className="text-xs text-muted-foreground">
           측정 중 ({resolved}/{MIN_THESIS_SAMPLES}건)
         </span>
@@ -76,7 +78,7 @@ function ThesisHitRateSection({ stats }: { stats: ThesisStats }) {
 }
 
 function CaptureLeadSection({ stats }: { stats: CaptureLeadStats }) {
-  if (!stats.measurable) {
+  if (stats.measurable === false) {
     return (
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">

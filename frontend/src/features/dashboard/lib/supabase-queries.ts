@@ -1,13 +1,14 @@
 import { createClient } from '@/features/auth/lib/supabase-server'
 
-import type {
-  DashboardReport,
-  ActiveThesis,
-  RecommendationSummary,
-  RecommendationStats,
-  RecentRegime,
-  ThesisStats,
-  CaptureLeadStats,
+import {
+  CAPTURE_LEAD_MIN_SAMPLES,
+  type DashboardReport,
+  type ActiveThesis,
+  type RecommendationSummary,
+  type RecommendationStats,
+  type RecentRegime,
+  type ThesisStats,
+  type CaptureLeadStats,
 } from '../types'
 
 const CONFIDENCE_ORDER: Record<string, number> = {
@@ -188,33 +189,32 @@ export function calculateRecommendationStats(
   }
 }
 
-const CAPTURE_LEAD_MIN_SAMPLES = 10
-
 export async function fetchThesisStats(): Promise<ThesisStats> {
   const supabase = await createClient()
 
-  const statuses = ['CONFIRMED', 'INVALIDATED', 'ACTIVE', 'EXPIRED'] as const
+  const { data, error } = await supabase
+    .from('theses')
+    .select('status')
 
-  const counts = await Promise.all(
-    statuses.map(async (status) => {
-      const { count, error } = await supabase
-        .from('theses')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', status)
+  if (error != null) {
+    throw new Error(`Thesis 현황 조회 실패: ${error.message}`)
+  }
 
-      if (error != null) {
-        throw new Error(`Thesis ${status} 건수 조회 실패: ${error.message}`)
-      }
+  const rows = data ?? []
+  const counts = { CONFIRMED: 0, INVALIDATED: 0, ACTIVE: 0, EXPIRED: 0 }
 
-      return count ?? 0
-    }),
-  )
+  for (const row of rows) {
+    const status = row.status as keyof typeof counts
+    if (status in counts) {
+      counts[status] += 1
+    }
+  }
 
   return {
-    confirmedCount: counts[0] ?? 0,
-    invalidatedCount: counts[1] ?? 0,
-    activeCount: counts[2] ?? 0,
-    expiredCount: counts[3] ?? 0,
+    confirmedCount: counts.CONFIRMED,
+    invalidatedCount: counts.INVALIDATED,
+    activeCount: counts.ACTIVE,
+    expiredCount: counts.EXPIRED,
   }
 }
 
@@ -235,14 +235,16 @@ export async function fetchCaptureLeadStats(): Promise<CaptureLeadStats> {
   const totalResolved = resolved.length
   const measurable = totalResolved >= CAPTURE_LEAD_MIN_SAMPLES
 
-  if (!measurable) {
+  if (measurable === false) {
     return { totalResolved, avgLeadDays: null, measurable }
   }
 
+  const MS_PER_DAY = 1_000 * 60 * 60 * 24
   const totalLeadDays = resolved.reduce((sum, row) => {
+    if (row.exit_date == null) return sum
     const entryMs = new Date(row.entry_date).getTime()
-    const exitMs = new Date(row.exit_date!).getTime()
-    const diffDays = Math.round((exitMs - entryMs) / (1000 * 60 * 60 * 24))
+    const exitMs = new Date(row.exit_date).getTime()
+    const diffDays = Math.round((exitMs - entryMs) / MS_PER_DAY)
     return sum + diffDays
   }, 0)
 

@@ -48,3 +48,6 @@ export interface CaptureLeadStats {
   avgLeadDays: number | null
   measurable: boolean
 }
+
+export const MIN_THESIS_SAMPLES = 20
+export const CAPTURE_LEAD_MIN_SAMPLES = 10
