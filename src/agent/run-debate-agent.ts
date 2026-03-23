@@ -20,7 +20,8 @@ import {
 import {
   getCalibrationResult,
   formatCalibrationForPrompt,
-  buildPerAgentCalibrationContexts,
+  buildEnhancedPerAgentCalibrationContexts,
+  buildModeratorPerformanceContext,
 } from "@/debate/confidenceCalibrator";
 import { verifyTheses } from "@/debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "@/debate/sessionStore";
@@ -557,19 +558,25 @@ async function main() {
   // 글로벌 캘리브레이션은 enrichedMemory에 포함, per-agent는 각 에이전트 시스템 프롬프트에 주입
   let calibrationContext = "";
   let perAgentCalibration: Record<string, string> = {};
+  let agentPerformanceContext = "";
   try {
-    const [calibrationResult, perAgentContexts] = await Promise.all([
+    const [calibrationResult, perAgentContexts, moderatorPerfContext] = await Promise.all([
       getCalibrationResult(),
-      buildPerAgentCalibrationContexts(),
+      buildEnhancedPerAgentCalibrationContexts(),
+      buildModeratorPerformanceContext(),
     ]);
     calibrationContext = formatCalibrationForPrompt(calibrationResult);
     perAgentCalibration = perAgentContexts;
+    agentPerformanceContext = moderatorPerfContext;
     const agentCount = Object.keys(perAgentContexts).length;
     if (calibrationContext.length > 0 || agentCount > 0) {
       logger.info(
         "Calibration",
         `글로벌: ${calibrationResult.totalResolved}건 ECE=${calibrationResult.ece ?? "N/A"}, per-agent: ${agentCount}명 피드백`,
       );
+    }
+    if (agentPerformanceContext.length > 0) {
+      logger.info("Calibration", "모더레이터 성과 컨텍스트 생성 완료");
     }
   } catch (err) {
     logger.warn(
@@ -614,6 +621,7 @@ async function main() {
     newsContext,
     fundamentalContext,
     calibrationContext: perAgentCalibration,
+    agentPerformanceContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);

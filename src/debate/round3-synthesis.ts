@@ -15,6 +15,8 @@ interface Round3Input {
   marketDataContext?: string;
   /** SEPA 기반 펀더멘탈 스코어 (XML 태그 래핑 텍스트) */
   fundamentalContext?: string;
+  /** 에이전트별 적중률 — 합의 가중치 조정용 */
+  agentPerformanceContext?: string;
 }
 
 interface Round3Result {
@@ -61,6 +63,7 @@ export function buildSynthesisPrompt(
   question: string,
   marketDataContext?: string,
   fundamentalContext?: string,
+  agentPerformanceContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -88,13 +91,17 @@ export function buildSynthesisPrompt(
       ].join("\n")
     : "";
 
+  const performanceSection = agentPerformanceContext != null && agentPerformanceContext.length > 0
+    ? `\n---\n\n${agentPerformanceContext}\n`
+    : "";
+
   return `## 시장 분석 종합 요청
 
 ### 질문
 ${question}
 ${dataSection}
 ${fundamentalSection}
-
+${performanceSection}
 ---
 
 ## 분석가 A 그룹 — 독립 분석
@@ -533,9 +540,9 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext } = input;
+  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext } = input;
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext);
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext);
   const result = await provider.call({
     systemPrompt: moderator.systemPrompt,
     userMessage,

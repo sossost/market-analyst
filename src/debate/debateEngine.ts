@@ -22,6 +22,8 @@ interface DebateConfig {
   fundamentalContext?: string;
   /** Per-persona confidence 캘리브레이션 컨텍스트 */
   calibrationContext?: Record<string, string>;
+  /** 에이전트별 적중률 — 모더레이터 합의 가중치 조정용 */
+  agentPerformanceContext?: string;
 }
 
 /**
@@ -43,6 +45,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     newsContext = {},
     fundamentalContext,
     calibrationContext = {},
+    agentPerformanceContext,
   } = config;
   const startTime = Date.now();
 
@@ -114,6 +117,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     question,
     marketDataContext,
     fundamentalContext,
+    agentPerformanceContext,
   });
 
   const totalDurationMs = Date.now() - startTime;
