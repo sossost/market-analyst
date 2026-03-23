@@ -3,6 +3,7 @@ import {
   Eye,
   FileText,
   Home,
+  Link,
   MessageSquare,
   Search,
   Star,
@@ -23,4 +24,5 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/recommendations', label: '추천 종목', icon: Star },
   { href: '/watchlist', label: '관심종목', icon: Eye },
   { href: '/learnings', label: '학습 루프', icon: BrainCircuit },
+  { href: '/narrative-chains', label: '서사 체인', icon: Link },
 ]
