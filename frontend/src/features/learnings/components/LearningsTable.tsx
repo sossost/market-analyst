@@ -1,3 +1,4 @@
+import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/components/ui/badge'
 import {
   Pagination,
@@ -199,11 +200,12 @@ function CategoryBadgeFilter({
           <a
             key={label}
             href={href}
-            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors ${
+            className={cn(
+              'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors',
               isSelected
                 ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground'
-            }`}
+                : 'border-border text-muted-foreground hover:text-foreground',
+            )}
           >
             {label}
           </a>
