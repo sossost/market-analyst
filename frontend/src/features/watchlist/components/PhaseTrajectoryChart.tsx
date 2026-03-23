@@ -35,9 +35,11 @@ function formatShortDate(dateStr: string): string {
 }
 
 export function PhaseTrajectoryChart({ data }: PhaseTrajectoryChartProps) {
-  const points = useMemo(() => {
-    if (data.length === 0) return []
+  if (data.length === 0) {
+    return null
+  }
 
+  const points = useMemo(() => {
     return data.map((point, index) => {
       const x =
         data.length === 1
@@ -51,15 +53,10 @@ export function PhaseTrajectoryChart({ data }: PhaseTrajectoryChartProps) {
     })
   }, [data])
 
-  if (data.length === 0) {
-    return null
-  }
-
   // step-line path: horizontal then vertical
   const pathD = points
     .map((point, i) => {
       if (i === 0) return `M ${point.x} ${point.y}`
-      const prev = points[i - 1]
       return `H ${point.x} V ${point.y}`
     })
     .join(' ')

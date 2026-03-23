@@ -118,7 +118,7 @@ export async function fetchWatchlistStockById(
 function parsePhaseTrajectory(
   raw: unknown,
 ): PhaseTrajectoryPoint[] | null {
-  if (!Array.isArray(raw)) {
+  if (Array.isArray(raw) === false) {
     return null
   }
   return raw

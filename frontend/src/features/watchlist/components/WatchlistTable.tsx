@@ -33,12 +33,13 @@ export async function WatchlistTable({ searchParams }: WatchlistTableProps) {
   const { page: pageParam, status: statusParam } = await searchParams
   const currentPage = Math.max(1, Math.floor(Number(pageParam) || 1))
   const DEFAULT_STATUS: WatchlistStatus = 'ACTIVE'
-  const statusFilter: WatchlistStatus | undefined =
-    statusParam === 'ALL'
-      ? undefined
-      : isWatchlistStatus(statusParam)
-        ? statusParam
-        : DEFAULT_STATUS
+
+  let statusFilter: WatchlistStatus | undefined = DEFAULT_STATUS
+  if (statusParam === 'ALL') {
+    statusFilter = undefined
+  } else if (isWatchlistStatus(statusParam)) {
+    statusFilter = statusParam
+  }
 
   const { stocks, total } = await fetchWatchlistStocks(
     currentPage,
