@@ -247,11 +247,9 @@ export function formatCalibrationForPrompt(result: CalibrationResult): string {
 
   // 전체 적중률 요약
   const totalConfirmed = result.bins.reduce((sum, b) => sum + b.confirmed, 0);
-  const totalInvalidated = result.bins.reduce((sum, b) => sum + b.invalidated, 0);
-  const totalResolved = totalConfirmed + totalInvalidated;
-  if (totalResolved > 0) {
-    const overallRate = ((totalConfirmed / totalResolved) * 100).toFixed(0);
-    lines.push(`**전체 적중률:** ${overallRate}% (${totalConfirmed}/${totalResolved}건)`, "");
+  if (result.totalResolved > 0) {
+    const overallRate = ((totalConfirmed / result.totalResolved) * 100).toFixed(0);
+    lines.push(`**전체 적중률:** ${overallRate}% (${totalConfirmed}/${result.totalResolved}건)`, "");
   }
 
   // ECE 요약
@@ -525,10 +523,10 @@ export function formatModeratorPerformanceContext(
     const label = PERSONA_LABEL_KR[hr.persona] ?? hr.persona;
     const total = hr.confirmed + hr.invalidated;
     const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
-    const reliability =
-      total < 3 ? "데이터 부족" :
-      hr.hitRate != null && hr.hitRate < LOW_HIT_RATE_THRESHOLD ? "⚠️ 저신뢰" :
-      "정상";
+    let reliability: string;
+    if (total < 3) reliability = "데이터 부족";
+    else if (hr.hitRate != null && hr.hitRate < LOW_HIT_RATE_THRESHOLD) reliability = "⚠️ 저신뢰";
+    else reliability = "정상";
     lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${rateStr} | ${reliability} |`);
   }
 
