@@ -8,7 +8,7 @@
  */
 import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
-import { sql, eq, and, inArray } from "drizzle-orm";
+import { sql, eq, and, inArray, desc } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import type { AgentPersona, Confidence } from "@/types/debate";
 import { EXPERT_PERSONAS } from "./personas.js";
@@ -245,6 +245,13 @@ export function formatCalibrationForPrompt(result: CalibrationResult): string {
 
   const lines: string[] = ["## Thesis Confidence 캘리브레이션", ""];
 
+  // 전체 적중률 요약
+  const totalConfirmed = result.bins.reduce((sum, b) => sum + b.confirmed, 0);
+  if (result.totalResolved > 0) {
+    const overallRate = ((totalConfirmed / result.totalResolved) * 100).toFixed(0);
+    lines.push(`**전체 적중률:** ${overallRate}% (${totalConfirmed}/${result.totalResolved}건)`, "");
+  }
+
   // ECE 요약
   if (result.ece != null) {
     const ecePercent = (result.ece * 100).toFixed(1);
@@ -308,4 +315,220 @@ export function generateFeedback(bins: CalibrationBin[]): string[] {
   }
 
   return feedback;
+}
+
+// ─── Recent Failures ─────────────────────────────────────────────────────────────
+
+export interface InvalidatedThesisRow {
+  thesis: string;
+  verificationMetric: string;
+  targetCondition: string;
+  debateDate: string;
+}
+
+const MAX_RECENT_FAILURES = 3;
+
+/**
+ * 특정 에이전트의 최근 INVALIDATED thesis를 조회한다.
+ * 에이전트가 자신의 과거 실패를 인지하고 반복을 피하도록 한다.
+ */
+export async function loadRecentInvalidatedTheses(
+  persona: AgentPersona,
+  limit: number = MAX_RECENT_FAILURES,
+): Promise<InvalidatedThesisRow[]> {
+  const rows = await db
+    .select({
+      thesis: theses.thesis,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
+      debateDate: theses.debateDate,
+    })
+    .from(theses)
+    .where(
+      and(
+        eq(theses.agentPersona, persona),
+        eq(theses.status, "INVALIDATED"),
+      ),
+    )
+    .orderBy(desc(theses.debateDate))
+    .limit(limit);
+
+  return rows;
+}
+
+/**
+ * 최근 INVALIDATED thesis를 프롬프트 주입용 마크다운으로 변환한다.
+ */
+export function formatRecentFailuresForPrompt(
+  failures: InvalidatedThesisRow[],
+): string {
+  if (failures.length === 0) return "";
+
+  const lines: string[] = [
+    "### 최근 INVALIDATED (실패) Thesis",
+    "",
+    "아래는 당신이 과거에 제출했으나 시장에 의해 **기각된** thesis입니다.",
+    "동일 섹터·동일 방향의 예측을 반복하지 마세요. 실패 원인을 고려하여 새로운 thesis의 근거를 더 엄격하게 검증하세요.",
+    "",
+  ];
+
+  for (const f of failures) {
+    lines.push(
+      `- [${f.debateDate}] "${f.thesis}" (검증: ${f.verificationMetric} ${f.targetCondition}) → **INVALIDATED**`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+// ─── Enhanced Per-Agent Context ──────────────────────────────────────────────────
+
+/**
+ * 모든 에이전트의 per-persona 캘리브레이션 컨텍스트를 생성한다.
+ * 기존 confidence 캘리브레이션 + 최근 실패 thesis를 포함.
+ */
+export async function buildEnhancedPerAgentCalibrationContexts(): Promise<
+  Record<string, string>
+> {
+  const results: Record<string, string> = {};
+
+  const entries = await Promise.all(
+    EXPERT_PERSONAS.map(async (persona) => {
+      try {
+        const [calibResult, failures] = await Promise.all([
+          getCalibrationResultForPersona(persona),
+          loadRecentInvalidatedTheses(persona),
+        ]);
+
+        const parts: string[] = [];
+
+        const calibFormatted = formatCalibrationForPrompt(calibResult);
+        if (calibFormatted.length > 0) {
+          parts.push(calibFormatted);
+        }
+
+        const failuresFormatted = formatRecentFailuresForPrompt(failures);
+        if (failuresFormatted.length > 0) {
+          parts.push(failuresFormatted);
+        }
+
+        if (parts.length > 0) {
+          return { persona, formatted: parts.join("\n\n") };
+        }
+      } catch (err) {
+        logger.warn(
+          "Calibration",
+          `[${persona}] 캘리브레이션 로드 실패: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return null;
+    }),
+  );
+
+  for (const entry of entries) {
+    if (entry != null) {
+      results[entry.persona] = entry.formatted;
+    }
+  }
+
+  return results;
+}
+
+// ─── Moderator Performance Context ───────────────────────────────────────────────
+
+export interface PersonaHitRate {
+  persona: AgentPersona;
+  confirmed: number;
+  invalidated: number;
+  hitRate: number | null;
+}
+
+/**
+ * 모든 에이전트의 전체 적중률을 조회한다.
+ */
+export async function getPerAgentHitRates(): Promise<PersonaHitRate[]> {
+  const rows = await db
+    .select({
+      agentPersona: theses.agentPersona,
+      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
+      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+    })
+    .from(theses)
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
+    .groupBy(theses.agentPersona);
+
+  return rows.map((r) => {
+    const total = r.confirmed + r.invalidated;
+    return {
+      persona: r.agentPersona as AgentPersona,
+      confirmed: r.confirmed,
+      invalidated: r.invalidated,
+      hitRate: total > 0 ? r.confirmed / total : null,
+    };
+  });
+}
+
+const PERSONA_LABEL_KR: Record<string, string> = {
+  macro: "매크로 이코노미스트",
+  tech: "테크 애널리스트",
+  geopolitics: "지정학 전략가",
+  sentiment: "시장 심리 분석가",
+};
+
+const LOW_HIT_RATE_THRESHOLD = 0.5;
+
+/**
+ * 모더레이터에게 전달할 에이전트별 적중률 컨텍스트를 생성한다.
+ * 저적중 에이전트의 의견을 할인하도록 지시한다.
+ */
+export async function buildModeratorPerformanceContext(): Promise<string> {
+  try {
+    const hitRates = await getPerAgentHitRates();
+    if (hitRates.length === 0) return "";
+
+    return formatModeratorPerformanceContext(hitRates);
+  } catch (err) {
+    logger.warn(
+      "Calibration",
+      `모더레이터 성과 컨텍스트 생성 실패: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return "";
+  }
+}
+
+/**
+ * 에이전트 적중률 배열을 모더레이터 프롬프트용 마크다운으로 변환한다.
+ * 순수 함수 — 테스트 용이.
+ */
+export function formatModeratorPerformanceContext(
+  hitRates: PersonaHitRate[],
+): string {
+  if (hitRates.length === 0) return "";
+
+  // 적중률 내림차순 정렬
+  const sorted = [...hitRates].sort((a, b) => (b.hitRate ?? 0) - (a.hitRate ?? 0));
+
+  const lines: string[] = [
+    "## 에이전트별 Thesis 적중률",
+    "",
+    "아래는 각 분석가의 과거 thesis 적중률(CONFIRMED / (CONFIRMED + INVALIDATED))입니다.",
+    "**합의 도출 시 적중률이 높은 분석가의 의견에 더 큰 비중을 두세요.**",
+    "적중률 50% 미만 분석가의 단독 의견은 다른 분석가의 근거로 보강되지 않는 한 합의에 반영하지 마세요.",
+    "",
+    "| 분석가 | 적중 | 기각 | 적중률 | 신뢰도 |",
+    "|--------|------|------|--------|--------|",
+  ];
+
+  for (const hr of sorted) {
+    const label = PERSONA_LABEL_KR[hr.persona] ?? hr.persona;
+    const total = hr.confirmed + hr.invalidated;
+    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
+    let reliability: string;
+    if (total < 3) reliability = "데이터 부족";
+    else if (hr.hitRate != null && hr.hitRate < LOW_HIT_RATE_THRESHOLD) reliability = "⚠️ 저신뢰";
+    else reliability = "정상";
+    lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${rateStr} | ${reliability} |`);
+  }
+
+  return lines.join("\n");
 }

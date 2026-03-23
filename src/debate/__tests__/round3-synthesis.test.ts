@@ -155,4 +155,18 @@ describe("buildSynthesisPrompt", () => {
     expect(result).toContain("| 날짜 | 이벤트 | 위 분석에 미치는 영향 |");
     expect(result).toContain("|------|--------|----------------------|");
   });
+
+  it("agentPerformanceContext가 주어지면 프롬프트에 포함된다", () => {
+    const perfContext = "## 에이전트별 Thesis 적중률\n| 분석가 | 적중률 |\n| macro | 100% |";
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, perfContext);
+
+    expect(result).toContain("에이전트별 Thesis 적중률");
+    expect(result).toContain("macro | 100%");
+  });
+
+  it("agentPerformanceContext가 undefined이면 성과 섹션이 포함되지 않는다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined);
+
+    expect(result).not.toContain("에이전트별 Thesis 적중률");
+  });
 });

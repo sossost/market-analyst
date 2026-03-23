@@ -63,8 +63,12 @@ import {
   buildPerAgentCalibrationContexts,
   formatCalibrationForPrompt,
   generateFeedback,
+  formatRecentFailuresForPrompt,
+  formatModeratorPerformanceContext,
   type CalibrationBin,
   type CalibrationResult,
+  type InvalidatedThesisRow,
+  type PersonaHitRate,
 } from "../confidenceCalibrator.js";
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -284,6 +288,8 @@ describe("formatCalibrationForPrompt", () => {
   it("헤더와 캘리브레이션 테이블을 포함한다", () => {
     const output = formatCalibrationForPrompt(makeResult());
     expect(output).toContain("## Thesis Confidence 캘리브레이션");
+    expect(output).toContain("전체 적중률");
+    expect(output).toContain("50%"); // 15/30
     expect(output).toContain("ECE");
     expect(output).toContain("17.0%");
     expect(output).toContain("보정 필요");
@@ -416,5 +422,126 @@ describe("buildPerAgentCalibrationContexts", () => {
     const contexts = await buildPerAgentCalibrationContexts();
 
     expect(Object.keys(contexts)).toHaveLength(0);
+  });
+});
+
+// ─── formatRecentFailuresForPrompt ──────────────────────────────────────────
+
+describe("formatRecentFailuresForPrompt", () => {
+  it("빈 배열이면 빈 문자열 반환", () => {
+    expect(formatRecentFailuresForPrompt([])).toBe("");
+  });
+
+  it("INVALIDATED thesis를 마크다운으로 포매팅한다", () => {
+    const failures: InvalidatedThesisRow[] = [
+      {
+        thesis: "Energy XLE RS 60일 내 60선 하회",
+        verificationMetric: "Energy RS",
+        targetCondition: "Energy RS < 60",
+        debateDate: "2025-03-10",
+      },
+      {
+        thesis: "Basic Materials RS 90일 내 70+ 돌파",
+        verificationMetric: "Basic Materials RS",
+        targetCondition: "Basic Materials RS > 70",
+        debateDate: "2025-02-15",
+      },
+    ];
+
+    const output = formatRecentFailuresForPrompt(failures);
+
+    expect(output).toContain("최근 INVALIDATED");
+    expect(output).toContain("기각된");
+    expect(output).toContain("동일 섹터·동일 방향의 예측을 반복하지 마세요");
+    expect(output).toContain("Energy XLE RS 60일 내 60선 하회");
+    expect(output).toContain("2025-03-10");
+    expect(output).toContain("Basic Materials RS");
+    expect(output).toContain("INVALIDATED");
+  });
+
+  it("각 실패 thesis에 날짜와 검증 조건을 포함한다", () => {
+    const failures: InvalidatedThesisRow[] = [
+      {
+        thesis: "Test thesis",
+        verificationMetric: "Technology RS",
+        targetCondition: "Technology RS > 70",
+        debateDate: "2025-03-20",
+      },
+    ];
+
+    const output = formatRecentFailuresForPrompt(failures);
+
+    expect(output).toContain("[2025-03-20]");
+    expect(output).toContain("Technology RS > 70");
+  });
+});
+
+// ─── formatModeratorPerformanceContext ───────────────────────────────────────
+
+describe("formatModeratorPerformanceContext", () => {
+  it("빈 배열이면 빈 문자열 반환", () => {
+    expect(formatModeratorPerformanceContext([])).toBe("");
+  });
+
+  it("에이전트별 적중률 테이블을 생성한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "macro", confirmed: 3, invalidated: 0, hitRate: 1.0 },
+      { persona: "tech", confirmed: 2, invalidated: 1, hitRate: 0.67 },
+      { persona: "sentiment", confirmed: 4, invalidated: 4, hitRate: 0.5 },
+      { persona: "geopolitics", confirmed: 2, invalidated: 3, hitRate: 0.4 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates);
+
+    expect(output).toContain("에이전트별 Thesis 적중률");
+    expect(output).toContain("적중률이 높은 분석가의 의견에 더 큰 비중");
+    expect(output).toContain("50% 미만 분석가의 단독 의견");
+    expect(output).toContain("매크로 이코노미스트");
+    expect(output).toContain("지정학 전략가");
+    expect(output).toContain("100%");
+    expect(output).toContain("40%");
+  });
+
+  it("적중률 내림차순으로 정렬한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "geopolitics", confirmed: 2, invalidated: 3, hitRate: 0.4 },
+      { persona: "macro", confirmed: 3, invalidated: 0, hitRate: 1.0 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates);
+
+    const macroIdx = output.indexOf("매크로 이코노미스트");
+    const geoIdx = output.indexOf("지정학 전략가");
+    expect(macroIdx).toBeLessThan(geoIdx);
+  });
+
+  it("적중률 50% 미만은 저신뢰로 표시한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "geopolitics", confirmed: 2, invalidated: 3, hitRate: 0.4 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates);
+
+    expect(output).toContain("⚠️ 저신뢰");
+  });
+
+  it("3건 미만은 데이터 부족으로 표시한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "macro", confirmed: 1, invalidated: 0, hitRate: 1.0 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates);
+
+    expect(output).toContain("데이터 부족");
+  });
+
+  it("3건 이상 + 50% 이상은 정상으로 표시한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "tech", confirmed: 4, invalidated: 2, hitRate: 0.67 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates);
+
+    expect(output).toContain("정상");
   });
 });
