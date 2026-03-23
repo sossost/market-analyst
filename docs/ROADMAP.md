@@ -1,6 +1,6 @@
 # Market Analyst — Roadmap
 
-**최종 업데이트:** 2026-03-21
+**최종 업데이트:** 2026-03-23
 
 ---
 
@@ -153,6 +153,7 @@
 | 리포트 아카이빙 UI | 목록 + 상세 페이지 (PR #131) |
 | 테스트 인프라 | 유닛 138개(99%) + E2E 10케이스 (PR #135) |
 | 관심종목 페이지 | watchlistStocks 목록/상세, 90일 Phase 궤적 SVG 차트, 5중 교집합 근거 시각화 (#405) |
+| 학습 루프 현황 | agent_learnings hit rate 목록 + 요약 통계 (활성 원칙 수, 평균 hit rate, 최근 검증일) (#403) |
 
 **스택:** Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR
 
