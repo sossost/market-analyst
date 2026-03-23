@@ -59,7 +59,10 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
 
         // 애널리스트별 뉴스 컨텍스트를 질문에 추가
         const personaNews = newsContext[expert.name] ?? "";
-        let fullQuestion = personaNews.length > 0 ? `${question}\n\n---\n\n${personaNews}` : question;
+        let fullQuestion = question;
+        if (personaNews.length > 0) {
+          fullQuestion += `\n\n---\n\n${personaNews}`;
+        }
 
         // SEPA 펀더멘탈 데이터 주입 — 전문가가 실적 기반 분석에 활용
         if (fundamentalContext.length > 0) {
