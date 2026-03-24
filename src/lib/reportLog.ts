@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt, or, isNull } from "drizzle-orm";
 import type { DailyReportLog } from "@/types";
 import { db } from "@/db/client.js";
 import { dailyReports } from "@/db/schema/analyst.js";
@@ -102,6 +102,33 @@ export async function readReportByDate(
     .select()
     .from(dailyReports)
     .where(eq(dailyReports.reportDate, reportDate))
+    .limit(1);
+
+  const row = rows[0];
+  if (row == null) {
+    return null;
+  }
+
+  return dbRowToDailyReportLog(row);
+}
+
+/**
+ * targetDate 이전의 가장 최신 daily 리포트 1건을 DB에서 조회한다.
+ * debate/weekly 등 비-daily 리포트가 연속되어도 정확히 직전 daily를 찾는다.
+ */
+export async function readPreviousDailyReport(
+  targetDate: string,
+): Promise<DailyReportLog | null> {
+  const rows = await db
+    .select()
+    .from(dailyReports)
+    .where(
+      and(
+        or(eq(dailyReports.type, "daily"), isNull(dailyReports.type)),
+        lt(dailyReports.reportDate, targetDate),
+      ),
+    )
+    .orderBy(desc(dailyReports.reportDate))
     .limit(1);
 
   const row = rows[0];

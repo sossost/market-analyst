@@ -1,21 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/reportLog", () => ({
-  readReportLogsFromDb: vi.fn(),
+  readPreviousDailyReport: vi.fn(),
 }));
 
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), step: vi.fn() },
 }));
 
-import { readReportLogsFromDb } from "@/lib/reportLog";
+import { readPreviousDailyReport } from "@/lib/reportLog";
 import {
   loadPreviousReportContext,
   formatPreviousReportContext,
 } from "../previousReportContext";
 import type { DailyReportLog } from "@/types";
 
-const mockReadDb = vi.mocked(readReportLogsFromDb);
+const mockReadPrevious = vi.mocked(readPreviousDailyReport);
 
 const SAMPLE_LOG: DailyReportLog = {
   date: "2026-03-20",
@@ -61,7 +61,7 @@ beforeEach(() => {
 
 describe("loadPreviousReportContext", () => {
   it("직전 daily 리포트가 있으면 formatted context 반환", async () => {
-    mockReadDb.mockResolvedValue([SAMPLE_LOG]);
+    mockReadPrevious.mockResolvedValue(SAMPLE_LOG);
 
     const result = await loadPreviousReportContext("2026-03-23");
 
@@ -73,25 +73,7 @@ describe("loadPreviousReportContext", () => {
   });
 
   it("DB에 리포트가 없으면 빈 문자열 반환", async () => {
-    mockReadDb.mockResolvedValue([]);
-
-    const result = await loadPreviousReportContext("2026-03-23");
-
-    expect(result).toBe("");
-  });
-
-  it("targetDate 이전 리포트만 사용 — 동일 날짜 제외", async () => {
-    const sameDayLog: DailyReportLog = { ...SAMPLE_LOG, date: "2026-03-23" };
-    mockReadDb.mockResolvedValue([sameDayLog]);
-
-    const result = await loadPreviousReportContext("2026-03-23");
-
-    expect(result).toBe("");
-  });
-
-  it("debate 타입 리포트는 건너뜀", async () => {
-    const debateLog: DailyReportLog = { ...SAMPLE_LOG, type: "debate" };
-    mockReadDb.mockResolvedValue([debateLog]);
+    mockReadPrevious.mockResolvedValue(null);
 
     const result = await loadPreviousReportContext("2026-03-23");
 
@@ -99,25 +81,19 @@ describe("loadPreviousReportContext", () => {
   });
 
   it("DB 오류 시 빈 문자열 반환 (fail-open)", async () => {
-    mockReadDb.mockRejectedValue(new Error("connection refused"));
+    mockReadPrevious.mockRejectedValue(new Error("connection refused"));
 
     const result = await loadPreviousReportContext("2026-03-23");
 
     expect(result).toBe("");
   });
 
-  it("여러 리포트 중 targetDate 이전 첫 daily만 사용", async () => {
-    const olderLog: DailyReportLog = {
-      ...SAMPLE_LOG,
-      date: "2026-03-18",
-      marketSummary: { ...SAMPLE_LOG.marketSummary, leadingSectors: ["Technology"] },
-    };
-    mockReadDb.mockResolvedValue([SAMPLE_LOG, olderLog]);
+  it("targetDate를 readPreviousDailyReport에 전달", async () => {
+    mockReadPrevious.mockResolvedValue(null);
 
-    const result = await loadPreviousReportContext("2026-03-23");
+    await loadPreviousReportContext("2026-03-23");
 
-    expect(result).toContain("2026-03-20");
-    expect(result).not.toContain("2026-03-18");
+    expect(mockReadPrevious).toHaveBeenCalledWith("2026-03-23");
   });
 });
 

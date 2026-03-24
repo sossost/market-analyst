@@ -1,4 +1,4 @@
-import { readReportLogsFromDb } from "@/lib/reportLog";
+import { readPreviousDailyReport } from "@/lib/reportLog";
 import type { DailyReportLog } from "@/types";
 import { logger } from "@/lib/logger";
 
@@ -9,17 +9,10 @@ import { logger } from "@/lib/logger";
  * fail-open: DB 오류 시 빈 문자열 반환 (기존 동작과 동일).
  */
 export async function loadPreviousReportContext(
-  _targetDate: string,
+  targetDate: string,
 ): Promise<string> {
   try {
-    const logs = await readReportLogsFromDb(5);
-
-    // daily 타입만 필터 (debate/weekly 제외), targetDate 이전만
-    const previousDaily = logs.find(
-      (log) =>
-        (log.type === "daily" || log.type == null) &&
-        log.date < _targetDate,
-    );
+    const previousDaily = await readPreviousDailyReport(targetDate);
 
     if (previousDaily == null) {
       logger.info("PreviousReport", "직전 daily 리포트 없음");
