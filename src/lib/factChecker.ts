@@ -87,7 +87,7 @@ export function compareSectors(
   const dbSet = new Set(dbSlice);
   const reportSet = new Set(reportLeadingSectors);
 
-  const intersectionSize = dbSlice.filter((s) => reportSet.has(s)).length;
+  const intersectionSize = [...dbSet].filter((s) => reportSet.has(s)).length;
   const unionSize = new Set([...dbSet, ...reportSet]).size;
   const overlapRatio = intersectionSize / unionSize;
 
