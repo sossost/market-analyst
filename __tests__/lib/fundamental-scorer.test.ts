@@ -4,6 +4,7 @@ import {
   calcEpsGrowthYoY,
   calcRevenueGrowthYoY,
   calcYoYGrowth,
+  calcTurnaroundScore,
   checkEpsAcceleration,
   checkMarginExpansion,
   estimateROE,
@@ -75,6 +76,38 @@ describe("calcEpsGrowthYoY", () => {
   });
 });
 
+// ─── Turnaround Score ───────────────────────────────────────────────
+
+describe("calcTurnaroundScore", () => {
+  it("returns 200 when prior is negative and current is positive", () => {
+    expect(calcTurnaroundScore(0.5, -1.0)).toBe(200);
+  });
+
+  it("returns null when both are positive (not a turnaround)", () => {
+    expect(calcTurnaroundScore(1.5, 1.0)).toBeNull();
+  });
+
+  it("returns null when both are negative", () => {
+    expect(calcTurnaroundScore(-0.5, -1.0)).toBeNull();
+  });
+
+  it("returns null when current is null", () => {
+    expect(calcTurnaroundScore(null, -1.0)).toBeNull();
+  });
+
+  it("returns null when prior is null", () => {
+    expect(calcTurnaroundScore(0.5, null)).toBeNull();
+  });
+
+  it("returns null when prior is zero (not negative)", () => {
+    expect(calcTurnaroundScore(0.5, 0)).toBeNull();
+  });
+
+  it("returns null when current is zero (not positive)", () => {
+    expect(calcTurnaroundScore(0, -1.0)).toBeNull();
+  });
+});
+
 // ─── Revenue YoY Growth ─────────────────────────────────────────────
 
 describe("calcRevenueGrowthYoY", () => {
@@ -95,18 +128,26 @@ describe("calcRevenueGrowthYoY", () => {
 // ─── EPS Acceleration ───────────────────────────────────────────────
 
 describe("checkEpsAcceleration", () => {
-  it("detects acceleration when growth rates increase", () => {
-    // Q3: 20%, Q2: 30%, Q1(latest): 45% → accelerating
+  it("detects acceleration when latest exceeds prior average", () => {
+    // latest=45 > avg(30,20)=25 → accelerating
     const result = checkEpsAcceleration([45, 30, 20]);
     expect(result).toBe(true);
   });
 
+  it("detects acceleration with mid-quarter dip (relaxed check)", () => {
+    // latest=35 > avg(18,20)=19 → accelerating (previously rejected by strict monotonic)
+    const result = checkEpsAcceleration([35, 18, 20]);
+    expect(result).toBe(true);
+  });
+
   it("rejects when growth rates decelerate", () => {
+    // latest=20 < avg(30,45)=37.5 → not accelerating
     const result = checkEpsAcceleration([20, 30, 45]);
     expect(result).toBe(false);
   });
 
   it("rejects when growth rates are flat", () => {
+    // latest=30, avg(30,30)=30 → not strictly greater
     const result = checkEpsAcceleration([30, 30, 30]);
     expect(result).toBe(false);
   });
@@ -284,12 +325,16 @@ describe("scoreFundamentals", () => {
 
     const score = scoreFundamentals(input);
 
-    // 음→양 전환이므로 EPS 성장률 계산 불가 → required 미충족
-    expect(score.criteria.epsGrowth.passed).toBe(false);
+    // 음→양 전환 → turnaround 점수로 required 충족
+    expect(score.criteria.epsGrowth.passed).toBe(true);
+    expect(score.criteria.epsGrowth.value).toBe(200);
+    expect(score.criteria.epsGrowth.detail).toContain("흑자 전환");
     // 매출은 25% 성장 충족
     expect(score.criteria.revenueGrowth.passed).toBe(true);
     // 마진 확대는 맞음
     expect(score.criteria.marginExpansion.passed).toBe(true);
+    // required 2개 충족 → 최소 B등급
+    expect(["A", "B"]).toContain(score.grade);
   });
 
   it("returns correct symbol in result", () => {

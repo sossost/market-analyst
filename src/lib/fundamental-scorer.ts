@@ -20,6 +20,7 @@ const REVENUE_GROWTH_THRESHOLD = 25; // YoY > 25%
 const MIN_QUARTERS_REQUIRED = 5; // 최소 5분기 (YoY 비교 위해)
 const MIN_QUARTERS_FOR_ACCELERATION = 3;
 const MIN_QUARTERS_FOR_MARGIN = 3;
+const TURNAROUND_SCORE = 200; // 적자→흑자 전환 시 고정 점수
 // ─── Public API ─────────────────────────────────────────────────────
 
 export function scoreFundamentals(input: FundamentalInput): FundamentalScore {
@@ -44,7 +45,8 @@ export function scoreFundamentals(input: FundamentalInput): FundamentalScore {
   };
 
   const requiredMet = [epsGrowth, revenueGrowth].filter((c) => c.passed).length;
-  const bonusMet = [epsAcceleration, marginExpansion, roe].filter((c) => c.passed).length;
+  // ROE 데이터 미확보로 등급 판정에서 제외 — epsAcceleration + marginExpansion만 카운트
+  const bonusMet = [epsAcceleration, marginExpansion].filter((c) => c.passed).length;
 
   const grade = determineGrade(requiredMet, bonusMet);
   const totalScore = requiredMet * 30 + bonusMet * 20; // max 2×30 + 2×20 = 100
@@ -65,18 +67,29 @@ export function calcYoYGrowth(
   return Math.round(((current - prior) / prior) * 100 * 100) / 100;
 }
 
+/** 적자→흑자 전환 감지. prior < 0 & current > 0이면 고정 TURNAROUND_SCORE 반환 */
+export function calcTurnaroundScore(
+  current: number | null,
+  prior: number | null,
+): number | null {
+  if (current == null || prior == null) return null;
+  if (prior < 0 && current > 0) return TURNAROUND_SCORE;
+  return null;
+}
+
 export const calcEpsGrowthYoY = calcYoYGrowth;
 export const calcRevenueGrowthYoY = calcYoYGrowth;
 
-/** newest-first YoY growth rates → 각 인접 쌍이 증가하면 acceleration */
+/**
+ * newest-first YoY growth rates → 최신 분기가 이전 분기들의 평균보다 높으면 acceleration.
+ * 기존 strictly monotonic 대신 완화된 기준: growthRates[0] > avg(growthRates[1:])
+ */
 export function checkEpsAcceleration(growthRates: number[]): boolean {
   if (growthRates.length < MIN_QUARTERS_FOR_ACCELERATION) return false;
-  // growthRates[0] = latest, [1] = prior, [2] = older
-  // acceleration: latest > prior > older
-  for (let i = 0; i < growthRates.length - 1; i++) {
-    if (growthRates[i] <= growthRates[i + 1]) return false;
-  }
-  return true;
+  // growthRates[0] = latest, [1:] = prior quarters
+  const priorRates = growthRates.slice(1);
+  const priorAvg = priorRates.reduce((sum, r) => sum + r, 0) / priorRates.length;
+  return growthRates[0] > priorAvg;
 }
 
 /** newest-first net margins → overall trend is up (allow 1 dip) */
@@ -117,7 +130,20 @@ function evaluateEpsGrowth(quarters: QuarterlyData[]): CriteriaResult {
   const growth = calcEpsGrowthYoY(current.epsDiluted, priorYear.epsDiluted);
 
   if (growth == null) {
-    return { passed: false, value: null, detail: "EPS 데이터 부족 또는 음수→양수 전환" };
+    // 적자→흑자 전환 감지
+    const turnaround = calcTurnaroundScore(current.epsDiluted, priorYear.epsDiluted);
+    if (turnaround != null) {
+      return {
+        passed: true,
+        value: turnaround,
+        detail: `EPS 흑자 전환: ${priorYear.epsDiluted} → ${current.epsDiluted} (turnaround +${turnaround})`,
+      };
+    }
+    const detail =
+      current.epsDiluted == null || priorYear.epsDiluted == null
+        ? "EPS 데이터 부족"
+        : `성장률 계산 불가 (이전 EPS: ${priorYear.epsDiluted})`;
+    return { passed: false, value: null, detail };
   }
 
   const passed = growth > EPS_GROWTH_THRESHOLD;
