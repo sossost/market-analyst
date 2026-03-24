@@ -1,46 +1,69 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// ─── Mocks ──────────────────────────────────────────────────────
+const { mockSelect, mockFetchJson } = vi.hoisted(() => ({
+  mockSelect: vi.fn(),
+  mockFetchJson: vi.fn(),
+}));
+
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-vi.mock("@/agent/logger", () => ({
+vi.mock("@/db/client", () => ({
+  db: {
+    select: mockSelect,
+  },
+}));
+
+vi.mock("@/etl/utils/common", () => ({
+  fetchJson: mockFetchJson,
+  toStrNum: (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? String(n) : null;
+  },
+}));
+
+vi.mock("@/lib/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
 
-function makeYahooResponse(quotes: {
-  close: (number | null)[];
-  high?: (number | null)[];
-  low?: (number | null)[];
-  meta?: { regularMarketPrice: number; chartPreviousClose: number };
-}) {
-  const validCloses = quotes.close.filter((c): c is number => c != null);
-  const lastClose = validCloses[validCloses.length - 1] ?? 0;
-  const prevClose = validCloses.length >= 2 ? validCloses[validCloses.length - 2] : lastClose;
+// ─── Helpers ────────────────────────────────────────────────────
 
-  return {
-    ok: true,
-    json: async () => ({
-      chart: {
-        result: [
-          {
-            meta: quotes.meta ?? {
-              regularMarketPrice: lastClose,
-              chartPreviousClose: prevClose,
-            },
-            indicators: {
-              quote: [
-                {
-                  close: quotes.close,
-                  high: quotes.high ?? quotes.close,
-                  low: quotes.low ?? quotes.close,
-                },
-              ],
-            },
-          },
-        ],
-      },
-    }),
-  };
+/** DB 조회 결과를 만드는 헬퍼 (날짜 내림차순 — DB orderBy desc) */
+function makeDbRows(
+  closes: number[],
+  highs?: number[],
+  lows?: number[],
+) {
+  return closes.map((c, i) => ({
+    date: `2026-03-${String(24 - i).padStart(2, "0")}`,
+    open: String(c),
+    high: String(highs?.[i] ?? c),
+    low: String(lows?.[i] ?? c),
+    close: String(c),
+    volume: "1000000",
+  }));
+}
+
+/** Drizzle select chain mock: db.select().from().where().orderBy().limit() */
+function setupDbMock(rowsBySymbol: Record<string, ReturnType<typeof makeDbRows>>) {
+  const limitFn = vi.fn();
+  const orderByFn = vi.fn().mockReturnValue({ limit: limitFn });
+  const whereFn = vi.fn().mockReturnValue({ orderBy: orderByFn });
+  const fromFn = vi.fn().mockReturnValue({ where: whereFn });
+  mockSelect.mockReturnValue({ from: fromFn });
+
+  // symbol은 where 절에서 eq(indexPrices.symbol, symbol)로 전달됨
+  // 5개 지수 호출에 대해 순서대로 응답
+  const symbols = ["^GSPC", "^IXIC", "^DJI", "^RUT", "^VIX"];
+  let callIndex = 0;
+  limitFn.mockImplementation(() => {
+    const sym = symbols[callIndex % symbols.length];
+    callIndex++;
+    return Promise.resolve(rowsBySymbol[sym] ?? []);
+  });
+
+  return { limitFn, whereFn };
 }
 
 function makeFearGreedResponse(score = 45, rating = "Fear") {
@@ -62,43 +85,65 @@ function makeFailedResponse(status = 500) {
   return { ok: false, status, json: async () => ({}) };
 }
 
+// ─── Tests ──────────────────────────────────────────────────────
+
 describe("getIndexReturns", () => {
   let getIndexReturns: typeof import("@/tools/getIndexReturns").getIndexReturns;
 
   beforeEach(async () => {
     vi.resetModules();
     mockFetch.mockReset();
+    mockSelect.mockReset();
+    mockFetchJson.mockReset();
+
+    process.env.DATA_API = "https://financialmodelingprep.com";
+    process.env.FMP_API_KEY = "test-key";
+
     const mod = await import("@/tools/getIndexReturns");
     getIndexReturns = mod.getIndexReturns;
   });
 
   describe("daily mode (default)", () => {
-    it("mode 미지정 시 daily 동작 — 일간 등락률 반환", async () => {
-      // 5 index symbols + 1 fear/greed = 6 fetch calls
+    it("DB에서 2일 데이터를 읽어 일간 등락률을 계산한다", async () => {
+      // 모든 지수에 대해 동일한 DB 데이터
+      const rows = makeDbRows([5050, 5000]); // today=5050, prev=5000
+      const allSymbolRows: Record<string, ReturnType<typeof makeDbRows>> = {
+        "^GSPC": rows,
+        "^IXIC": rows,
+        "^DJI": rows,
+        "^RUT": rows,
+        "^VIX": rows,
+      };
+      setupDbMock(allSymbolRows);
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse();
         }
-        return makeYahooResponse({ close: [5000, 5050] });
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(await getIndexReturns.execute({}));
 
       expect(result.indices).toHaveLength(5);
-      expect(result.indices[0]).toHaveProperty("close");
-      expect(result.indices[0]).toHaveProperty("change");
-      expect(result.indices[0]).toHaveProperty("changePercent");
+      expect(result.indices[0]).toHaveProperty("close", 5050);
+      expect(result.indices[0]).toHaveProperty("change", 50);
+      expect(result.indices[0]).toHaveProperty("changePercent", 1);
       expect(result.indices[0]).not.toHaveProperty("weekStartClose");
       expect(result.fearGreed).not.toBeNull();
-      expect(result.mode).toBeUndefined();
     });
 
     it("mode: 'daily' 명시 시에도 daily 동작", async () => {
+      const rows = makeDbRows([5050, 5000]);
+      setupDbMock({
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+      });
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse();
         }
-        return makeYahooResponse({ close: [5000, 5050] });
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(
@@ -109,20 +154,61 @@ describe("getIndexReturns", () => {
       expect(result.indices[0]).toHaveProperty("changePercent");
       expect(result.indices[0]).not.toHaveProperty("weeklyChangePercent");
     });
-  });
 
-  describe("weekly mode", () => {
-    it("주간 누적 수익률을 올바르게 계산", async () => {
+    it("DB 데이터가 부족하면 FMP API fallback을 사용한다", async () => {
+      // DB에 데이터 1건만 — 2건 미만이므로 fallback
+      const allSymbolRows: Record<string, ReturnType<typeof makeDbRows>> = {
+        "^GSPC": makeDbRows([5050]),
+        "^IXIC": makeDbRows([5050]),
+        "^DJI": makeDbRows([5050]),
+        "^RUT": makeDbRows([5050]),
+        "^VIX": makeDbRows([5050]),
+      };
+      setupDbMock(allSymbolRows);
+
+      // FMP fallback 응답
+      mockFetchJson.mockResolvedValue({
+        historical: [
+          { date: "2026-03-24", open: 5050, high: 5060, low: 5040, close: 5050, volume: 1000000 },
+          { date: "2026-03-23", open: 5000, high: 5010, low: 4990, close: 5000, volume: 900000 },
+        ],
+      });
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse();
         }
-        // 5일치 데이터: 5000 → 5250 (5% 상승)
-        return makeYahooResponse({
-          close: [5000, 5050, 5100, 5200, 5250],
-          high: [5010, 5060, 5120, 5220, 5260],
-          low: [4990, 5030, 5080, 5180, 5230],
-        });
+        return makeFailedResponse();
+      });
+
+      const result = JSON.parse(await getIndexReturns.execute({}));
+
+      expect(result.indices).toHaveLength(5);
+      expect(mockFetchJson).toHaveBeenCalledTimes(5);
+      expect(result.indices[0].change).toBe(50);
+    });
+  });
+
+  describe("weekly mode", () => {
+    it("주간 누적 수익률을 올바르게 계산한다", async () => {
+      // DB 결과는 날짜 내림차순: 최신 → 과거
+      const rows = [
+        { date: "2026-03-24", open: "5240", high: "5260", low: "5230", close: "5250", volume: "1000000" },
+        { date: "2026-03-23", open: "5190", high: "5220", low: "5180", close: "5200", volume: "1000000" },
+        { date: "2026-03-22", open: "5090", high: "5120", low: "5080", close: "5100", volume: "1000000" },
+        { date: "2026-03-21", open: "5040", high: "5060", low: "5030", close: "5050", volume: "1000000" },
+        { date: "2026-03-20", open: "4990", high: "5010", low: "4990", close: "5000", volume: "1000000" },
+      ];
+
+      setupDbMock({
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+      });
+
+      mockFetch.mockImplementation(async (url: string) => {
+        if (typeof url === "string" && url.includes("cnn.io")) {
+          return makeFearGreedResponse();
+        }
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(
@@ -133,6 +219,7 @@ describe("getIndexReturns", () => {
       expect(result.indices).toHaveLength(5);
 
       const index = result.indices[0];
+      // reversed chronological: [5000, 5050, 5100, 5200, 5250]
       expect(index.weekStartClose).toBe(5000);
       expect(index.weekEndClose).toBe(5250);
       expect(index.weeklyChange).toBe(250);
@@ -142,17 +229,23 @@ describe("getIndexReturns", () => {
       expect(index.tradingDays).toBe(5);
     });
 
-    it("closePosition이 near_high로 정확히 계산", async () => {
+    it("closePosition이 near_high로 정확히 계산된다", async () => {
       // weekHigh=110, weekLow=100, weekEndClose=108 → (108-100)/(110-100)=0.8 → near_high
+      const rows = [
+        { date: "2026-03-24", open: "106", high: "109", low: "106", close: "108", volume: "1000" },
+        { date: "2026-03-23", open: "103", high: "110", low: "103", close: "105", volume: "1000" },
+        { date: "2026-03-22", open: "100", high: "102", low: "100", close: "100", volume: "1000" },
+      ];
+
+      setupDbMock({
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+      });
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse();
         }
-        return makeYahooResponse({
-          close: [100, 105, 108],
-          high: [102, 110, 109],
-          low: [100, 103, 106],
-        });
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(
@@ -161,17 +254,23 @@ describe("getIndexReturns", () => {
       expect(result.indices[0].closePosition).toBe("near_high");
     });
 
-    it("closePosition이 near_low로 정확히 계산", async () => {
+    it("closePosition이 near_low로 정확히 계산된다", async () => {
       // weekHigh=110, weekLow=100, weekEndClose=102 → (102-100)/(110-100)=0.2 → near_low
+      const rows = [
+        { date: "2026-03-24", open: "101", high: "103", low: "101", close: "102", volume: "1000" },
+        { date: "2026-03-23", open: "103", high: "104", low: "101", close: "103", volume: "1000" },
+        { date: "2026-03-22", open: "105", high: "110", low: "100", close: "105", volume: "1000" },
+      ];
+
+      setupDbMock({
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+      });
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse();
         }
-        return makeYahooResponse({
-          close: [105, 103, 102],
-          high: [110, 104, 103],
-          low: [100, 101, 101],
-        });
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(
@@ -180,17 +279,23 @@ describe("getIndexReturns", () => {
       expect(result.indices[0].closePosition).toBe("near_low");
     });
 
-    it("closePosition이 mid로 정확히 계산", async () => {
+    it("closePosition이 mid로 정확히 계산된다", async () => {
       // weekHigh=110, weekLow=100, weekEndClose=105 → (105-100)/(110-100)=0.5 → mid
+      const rows = [
+        { date: "2026-03-24", open: "104", high: "106", low: "104", close: "105", volume: "1000" },
+        { date: "2026-03-23", open: "103", high: "110", low: "101", close: "103", volume: "1000" },
+        { date: "2026-03-22", open: "100", high: "102", low: "100", close: "100", volume: "1000" },
+      ];
+
+      setupDbMock({
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+      });
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse();
         }
-        return makeYahooResponse({
-          close: [100, 103, 105],
-          high: [102, 110, 106],
-          low: [100, 101, 104],
-        });
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(
@@ -199,38 +304,49 @@ describe("getIndexReturns", () => {
       expect(result.indices[0].closePosition).toBe("mid");
     });
 
-    it("close 배열이 2개 미만이면 해당 지수 건너뜀", async () => {
+    it("close 데이터가 2개 미만이면 해당 지수를 건너뛴다", async () => {
+      // DB에 1건만 — weekly 계산 불가
+      const rows = [
+        { date: "2026-03-24", open: "5000", high: "5010", low: "4990", close: "5000", volume: "1000" },
+      ];
+
+      setupDbMock({
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+      });
+
+      // FMP fallback도 1건만 반환
+      mockFetchJson.mockResolvedValue({
+        historical: [
+          { date: "2026-03-24", open: 5000, high: 5010, low: 4990, close: 5000, volume: 1000 },
+        ],
+      });
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse();
         }
-        // 유효한 close가 1개뿐
-        return makeYahooResponse({
-          close: [null, null, 5000],
-          high: [null, null, 5010],
-          low: [null, null, 4990],
-        });
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(
         await getIndexReturns.execute({ mode: "weekly" }),
       );
 
-      // 1개만 있으면 < 2이므로 모두 건너뜀
       expect(result.indices).toHaveLength(0);
       expect(result.fearGreed).not.toBeNull();
     });
 
-    it("weekly 모드에서도 fearGreed가 포함", async () => {
+    it("weekly 모드에서도 fearGreed가 포함된다", async () => {
+      const rows = makeDbRows([5100, 5050, 5000]);
+      setupDbMock({
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+      });
+
       mockFetch.mockImplementation(async (url: string) => {
         if (typeof url === "string" && url.includes("cnn.io")) {
           return makeFearGreedResponse(72, "Greed");
         }
-        return makeYahooResponse({
-          close: [5000, 5050, 5100],
-          high: [5010, 5060, 5110],
-          low: [4990, 5040, 5090],
-        });
+        return makeFailedResponse();
       });
 
       const result = JSON.parse(
@@ -246,7 +362,12 @@ describe("getIndexReturns", () => {
       });
     });
 
-    it("모든 지수 실패 + fearGreed 실패 시 에러 반환", async () => {
+    it("모든 지수 실패 + fearGreed 실패 시 에러를 반환한다", async () => {
+      // DB 빈 결과 + FMP도 빈 결과
+      setupDbMock({
+        "^GSPC": [], "^IXIC": [], "^DJI": [], "^RUT": [], "^VIX": [],
+      });
+      mockFetchJson.mockResolvedValue({ historical: [] });
       mockFetch.mockImplementation(async () => makeFailedResponse());
 
       const result = JSON.parse(

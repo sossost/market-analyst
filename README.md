@@ -103,6 +103,7 @@ GITHUB_TOKEN=gho_...                        # Gist MD 첨부
 yarn etl:stock-phases       # Weinstein Phase 판별
 yarn etl:sector-rs          # 섹터 RS 계산
 yarn etl:industry-rs        # 산업 RS 계산
+yarn etl:index-prices       # 지수 가격 (S&P 500, NASDAQ, DOW, Russell 2000, VIX)
 yarn etl:validate           # 데이터 검증
 
 # Agent 실행
@@ -171,7 +172,7 @@ yarn db:push                # 스키마 적용
 
 | 도구 | 일간 | 주간 | 설명 |
 |------|:----:|:----:|------|
-| `getIndexReturns` | O | O | 4대 지수 + VIX + 공포탐욕지수 (주간: 누적 + 고저 위치) |
+| `getIndexReturns` | O | O | 4대 지수 + VIX + 공포탐욕지수 — FMP 데이터 기반, DB 우선 조회 (주간: 누적 + 고저 위치) |
 | `getMarketBreadth` | O | O | Phase 분포, Phase 2 비율, A/D ratio (주간: 5일 추이 + Phase 1→2 전환) |
 | `getLeadingSectors` | O | O | RS 상위 섹터/업종 (주간: 전주 대비 순위 변동 + 신규 진입/이탈) |
 | `getPhase2Stocks` | | O | Phase 2 초입 종목 리스트 (RS 필터링) |

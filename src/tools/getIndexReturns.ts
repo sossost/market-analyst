@@ -1,7 +1,13 @@
+import { db } from "@/db/client";
+import { indexPrices } from "@/db/schema/market";
+import { desc, eq, and } from "drizzle-orm";
+import { fetchJson, toStrNum } from "@/etl/utils/common";
 import { logger } from "@/lib/logger";
 import type { AgentTool } from "./types";
 
 const FETCH_TIMEOUT_MS = 10_000;
+const DB_QUERY_LIMIT_DAILY = 2;
+const DB_QUERY_LIMIT_WEEKLY = 10;
 
 interface IndexQuote {
   symbol: string;
@@ -42,46 +48,119 @@ const INDEX_SYMBOLS: Readonly<Record<string, string>> = {
   "^VIX": "VIX",
 } as const;
 
-async function fetchIndexQuote(symbol: string): Promise<IndexQuote | null> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2d&interval=1d`;
-  const response = await fetch(url, {
-    headers: { "User-Agent": "market-analyst/1.0" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+const FMP_SYMBOL_MAP: Readonly<Record<string, string>> = {
+  "^GSPC": "%5EGSPC",
+  "^IXIC": "%5EIXIC",
+  "^DJI": "%5EDJI",
+  "^RUT": "%5ERUT",
+  "^VIX": "%5EVIX",
+} as const;
 
-  if (response.ok === false) {
-    logger.warn("IndexReturns", `HTTP ${response.status} for ${symbol}`);
+interface IndexPriceRow {
+  date: string;
+  open: string | null;
+  high: string | null;
+  low: string | null;
+  close: string | null;
+  volume: string | null;
+}
+
+async function queryIndexPricesFromDb(
+  symbol: string,
+  limit: number,
+): Promise<IndexPriceRow[]> {
+  const rows = await db
+    .select({
+      date: indexPrices.date,
+      open: indexPrices.open,
+      high: indexPrices.high,
+      low: indexPrices.low,
+      close: indexPrices.close,
+      volume: indexPrices.volume,
+    })
+    .from(indexPrices)
+    .where(eq(indexPrices.symbol, symbol))
+    .orderBy(desc(indexPrices.date))
+    .limit(limit);
+
+  return rows;
+}
+
+interface FmpHistoricalRow {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+async function fetchIndexPricesFromFmp(
+  symbol: string,
+  days: number,
+): Promise<IndexPriceRow[]> {
+  const fmpSymbol = FMP_SYMBOL_MAP[symbol];
+  if (fmpSymbol == null) return [];
+
+  const api = process.env.DATA_API;
+  const key = process.env.FMP_API_KEY;
+  if (api == null || key == null) return [];
+
+  const url = `${api}/api/v3/historical-price-full/${fmpSymbol}?timeseries=${days}&apikey=${key}`;
+  const data = await fetchJson<{ historical?: FmpHistoricalRow[] }>(url);
+  const rows = data?.historical ?? [];
+
+  return rows.map((r) => ({
+    date: r.date,
+    open: toStrNum(r.open),
+    high: toStrNum(r.high),
+    low: toStrNum(r.low),
+    close: toStrNum(r.close),
+    volume: toStrNum(r.volume),
+  }));
+}
+
+async function getIndexPrices(
+  symbol: string,
+  limit: number,
+): Promise<IndexPriceRow[]> {
+  try {
+    const dbRows = await queryIndexPricesFromDb(symbol, limit);
+    if (dbRows.length >= 2) return dbRows;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("IndexReturns", `DB query failed for ${symbol}, falling back to FMP: ${reason}`);
+  }
+
+  try {
+    return await fetchIndexPricesFromFmp(symbol, limit + 3);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("IndexReturns", `FMP fallback failed for ${symbol}: ${reason}`);
+    return [];
+  }
+}
+
+function computeDailyQuote(
+  symbol: string,
+  rows: IndexPriceRow[],
+): IndexQuote | null {
+  if (rows.length < 2) return null;
+
+  const todayClose = Number(rows[0].close);
+  const prevClose = Number(rows[1].close);
+
+  if (!Number.isFinite(todayClose) || !Number.isFinite(prevClose) || prevClose === 0) {
     return null;
   }
 
-  const data = await response.json();
-  const result = data?.chart?.result?.[0];
-  if (result == null) return null;
-
-  const meta = result.meta;
-  const regularMarketPrice: number | undefined = meta?.regularMarketPrice;
-  const chartPreviousClose: number | undefined = meta?.chartPreviousClose;
-
-  if (regularMarketPrice == null) return null;
-
-  // close 배열의 첫 번째 유효(non-null) 값을 전일 종가로 사용한다.
-  // range=2d 응답에서 close[0]은 실제 전일 종가이며,
-  // meta.chartPreviousClose는 2거래일 전 종가를 가리켜 등락률이 어긋난다.
-  const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
-  const previousCloseFromArray = rawCloses.find((c) => c != null) ?? null;
-
-  // close 배열에서 유효 값을 못 찾으면 chartPreviousClose로 폴백한다.
-  const previousClose = previousCloseFromArray ?? chartPreviousClose ?? null;
-
-  if (previousClose == null || previousClose === 0) return null;
-
-  const change = regularMarketPrice - previousClose;
-  const changePercent = (change / previousClose) * 100;
+  const change = todayClose - prevClose;
+  const changePercent = (change / prevClose) * 100;
 
   return {
     symbol,
     name: INDEX_SYMBOLS[symbol] ?? symbol,
-    close: Number(regularMarketPrice.toFixed(2)),
+    close: Number(todayClose.toFixed(2)),
     change: Number(change.toFixed(2)),
     changePercent: Number(changePercent.toFixed(2)),
   };
@@ -104,34 +183,22 @@ function determineClosePosition(
   return "mid";
 }
 
-async function fetchIndexQuoteWeekly(
+function computeWeeklyQuote(
   symbol: string,
-): Promise<WeeklyIndexQuote | null> {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=7d&interval=1d`;
-  const response = await fetch(url, {
-    headers: { "User-Agent": "market-analyst/1.0" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+  rows: IndexPriceRow[],
+): WeeklyIndexQuote | null {
+  // rows are sorted desc by date — reverse for chronological order
+  const chronological = [...rows].reverse();
 
-  if (response.ok === false) {
-    logger.warn("IndexReturns", `HTTP ${response.status} for ${symbol}`);
-    return null;
-  }
-
-  const data = await response.json();
-  const result = data?.chart?.result?.[0];
-  if (result == null) return null;
-
-  const quote = result.indicators?.quote?.[0];
-  if (quote == null) return null;
-
-  const rawCloses: (number | null)[] = quote.close ?? [];
-  const rawHighs: (number | null)[] = quote.high ?? [];
-  const rawLows: (number | null)[] = quote.low ?? [];
-
-  const closes = rawCloses.filter((c): c is number => c != null);
-  const highs = rawHighs.filter((h): h is number => h != null);
-  const lows = rawLows.filter((l): l is number => l != null);
+  const closes = chronological
+    .map((r) => Number(r.close))
+    .filter((c) => Number.isFinite(c));
+  const highs = chronological
+    .map((r) => Number(r.high))
+    .filter((h) => Number.isFinite(h));
+  const lows = chronological
+    .map((r) => Number(r.low))
+    .filter((l) => Number.isFinite(l));
 
   if (closes.length < 2 || highs.length === 0 || lows.length === 0) return null;
 
@@ -208,7 +275,7 @@ async function fetchFearGreed(): Promise<FearGreedData | null> {
 
 /**
  * 주요 지수 수익률 + VIX + CNN 공포탐욕지수를 조회한다.
- * 외부 API이므로 실패 시 빈 결과를 반환한다.
+ * DB 우선 조회 → FMP API fallback → Fear & Greed는 CNN 유지.
  */
 export const getIndexReturns: AgentTool = {
   definition: {
@@ -232,11 +299,16 @@ export const getIndexReturns: AgentTool = {
   async execute(input: Record<string, unknown>) {
     const mode = input.mode === "weekly" ? "weekly" : "daily";
     const symbols = Object.keys(INDEX_SYMBOLS);
+    const queryLimit =
+      mode === "weekly" ? DB_QUERY_LIMIT_WEEKLY : DB_QUERY_LIMIT_DAILY;
 
     if (mode === "weekly") {
       const [weeklySettled, fearGreed] = await Promise.all([
         Promise.allSettled(
-          symbols.map((symbol) => fetchIndexQuoteWeekly(symbol)),
+          symbols.map(async (symbol) => {
+            const rows = await getIndexPrices(symbol, queryLimit);
+            return computeWeeklyQuote(symbol, rows);
+          }),
         ),
         fetchFearGreed(),
       ]);
@@ -276,9 +348,14 @@ export const getIndexReturns: AgentTool = {
       });
     }
 
-    // 기존 daily 로직 (변경 없음)
+    // daily 모드
     const [indexSettled, fearGreed] = await Promise.all([
-      Promise.allSettled(symbols.map((symbol) => fetchIndexQuote(symbol))),
+      Promise.allSettled(
+        symbols.map(async (symbol) => {
+          const rows = await getIndexPrices(symbol, queryLimit);
+          return computeDailyQuote(symbol, rows);
+        }),
+      ),
       fetchFearGreed(),
     ]);
 

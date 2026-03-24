@@ -23,6 +23,8 @@
     "etl:stock-phases": "tsx src/etl/jobs/build-stock-phases.ts",
     "etl:sector-rs": "tsx src/etl/jobs/build-sector-rs.ts",
     "etl:industry-rs": "tsx src/etl/jobs/build-industry-rs.ts",
+    "etl:index-prices": "tsx src/etl/jobs/load-index-prices.ts",
+    "etl:backfill-index-prices": "tsx src/etl/jobs/load-index-prices.ts backfill",
     "etl:validate": "tsx src/etl/jobs/validate-data.ts",
     "etl:update-recommendations": "tsx src/etl/jobs/update-recommendation-status.ts",
     "etl:update-watchlist": "tsx src/etl/jobs/update-watchlist-tracking.ts",
