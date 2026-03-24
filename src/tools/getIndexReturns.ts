@@ -62,16 +62,21 @@ async function fetchIndexQuote(symbol: string): Promise<IndexQuote | null> {
   const regularMarketPrice: number | undefined = meta?.regularMarketPrice;
   const chartPreviousClose: number | undefined = meta?.chartPreviousClose;
 
-  if (
-    regularMarketPrice == null ||
-    chartPreviousClose == null ||
-    chartPreviousClose === 0
-  ) {
-    return null;
-  }
+  if (regularMarketPrice == null) return null;
 
-  const change = regularMarketPrice - chartPreviousClose;
-  const changePercent = (change / chartPreviousClose) * 100;
+  // close 배열의 첫 번째 유효(non-null) 값을 전일 종가로 사용한다.
+  // range=2d 응답에서 close[0]은 실제 전일 종가이며,
+  // meta.chartPreviousClose는 2거래일 전 종가를 가리켜 등락률이 어긋난다.
+  const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? [];
+  const previousCloseFromArray = rawCloses.find((c) => c != null) ?? null;
+
+  // close 배열에서 유효 값을 못 찾으면 chartPreviousClose로 폴백한다.
+  const previousClose = previousCloseFromArray ?? chartPreviousClose ?? null;
+
+  if (previousClose == null || previousClose === 0) return null;
+
+  const change = regularMarketPrice - previousClose;
+  const changePercent = (change / previousClose) * 100;
 
   return {
     symbol,
