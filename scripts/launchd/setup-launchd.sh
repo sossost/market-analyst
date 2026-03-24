@@ -67,7 +67,7 @@ install_agents() {
   echo "  Agent Weekly: KST 10:00 토"
   echo "  QA Weekly:    KST 12:00 토"
   echo "  Log Cleanup:  KST 09:00 일"
-  echo "  News Collect: KST 00/06/12/18:00 매일"
+  echo "  News Collect: KST 06:00/18:00 매일"
   echo "  Strategy:     KST 04:00 매일"
   echo "  Issue Proc:   KST 09:00~02:00 매 정시 (18회/일)"
   echo "  PR Reviewer:  KST 09:15~02:15 매 :15분 (18회/일)"
