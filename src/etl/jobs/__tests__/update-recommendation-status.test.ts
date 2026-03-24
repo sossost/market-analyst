@@ -95,8 +95,20 @@ describe("findProfitTier", () => {
     expect(tier).toEqual({ minMaxPnl: 5, retracement: 0.40, profitFloor: 0 });
   });
 
-  it("maxPnl 4.9%이면 null을 반환한다 (tier 미달)", () => {
-    expect(findProfitTier(4.9)).toBeNull();
+  it("maxPnl 4.9%이면 2% tier를 반환한다", () => {
+    expect(findProfitTier(4.9)).toEqual({ minMaxPnl: 2, retracement: 0.50, profitFloor: 0 });
+  });
+
+  it("maxPnl 3%이면 2% tier를 반환한다", () => {
+    expect(findProfitTier(3)).toEqual({ minMaxPnl: 2, retracement: 0.50, profitFloor: 0 });
+  });
+
+  it("maxPnl 2%이면 2% tier를 반환한다 (경계값)", () => {
+    expect(findProfitTier(2)).toEqual({ minMaxPnl: 2, retracement: 0.50, profitFloor: 0 });
+  });
+
+  it("maxPnl 1.9%이면 null을 반환한다 (tier 미달)", () => {
+    expect(findProfitTier(1.9)).toBeNull();
   });
 
   it("maxPnl 0%이면 null을 반환한다", () => {
@@ -257,13 +269,79 @@ describe("shouldTriggerTrailingStop", () => {
     ).toBe(false);
   });
 
-  // --- No tier (maxPnl < 5%) ---
+  // --- Tier 2%+: 50% 되돌림, floor 0% (break-even 보호) ---
 
-  it("maxPnl 4.9%이면 미발동 (tier 없음)", () => {
+  it("maxPnl 4%에서 pnl 1%이면 발동 (level 2.0 아래)", () => {
+    // trailingLevel = max(4 * 0.50, 0) = 2.0
+    expect(
+      shouldTriggerTrailingStop({
+        currentPhase: 2,
+        maxPnlPercent: 4,
+        pnlPercent: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("maxPnl 4%에서 pnl 3%이면 미발동 (level 2.0 위)", () => {
+    expect(
+      shouldTriggerTrailingStop({
+        currentPhase: 2,
+        maxPnlPercent: 4,
+        pnlPercent: 3,
+      }),
+    ).toBe(false);
+  });
+
+  it("maxPnl 3%에서 pnl 1%이면 발동 (level 1.5 아래)", () => {
+    // trailingLevel = max(3 * 0.50, 0) = 1.5
+    expect(
+      shouldTriggerTrailingStop({
+        currentPhase: 2,
+        maxPnlPercent: 3,
+        pnlPercent: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("maxPnl 3%에서 pnl 2%이면 미발동 (level 1.5 위)", () => {
+    expect(
+      shouldTriggerTrailingStop({
+        currentPhase: 2,
+        maxPnlPercent: 3,
+        pnlPercent: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("maxPnl 2%에서 pnl -1%이면 발동 (손실 전환 방지)", () => {
+    // trailingLevel = max(2 * 0.50, 0) = 1.0
+    expect(
+      shouldTriggerTrailingStop({
+        currentPhase: 2,
+        maxPnlPercent: 2,
+        pnlPercent: -1,
+      }),
+    ).toBe(true);
+  });
+
+  it("maxPnl 4.9%에서 pnl 2%이면 발동 (level 2.45 아래)", () => {
+    // trailingLevel = max(4.9 * 0.50, 0) = 2.45
     expect(
       shouldTriggerTrailingStop({
         currentPhase: 2,
         maxPnlPercent: 4.9,
+        pnlPercent: 2,
+      }),
+    ).toBe(true);
+  });
+
+  // --- No tier (maxPnl < 2%) ---
+
+  it("maxPnl 1.9%이면 미발동 (tier 없음)", () => {
+    expect(
+      shouldTriggerTrailingStop({
+        currentPhase: 2,
+        maxPnlPercent: 1.9,
         pnlPercent: 0,
       }),
     ).toBe(false);
@@ -299,8 +377,8 @@ describe("shouldTriggerTrailingStop", () => {
     }
   });
 
-  it("PROFIT_TIERS 길이가 3이다", () => {
-    expect(PROFIT_TIERS).toHaveLength(3);
+  it("PROFIT_TIERS 길이가 4이다", () => {
+    expect(PROFIT_TIERS).toHaveLength(4);
   });
 });
 
@@ -327,6 +405,13 @@ describe("formatTrailingStopReason", () => {
     const reason = formatTrailingStopReason({ maxPnlPercent: 7, pnlPercent: 3 });
     expect(reason).toContain("tier 5%+");
     expect(reason).toContain("40%");
+    expect(reason).toContain("floor 0%");
+  });
+
+  it("2%+ tier에서 tier 정보를 포함한다", () => {
+    const reason = formatTrailingStopReason({ maxPnlPercent: 3, pnlPercent: 1 });
+    expect(reason).toContain("tier 2%+");
+    expect(reason).toContain("50%");
     expect(reason).toContain("floor 0%");
   });
 });
