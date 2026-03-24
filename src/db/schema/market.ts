@@ -441,3 +441,25 @@ export const deviceTokens = pgTable(
     idx_active: index("idx_device_tokens_active").on(t.isActive),
   }),
 );
+
+// ==================== 지수 가격 (Index Prices) ====================
+
+export const indexPrices = pgTable(
+  "index_prices",
+  {
+    symbol: text("symbol").notNull(),
+    date: text("date").notNull(),
+    open: numeric("open"),
+    high: numeric("high"),
+    low: numeric("low"),
+    close: numeric("close"),
+    volume: numeric("volume"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_index_prices_symbol_date").on(t.symbol, t.date),
+    idx_sym_date: index("idx_index_prices_symbol_date").on(t.symbol, t.date),
+  }),
+);
