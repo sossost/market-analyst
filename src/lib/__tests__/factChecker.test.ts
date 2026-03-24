@@ -97,6 +97,34 @@ describe("compareSectors", () => {
     expect(result[0].expected).toBeDefined();
     expect(result[0].actual).toBeDefined();
   });
+
+  it("DB가 5개, 리포트가 2개일 때 상위 2개 일치하면 mismatch 없음 (#416)", () => {
+    const result = compareSectors(
+      ["Energy", "Utilities", "Basic Materials", "Financial Services", "Industrials"],
+      ["Energy", "Utilities"],
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it("DB가 5개, 리포트가 2개일 때 상위 2개와 불일치하면 block mismatch 반환", () => {
+    const result = compareSectors(
+      ["Energy", "Utilities", "Basic Materials", "Financial Services", "Industrials"],
+      ["Technology", "Healthcare"],
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].severity).toBe("block");
+    // expected에는 DB 상위 2개만 표시
+    expect(result[0].expected).toBe("Energy, Utilities");
+  });
+
+  it("DB가 리포트보다 짧으면 trim 없이 전체 비교", () => {
+    const result = compareSectors(
+      ["Technology", "Healthcare"],
+      ["Technology", "Healthcare", "Energy"],
+    );
+    // DB 2개, 리포트 3개 — trim 안 함. 교집합=2, 합집합=3, 2/3=0.67 → ok
+    expect(result).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
