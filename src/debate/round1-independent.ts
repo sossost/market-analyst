@@ -15,6 +15,8 @@ interface Round1Input {
   calibrationContext?: Record<string, string>;
   /** SEPA 기반 펀더멘탈 스코어 — 전문가 분석에 실적 데이터 제공 */
   fundamentalContext?: string;
+  /** 조기포착 도구 결과 — pre-Phase 2 후보 (Phase1Late, RisingRS, 펀더멘탈가속) */
+  earlyDetectionContext?: string;
 }
 
 interface Round1Result {
@@ -28,7 +30,7 @@ interface Round1Result {
  * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound1(input: Round1Input): Promise<Round1Result> {
-  const { getProvider, experts, question, memoryContext, newsContext = {}, calibrationContext = {}, fundamentalContext = "" } = input;
+  const { getProvider, experts, question, memoryContext, newsContext = {}, calibrationContext = {}, fundamentalContext = "", earlyDetectionContext = "" } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -67,6 +69,11 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
         // SEPA 펀더멘탈 데이터 주입 — 전문가가 실적 기반 분석에 활용
         if (fundamentalContext.length > 0) {
           fullQuestion += `\n\n---\n\n<fundamental-data>\n## Phase 2 종목 펀더멘탈 데이터 (SEPA)\n\n분석 시 아래 실적 데이터를 참조하세요. B등급 미만 종목은 펀더멘탈 미검증 상태입니다.\n\n${fundamentalContext}\n</fundamental-data>`;
+        }
+
+        // 조기포착 도구 결과 주입 — 아직 Phase 2가 아니지만 곧 전환될 후보
+        if (earlyDetectionContext.length > 0) {
+          fullQuestion += `\n\n---\n\n<early-detection>\n## 조기포착 후보 (pre-Phase 2)\n\n아래는 아직 Phase 2에 진입하지 않았으나, 조기 전환 신호가 감지된 종목입니다.\n이 종목들이 당신의 전문 영역과 관련된 구조적 변화의 수혜를 받을 수 있는지 평가하세요.\n확신이 없으면 언급하지 않아도 됩니다.\n\n${earlyDetectionContext}\n</early-detection>`;
         }
 
         const provider = getProvider(expert.model);

@@ -154,4 +154,86 @@ describe("runRound1", () => {
     const callArgs = (successProvider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(callArgs.userMessage).toContain("<fundamental-data>");
   });
+
+  it("earlyDetectionContext가 없으면 early-detection 태그가 포함되지 않는다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+
+    await runRound1({
+      getProvider,
+      experts,
+      question: "시장 분석",
+      memoryContext: "",
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.userMessage).not.toContain("<early-detection>");
+    expect(callArgs.userMessage).not.toContain("</early-detection>");
+  });
+
+  it("빈 earlyDetectionContext면 early-detection 태그가 포함되지 않는다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+
+    await runRound1({
+      getProvider,
+      experts,
+      question: "시장 분석",
+      memoryContext: "",
+      earlyDetectionContext: "",
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.userMessage).not.toContain("<early-detection>");
+  });
+
+  it("earlyDetectionContext가 있으면 모든 전문가의 userMessage에 주입된다", async () => {
+    const providers: LLMProvider[] = [];
+    const getProvider = vi.fn().mockImplementation(() => {
+      const p = makeMockProvider();
+      providers.push(p);
+      return p;
+    });
+    const experts = [makeExpert("macro"), makeExpert("tech")];
+    const earlyDetectionContext = "| AAPL | 45 | 0.0012 | 2.1x | Technology |";
+
+    await runRound1({
+      getProvider,
+      experts,
+      question: "시장 분석",
+      memoryContext: "",
+      earlyDetectionContext,
+    });
+
+    expect(providers).toHaveLength(2);
+    for (const p of providers) {
+      const callArgs = (p.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(callArgs.userMessage).toContain("<early-detection>");
+      expect(callArgs.userMessage).toContain("</early-detection>");
+      expect(callArgs.userMessage).toContain("AAPL");
+      expect(callArgs.userMessage).toContain("조기포착 후보");
+    }
+  });
+
+  it("earlyDetectionContext는 fundamentalContext 뒤에 추가된다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+
+    await runRound1({
+      getProvider,
+      experts,
+      question: "시장 분석",
+      memoryContext: "",
+      fundamentalContext: "| NVDA | S |",
+      earlyDetectionContext: "| AAPL | 45 |",
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const fundIdx = callArgs.userMessage.indexOf("<fundamental-data>");
+    const earlyIdx = callArgs.userMessage.indexOf("<early-detection>");
+    expect(fundIdx).toBeLessThan(earlyIdx);
+  });
 });

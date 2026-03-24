@@ -169,4 +169,37 @@ describe("buildSynthesisPrompt", () => {
 
     expect(result).not.toContain("에이전트별 Thesis 적중률");
   });
+
+  it("earlyDetectionContext가 주어지면 XML 래핑과 함께 프롬프트에 포함된다", () => {
+    const earlyCtx = "| AAPL | 45 | 0.0012 | 2.1x | Technology |";
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, earlyCtx);
+
+    expect(result).toContain("<early-detection>");
+    expect(result).toContain("</early-detection>");
+    expect(result).toContain(earlyCtx);
+    expect(result).toContain("조기포착 후보");
+  });
+
+  it("earlyDetectionContext가 undefined이면 조기포착 섹션이 포함되지 않는다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined);
+
+    expect(result).not.toContain("<early-detection>");
+    expect(result).not.toContain("조기포착 후보");
+  });
+
+  it("earlyDetectionContext가 빈 문자열이면 조기포착 섹션이 포함되지 않는다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, "");
+
+    expect(result).not.toContain("<early-detection>");
+  });
+
+  it("earlyDetectionContext는 fundamentalContext 뒤에 위치한다", () => {
+    const fundCtx = "| NVDA | S | +145% |";
+    const earlyCtx = "| AAPL | 45 |";
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, fundCtx, undefined, earlyCtx);
+
+    const fundIdx = result.indexOf("<fundamental-data>");
+    const earlyIdx = result.indexOf("<early-detection>");
+    expect(fundIdx).toBeLessThan(earlyIdx);
+  });
 });
