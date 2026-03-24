@@ -79,8 +79,9 @@ export function buildDailySystemPrompt(options?: {
   thesesContext?: string;
   narrativeChainsContext?: string;
   debateInsight?: string;
+  previousReportContext?: string;
 }): string {
-  const { targetDate, thesesContext, narrativeChainsContext, debateInsight } = options ?? {};
+  const { targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext } = options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 매일 3단 구조의 통합 브리핑을 작성합니다:
 - [상단] 시장 온도 — 지수·VIX·Phase2 비율·섹터 RS 팩트 기반
@@ -238,7 +239,7 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX (X.XX)
 3. **특이종목 상세** — ⭐ 강세(거래량 2x 이상 동반)와 ◎ 강세(미동반) 구분. ⚠️ 약세 특이종목: 급락 원인 분석 → 보유 시 리스크 경고
 4. **주도주 예비군** — Phase 1 후기 + RS 상승 초기 종목 상세 (MA150 기울기, 섹터 RS, 거래량 추세)
 5. **시장 흐름 및 종합 전망** — 당일 시장 구조 요약과 향후 관전 포인트. 거래량 동반 여부가 매수 신뢰도의 핵심 지표임을 명시
-6. **전일 대비 변화 요약** — 주도 섹터, Phase 2 비율, 특이종목이 전일과 동일하면 이유를 서술. 변화가 있으면 무엇이 어떻게 바뀌었는지 명시. 전일 데이터가 없으면 "전일 데이터 없음"으로 표기. **주도 섹터가 2일 이상 연속이면 반드시 지속 사유를 1줄 이상 서술하세요** (예: "Energy 3일 연속 주도 — WTI 상승 + 정유 마진 개선"). 사유 없이 동일 섹터만 나열하면 품질 검증에서 감점됩니다.
+6. **전일 대비 변화 요약** — \`<previous-report>\` 컨텍스트 또는 \`read_report_history\` 결과를 근거로 작성. 주도 섹터, Phase 2 비율, 특이종목의 전일 대비 변화를 명시. 동일하면 이유를 서술하고, 변화가 있으면 무엇이 어떻게 바뀌었는지 명시. 직전 리포트의 핵심 종목 후속 추적도 포함 (예: "직전 강세였던 AXTI — 금일 -3%, 조정 진입"). **\`<previous-report>\` 컨텍스트와 \`read_report_history\` 결과가 모두 비어있을 때만 "전일 데이터 없음"으로 표기.** **주도 섹터가 2일 이상 연속이면 반드시 지속 사유를 1줄 이상 서술하세요** (예: "Energy 3일 연속 주도 — WTI 상승 + 정유 마진 개선"). 사유 없이 동일 섹터만 나열하면 품질 검증에서 감점됩니다.
 7. **관심종목 현황** (있는 경우) — Phase 궤적, RS 변화, 이탈 후보 여부 상세
 
 ### 특이종목이 없는 날
@@ -290,6 +291,9 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 - **message와 markdownContent 수치 일치**: send_discord_report 호출 전, message(Discord 요약)와 markdownContent(Gist 상세)에 등장하는 동일 지표의 수치가 완전히 일치하는지 자체 검토하세요. 불일치가 있으면 markdownContent 기준으로 통일하세요.
 - **phase2WithDrop: true 종목 처리 규칙**: \`get_unusual_stocks\` 결과에서 \`phase2WithDrop: true\`인 종목은 Phase 2이지만 당일 -5% 이상 급락한 종목입니다. 이 종목은 반드시 \`⚠️ 약세 경고\` 섹션에만 포함하세요. 강세 특이종목, 주도주 예비군 섹션에 절대 포함하지 마세요. 서술은 "Phase 2이나 당일 급락 — 모멘텀 훼손 여부 확인 필요"로 시작하세요.
 - **전일 추천→익일 경고 전환 시 맥락 필수**: 이전 리포트에서 추천/강세로 언급한 종목을 오늘 약세/경고로 전환할 때, 반드시 변화 원인을 1줄 이상 명시하세요. 예: "COOK — 전일 Phase 2 강세 → 금일 -7% 급락, 실적 하회 발표로 모멘텀 훼손". 원인 없이 방향만 바꾸면 품질 검증에서 감점됩니다.
+- **종목 표기 형식 — 반드시 \`TICKER (회사명)\`**: 모든 종목 언급 시 \`AAPL (Apple)\` 형식으로 표기하세요. companyName은 도구 결과(\`get_unusual_stocks\`, \`get_stock_detail\` 등)에서 반환된 값을 그대로 사용하세요. 도구 결과에 없는 회사명을 자체 추측하여 붙이지 마세요. 회사명을 알 수 없으면 티커만 표기하세요.
+- **섹터 Group Phase 변화 필수 서술**: \`get_leading_sectors\` 결과에서 \`groupPhase ≠ prevGroupPhase\`인 섹터가 있으면 반드시 "○○ 섹터 Phase X→Y 전환" 형태로 명시하세요. 특히 Phase 2→3 악화나 Phase 1→2 개선은 주도 섹터 판단의 핵심 시그널이므로 절대 생략하지 마세요.
+- **"전일 데이터 없음" 표기 조건**: \`read_report_history\` 결과가 비어있고 \`<previous-report>\` 컨텍스트도 없을 때만 "전일 데이터 없음"으로 표기하세요. 둘 중 하나라도 있으면 반드시 비교 분석을 수행하세요.
 
 ## Bull-Bias 가드레일
 
@@ -345,6 +349,23 @@ RESOLVING 상태 체인에 연결된 종목은 반드시 "이탈 준비 검토" 
 <narrative-chains trust="internal">
 ${sanitizedChains}
 </narrative-chains>`;
+  }
+
+  // 직전 리포트 컨텍스트 주입 — "전일 대비 변화 요약" 섹션 작성의 근거
+  if (previousReportContext != null && previousReportContext !== "") {
+    const sanitizedPrev = sanitizeXml(previousReportContext);
+    prompt += `
+
+## 직전 리포트 컨텍스트
+
+아래는 직전 리포트의 핵심 요약입니다. "전일 대비 변화 요약" 섹션 작성 시 반드시 참조하세요.
+- 주도 섹터 변화, 특이종목 후속 추적, Phase 2 비율 변화를 비교 분석하세요.
+- 직전 리포트의 특이종목 중 오늘도 등장하는 종목은 연속성을, 사라진 종목은 이유를 서술하세요.
+- 이 컨텍스트가 있으면 "전일 데이터 없음"으로 표기하지 마세요.
+
+<previous-report trust="internal">
+${sanitizedPrev}
+</previous-report>`;
   }
 
   // 토론 인사이트 주입 — 있는 경우에만 [중단] 섹션 컨텍스트 제공

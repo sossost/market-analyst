@@ -1,8 +1,34 @@
-import { readReportLogs } from "@/lib/reportLog";
+import { readReportLogs, readReportLogsFromDb } from "@/lib/reportLog";
+import { logger } from "@/lib/logger";
 import type { AgentTool } from "./types";
 import { validateNumber } from "./validation";
+import type { DailyReportLog } from "@/types";
 
 const DEFAULT_DAYS_BACK = 7;
+
+/**
+ * file-system → DB fallback으로 리포트 이력을 조회한다.
+ * 파일이 없으면 DB에서 시도하여 "첫 실행" 오인을 방지.
+ */
+export async function loadReportLogs(daysBack: number): Promise<DailyReportLog[]> {
+  const fileLogs = readReportLogs(daysBack);
+  if (fileLogs.length > 0) {
+    return fileLogs;
+  }
+
+  // File-system에 없으면 DB fallback
+  try {
+    const dbLogs = await readReportLogsFromDb(daysBack);
+    if (dbLogs.length > 0) {
+      logger.info("ReportHistory", `파일 이력 없음 → DB에서 ${dbLogs.length}건 로드`);
+    }
+    return dbLogs;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("ReportHistory", `DB fallback 실패: ${reason}`);
+    return [];
+  }
+}
 
 /**
  * 최근 N일간의 리포트 이력을 조회한다.
@@ -27,7 +53,7 @@ export const readReportHistory: AgentTool = {
 
   async execute(input) {
     const daysBack = validateNumber(input.days_back, DEFAULT_DAYS_BACK);
-    const logs = readReportLogs(daysBack);
+    const logs = await loadReportLogs(daysBack);
 
     if (logs.length === 0) {
       return JSON.stringify({
