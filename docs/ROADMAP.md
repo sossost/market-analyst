@@ -75,6 +75,7 @@
 | LLM Provider | 추상화 레이어 (`src/agent/debate/llm/`) + FallbackProvider |
 | 폴백 | Claude 계열: ClaudeCliProvider(Max 구독, $0) 우선 → AnthropicProvider API 폴백. 외부 API(GPT-4o/Gemini) 장애 시 Claude 자동 폴백 + warn 로그 |
 | 뉴스 사전 수집 | Brave Search로 애널리스트별 뉴스 주입 |
+| 조기포착 주입 | Phase1Late/RisingRS/펀더멘탈가속 결과를 Round 1·3에 주입 (#414) |
 | 모멘텀 데이터 | 5일/20일 가격 변화율 → 고점 피로감 감지 |
 | 환각 방지 | 프롬프트 레벨 수치 정확성 규칙 |
 

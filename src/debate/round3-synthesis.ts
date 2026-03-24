@@ -17,6 +17,8 @@ interface Round3Input {
   fundamentalContext?: string;
   /** 에이전트별 적중률 — 합의 가중치 조정용 */
   agentPerformanceContext?: string;
+  /** 조기포착 도구 결과 — pre-Phase 2 후보 */
+  earlyDetectionContext?: string;
 }
 
 interface Round3Result {
@@ -64,6 +66,7 @@ export function buildSynthesisPrompt(
   marketDataContext?: string,
   fundamentalContext?: string,
   agentPerformanceContext?: string,
+  earlyDetectionContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -91,6 +94,20 @@ export function buildSynthesisPrompt(
       ].join("\n")
     : "";
 
+  const earlyDetectionSection = earlyDetectionContext != null && earlyDetectionContext.length > 0
+    ? [
+        "\n---\n",
+        "<early-detection>",
+        "## 조기포착 후보 (pre-Phase 2)",
+        "",
+        "아래는 아직 Phase 2에 진입하지 않았으나, 조기 전환 신호가 감지된 종목입니다.",
+        "섹션 4(기회: 주도섹터/주도주)에서 별도 카테고리(\"조기포착 후보\")로 분리하여 기재하세요.",
+        "",
+        earlyDetectionContext,
+        "</early-detection>",
+      ].join("\n")
+    : "";
+
   const performanceSection = agentPerformanceContext != null && agentPerformanceContext.length > 0
     ? `\n---\n\n${agentPerformanceContext}\n`
     : "";
@@ -101,6 +118,7 @@ export function buildSynthesisPrompt(
 ${question}
 ${dataSection}
 ${fundamentalSection}
+${earlyDetectionSection}
 ${performanceSection}
 ---
 
@@ -540,9 +558,9 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext } = input;
+  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext } = input;
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext);
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext);
   const result = await provider.call({
     systemPrompt: moderator.systemPrompt,
     userMessage,
