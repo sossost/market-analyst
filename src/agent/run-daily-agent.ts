@@ -37,6 +37,7 @@ import { formatChainsForDailyPrompt } from "@/lib/narrativeChainStats";
 import { evaluateDailySendGate } from "./dailySendGate";
 import { loadTodayDebateInsight } from "@/debate/sessionStore";
 import { buildMarketTempBlock } from "./marketTempBlock";
+import { loadPreviousReportContext } from "@/lib/previousReportContext";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
@@ -167,6 +168,14 @@ async function main() {
   }
   logger.step("[5/10] Debate insight loaded");
 
+  // 5-B. 직전 리포트 컨텍스트 로드 (fail-open — 없으면 빈 문자열)
+  const previousReportContext = await loadPreviousReportContext(targetDate);
+  if (previousReportContext !== "") {
+    logger.info("PreviousReport", "직전 리포트 컨텍스트 로드 완료");
+  } else {
+    logger.info("PreviousReport", "직전 리포트 없음 — 전일 비교 컨텍스트 미주입");
+  }
+
   // 6. 발송 게이트 평가 (인사이트 없으면 에이전트 루프 스킵)
   if (process.env.SKIP_DAILY_GATE !== "true") {
     const gate = await evaluateDailySendGate(targetDate);
@@ -189,7 +198,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext, debateInsight }),
+    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext }),
     tools: [
       getIndexReturns,
       getMarketBreadth,
