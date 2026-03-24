@@ -13,13 +13,9 @@
 	<string>__PROJECT_DIR__</string>
 	<key>StartCalendarInterval</key>
 	<array>
-		<!-- KST 00:00 (= UTC 15:00) -->
-		<dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
-		<!-- KST 06:00 (= UTC 21:00) -->
+		<!-- KST 06:00 (= UTC 21:00) — 미국장 마감 후 -->
 		<dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
-		<!-- KST 12:00 (= UTC 03:00) -->
-		<dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
-		<!-- KST 18:00 (= UTC 09:00) -->
+		<!-- KST 18:00 (= UTC 09:00) — 한국장 마감 후 -->
 		<dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
 	</array>
 	<key>StandardOutPath</key>
