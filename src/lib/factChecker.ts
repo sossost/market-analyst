@@ -76,10 +76,18 @@ export function compareSectors(
     return [];
   }
 
-  const dbSet = new Set(dbTopSectors);
+  // DB 목록이 리포트보다 길면 리포트 개수만큼만 비교 (상위 N개).
+  // DB 목록은 avg_rs DESC 정렬이므로 slice(0, N)이 상위 N개를 정확히 반영한다.
+  // 이를 통해 "프롬프트가 상위 2개만 요구 vs QA가 5개 비교" 같은 구조적 거짓 양성을 방지한다.
+  const dbSlice =
+    dbTopSectors.length > reportLeadingSectors.length
+      ? dbTopSectors.slice(0, reportLeadingSectors.length)
+      : dbTopSectors;
+
+  const dbSet = new Set(dbSlice);
   const reportSet = new Set(reportLeadingSectors);
 
-  const intersectionSize = dbTopSectors.filter((s) => reportSet.has(s)).length;
+  const intersectionSize = [...dbSet].filter((s) => reportSet.has(s)).length;
   const unionSize = new Set([...dbSet, ...reportSet]).size;
   const overlapRatio = intersectionSize / unionSize;
 
@@ -88,7 +96,7 @@ export function compareSectors(
       {
         type: "sector_list",
         field: "leadingSectors",
-        expected: dbTopSectors.join(", "),
+        expected: dbSlice.join(", "),
         actual: reportLeadingSectors.join(", "),
         severity: "block",
       },
