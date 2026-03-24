@@ -139,7 +139,11 @@ function evaluateEpsGrowth(quarters: QuarterlyData[]): CriteriaResult {
         detail: `EPS 흑자 전환: ${priorYear.epsDiluted} → ${current.epsDiluted} (turnaround +${turnaround})`,
       };
     }
-    return { passed: false, value: null, detail: "EPS 데이터 부족" };
+    const detail =
+      current.epsDiluted == null || priorYear.epsDiluted == null
+        ? "EPS 데이터 부족"
+        : `성장률 계산 불가 (이전 EPS: ${priorYear.epsDiluted})`;
+    return { passed: false, value: null, detail };
   }
 
   const passed = growth > EPS_GROWTH_THRESHOLD;
