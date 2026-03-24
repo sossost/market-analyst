@@ -21,12 +21,14 @@ const TAG = "UPDATE_RECOMMENDATION_STATUS";
  * - profitFloor: 해당 tier 진입 후 최소 보장 수익률(%)
  *
  * 근거: #359 — AAOI +27.4% → -5.7% 사례. Phase exit 의존 청산으로 수익 증발.
- * 주의: AAOI/DWSN 2건 기반 초기 추정값. 운영 데이터 축적 후 조정 필요.
+ * 확장: #413 — maxPnl 0~5% 구간 보호 부재. 소수익 포지션이 phase exit 시 손실 전환.
+ * 주의: AAOI/DWSN 2건 기반 초기 추정값 + 2% tier 추가. 운영 데이터 축적 후 조정 필요.
  */
 export const PROFIT_TIERS = [
   { minMaxPnl: 20, retracement: 0.25, profitFloor: 10 },
   { minMaxPnl: 10, retracement: 0.30, profitFloor: 3 },
   { minMaxPnl: 5, retracement: 0.40, profitFloor: 0 },
+  { minMaxPnl: 2, retracement: 0.50, profitFloor: 0 },
 ] as const;
 
 /**
@@ -208,7 +210,8 @@ async function main() {
       closeReason = formatTrailingStopReason({ maxPnlPercent, pnlPercent });
     } else if (isPhaseExit) {
       closeStatus = "CLOSED_PHASE_EXIT";
-      closeReason = `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"})`;
+      const maxPnlInfo = maxPnlPercent > 0 ? `, maxPnL ${maxPnlPercent.toFixed(1)}%` : "";
+      closeReason = `Phase ${currentPhase} 이탈 (RS ${currentRs ?? "N/A"}${maxPnlInfo})`;
     }
 
     await retryDatabaseOperation(() =>
