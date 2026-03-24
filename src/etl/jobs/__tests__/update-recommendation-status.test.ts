@@ -95,16 +95,12 @@ describe("findProfitTier", () => {
     expect(tier).toEqual({ minMaxPnl: 5, retracement: 0.40, profitFloor: 0 });
   });
 
-  it("maxPnl 4.9%이면 2% tier를 반환한다", () => {
-    expect(findProfitTier(4.9)).toEqual({ minMaxPnl: 2, retracement: 0.50, profitFloor: 0 });
-  });
-
-  it("maxPnl 3%이면 2% tier를 반환한다", () => {
-    expect(findProfitTier(3)).toEqual({ minMaxPnl: 2, retracement: 0.50, profitFloor: 0 });
-  });
-
-  it("maxPnl 2%이면 2% tier를 반환한다 (경계값)", () => {
-    expect(findProfitTier(2)).toEqual({ minMaxPnl: 2, retracement: 0.50, profitFloor: 0 });
+  it.each([
+    { maxPnl: 4.9 },
+    { maxPnl: 3 },
+    { maxPnl: 2 },
+  ])("maxPnl $maxPnl%이면 2% tier를 반환한다", ({ maxPnl }) => {
+    expect(findProfitTier(maxPnl)).toEqual({ minMaxPnl: 2, retracement: 0.50, profitFloor: 0 });
   });
 
   it("maxPnl 1.9%이면 null을 반환한다 (tier 미달)", () => {
