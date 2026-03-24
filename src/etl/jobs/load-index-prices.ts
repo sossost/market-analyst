@@ -48,13 +48,7 @@ async function loadOne(fmpSymbol: string, dbSymbol: string, N: number) {
   const j = await retryApiCall(
     () => fetchJson<{ historical?: FmpHistoricalRow[] }>(url),
     DEFAULT_RETRY_OPTIONS,
-  ).catch((e) => {
-    logger.error(
-      TAG,
-      `Failed to fetch index prices for ${dbSymbol}: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return { historical: [] as FmpHistoricalRow[] };
-  });
+  );
 
   const rows = j?.historical ?? [];
   if (rows.length === 0) {
