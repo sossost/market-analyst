@@ -9,6 +9,10 @@ interface Round2Input {
   experts: PersonaDefinition[];
   round1Outputs: RoundOutput[];
   question: string;
+  /** SEPA 기반 펀더멘탈 스코어 — 교차검증 시 실적 데이터 기반 반박/보완용 */
+  fundamentalContext?: string;
+  /** 조기포착 도구 결과 — pre-Phase 2 후보의 교차검증용 */
+  earlyDetectionContext?: string;
 }
 
 interface Round2Result {
@@ -16,17 +20,19 @@ interface Round2Result {
   tokensUsed: { input: number; output: number };
 }
 
-function buildCrossfirePrompt(
+export function buildCrossfirePrompt(
   currentPersona: AgentPersona,
   round1Outputs: RoundOutput[],
   question: string,
+  fundamentalContext?: string,
+  earlyDetectionContext?: string,
 ): string {
   const othersAnalysis = round1Outputs
     .filter((o) => o.persona !== currentPersona)
     .map((o) => `### ${o.persona} 분석\n${o.content}`)
     .join("\n\n---\n\n");
 
-  return `## 교차 검증 라운드
+  let prompt = `## 교차 검증 라운드
 
 ### 원래 질문
 ${question}
@@ -61,7 +67,24 @@ ${othersAnalysis}
 ### 5. 정책 신호 교차 검증 (geopolitics의 정책 신호 평가가 있는 경우에만 작성)
 - geopolitics 애널리스트가 제시한 정책 신호 단계 평가에 이견이 있는가?
   (예: "Stage 3 완료라고 했는데 실제로는 아직 집행 규정 마련 중 아닌가?")
-- 정책 타이밍과 시장 반영 판단이 다른 거시 지표와 일관성이 있는가?`;
+- 정책 타이밍과 시장 반영 판단이 다른 거시 지표와 일관성이 있는가?
+
+### 6. 조기포착 후보 교차 검증 (아래 조기포착 데이터가 있는 경우에만 작성)
+- 다른 애널리스트가 언급한 조기포착 후보 중 펀더멘탈 근거가 부족한 종목을 지적하라.
+- 아래 펀더멘탈 데이터를 참조하여, B등급 미만 종목의 추천에 대해 반론하라.
+- 조기포착 후보가 당신의 전문 영역 관점에서 구조적 수혜를 받을 수 있는지 평가하라.`;
+
+  // 펀더멘탈 데이터 조건부 추가
+  if (fundamentalContext != null && fundamentalContext.length > 0) {
+    prompt += `\n\n---\n\n<fundamental-data>\n## 교차검증용 펀더멘탈 데이터 (SEPA)\n\n아래 실적 데이터를 참조하여 다른 애널리스트의 종목 추천을 검증하세요.\nB등급 미만 종목 추천에 대해서는 "펀더멘탈 미검증"을 지적해야 합니다.\n\n${fundamentalContext}\n</fundamental-data>`;
+  }
+
+  // 조기포착 후보 조건부 추가
+  if (earlyDetectionContext != null && earlyDetectionContext.length > 0) {
+    prompt += `\n\n---\n\n<early-detection>\n## 조기포착 후보 (pre-Phase 2)\n\n아래는 아직 Phase 2에 진입하지 않았으나, 조기 전환 신호가 감지된 종목입니다.\n다른 애널리스트의 이 종목들에 대한 평가를 검증하고, 펀더멘탈 근거가 부족한 경우 지적하세요.\n\n${earlyDetectionContext}\n</early-detection>`;
+  }
+
+  return prompt;
 }
 
 /**
@@ -70,7 +93,7 @@ ${othersAnalysis}
  * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound2(input: Round2Input): Promise<Round2Result> {
-  const { getProvider, experts, round1Outputs, question } = input;
+  const { getProvider, experts, round1Outputs, question, fundamentalContext, earlyDetectionContext } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -93,7 +116,7 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
     const results = await Promise.allSettled(
       batch.map(async (expert) => {
         const persona = expert.name as AgentPersona;
-        const userMessage = buildCrossfirePrompt(persona, round1Outputs, question);
+        const userMessage = buildCrossfirePrompt(persona, round1Outputs, question, fundamentalContext, earlyDetectionContext);
         const provider = getProvider(expert.model);
         const result = await provider.call({
           systemPrompt: expert.systemPrompt,
