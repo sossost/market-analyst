@@ -139,6 +139,7 @@ describe("getRisingRS", () => {
           sector_avg_rs: null,
           sector_change_4w: null,
           rs_score_4w_ago: null,
+          rs_change: 0,
         }),
       ],
     });
@@ -150,6 +151,8 @@ describe("getRisingRS", () => {
     expect(result.stocks[0].volRatio).toBeNull();
     expect(result.stocks[0].sectorAvgRs).toBeNull();
     expect(result.stocks[0].sectorChange4w).toBeNull();
+    expect(result.stocks[0].rsScore4wAgo).toBeNull();
+    expect(result.stocks[0].rsChange).toBe(0);
   });
 
   it("handles multiple stocks correctly", async () => {
