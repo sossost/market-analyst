@@ -9,8 +9,9 @@ import { computeYoYGrowths, isAccelerating } from "@/tools/getFundamentalAcceler
 /** 카테고리별 최대 종목 수 — 토큰 절약 */
 const MAX_PER_CATEGORY = 10;
 const RS_MIN = 30;
-const RS_MAX = 60;
+const RS_MAX = 70;
 const MIN_RS_CHANGE = 5;
+const ALLOWED_PHASES = [1, 2];
 
 interface Phase1LateStock {
   symbol: string;
@@ -87,6 +88,7 @@ async function loadRisingRs(date: string): Promise<RisingRsStock[]> {
         rsMax: RS_MAX,
         limit: MAX_PER_CATEGORY,
         minRsChange: MIN_RS_CHANGE,
+        allowedPhases: ALLOWED_PHASES,
       }),
     );
     return rows.map((r) => ({
