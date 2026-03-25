@@ -259,7 +259,7 @@ async function main() {
   logger.info(TAG, `Active learnings: ${latestLearnings.length}`);
 
   // 학습 루프 헬스체크 — 활성 학습 0건이면 경고
-  const totalJudged = confirmedTheses.length + invalidatedTheses.length;
+  const totalJudged = confirmedTheses.length + invalidatedTheses.length + expiredTheses.length;
   await checkLearningLoopHealth(latestLearnings.length, today, totalJudged);
 
   await pool.end();
