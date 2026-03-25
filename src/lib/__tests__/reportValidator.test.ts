@@ -1038,4 +1038,150 @@ describe("validateReport — 극단적 거래량 과열 경고 누락", () => {
     expect(warning).toContain("STRO");
     expect(warning).not.toContain("OVID");
   });
+
+  // -------------------------------------------------------------------------
+  // M. 약세 시장에서 독립 리스크 섹션 존재 검증
+  // -------------------------------------------------------------------------
+
+  it("약세 시장(VIX 25+)에서 독립 리스크 섹션 없으면 warning", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\nVIX: 27.5\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const riskWarning = result.warnings.find((w) =>
+      w.includes("독립 리스크 섹션"),
+    );
+    expect(riskWarning).toBeDefined();
+  });
+
+  it("약세 시장(공포탐욕 25 이하)에서 독립 리스크 섹션 없으면 warning", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n공포탐욕: 14.5\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const riskWarning = result.warnings.find((w) =>
+      w.includes("독립 리스크 섹션"),
+    );
+    expect(riskWarning).toBeDefined();
+  });
+
+  it("약세 시장이지만 독립 리스크 섹션 있으면 warning 없음", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\nVIX: 30.2\n## 섹터 RS 랭킹\n표.\n## ⚠️ 리스크 요인\n리스크 분석.\n## 시장 흐름\n전망. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const riskWarning = result.warnings.find((w) =>
+      w.includes("독립 리스크 섹션"),
+    );
+    expect(riskWarning).toBeUndefined();
+  });
+
+  it("약세 시장에서 '## 주요 리스크' 섹션도 인정", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n시장 온도: 약세\n## 주요 리스크 분석\n리스크.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망. 경고.",
+      ),
+      reportType: "daily",
+    });
+
+    const riskWarning = result.warnings.find((w) =>
+      w.includes("독립 리스크 섹션"),
+    );
+    expect(riskWarning).toBeUndefined();
+  });
+
+  it("강세 시장(VIX 15)에서는 독립 리스크 섹션 검증 skip", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\nVIX: 15.0\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const riskWarning = result.warnings.find((w) =>
+      w.includes("독립 리스크 섹션"),
+    );
+    expect(riskWarning).toBeUndefined();
+  });
+
+  it("weekly 리포트에서는 독립 리스크 섹션 검증 skip", () => {
+    const result = validateReport({
+      markdown: "VIX: 30. 리스크 주의.",
+      reportType: "weekly",
+    });
+
+    const riskWarning = result.warnings.find((w) =>
+      w.includes("독립 리스크 섹션"),
+    );
+    expect(riskWarning).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // N. 예비군 교체 사유 서술 검증
+  // -------------------------------------------------------------------------
+
+  it("전일 대비 섹션에 예비군 교체 언급 + 사유 없으면 warning", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 전일 대비 변화 요약\n예비군 EXE→IKT 교체. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const reserveWarning = result.warnings.find((w) =>
+      w.includes("예비군 교체"),
+    );
+    expect(reserveWarning).toBeDefined();
+  });
+
+  it("전일 대비 섹션에 예비군 교체 + RS/MA150 사유 있으면 warning 없음", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 전일 대비 변화 요약\n예비군 EXE 탈락 — RS 하락세 지속, MA150 이탈. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const reserveWarning = result.warnings.find((w) =>
+      w.includes("예비군 교체"),
+    );
+    expect(reserveWarning).toBeUndefined();
+  });
+
+  it("전일 대비 섹션에 예비군 언급 없으면 검증 skip", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 전일 대비 변화 요약\n주도 섹터 동일. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const reserveWarning = result.warnings.find((w) =>
+      w.includes("예비군 교체"),
+    );
+    expect(reserveWarning).toBeUndefined();
+  });
+
+  it("🌱 이모지로 예비군 신규 진입 언급 + 사유 없으면 warning", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\n## 전일 대비 변화 요약\n🌱 예비군 신규 HLN 진입. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+
+    const reserveWarning = result.warnings.find((w) =>
+      w.includes("예비군 교체"),
+    );
+    expect(reserveWarning).toBeDefined();
+  });
 });

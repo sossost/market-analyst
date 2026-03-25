@@ -585,6 +585,119 @@ function checkExtremeVolumeWithoutWarning(
 }
 
 // ---------------------------------------------------------------------------
+// M. 약세 시장에서 독립 리스크 섹션 존재 검증
+// ---------------------------------------------------------------------------
+
+/**
+ * 시장 온도가 약세(VIX 25+, 공포탐욕 25 이하, "약세" 키워드)일 때
+ * MD 파일에 독립된 리스크/경고 섹션이 있는지 확인한다.
+ *
+ * 약세 시장에서 리스크 요인을 다른 섹션에 흡수하면 bull-bias.
+ */
+const BEARISH_MARKET_PATTERNS = [
+  /VIX[:\s]*(\d+(?:\.\d+)?)/i,
+  /공포탐욕[:\s]*(\d+(?:\.\d+)?)/i,
+  /시장\s*온도[:\s]*[^\n]*약세/i,
+] as const;
+
+const RISK_SECTION_PATTERNS = [
+  /##\s*.*(?:리스크|위험|경고|주의)/i,
+  /##\s*⚠️/,
+] as const;
+
+function checkIndependentRiskSection(
+  markdown: string,
+  warnings: string[],
+): void {
+  // 1. 약세 시장인지 판별
+  let isBearish = false;
+
+  const vixMatch = markdown.match(BEARISH_MARKET_PATTERNS[0]);
+  if (vixMatch != null) {
+    const vix = Number(vixMatch[1]);
+    if (Number.isFinite(vix) && vix >= 25) {
+      isBearish = true;
+    }
+  }
+
+  if (!isBearish) {
+    const fgiMatch = markdown.match(BEARISH_MARKET_PATTERNS[1]);
+    if (fgiMatch != null) {
+      const fgi = Number(fgiMatch[1]);
+      if (Number.isFinite(fgi) && fgi <= 25) {
+        isBearish = true;
+      }
+    }
+  }
+
+  if (!isBearish && BEARISH_MARKET_PATTERNS[2].test(markdown)) {
+    isBearish = true;
+  }
+
+  if (!isBearish) return;
+
+  // 2. 독립 리스크 섹션 존재 확인
+  const hasRiskSection = RISK_SECTION_PATTERNS.some((p) => p.test(markdown));
+  if (!hasRiskSection) {
+    warnings.push(
+      "약세 시장(VIX 25+ 또는 공포탐욕 25 이하)에서 독립 리스크 섹션이 없습니다. '⚠️ 리스크 요인' 섹션을 추가하세요.",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// N. 예비군 교체 사유 서술 검증
+// ---------------------------------------------------------------------------
+
+/**
+ * "전일 대비" 섹션에서 예비군(🌱) 변경을 언급하면서
+ * 사유 설명이 없으면 warning을 발행한다.
+ *
+ * 예: "예비군 EXE→IKT 교체" → 왜 교체했는지 1줄 이상 필요
+ */
+const RESERVE_CHANGE_PATTERNS = [
+  /예비군[^\n]*(?:교체|변경|탈락|신규|진입|이탈|추가|제외)/gi,
+  /🌱[^\n]*(?:교체|변경|탈락|신규|진입|이탈|추가|제외)/gi,
+] as const;
+
+const RESERVE_REASON_KEYWORDS = [
+  "때문", "영향", "이유", "근거", "배경",
+  "상승", "하락", "개선", "악화", "이탈",
+  "둔화", "강화", "전환", "돌파",
+  "MA150", "RS", "거래량", "섹터",
+] as const;
+
+function checkReserveChangeReason(
+  markdown: string,
+  warnings: string[],
+): void {
+  // "전일 대비" 섹션 추출
+  const sectionMatch = markdown.match(/##\s*전일 대비[^\n]*\n([\s\S]*?)(?=\n##\s|$)/i);
+  if (sectionMatch == null) return;
+
+  const section = sectionMatch[1];
+
+  // 예비군 변경 언급이 있는지 확인
+  const hasReserveChange = RESERVE_CHANGE_PATTERNS.some((p) =>
+    p.test(section),
+  );
+  // Reset lastIndex after test() calls on global regexes
+  for (const p of RESERVE_CHANGE_PATTERNS) {
+    p.lastIndex = 0;
+  }
+
+  if (!hasReserveChange) return;
+
+  // 사유 키워드가 섹션 내에 하나라도 있으면 통과
+  const hasReason = RESERVE_REASON_KEYWORDS.some((kw) => section.includes(kw));
+  if (!hasReason) {
+    warnings.push(
+      "예비군 교체가 언급되었으나 교체 사유가 서술되지 않았습니다. 탈락/진입 종목별 사유를 1줄 이상 추가하세요.",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -626,6 +739,10 @@ export function validateReport(
     if (input.recommendations != null && input.recommendations.length > 0) {
       checkPerRecRiskMention(input.markdown, input.recommendations, warnings);
     }
+    // M. 약세 시장에서 독립 리스크 섹션 존재 검증
+    checkIndependentRiskSection(input.markdown, warnings);
+    // N. 예비군 교체 사유 서술 검증
+    checkReserveChangeReason(input.markdown, warnings);
   }
 
   // F. 마크다운 텍스트에서 Phase 1 추천 감지 (recommendations 없어도 동작)
