@@ -12,6 +12,7 @@ import { readPreviousDailyReport } from "@/lib/reportLog";
 import {
   loadPreviousReportContext,
   formatPreviousReportContext,
+  extractReserveStocks,
 } from "../previousReportContext";
 import type { DailyReportLog } from "@/types";
 
@@ -118,5 +119,60 @@ describe("formatPreviousReportContext", () => {
     const result = formatPreviousReportContext(emptyLog);
 
     expect(result).toContain("- 없음");
+  });
+
+  it("fullContent에 예비군 섹션이 있으면 예비군 종목 포함", () => {
+    const logWithContent: DailyReportLog = {
+      ...SAMPLE_LOG,
+      fullContent: "🌱 주도주 예비군\n• EXE RS 45 Phase 1\n• CRNT RS 42 Phase 1\n\n⚠️ 약세 경고",
+    };
+
+    const result = formatPreviousReportContext(logWithContent);
+
+    expect(result).toContain("직전 예비군 종목");
+    expect(result).toContain("EXE");
+    expect(result).toContain("CRNT");
+  });
+
+  it("fullContent 없으면 예비군 '없음' 표기", () => {
+    const result = formatPreviousReportContext(SAMPLE_LOG);
+
+    expect(result).toContain("직전 예비군 종목");
+    expect(result).toMatch(/직전 예비군 종목[\s\S]*- 없음/);
+  });
+});
+
+describe("extractReserveStocks", () => {
+  it("🌱 섹션에서 티커 추출", () => {
+    const content = "🌱 주도주 예비군\n• EXE RS 45 Phase 1\n• CRNT RS 42 Phase 1\n\n⚠️ 약세 경고";
+    const result = extractReserveStocks(content);
+    expect(result).toEqual(["EXE", "CRNT"]);
+  });
+
+  it("null 입력 시 빈 배열", () => {
+    expect(extractReserveStocks(null)).toEqual([]);
+  });
+
+  it("빈 문자열 입력 시 빈 배열", () => {
+    expect(extractReserveStocks("")).toEqual([]);
+  });
+
+  it("🌱 섹션 없으면 빈 배열", () => {
+    const content = "⭐ 강세 종목\n• NVDA RS 90 Phase 2";
+    expect(extractReserveStocks(content)).toEqual([]);
+  });
+
+  it("일반 키워드(RS, MA, Phase 등)는 제외", () => {
+    const content = "🌱 주도주 예비군\n• IKT RS 50 Phase 1 MA150 양전환\n\n⚠️ 약세";
+    const result = extractReserveStocks(content);
+    expect(result).toEqual(["IKT"]);
+    expect(result).not.toContain("RS");
+    expect(result).not.toContain("Phase");
+  });
+
+  it("중복 티커는 한 번만 포함", () => {
+    const content = "🌱 주도주 예비군\n• HLN RS 48 Phase 1\n• HLN 추가 설명\n\n⚠️ 약세";
+    const result = extractReserveStocks(content);
+    expect(result).toEqual(["HLN"]);
   });
 });
