@@ -101,6 +101,8 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     experts,
     round1Outputs: round1Result.round.outputs,
     question,
+    fundamentalContext,
+    earlyDetectionContext,
   });
 
   const activeInRound1 = round1Result.round.outputs.map((o) => o.persona);
