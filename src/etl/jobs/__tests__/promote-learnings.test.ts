@@ -9,6 +9,7 @@ import {
   buildCautionPrinciple,
   normalizeMetricKey,
   demoteImmatureLearnings,
+  absorbNewTheses,
 } from "../promote-learnings.js";
 
 // DB/외부 의존성 mock
@@ -461,9 +462,11 @@ describe("MIN_MATURATION_HITS 상수", () => {
 function makeLearning(overrides: Partial<{
   id: number;
   hitCount: number;
+  missCount: number;
   category: string;
   isActive: boolean;
   principle: string;
+  sourceThesisIds: string;
 }> = {}) {
   return {
     id: 1,
@@ -548,5 +551,192 @@ describe("demoteImmatureLearnings", () => {
     const result = await demoteImmatureLearnings(learnings as never, COLD_START_THRESHOLD);
 
     expect(result).toBe(1); // confirmed id=1만 강등
+  });
+});
+
+// ─── absorbNewTheses ────────────────────────────────────────────────────────
+
+describe("absorbNewTheses", () => {
+  beforeEach(() => {
+    mockUpdate.mockClear();
+    mockUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+  });
+
+  it("같은 persona+metric인 새 thesis를 기존 학습에 흡수한다", async () => {
+    const learnings = [
+      makeLearning({
+        id: 10,
+        hitCount: 2,
+        category: "confirmed",
+        sourceThesisIds: JSON.stringify([1, 2]),
+        principle: "[macro] S&P 500 관련 전망이 2회 적중 (적중률 100%, 2회 관측)",
+      }),
+    ];
+
+    const allTheses = [
+      // 기존 sourced theses
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      // 새로 판정된 thesis (같은 persona+metric)
+      makeThesis({ id: 10, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      makeThesis({ id: 11, agentPersona: "macro", verificationMetric: "SPX", status: "INVALIDATED" }),
+    ];
+
+    const result = await absorbNewTheses(
+      learnings as never,
+      allTheses as never,
+      "2026-03-25",
+    );
+
+    expect(result).toBe(2); // thesis 10, 11 흡수
+    // in-memory 갱신 확인
+    expect(learnings[0].hitCount).toBe(3);  // 1, 2, 10 = CONFIRMED
+    expect(learnings[0].missCount).toBe(1); // 11 = INVALIDATED
+    expect(JSON.parse(learnings[0].sourceThesisIds ?? "[]")).toEqual(expect.arrayContaining([1, 2, 10, 11]));
+  });
+
+  it("다른 persona의 thesis는 흡수하지 않는다", async () => {
+    const learnings = [
+      makeLearning({
+        id: 20,
+        hitCount: 1,
+        category: "confirmed",
+        sourceThesisIds: JSON.stringify([1]),
+      }),
+    ];
+
+    const allTheses = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      // 다른 persona
+      makeThesis({ id: 5, agentPersona: "tech", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+    ];
+
+    const result = await absorbNewTheses(
+      learnings as never,
+      allTheses as never,
+      "2026-03-25",
+    );
+
+    expect(result).toBe(0);
+  });
+
+  it("caution 카테고리 학습은 흡수 대상에서 제외한다", async () => {
+    const learnings = [
+      makeLearning({
+        id: 30,
+        hitCount: 2,
+        category: "caution",
+        sourceThesisIds: JSON.stringify([1]),
+      }),
+    ];
+
+    const allTheses = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      makeThesis({ id: 5, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+    ];
+
+    const result = await absorbNewTheses(
+      learnings as never,
+      allTheses as never,
+      "2026-03-25",
+    );
+
+    expect(result).toBe(0);
+  });
+
+  it("이미 sourceThesisIds에 있는 thesis는 중복 흡수하지 않는다", async () => {
+    const learnings = [
+      makeLearning({
+        id: 40,
+        hitCount: 2,
+        category: "confirmed",
+        sourceThesisIds: JSON.stringify([1, 2]),
+      }),
+    ];
+
+    const allTheses = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+    ];
+
+    const result = await absorbNewTheses(
+      learnings as never,
+      allTheses as never,
+      "2026-03-25",
+    );
+
+    expect(result).toBe(0);
+  });
+
+  it("정규화된 메트릭으로 매칭한다 (SPX → S&P 500)", async () => {
+    const learnings = [
+      makeLearning({
+        id: 50,
+        hitCount: 1,
+        category: "confirmed",
+        sourceThesisIds: JSON.stringify([1]),
+      }),
+    ];
+
+    const allTheses = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      // SPX는 S&P 500으로 정규화되므로 매칭
+      makeThesis({ id: 5, agentPersona: "macro", verificationMetric: "SPX", status: "CONFIRMED" }),
+    ];
+
+    const result = await absorbNewTheses(
+      learnings as never,
+      allTheses as never,
+      "2026-03-25",
+    );
+
+    expect(result).toBe(1);
+    expect(learnings[0].hitCount).toBe(2);
+  });
+
+  it("학습이 없으면 0을 반환한다", async () => {
+    const result = await absorbNewTheses(
+      [] as never,
+      [makeThesis({ id: 1 })] as never,
+      "2026-03-25",
+    );
+
+    expect(result).toBe(0);
+  });
+});
+
+// ─── normalizeMetricKey — commodity 별칭 (#427) ─────────────────────────────
+
+describe("normalizeMetricKey — commodity/rates aliases", () => {
+  it("'WTI' → 'WTI Crude'로 정규화", () => {
+    expect(normalizeMetricKey("WTI")).toBe("WTI Crude");
+  });
+
+  it("'crude oil' → 'WTI Crude'로 정규화", () => {
+    expect(normalizeMetricKey("crude oil")).toBe("WTI Crude");
+  });
+
+  it("'원유' → 'WTI Crude'로 정규화", () => {
+    expect(normalizeMetricKey("원유")).toBe("WTI Crude");
+  });
+
+  it("'gold' → 'Gold'로 정규화", () => {
+    expect(normalizeMetricKey("gold")).toBe("Gold");
+  });
+
+  it("'DXY' → 'DXY'로 정규화", () => {
+    expect(normalizeMetricKey("DXY")).toBe("DXY");
+  });
+
+  it("'달러인덱스' → 'DXY'로 정규화", () => {
+    expect(normalizeMetricKey("달러인덱스")).toBe("DXY");
+  });
+
+  it("'10y' → 'US 10Y Yield'로 정규화", () => {
+    expect(normalizeMetricKey("10y")).toBe("US 10Y Yield");
   });
 });

@@ -81,6 +81,16 @@ const METRIC_ALIASES: Record<string, string> = {
   "dow 30": "DOW 30", dow: "DOW 30", djia: "DOW 30",
   vix: "VIX",
   "fear & greed": "Fear & Greed", "fear and greed": "Fear & Greed", "공포탐욕지수": "Fear & Greed",
+  // Commodities (#427)
+  wti: "WTI Crude", "wti crude": "WTI Crude", "crude oil": "WTI Crude", "원유": "WTI Crude",
+  "brent": "Brent Crude", "brent crude": "Brent Crude", "브렌트유": "Brent Crude",
+  gold: "Gold", "금": "Gold", xau: "Gold",
+  silver: "Silver", "은": "Silver",
+  copper: "Copper", "구리": "Copper",
+  // Rates
+  "10y": "US 10Y Yield", "10년물": "US 10Y Yield", "us 10y": "US 10Y Yield", "us 10y yield": "US 10Y Yield",
+  "2y": "US 2Y Yield", "2년물": "US 2Y Yield", "us 2y": "US 2Y Yield", "us 2y yield": "US 2Y Yield",
+  dxy: "DXY", "달러인덱스": "DXY", "dollar index": "DXY",
 };
 
 const SECTOR_METRIC_ALIASES: Record<string, string> = {
@@ -173,7 +183,18 @@ async function main() {
     today,
   );
 
+  // 4b. 새 thesis를 기존 학습에 흡수 (#427)
+  // 기존 학습의 persona+metric 패턴과 일치하는 새 thesis를 sourceThesisIds에 추가.
+  // 이를 통해 기존 학습의 hitCount가 자연 성장하여 성숙도 게이트를 통과할 수 있다.
+  const allJudgedTheses = [...confirmedTheses, ...invalidatedTheses, ...expiredTheses];
+  const absorbedCount = await absorbNewTheses(
+    remainingLearnings,
+    allJudgedTheses,
+    today,
+  );
+
   // 5. 신규 learning 승격 (반복 적중 패턴)
+  // 흡수 후 in-memory learnings의 sourceThesisIds가 갱신되었으므로 재계산
   const existingSourceIds = new Set(
     remainingLearnings.flatMap((l) => {
       try { return JSON.parse(l.sourceThesisIds ?? "[]") as number[]; }
@@ -234,11 +255,12 @@ async function main() {
     logger.warn(TAG, `BIAS WARNING: Bull-bias ${(bias.bullRatio * 100).toFixed(0)}% > 80% 임계값`);
   }
 
-  logger.info(TAG, `Results: ${demotedCount} expired-demoted, ${maturationDemotedCount} maturation-demoted, ${updatedCount} updated, ${promotedCount} promoted, ${cautionPromoted} caution`);
+  logger.info(TAG, `Results: ${demotedCount} expired-demoted, ${maturationDemotedCount} maturation-demoted, ${updatedCount} updated, ${absorbedCount} absorbed, ${promotedCount} promoted, ${cautionPromoted} caution`);
   logger.info(TAG, `Active learnings: ${latestLearnings.length}`);
 
   // 학습 루프 헬스체크 — 활성 학습 0건이면 경고
-  await checkLearningLoopHealth(latestLearnings.length, today);
+  const totalJudged = confirmedTheses.length + invalidatedTheses.length;
+  await checkLearningLoopHealth(latestLearnings.length, today, totalJudged);
 
   await pool.end();
 }
@@ -374,6 +396,148 @@ async function updateLearningStats(
   }
 
   return toUpdate.length;
+}
+
+/**
+ * 기존 활성 학습의 persona+metric 패턴과 일치하는 새 thesis를
+ * sourceThesisIds에 흡수한다. (#427)
+ *
+ * 학습이 생성된 이후에 판정된 thesis가 같은 패턴이면,
+ * 기존 학습의 sourceThesisIds에 추가하고 hitCount/missCount를 재계산한다.
+ * 이를 통해 기존 학습이 자연 성장하여 성숙도 게이트를 통과할 수 있다.
+ *
+ * NOTE: in-memory의 remainingLearnings도 함께 갱신하여
+ * 이후 단계(existingSourceIds 계산)에 반영한다.
+ */
+export async function absorbNewTheses(
+  learnings: typeof agentLearnings.$inferSelect[],
+  allJudgedTheses: typeof theses.$inferSelect[],
+  today: string,
+): Promise<number> {
+  // caution 카테고리는 failure_patterns에서 별도 관리
+  const confirmedLearnings = learnings.filter((l) => l.category === "confirmed");
+  if (confirmedLearnings.length === 0) return 0;
+
+  // 모든 활성 학습의 sourceThesisIds를 수집
+  const allExistingIds = new Set<number>();
+  const learningSourceMap = new Map<number, Set<number>>();
+  for (const learning of confirmedLearnings) {
+    let sourceIds: number[];
+    try {
+      sourceIds = JSON.parse(learning.sourceThesisIds ?? "[]") as number[];
+    } catch {
+      sourceIds = [];
+    }
+    const idSet = new Set(sourceIds);
+    learningSourceMap.set(learning.id, idSet);
+    for (const id of sourceIds) {
+      allExistingIds.add(id);
+    }
+  }
+
+  // 기존 학습의 persona+metric 추출 (sourceThesisIds의 thesis에서)
+  const thesisById = new Map(allJudgedTheses.map((t) => [t.id, t]));
+
+  // learning → persona+metric 키 매핑
+  const learningKeyMap = new Map<number, string>();
+  for (const learning of confirmedLearnings) {
+    const sourceIds = learningSourceMap.get(learning.id) ?? new Set();
+    // sourceThesisIds에서 첫 번째 thesis의 persona+metric으로 키 결정
+    for (const id of sourceIds) {
+      const t = thesisById.get(id);
+      if (t != null) {
+        const key = `${t.agentPersona}::${normalizeMetricKey(t.verificationMetric)}`;
+        learningKeyMap.set(learning.id, key);
+        break;
+      }
+    }
+  }
+
+  // persona+metric → learningId 역매핑 (한 패턴에 여러 학습 가능하나, 첫 번째만 흡수)
+  const keyToLearningId = new Map<string, number>();
+  for (const [learningId, key] of learningKeyMap.entries()) {
+    if (!keyToLearningId.has(key)) {
+      keyToLearningId.set(key, learningId);
+    }
+  }
+
+  // 아직 어떤 학습에도 속하지 않은 thesis를 기존 학습에 흡수
+  const toAbsorb = new Map<number, number[]>(); // learningId → [thesisId, ...]
+
+  for (const t of allJudgedTheses) {
+    if (allExistingIds.has(t.id)) continue;
+    if (t.status !== "CONFIRMED" && t.status !== "INVALIDATED" && t.status !== "EXPIRED") continue;
+
+    const key = `${t.agentPersona}::${normalizeMetricKey(t.verificationMetric)}`;
+    const learningId = keyToLearningId.get(key);
+    if (learningId == null) continue;
+
+    const existing = toAbsorb.get(learningId) ?? [];
+    existing.push(t.id);
+    toAbsorb.set(learningId, existing);
+  }
+
+  if (toAbsorb.size === 0) return 0;
+
+  // DB 업데이트: sourceThesisIds 확장 + stats 재계산
+  const confirmedIds = new Set(allJudgedTheses.filter((t) => t.status === "CONFIRMED").map((t) => t.id));
+  const negativeIds = new Set(allJudgedTheses.filter((t) => t.status === "INVALIDATED" || t.status === "EXPIRED").map((t) => t.id));
+
+  let totalAbsorbed = 0;
+
+  const entries = Array.from(toAbsorb.entries());
+  for (let i = 0; i < entries.length; i += CONCURRENCY_LIMIT) {
+    const batch = entries.slice(i, i + CONCURRENCY_LIMIT);
+    await Promise.all(
+      batch.map(async ([learningId, newIds]) => {
+        const existingIds = learningSourceMap.get(learningId) ?? new Set();
+        const mergedIds = new Set([...existingIds, ...newIds]);
+        const mergedArray = Array.from(mergedIds);
+
+        const hits = mergedArray.filter((id) => confirmedIds.has(id)).length;
+        const misses = mergedArray.filter((id) => negativeIds.has(id)).length;
+        const total = hits + misses;
+        const hitRate = total > 0 ? hits / total : null;
+
+        // principle 텍스트 갱신
+        const learning = learnings.find((l) => l.id === learningId);
+        const key = learningKeyMap.get(learningId);
+        let principle = learning?.principle ?? "";
+        if (key != null) {
+          const [persona, metric] = key.split("::");
+          const sanitizedMetric = metric.replace(/[\n\r]/g, " ").slice(0, 100);
+          principle = `[${persona}] ${sanitizedMetric} 관련 전망이 ${hits}회 적중 (적중률 ${hitRate != null ? (hitRate * 100).toFixed(0) : 0}%, ${total}회 관측)`;
+        }
+
+        await db
+          .update(agentLearnings)
+          .set({
+            sourceThesisIds: JSON.stringify(mergedArray),
+            hitCount: hits,
+            missCount: misses,
+            hitRate: hitRate != null ? String(hitRate.toFixed(2)) : null,
+            lastVerified: today,
+            principle,
+          })
+          .where(eq(agentLearnings.id, learningId));
+
+        // in-memory 갱신 (이후 단계에서 existingSourceIds 재계산에 반영)
+        if (learning != null) {
+          learning.sourceThesisIds = JSON.stringify(mergedArray);
+          learning.hitCount = hits;
+          learning.missCount = misses;
+          learning.hitRate = hitRate != null ? String(hitRate.toFixed(2)) : null;
+          learning.lastVerified = today;
+          learning.principle = principle;
+        }
+
+        totalAbsorbed += newIds.length;
+        logger.info(TAG, `  ABSORBED ${newIds.length} theses into learning #${learningId} (hits=${hits}, misses=${misses})`);
+      }),
+    );
+  }
+
+  return totalAbsorbed;
 }
 
 /**
@@ -694,9 +858,16 @@ const HEALTHCHECK_STALE_DAYS = 7;
  * - 활성 학습 0건: 즉시 경고
  * - 최근 7일간 신규/업데이트 학습 0건: 루프 정체 경고
  */
+/**
+ * 학습 추출률 기준 — 이 비율 미만이면 경고.
+ * 판정 완료 thesis 대비 활성 학습 비율.
+ */
+const MIN_EXTRACTION_RATE = 0.20;
+
 export async function checkLearningLoopHealth(
   activeLearningCount: number,
   today: string,
+  totalJudgedTheses?: number,
 ): Promise<void> {
   if (activeLearningCount === 0) {
     const [confirmedCount] = await db
@@ -713,6 +884,19 @@ export async function checkLearningLoopHealth(
       `promote-learnings 로그에서 SKIP/BOOTSTRAP 항목 확인 필요.`,
     );
     return;
+  }
+
+  // 추출률 경고 (#427)
+  if (totalJudgedTheses != null && totalJudgedTheses > 0) {
+    const extractionRate = activeLearningCount / totalJudgedTheses;
+    logger.info(TAG, `Extraction rate: ${activeLearningCount}/${totalJudgedTheses} = ${(extractionRate * 100).toFixed(1)}%`);
+    if (extractionRate < MIN_EXTRACTION_RATE) {
+      logger.warn(
+        TAG,
+        `⚠️ LOW EXTRACTION RATE: ${(extractionRate * 100).toFixed(1)}% < ${(MIN_EXTRACTION_RATE * 100).toFixed(0)}%. ` +
+        `판정 완료 ${totalJudgedTheses}건 대비 활성 학습 ${activeLearningCount}건. 학습 흡수 파이프라인 점검 필요.`,
+      );
+    }
   }
 
   // 최근 7일간 업데이트 없는지 확인
