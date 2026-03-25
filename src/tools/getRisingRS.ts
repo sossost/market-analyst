@@ -6,19 +6,21 @@ import { findRisingRsStocks } from "@/db/repositories/stockPhaseRepository.js";
 
 const DEFAULT_LIMIT = 30;
 const RS_MIN = 30;
-const RS_MAX = 60;
+const RS_MAX = 70;
 /** 4주 대비 최소 RS 변화량. 유의미한 모멘텀만 포착하기 위한 노이즈 필터. */
 const MIN_RS_CHANGE = 5;
+/** Phase 1(바닥 다지기) + Phase 2(상승) 만 허용. Phase 3/4 종목의 일시 반등 false positive 차단. */
+const ALLOWED_PHASES = [1, 2];
 
 /**
  * RS 하강→상승 초기 종목을 조회한다.
- * RS 30~60 범위에서 가속 상승 중인 종목 — 시장이 아직 주목하지 않는 초기 모멘텀.
+ * Phase 1/2 + RS 30~70 범위에서 가속 상승 중인 종목 — 시장이 아직 주목하지 않는 초기 모멘텀.
  */
 export const getRisingRS: AgentTool = {
   definition: {
     name: "get_rising_rs",
     description:
-      "RS 30~60 범위에서 상승 가속 중인 종목을 조회합니다. 시장이 아직 주목하지 않는 초기 모멘텀 포착 목적. 섹터 RS도 상승 중인 종목을 우선 정렬합니다.",
+      "RS 30~70 범위 + Phase 1/2 종목에서 상승 가속 중인 종목을 조회합니다. 시장이 아직 주목하지 않는 초기 모멘텀 포착 목적. 섹터 RS도 상승 중인 종목을 우선 정렬합니다.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -51,6 +53,7 @@ export const getRisingRS: AgentTool = {
         rsMax: RS_MAX,
         limit,
         minRsChange: MIN_RS_CHANGE,
+        allowedPhases: ALLOWED_PHASES,
       }),
     );
 
@@ -81,7 +84,7 @@ export const getRisingRS: AgentTool = {
       date,
       rsRange: `${RS_MIN}~${RS_MAX}`,
       totalFound: stocks.length,
-      description: `RS ${RS_MIN}~${RS_MAX} 범위에서 4주 대비 RS ${MIN_RS_CHANGE}p+ 상승 중 + 섹터 RS 상승 우선`,
+      description: `Phase 1/2 + RS ${RS_MIN}~${RS_MAX} 범위에서 4주 대비 RS ${MIN_RS_CHANGE}p+ 상승 중 + 섹터 RS 상승 우선`,
       stocks,
     });
   },

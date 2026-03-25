@@ -233,7 +233,7 @@ export async function findUnusualStocks(
 
 /**
  * RS 하강→상승 초기 종목을 조회한다 (getRisingRS 전용).
- * RS 범위 + 4주 대비 RS 상승 + 섹터 RS JOIN.
+ * Phase 필터 + RS 범위 + 4주 대비 RS 상승 + 섹터 RS JOIN.
  */
 export async function findRisingRsStocks(params: {
   date: string;
@@ -241,8 +241,9 @@ export async function findRisingRsStocks(params: {
   rsMax: number;
   limit: number;
   minRsChange: number;
+  allowedPhases: number[];
 }): Promise<RisingRsStockRow[]> {
-  const { date, rsMin, rsMax, limit, minRsChange } = params;
+  const { date, rsMin, rsMax, limit, minRsChange, allowedPhases } = params;
 
   const { rows } = await pool.query<RisingRsStockRow>(
     `WITH rs_4w AS (
@@ -272,12 +273,13 @@ export async function findRisingRsStocks(params: {
        AND sp.rs_score >= $2
        AND sp.rs_score <= $3
        AND (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) >= $5
+       AND sp.phase = ANY($6::int[])
      ORDER BY
        CASE WHEN srd.change_4w::numeric > 0 THEN 0 ELSE 1 END,
        (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) DESC,
        sp.rs_score DESC
      LIMIT $4`,
-    [date, rsMin, rsMax, limit, minRsChange],
+    [date, rsMin, rsMax, limit, minRsChange, allowedPhases],
   );
 
   return rows;
