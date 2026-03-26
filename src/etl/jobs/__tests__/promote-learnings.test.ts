@@ -83,34 +83,34 @@ describe("getPromotionThresholds", () => {
     expect(thresholds).toEqual({ minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true });
   });
 
-  it("활성 학습 BOOTSTRAP_THRESHOLD = 2건(cold start) — 완화 기준 반환", () => {
+  it("활성 학습 BOOTSTRAP_THRESHOLD = 2건(cold start) — binomial 면제 + minTotal=2 반환", () => {
     const thresholds = getPromotionThresholds(BOOTSTRAP_THRESHOLD);
-    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
+    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
   });
 
-  it("활성 학습 COLD_START_THRESHOLD - 1 = 4건 — 완화 기준 반환", () => {
+  it("활성 학습 COLD_START_THRESHOLD - 1 = 4건 — binomial 면제 + minTotal=2 반환", () => {
     const thresholds = getPromotionThresholds(COLD_START_THRESHOLD - 1);
-    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
+    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
   });
 
   it("활성 학습 COLD_START_THRESHOLD = 5건 — 성장기 기준 반환", () => {
     const thresholds = getPromotionThresholds(COLD_START_THRESHOLD);
-    expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
+    expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
   });
 
   it("활성 학습 GROWTH_PHASE_THRESHOLD - 1 = 14건 — 성장기 기준 반환", () => {
     const thresholds = getPromotionThresholds(GROWTH_PHASE_THRESHOLD - 1);
+    expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+  });
+
+  it("활성 학습 GROWTH_PHASE_THRESHOLD = 15건 — 정상 운영 기준 반환", () => {
+    const thresholds = getPromotionThresholds(GROWTH_PHASE_THRESHOLD);
     expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
   });
 
-  it("활성 학습 GROWTH_PHASE_THRESHOLD = 15건 — 엄격 기준 반환", () => {
-    const thresholds = getPromotionThresholds(GROWTH_PHASE_THRESHOLD);
-    expect(thresholds).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10, skipBinomialTest: false });
-  });
-
-  it("활성 학습 50건(최대) — 엄격 기준 반환", () => {
+  it("활성 학습 50건(최대) — 정상 운영 기준 반환", () => {
     const thresholds = getPromotionThresholds(50);
-    expect(thresholds).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10, skipBinomialTest: false });
+    expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
   });
 });
 
@@ -204,15 +204,15 @@ describe("buildPromotionCandidates", () => {
     expect(candidates).toHaveLength(0);
   });
 
-  it("cold start 기준(minHits=2, minTotal=3) 충족 — 후보 생성", () => {
+  it("cold start 기준(minHits=2, minTotal=2) 충족 — 후보 생성", () => {
     const confirmed = [
       makeThesis({ id: 1 }),
       makeThesis({ id: 2 }),
-      makeThesis({ id: 3 }),
     ];
     const invalidated: ReturnType<typeof makeThesis>[] = [];
     const existingSourceIds = new Set<number>();
 
+    // cold start (2~4): minHits=2, minTotal=2 → 2건만으로도 승격 가능
     const candidates = buildPromotionCandidates(
       confirmed as never,
       invalidated as never,
@@ -221,7 +221,7 @@ describe("buildPromotionCandidates", () => {
     );
 
     expect(candidates).toHaveLength(1);
-    expect(candidates[0].hitCount).toBe(3);
+    expect(candidates[0].hitCount).toBe(2);
     expect(candidates[0].missCount).toBe(0);
     expect(candidates[0].persona).toBe("trend-follower");
     expect(candidates[0].metric).toBe("RS > 80");
@@ -297,7 +297,7 @@ describe("buildPromotionCandidates", () => {
     expect(candidates).toHaveLength(1);
   });
 
-  it("cold start 단계에서 binomial test 실패하면 후보가 탈락한다", () => {
+  it("cold start 단계에서 binomial test 실패해도 후보가 통과한다 (#437)", () => {
     mockBinomialTest.mockReturnValueOnce({ isSignificant: false, pValue: 0.5, cohenH: 0.1 });
 
     const confirmed = [
@@ -306,12 +306,35 @@ describe("buildPromotionCandidates", () => {
       makeThesis({ id: 22 }),
     ];
 
-    // cold start (3 learnings) → skipBinomialTest=false, minHits=2
+    // cold start (3 learnings) → skipBinomialTest=true (#437: 소표본에서 binomial 불가)
     const candidates = buildPromotionCandidates(
       confirmed as never,
       [] as never,
       new Set<number>(),
       3,
+    );
+
+    // cold start에서도 binomial test 면제 → 통과
+    expect(candidates).toHaveLength(1);
+  });
+
+  it("growth 단계에서 binomial test 실패하면 후보가 탈락한다", () => {
+    mockBinomialTest.mockReturnValueOnce({ isSignificant: false, pValue: 0.5, cohenH: 0.1 });
+
+    const confirmed = [
+      makeThesis({ id: 30 }),
+      makeThesis({ id: 31 }),
+      makeThesis({ id: 32 }),
+      makeThesis({ id: 33 }),
+      makeThesis({ id: 34 }),
+    ];
+
+    // growth (5 learnings) → skipBinomialTest=false, minHits=3
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      [] as never,
+      new Set<number>(),
+      5,
     );
 
     // binomial test not significant → 탈락

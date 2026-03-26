@@ -104,10 +104,10 @@ describe("promote-learnings logic", () => {
   });
 
   describe("buildPromotionCandidates", () => {
-    // 정상 운영 기준 (activeLearningCount >= 15): minHits=10, minHitRate=0.70, minTotal=10
+    // 정상 운영 기준 (activeLearningCount >= 15): minHits=5, minHitRate=0.65, minTotal=8
     describe("정상 운영 기준 (activeLearningCount >= 15)", () => {
-      it("promotes group with 10+ confirmed, 70%+ hitRate, 10+ observations", () => {
-        const confirmed = Array.from({ length: 10 }, (_, i) =>
+      it("promotes group with 8+ total, 65%+ hitRate, 5+ hits", () => {
+        const confirmed = Array.from({ length: 8 }, (_, i) =>
           makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
         );
 
@@ -115,11 +115,11 @@ describe("promote-learnings logic", () => {
         expect(result).toHaveLength(1);
         expect(result[0].persona).toBe("macro");
         expect(result[0].metric).toBe("Fed funds rate");
-        expect(result[0].hitCount).toBe(10);
+        expect(result[0].hitCount).toBe(8);
       });
 
-      it("excludes groups with fewer than 10 confirmed", () => {
-        const confirmed = Array.from({ length: 9 }, (_, i) =>
+      it("excludes groups with fewer than 5 confirmed", () => {
+        const confirmed = Array.from({ length: 4 }, (_, i) =>
           makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
         );
 
@@ -127,12 +127,12 @@ describe("promote-learnings logic", () => {
         expect(result).toHaveLength(0);
       });
 
-      it("excludes groups with hitRate below 70%", () => {
-        const confirmed = Array.from({ length: 10 }, (_, i) =>
+      it("excludes groups with hitRate below 65%", () => {
+        const confirmed = Array.from({ length: 5 }, (_, i) =>
           makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
         );
-        // 10 confirmed + 5 invalidated = 66.7% hitRate < 70%
-        const invalidated = Array.from({ length: 5 }, (_, i) =>
+        // 5 confirmed + 3 invalidated = 62.5% hitRate < 65%
+        const invalidated = Array.from({ length: 3 }, (_, i) =>
           makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
         );
 
@@ -140,13 +140,13 @@ describe("promote-learnings logic", () => {
         expect(result).toHaveLength(0);
       });
 
-      it("excludes groups with 71% hitRate but insufficient statistical significance (10/14)", () => {
-        const confirmed = Array.from({ length: 10 }, (_, i) =>
+      it("excludes groups with 66% hitRate but insufficient statistical significance (6/9)", () => {
+        const confirmed = Array.from({ length: 6 }, (_, i) =>
           makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
         );
-        // 10 confirmed + 4 invalidated = 71.4% hitRate — 기존 기준은 통과하지만
-        // 이항분포 검정에서 p=0.09 > 0.05이므로 통계적으로 유의하지 않음
-        const invalidated = Array.from({ length: 4 }, (_, i) =>
+        // 6 confirmed + 3 invalidated = 66.7% hitRate — hitRate 기준은 통과하지만
+        // 이항분포 검정에서 p=0.254 > 0.05이므로 통계적으로 유의하지 않음
+        const invalidated = Array.from({ length: 3 }, (_, i) =>
           makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "CPI", status: "INVALIDATED" }),
         );
 
@@ -154,30 +154,30 @@ describe("promote-learnings logic", () => {
         expect(result).toHaveLength(0);
       });
 
-      it("includes groups with high hitRate and statistical significance (10/0)", () => {
-        // 10 confirmed + 0 invalidated = 100% → p ≈ 0.001, Cohen's h ≈ 1.57
-        const confirmed = Array.from({ length: 10 }, (_, i) =>
+      it("includes groups with high hitRate and statistical significance (8/0)", () => {
+        // 8 confirmed + 0 invalidated = 100% → p ≈ 0.004, statistically significant
+        const confirmed = Array.from({ length: 8 }, (_, i) =>
           makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
         );
 
         const result = buildPromotionCandidates(confirmed, [], new Set(), 15);
         expect(result).toHaveLength(1);
-        expect(result[0].hitCount).toBe(10);
+        expect(result[0].hitCount).toBe(8);
         expect(result[0].missCount).toBe(0);
       });
 
       it("excludes thesis IDs already in existing learnings", () => {
-        const confirmed = Array.from({ length: 10 }, (_, i) =>
+        const confirmed = Array.from({ length: 8 }, (_, i) =>
           makeThesis({ id: i + 1, agentPersona: "tech", verificationMetric: "capex" }),
         );
 
-        const existingIds = new Set(Array.from({ length: 10 }, (_, i) => i + 1));
+        const existingIds = new Set(Array.from({ length: 8 }, (_, i) => i + 1));
         const result = buildPromotionCandidates(confirmed, [], existingIds, 15);
         expect(result).toHaveLength(0);
       });
 
       it("counts invalidated theses for the same group", () => {
-        const confirmed = Array.from({ length: 10 }, (_, i) =>
+        const confirmed = Array.from({ length: 8 }, (_, i) =>
           makeThesis({ id: i + 1, agentPersona: "sentiment", verificationMetric: "VIX" }),
         );
         const invalidated = [
@@ -186,17 +186,17 @@ describe("promote-learnings logic", () => {
 
         const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 15);
         expect(result).toHaveLength(1);
-        expect(result[0].hitCount).toBe(10);
+        expect(result[0].hitCount).toBe(8);
         expect(result[0].missCount).toBe(1);
         expect(result[0].invalidatedIds).toEqual([100]);
       });
 
       it("handles multiple groups from different personas", () => {
         const confirmed = [
-          ...Array.from({ length: 10 }, (_, i) =>
+          ...Array.from({ length: 8 }, (_, i) =>
             makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "CPI" }),
           ),
-          ...Array.from({ length: 10 }, (_, i) =>
+          ...Array.from({ length: 8 }, (_, i) =>
             makeThesis({ id: 100 + i, agentPersona: "tech", verificationMetric: "AI capex" }),
           ),
         ];
@@ -280,44 +280,44 @@ describe("promote-learnings logic", () => {
       expect(thresholds).toEqual({ minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true });
     });
 
-    it("cold start (2건) → 완화 기준 반환", () => {
+    it("cold start (2건) → binomial 면제 + minTotal=2 반환", () => {
       const thresholds = getPromotionThresholds(2);
-      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
     });
 
-    it("cold start (4건) → 완화 기준 반환", () => {
+    it("cold start (4건) → binomial 면제 + minTotal=2 반환", () => {
       const thresholds = getPromotionThresholds(4);
-      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
     });
 
-    it("경계값 4→5건 전환 — 5건은 중간 기준", () => {
-      expect(getPromotionThresholds(4)).toEqual({ minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false });
-      expect(getPromotionThresholds(5)).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
+    it("경계값 4→5건 전환 — 5건은 성장기 기준", () => {
+      expect(getPromotionThresholds(4)).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
+      expect(getPromotionThresholds(5)).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
     });
 
     it("성장기 (5건) → 중간 기준 반환", () => {
       const thresholds = getPromotionThresholds(5);
-      expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
     });
 
     it("성장기 (14건) → 중간 기준 반환", () => {
       const thresholds = getPromotionThresholds(14);
-      expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
     });
 
     it("경계값 14→15건 전환 — 15건은 정상 기준", () => {
-      expect(getPromotionThresholds(14)).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
-      expect(getPromotionThresholds(15)).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10, skipBinomialTest: false });
+      expect(getPromotionThresholds(14)).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+      expect(getPromotionThresholds(15)).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
     });
 
     it("정상 운영 (15건) → 엄격 기준 반환", () => {
       const thresholds = getPromotionThresholds(15);
-      expect(thresholds).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
     });
 
     it("정상 운영 (50건) → 엄격 기준 반환", () => {
       const thresholds = getPromotionThresholds(50);
-      expect(thresholds).toEqual({ minHits: 10, minHitRate: 0.70, minTotal: 10, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false });
     });
   });
 
@@ -358,33 +358,33 @@ describe("promote-learnings logic", () => {
       expect(result).toHaveLength(0);
     });
 
-    it("성장기: 학습 5건 → minHits=5, minHitRate=0.65, minTotal=8 기준 적용", () => {
-      // 5 confirmed + 2 invalidated = 71.4% hitRate >= 65%, total=7 < 8 → 미승격
-      const confirmed = Array.from({ length: 5 }, (_, i) =>
+    it("성장기: 학습 5건 → minHits=3, minHitRate=0.60, minTotal=5 기준 적용", () => {
+      // 3 confirmed + 1 invalidated = 75% hitRate >= 60%, total=4 < 5 → 미승격
+      const confirmed = Array.from({ length: 3 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
       );
-      const invalidated = Array.from({ length: 2 }, (_, i) =>
+      const invalidated = Array.from({ length: 1 }, (_, i) =>
         makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "Fed funds rate", status: "INVALIDATED" }),
       );
 
       const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 5);
-      // total=7 < minTotal=8 → 승격 불가
+      // total=4 < minTotal=5 → 승격 불가
       expect(result).toHaveLength(0);
     });
 
-    it("성장기: 학습 5건 → total=8 이상이고 hitRate>=65% 이면 승격", () => {
-      // 8 confirmed + 0 invalidated = 100%, total=8 >= 8 → 승격
-      const confirmed = Array.from({ length: 8 }, (_, i) =>
+    it("성장기: 학습 5건 → total=5 이상이고 hitRate>=60% 이면 승격", () => {
+      // 5 confirmed + 0 invalidated = 100%, total=5 >= 5 → 승격
+      const confirmed = Array.from({ length: 5 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
       );
 
       const result = buildPromotionCandidates(confirmed, [], new Set(), 5);
       expect(result).toHaveLength(1);
-      expect(result[0].hitCount).toBe(8);
+      expect(result[0].hitCount).toBe(5);
     });
 
-    it("정상 운영: 학습 15건 → 9건 적중은 minHits=10 미달로 승격 불가", () => {
-      const confirmed = Array.from({ length: 9 }, (_, i) =>
+    it("정상 운영: 학습 15건 → 4건 적중은 minHits=5 미달로 승격 불가", () => {
+      const confirmed = Array.from({ length: 4 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
       );
 
@@ -414,10 +414,9 @@ describe("promote-learnings logic", () => {
       expect(result).toHaveLength(1);
     });
 
-    it("cold start(2건+)에서 binomialTest 유지 — 통계적 비유의미 데이터는 승격 불가", () => {
-      // cold start 기준 (2건): minHits=2, minTotal=3, minHitRate=0.60
-      // 2 confirmed + 1 invalidated = 67% hitRate, total=3
-      // binomialTest에서 p값이 크면 비유의미로 탈락
+    it("cold start(2건+)에서 binomialTest 면제 — 소표본에서 승격 가능 (#437)", () => {
+      // cold start 기준 (2건): minHits=2, minTotal=2, minHitRate=0.55, skipBinomialTest=true
+      // 2 confirmed + 1 invalidated = 67% hitRate >= 55% → 승격
       const confirmed = Array.from({ length: 2 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "VIX" }),
       );
@@ -425,9 +424,10 @@ describe("promote-learnings logic", () => {
         makeThesis({ id: 100, agentPersona: "macro", verificationMetric: "VIX", status: "INVALIDATED" }),
       ];
 
-      // n=3, k=2 → p=0.5 기준 이항검정은 유의하지 않음 (p > 0.05)
       const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 2);
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(1);
+      expect(result[0].hitCount).toBe(2);
+      expect(result[0].missCount).toBe(1);
     });
   });
 
@@ -492,15 +492,15 @@ describe("promote-learnings logic", () => {
 
     it("growth 단계(5건+)에서는 EXPIRED를 포함해야 함 (caller 책임)", () => {
       // growth에서는 main()이 allNegativeTheses를 전달하므로 expired 포함
-      const confirmed = Array.from({ length: 5 }, (_, i) =>
+      const confirmed = Array.from({ length: 3 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "GDP" }),
       );
-      const negativesIncludingExpired = Array.from({ length: 4 }, (_, i) =>
+      const negativesIncludingExpired = Array.from({ length: 3 }, (_, i) =>
         makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "GDP", status: i < 2 ? "INVALIDATED" : "EXPIRED" }),
       );
 
-      // 5 confirmed + 4 negative = 56% hitRate, total=9 >= 8
-      // growth 기준: minHits=5, minHitRate=0.65 → 56% < 65% → 탈락
+      // 3 confirmed + 3 negative = 50% hitRate, total=6 >= 5
+      // growth 기준: minHits=3, minHitRate=0.60 → 50% < 60% → 탈락
       const result = buildPromotionCandidates(confirmed, negativesIncludingExpired, new Set(), 5);
       expect(result).toHaveLength(0);
     });
