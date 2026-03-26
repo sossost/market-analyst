@@ -226,6 +226,8 @@ async function executeRegister(
         entryDate: date,
         entryPhase: phase,
         entryRsScore: rsScore,
+        // TODO: 향후 마이그레이션을 통해 `entry_industry_rs`로 컬럼명 변경 필요.
+        // 현재는 `entry_sector_rs`에 업종 RS 값을 저장합니다.
         entrySectorRs: industryRs != null ? String(industryRs) : null,
         entrySepaGrade: sepaGrade,
         entryThesisId: thesisId,
