@@ -64,43 +64,56 @@ describe("getLeadingSectors", () => {
     expect(parsed.error).toBeTruthy();
   });
 
-  it("mode 미지정 시 기존 daily 동작 (prevWeekRank 등 없음)", async () => {
-    // 1st call: sector query, 2nd call: industry query
+  it("mode 미지정 시 daily 동작 + 전일 RS 비교 포함", async () => {
+    // 1st: sector query, 2nd: industry query, 3rd: prevDayDate, 4th: prevDay sectors
     mockQuery
       .mockResolvedValueOnce({
         rows: [makeSectorRow({ sector: "Technology", rs_rank: 1 })],
       })
       .mockResolvedValueOnce({
         rows: [makeIndustryRow()],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ prev_day_date: "2026-03-06" }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ sector: "Technology", avg_rs: "60.0", rs_rank: 2 }],
       });
 
     const result = await getLeadingSectors.execute({ date: "2026-03-07" });
     const parsed = JSON.parse(result);
 
     expect(parsed.date).toBe("2026-03-07");
+    expect(parsed.prevDayDate).toBe("2026-03-06");
     expect(parsed.sectors).toHaveLength(1);
     expect(parsed.sectors[0].sector).toBe("Technology");
     expect(parsed.sectors[0].avgRs).toBeCloseTo(65.5);
     expect(parsed.sectors[0].topIndustries).toHaveLength(1);
 
-    // daily 모드에는 weekly 전용 필드가 없어야 한다
+    // daily 모드에는 전일 대비 비교 필드 포함
+    expect(parsed.sectors[0].prevDayRank).toBe(2);
+    expect(parsed.sectors[0].rankChange).toBe(1); // 2 - 1 = +1
+    expect(parsed.sectors[0].prevDayAvgRs).toBeCloseTo(60.0);
+    expect(parsed.sectors[0].rsChange).toBeCloseTo(5.5);
+
+    // weekly 전용 필드는 없어야 한다
     expect(parsed.sectors[0]).not.toHaveProperty("prevWeekRank");
-    expect(parsed.sectors[0]).not.toHaveProperty("rankChange");
     expect(parsed.sectors[0]).not.toHaveProperty("prevWeekAvgRs");
-    expect(parsed.sectors[0]).not.toHaveProperty("rsChange");
     expect(parsed).not.toHaveProperty("mode");
-    expect(parsed).not.toHaveProperty("prevWeekDate");
     expect(parsed).not.toHaveProperty("newEntrants");
     expect(parsed).not.toHaveProperty("exits");
   });
 
-  it("mode: 'daily' 명시 시에도 기존 동작과 동일", async () => {
+  it("mode: 'daily' — 전일 데이터 없으면 prevDayDate null", async () => {
     mockQuery
       .mockResolvedValueOnce({
         rows: [makeSectorRow()],
       })
       .mockResolvedValueOnce({
         rows: [],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ prev_day_date: null }],
       });
 
     const result = await getLeadingSectors.execute({
@@ -110,7 +123,9 @@ describe("getLeadingSectors", () => {
     const parsed = JSON.parse(result);
 
     expect(parsed.sectors).toHaveLength(1);
-    expect(parsed.sectors[0]).not.toHaveProperty("prevWeekRank");
+    expect(parsed.prevDayDate).toBeNull();
+    // 비교 데이터 없으므로 prevDay 필드 없음
+    expect(parsed.sectors[0]).not.toHaveProperty("prevDayRank");
   });
 
   it("mode: 'weekly' 시 전주 순위 포함", async () => {
@@ -128,7 +143,14 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
-      // 4th: 전주 섹터 랭킹
+      // 4th: 전주 섹터 랭킹 (limit 기반 — entrants/exits 판단용)
+      .mockResolvedValueOnce({
+        rows: [
+          { sector: "Healthcare", avg_rs: "62", rs_rank: 1 },
+          { sector: "Technology", avg_rs: "58", rs_rank: 2 },
+        ],
+      })
+      // 5th: 전주 섹터 랭킹 (이름 기반 — 순위 비교용)
       .mockResolvedValueOnce({
         rows: [
           { sector: "Healthcare", avg_rs: "62", rs_rank: 1 },
@@ -166,6 +188,11 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
+      // 4th: limit 기반
+      .mockResolvedValueOnce({
+        rows: [{ sector: "Energy", avg_rs: "45", rs_rank: 5 }],
+      })
+      // 5th: 이름 기반
       .mockResolvedValueOnce({
         rows: [{ sector: "Energy", avg_rs: "45", rs_rank: 5 }],
       });
@@ -195,7 +222,14 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
-      // 전주: Technology, Healthcare (Energy 없었음)
+      // 4th: 전주 limit 기반 (entrants/exits 판단용)
+      .mockResolvedValueOnce({
+        rows: [
+          { sector: "Technology", avg_rs: "65", rs_rank: 1 },
+          { sector: "Healthcare", avg_rs: "55", rs_rank: 2 },
+        ],
+      })
+      // 5th: 전주 이름 기반 (순위 비교용 — Energy는 전주 미존재)
       .mockResolvedValueOnce({
         rows: [
           { sector: "Technology", avg_rs: "65", rs_rank: 1 },
@@ -249,7 +283,11 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
-      // 전주에 NewSector 없음
+      // 4th: 전주 limit 기반
+      .mockResolvedValueOnce({
+        rows: [{ sector: "OldSector", avg_rs: "48", rs_rank: 1 }],
+      })
+      // 5th: 전주 이름 기반 (NewSector는 전주 미존재)
       .mockResolvedValueOnce({
         rows: [{ sector: "OldSector", avg_rs: "48", rs_rank: 1 }],
       });

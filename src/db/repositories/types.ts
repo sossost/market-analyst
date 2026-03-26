@@ -92,6 +92,10 @@ export interface PrevWeekDateRow {
   prev_week_date: string | null;
 }
 
+export interface PrevDayDateRow {
+  prev_day_date: string | null;
+}
+
 // ─── marketBreadthRepository ──────────────────────────────────────────────────
 
 export interface TradingDateRow {

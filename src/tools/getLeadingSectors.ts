@@ -3,7 +3,9 @@ import {
   findTopSectors,
   findTopIndustries,
   findPrevWeekDate,
+  findPrevDayDate,
   findSectorsByDate,
+  findSectorsByDateAndNames,
 } from "@/db/repositories/index.js";
 import type { SectorRsRow, IndustryRsRow } from "@/db/repositories/index.js";
 import { toNum } from "@/etl/utils/common";
@@ -115,12 +117,56 @@ export const getLeadingSectors: AgentTool = {
     const industryBySector = await fetchTopIndustries(date, sectorRows);
 
     if (mode === "daily") {
-      const sectors = sectorRows.map((s) =>
-        mapSectorRow(s, industryBySector),
+      // 전일 날짜 조회 → 전일 대비 RS/순위 비교
+      const prevDayDateRow = await retryDatabaseOperation(() =>
+        findPrevDayDate(date),
       );
+      const prevDayDate = prevDayDateRow.prev_day_date ?? null;
+
+      if (prevDayDate == null) {
+        const sectors = sectorRows.map((s) =>
+          mapSectorRow(s, industryBySector),
+        );
+        return JSON.stringify({
+          _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
+          date,
+          prevDayDate: null,
+          sectors,
+        });
+      }
+
+      const sectorNames = sectorRows.map((s) => s.sector);
+      const prevDaySectorRows = await retryDatabaseOperation(() =>
+        findSectorsByDateAndNames(prevDayDate, sectorNames),
+      );
+
+      const prevDayMap = new Map<string, { rank: number; avgRs: number }>();
+      for (const row of prevDaySectorRows) {
+        prevDayMap.set(row.sector, {
+          rank: row.rs_rank,
+          avgRs: toNum(row.avg_rs),
+        });
+      }
+
+      const sectors = sectorRows.map((s) => {
+        const base = mapSectorRow(s, industryBySector);
+        const prev = prevDayMap.get(s.sector);
+        return {
+          ...base,
+          prevDayRank: prev?.rank ?? null,
+          rankChange: prev != null ? prev.rank - s.rs_rank : null,
+          prevDayAvgRs: prev?.avgRs ?? null,
+          rsChange:
+            prev != null
+              ? Number((toNum(s.avg_rs) - prev.avgRs).toFixed(2))
+              : null,
+        };
+      });
+
       return JSON.stringify({
         _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
         date,
+        prevDayDate,
         sectors,
       });
     }
@@ -148,9 +194,19 @@ export const getLeadingSectors: AgentTool = {
       });
     }
 
-    // 전주 섹터 랭킹 조회
-    const prevSectorRows = await retryDatabaseOperation(() =>
+    // 전주 섹터 랭킹 조회 — 현재 상위 섹터 + 전주 상위 섹터 모두 포함
+    const currentSectorNames = sectorRows.map((s) => s.sector);
+    const prevTopRows = await retryDatabaseOperation(() =>
       findSectorsByDate(prevWeekDate, limit),
+    );
+    const allSectorNames = [
+      ...new Set([
+        ...currentSectorNames,
+        ...prevTopRows.map((s) => s.sector),
+      ]),
+    ];
+    const prevSectorRows = await retryDatabaseOperation(() =>
+      findSectorsByDateAndNames(prevWeekDate, allSectorNames),
     );
 
     const prevRankMap = new Map<string, { rank: number; avgRs: number }>();
@@ -162,7 +218,7 @@ export const getLeadingSectors: AgentTool = {
     }
 
     const currentTopSectors = new Set(sectorRows.map((s) => s.sector));
-    const prevTopSectors = new Set(prevSectorRows.map((s) => s.sector));
+    const prevTopSectors = new Set(prevTopRows.map((s) => s.sector));
 
     const newEntrants = [...currentTopSectors].filter(
       (s) => !prevTopSectors.has(s),

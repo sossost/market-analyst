@@ -98,6 +98,10 @@ export interface DailyReportLog {
     phase2Ratio: number;
     leadingSectors: string[];
     totalAnalyzed: number;
+    /** 공포탐욕지수 — 직전 리포트 크로스체크용. 기존 데이터 하위 호환을 위해 optional. */
+    fearGreedScore?: number;
+    /** 섹터 RS 상위 목록 — 전일 대비 방향 비교용. 기존 데이터 하위 호환을 위해 optional. */
+    topSectorRs?: { sector: string; avgRs: number }[];
   };
   fullContent?: string | null;
   metadata: {

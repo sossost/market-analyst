@@ -9,6 +9,7 @@ import type {
   MarketRegimeRow,
   SectorSepaStatsRow,
   PrevWeekDateRow,
+  PrevDayDateRow,
   SectorRsContextRow,
   SectorRsDetailContextRow,
   SectorRsRankWithTotalRow,
@@ -62,6 +63,22 @@ export async function findTopIndustries(
 }
 
 /**
+ * 지정 날짜 직전의 가장 최근 날짜를 조회한다 (전일 비교용).
+ */
+export async function findPrevDayDate(
+  date: string,
+): Promise<PrevDayDateRow> {
+  const { rows } = await pool.query<PrevDayDateRow>(
+    `SELECT MAX(date) AS prev_day_date
+     FROM sector_rs_daily
+     WHERE date < $1`,
+    [date],
+  );
+
+  return rows[0] ?? { prev_day_date: null };
+}
+
+/**
  * 지정 날짜 기준 5일 이전의 최근 날짜를 조회한다 (전주 비교용).
  */
 export async function findPrevWeekDate(
@@ -91,6 +108,24 @@ export async function findSectorsByDate(
      ORDER BY avg_rs::numeric DESC
      LIMIT $2`,
     [date, limit],
+  );
+
+  return rows;
+}
+
+/**
+ * 지정 날짜에서 특정 섹터 이름 목록의 RS 랭킹(compact)을 조회한다.
+ * LIMIT 없이 이름 기반으로 조회하여, 순위권 밖 섹터의 과거 데이터도 정확히 추적한다.
+ */
+export async function findSectorsByDateAndNames(
+  date: string,
+  sectors: string[],
+): Promise<SectorRsCompactRow[]> {
+  const { rows } = await pool.query<SectorRsCompactRow>(
+    `SELECT sector, avg_rs::text, rs_rank
+     FROM sector_rs_daily
+     WHERE date = $1 AND sector = ANY($2)`,
+    [date, sectors],
   );
 
   return rows;
