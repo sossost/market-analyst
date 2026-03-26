@@ -47,19 +47,51 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
       ? reserveStocks.map((s) => `- ${s}`).join("\n")
       : "- 없음";
 
-  return [
+  const fearGreedLine =
+    marketSummary.fearGreedScore != null
+      ? `- 공포탐욕지수: ${marketSummary.fearGreedScore}`
+      : "";
+
+  const sectorRsLines = formatSectorRsLines(marketSummary.topSectorRs ?? []);
+
+  const lines = [
     `## 직전 리포트 요약 (${date})`,
     "",
     `- Phase 2 비율: ${marketSummary.phase2Ratio}%`,
     `- 주도 섹터: ${leadingSectors}`,
     `- 분석 종목수: ${marketSummary.totalAnalyzed}`,
+  ];
+
+  if (fearGreedLine !== "") {
+    lines.push(fearGreedLine);
+  }
+
+  lines.push(
     "",
     "### 직전 리포트 특이종목",
     symbolLines === "" ? "- 없음" : symbolLines,
     "",
     "### 직전 예비군 종목 (🌱)",
     reserveLines,
-  ].join("\n");
+  );
+
+  if (sectorRsLines !== "") {
+    lines.push("", "### 직전 섹터 RS 상위", sectorRsLines);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * 섹터 RS 목록을 마크다운 리스트 문자열로 변환한다.
+ */
+export function formatSectorRsLines(
+  topSectorRs: { sector: string; avgRs: number }[],
+): string {
+  if (topSectorRs.length === 0) return "";
+  return topSectorRs
+    .map((s) => `- ${s.sector} (RS ${s.avgRs})`)
+    .join("\n");
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   findTopSectors,
   findTopIndustries,
   findPrevWeekDate,
+  findPrevDayDate,
   findSectorsByDate,
 } from "@/db/repositories/index.js";
 import type { SectorRsRow, IndustryRsRow } from "@/db/repositories/index.js";
@@ -115,12 +116,55 @@ export const getLeadingSectors: AgentTool = {
     const industryBySector = await fetchTopIndustries(date, sectorRows);
 
     if (mode === "daily") {
-      const sectors = sectorRows.map((s) =>
-        mapSectorRow(s, industryBySector),
+      // 전일 날짜 조회 → 전일 대비 RS/순위 비교
+      const prevDayDateRow = await retryDatabaseOperation(() =>
+        findPrevDayDate(date),
       );
+      const prevDayDate = prevDayDateRow.prev_day_date ?? null;
+
+      if (prevDayDate == null) {
+        const sectors = sectorRows.map((s) =>
+          mapSectorRow(s, industryBySector),
+        );
+        return JSON.stringify({
+          _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
+          date,
+          prevDayDate: null,
+          sectors,
+        });
+      }
+
+      const prevDaySectorRows = await retryDatabaseOperation(() =>
+        findSectorsByDate(prevDayDate, limit),
+      );
+
+      const prevDayMap = new Map<string, { rank: number; avgRs: number }>();
+      for (const row of prevDaySectorRows) {
+        prevDayMap.set(row.sector, {
+          rank: row.rs_rank,
+          avgRs: toNum(row.avg_rs),
+        });
+      }
+
+      const sectors = sectorRows.map((s) => {
+        const base = mapSectorRow(s, industryBySector);
+        const prev = prevDayMap.get(s.sector);
+        return {
+          ...base,
+          prevDayRank: prev?.rank ?? null,
+          rankChange: prev != null ? prev.rank - s.rs_rank : null,
+          prevDayAvgRs: prev?.avgRs ?? null,
+          rsChange:
+            prev != null
+              ? Number((toNum(s.avg_rs) - prev.avgRs).toFixed(2))
+              : null,
+        };
+      });
+
       return JSON.stringify({
         _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
         date,
+        prevDayDate,
         sectors,
       });
     }

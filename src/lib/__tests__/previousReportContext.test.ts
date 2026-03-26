@@ -13,6 +13,7 @@ import {
   loadPreviousReportContext,
   formatPreviousReportContext,
   extractReserveStocks,
+  formatSectorRsLines,
 } from "../previousReportContext";
 import type { DailyReportLog } from "@/types";
 
@@ -174,5 +175,83 @@ describe("extractReserveStocks", () => {
     const content = "🌱 주도주 예비군\n• HLN RS 48 Phase 1\n• HLN 추가 설명\n\n⚠️ 약세";
     const result = extractReserveStocks(content);
     expect(result).toEqual(["HLN"]);
+  });
+});
+
+describe("formatPreviousReportContext — fearGreedScore", () => {
+  it("fearGreedScore가 있으면 공포탐욕지수 줄 포함", () => {
+    const logWithFg: DailyReportLog = {
+      ...SAMPLE_LOG,
+      marketSummary: {
+        ...SAMPLE_LOG.marketSummary,
+        fearGreedScore: 14.5,
+      },
+    };
+
+    const result = formatPreviousReportContext(logWithFg);
+
+    expect(result).toContain("공포탐욕지수: 14.5");
+  });
+
+  it("fearGreedScore가 없으면 공포탐욕지수 줄 미포함", () => {
+    const result = formatPreviousReportContext(SAMPLE_LOG);
+
+    expect(result).not.toContain("공포탐욕지수");
+  });
+});
+
+describe("formatPreviousReportContext — topSectorRs", () => {
+  it("topSectorRs가 있으면 섹터 RS 상위 섹션 포함", () => {
+    const logWithRs: DailyReportLog = {
+      ...SAMPLE_LOG,
+      marketSummary: {
+        ...SAMPLE_LOG.marketSummary,
+        topSectorRs: [
+          { sector: "Energy", avgRs: 72.3 },
+          { sector: "Healthcare", avgRs: 65.1 },
+        ],
+      },
+    };
+
+    const result = formatPreviousReportContext(logWithRs);
+
+    expect(result).toContain("### 직전 섹터 RS 상위");
+    expect(result).toContain("Energy (RS 72.3)");
+    expect(result).toContain("Healthcare (RS 65.1)");
+  });
+
+  it("topSectorRs가 없으면 섹터 RS 상위 섹션 미포함", () => {
+    const result = formatPreviousReportContext(SAMPLE_LOG);
+
+    expect(result).not.toContain("직전 섹터 RS 상위");
+  });
+
+  it("topSectorRs가 빈 배열이면 섹터 RS 상위 섹션 미포함", () => {
+    const logWithEmptyRs: DailyReportLog = {
+      ...SAMPLE_LOG,
+      marketSummary: {
+        ...SAMPLE_LOG.marketSummary,
+        topSectorRs: [],
+      },
+    };
+
+    const result = formatPreviousReportContext(logWithEmptyRs);
+
+    expect(result).not.toContain("직전 섹터 RS 상위");
+  });
+});
+
+describe("formatSectorRsLines", () => {
+  it("섹터 RS 목록을 마크다운 리스트로 변환", () => {
+    const result = formatSectorRsLines([
+      { sector: "Energy", avgRs: 72.3 },
+      { sector: "Tech", avgRs: 65.0 },
+    ]);
+
+    expect(result).toBe("- Energy (RS 72.3)\n- Tech (RS 65)");
+  });
+
+  it("빈 배열이면 빈 문자열 반환", () => {
+    expect(formatSectorRsLines([])).toBe("");
   });
 });
