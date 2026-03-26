@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   evaluatePhaseCondition,
-  evaluateSectorRsCondition,
+  evaluateIndustryRsCondition,
   evaluateIndividualRsCondition,
   evaluateNarrativeBasisCondition,
   evaluateSepaGradeCondition,
@@ -15,7 +15,7 @@ import {
   type WatchlistGateInput,
   REQUIRED_PHASE,
   MIN_INDIVIDUAL_RS,
-  MIN_SECTOR_RS,
+  MIN_INDUSTRY_RS,
 } from "../watchlistGate";
 
 // ─── evaluatePhaseCondition ───────────────────────────────────────────────────
@@ -41,33 +41,33 @@ describe("evaluatePhaseCondition", () => {
   });
 });
 
-// ─── evaluateSectorRsCondition ────────────────────────────────────────────────
+// ─── evaluateIndustryRsCondition ─────────────────────────────────────────────
 
-describe("evaluateSectorRsCondition", () => {
-  it("섹터 RS가 기준 이상이면 null 반환 (통과)", () => {
-    expect(evaluateSectorRsCondition(50)).toBeNull();
-    expect(evaluateSectorRsCondition(75)).toBeNull();
-    expect(evaluateSectorRsCondition(100)).toBeNull();
+describe("evaluateIndustryRsCondition", () => {
+  it("업종 RS가 기준 이상이면 null 반환 (통과)", () => {
+    expect(evaluateIndustryRsCondition(50)).toBeNull();
+    expect(evaluateIndustryRsCondition(75)).toBeNull();
+    expect(evaluateIndustryRsCondition(100)).toBeNull();
   });
 
-  it(`섹터 RS가 ${MIN_SECTOR_RS} 미만이면 실패 사유 반환`, () => {
-    const result = evaluateSectorRsCondition(49);
+  it(`업종 RS가 ${MIN_INDUSTRY_RS} 미만이면 실패 사유 반환`, () => {
+    const result = evaluateIndustryRsCondition(49);
     expect(result).not.toBeNull();
-    expect(result?.condition).toBe("sectorRs");
+    expect(result?.condition).toBe("industryRs");
     expect(result?.reason).toContain("49.0");
   });
 
-  it("섹터 RS가 null이면 실패 사유 반환", () => {
-    const result = evaluateSectorRsCondition(null);
+  it("업종 RS가 null이면 실패 사유 반환", () => {
+    const result = evaluateIndustryRsCondition(null);
     expect(result).not.toBeNull();
-    expect(result?.condition).toBe("sectorRs");
+    expect(result?.condition).toBe("industryRs");
     expect(result?.reason).toContain("없음");
   });
 
-  it("섹터 RS 경계값 0이면 실패 사유 반환", () => {
-    const result = evaluateSectorRsCondition(0);
+  it("업종 RS 경계값 0이면 실패 사유 반환", () => {
+    const result = evaluateIndustryRsCondition(0);
     expect(result).not.toBeNull();
-    expect(result?.condition).toBe("sectorRs");
+    expect(result?.condition).toBe("industryRs");
   });
 });
 
@@ -156,7 +156,7 @@ describe("evaluateWatchlistGate", () => {
     symbol: "AAPL",
     phase: 2,
     rsScore: 75,
-    sectorRs: 60,
+    industryRs: 60,
     sepaGrade: "A",
     thesisId: 42,
   };
@@ -173,10 +173,10 @@ describe("evaluateWatchlistGate", () => {
     expect(result.failures.some((f) => f.condition === "phase")).toBe(true);
   });
 
-  it("섹터 RS 미달 시 passed: false, failures에 sectorRs 조건 포함", () => {
-    const result = evaluateWatchlistGate({ ...validInput, sectorRs: 30 });
+  it("업종 RS 미달 시 passed: false, failures에 industryRs 조건 포함", () => {
+    const result = evaluateWatchlistGate({ ...validInput, industryRs: 30 });
     expect(result.passed).toBe(false);
-    expect(result.failures.some((f) => f.condition === "sectorRs")).toBe(true);
+    expect(result.failures.some((f) => f.condition === "industryRs")).toBe(true);
   });
 
   it("개별 RS 미달 시 passed: false, failures에 individualRs 조건 포함", () => {
@@ -211,19 +211,19 @@ describe("evaluateWatchlistGate", () => {
     expect(result.failures.some((f) => f.condition === "sepaGrade")).toBe(true);
   });
 
-  it("섹터 RS null + SEPA null일 때 두 가지 실패 사유 포함", () => {
-    const result = evaluateWatchlistGate({ ...validInput, sectorRs: null, sepaGrade: null });
+  it("업종 RS null + SEPA null일 때 두 가지 실패 사유 포함", () => {
+    const result = evaluateWatchlistGate({ ...validInput, industryRs: null, sepaGrade: null });
     expect(result.passed).toBe(false);
-    expect(result.failures.some((f) => f.condition === "sectorRs")).toBe(true);
+    expect(result.failures.some((f) => f.condition === "industryRs")).toBe(true);
     expect(result.failures.some((f) => f.condition === "sepaGrade")).toBe(true);
   });
 
-  it("S 등급 + 최소 RS + Phase 2 + sectorRs 경계값으로 통과", () => {
+  it("S 등급 + 최소 RS + Phase 2 + industryRs 경계값으로 통과", () => {
     const result = evaluateWatchlistGate({
       symbol: "TEST",
       phase: 2,
       rsScore: 60,
-      sectorRs: 50,
+      industryRs: 50,
       sepaGrade: "S",
       thesisId: 1,
     });

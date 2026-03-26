@@ -3,7 +3,7 @@
  *
  * 관심종목 등록 전 5가지 조건을 모두 통과해야 한다:
  * 1. Phase 2 확인
- * 2. 섹터 RS 상위 (MIN_SECTOR_RS 이상)
+ * 2. 업종 RS 상위 (MIN_INDUSTRY_RS 이상)
  * 3. 개별 RS 상위 (MIN_INDIVIDUAL_RS 이상)
  * 4. 서사적 근거 — thesis_id가 존재하는지 (구조적 전환 포착 여부)
  * 5. SEPA 펀더멘탈 S 또는 A 등급
@@ -19,8 +19,8 @@ const REQUIRED_PHASE = 2;
 /** 개별 RS 최솟값 — 이 값 이상이어야 등록 허용 */
 const MIN_INDIVIDUAL_RS = 60;
 
-/** 섹터 RS 최솟값 — 이 값 이상이어야 섹터 RS 상위로 판정 */
-const MIN_SECTOR_RS = 50;
+/** 업종 RS 최솟값 — 이 값 이상이어야 업종 RS 상위로 판정 */
+const MIN_INDUSTRY_RS = 50;
 
 /** 펀더멘탈 등급 허용 집합 — S 또는 A만 통과 */
 const ALLOWED_SEPA_GRADES = new Set<string>(["S", "A"]);
@@ -34,8 +34,8 @@ export interface WatchlistGateInput {
   phase: number;
   /** 개별 RS 점수 (0~100) */
   rsScore: number | null;
-  /** 섹터 RS 평균 (avg_rs) */
-  sectorRs: number | null;
+  /** 업종(industry) RS 평균 (avg_rs) — 135개 업종 단위 */
+  industryRs: number | null;
   /** SEPA 펀더멘탈 등급 ('S' | 'A' | 'B' | 'C' | 'F' | null) */
   sepaGrade: string | null;
   /** 연결된 thesis ID (구조적 서사 근거. null이면 서사 근거 없음) */
@@ -44,7 +44,7 @@ export interface WatchlistGateInput {
 
 export type GateCondition =
   | "phase"
-  | "sectorRs"
+  | "industryRs"
   | "individualRs"
   | "narrativeBasis"
   | "sepaGrade";
@@ -78,23 +78,23 @@ export function evaluatePhaseCondition(
 }
 
 /**
- * 섹터 RS 조건 평가.
- * sectorRs가 null이거나 MIN_SECTOR_RS 미만이면 실패.
+ * 업종 RS 조건 평가.
+ * industryRs가 null이거나 MIN_INDUSTRY_RS 미만이면 실패.
  */
-export function evaluateSectorRsCondition(
-  sectorRs: number | null,
+export function evaluateIndustryRsCondition(
+  industryRs: number | null,
 ): GateFailure | null {
-  if (sectorRs == null) {
+  if (industryRs == null) {
     return {
-      condition: "sectorRs",
-      reason: "섹터 RS 데이터 없음 — 섹터 상위 여부 판단 불가",
+      condition: "industryRs",
+      reason: "업종 RS 데이터 없음 — 업종 상위 여부 판단 불가",
     };
   }
 
-  if (sectorRs < MIN_SECTOR_RS) {
+  if (industryRs < MIN_INDUSTRY_RS) {
     return {
-      condition: "sectorRs",
-      reason: `섹터 RS ${sectorRs.toFixed(1)} < ${MIN_SECTOR_RS} — 섹터 모멘텀 미흡`,
+      condition: "industryRs",
+      reason: `업종 RS ${industryRs.toFixed(1)} < ${MIN_INDUSTRY_RS} — 업종 모멘텀 미흡`,
     };
   }
 
@@ -182,9 +182,9 @@ export function evaluateWatchlistGate(
     failures.push(phaseFailure);
   }
 
-  const sectorRsFailure = evaluateSectorRsCondition(input.sectorRs);
-  if (sectorRsFailure != null) {
-    failures.push(sectorRsFailure);
+  const industryRsFailure = evaluateIndustryRsCondition(input.industryRs);
+  if (industryRsFailure != null) {
+    failures.push(industryRsFailure);
   }
 
   const individualRsFailure = evaluateIndividualRsCondition(input.rsScore);
@@ -210,4 +210,4 @@ export function evaluateWatchlistGate(
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
-export { REQUIRED_PHASE, MIN_INDIVIDUAL_RS, MIN_SECTOR_RS, ALLOWED_SEPA_GRADES };
+export { REQUIRED_PHASE, MIN_INDIVIDUAL_RS, MIN_INDUSTRY_RS, ALLOWED_SEPA_GRADES };
