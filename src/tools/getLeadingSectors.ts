@@ -5,6 +5,7 @@ import {
   findPrevWeekDate,
   findPrevDayDate,
   findSectorsByDate,
+  findSectorsByDateAndNames,
 } from "@/db/repositories/index.js";
 import type { SectorRsRow, IndustryRsRow } from "@/db/repositories/index.js";
 import { toNum } from "@/etl/utils/common";
@@ -134,8 +135,9 @@ export const getLeadingSectors: AgentTool = {
         });
       }
 
+      const sectorNames = sectorRows.map((s) => s.sector);
       const prevDaySectorRows = await retryDatabaseOperation(() =>
-        findSectorsByDate(prevDayDate, limit),
+        findSectorsByDateAndNames(prevDayDate, sectorNames),
       );
 
       const prevDayMap = new Map<string, { rank: number; avgRs: number }>();
@@ -192,9 +194,19 @@ export const getLeadingSectors: AgentTool = {
       });
     }
 
-    // 전주 섹터 랭킹 조회
-    const prevSectorRows = await retryDatabaseOperation(() =>
+    // 전주 섹터 랭킹 조회 — 현재 상위 섹터 + 전주 상위 섹터 모두 포함
+    const currentSectorNames = sectorRows.map((s) => s.sector);
+    const prevTopRows = await retryDatabaseOperation(() =>
       findSectorsByDate(prevWeekDate, limit),
+    );
+    const allSectorNames = [
+      ...new Set([
+        ...currentSectorNames,
+        ...prevTopRows.map((s) => s.sector),
+      ]),
+    ];
+    const prevSectorRows = await retryDatabaseOperation(() =>
+      findSectorsByDateAndNames(prevWeekDate, allSectorNames),
     );
 
     const prevRankMap = new Map<string, { rank: number; avgRs: number }>();
@@ -206,7 +218,7 @@ export const getLeadingSectors: AgentTool = {
     }
 
     const currentTopSectors = new Set(sectorRows.map((s) => s.sector));
-    const prevTopSectors = new Set(prevSectorRows.map((s) => s.sector));
+    const prevTopSectors = new Set(prevTopRows.map((s) => s.sector));
 
     const newEntrants = [...currentTopSectors].filter(
       (s) => !prevTopSectors.has(s),

@@ -143,7 +143,14 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
-      // 4th: 전주 섹터 랭킹
+      // 4th: 전주 섹터 랭킹 (limit 기반 — entrants/exits 판단용)
+      .mockResolvedValueOnce({
+        rows: [
+          { sector: "Healthcare", avg_rs: "62", rs_rank: 1 },
+          { sector: "Technology", avg_rs: "58", rs_rank: 2 },
+        ],
+      })
+      // 5th: 전주 섹터 랭킹 (이름 기반 — 순위 비교용)
       .mockResolvedValueOnce({
         rows: [
           { sector: "Healthcare", avg_rs: "62", rs_rank: 1 },
@@ -181,6 +188,11 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
+      // 4th: limit 기반
+      .mockResolvedValueOnce({
+        rows: [{ sector: "Energy", avg_rs: "45", rs_rank: 5 }],
+      })
+      // 5th: 이름 기반
       .mockResolvedValueOnce({
         rows: [{ sector: "Energy", avg_rs: "45", rs_rank: 5 }],
       });
@@ -210,7 +222,14 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
-      // 전주: Technology, Healthcare (Energy 없었음)
+      // 4th: 전주 limit 기반 (entrants/exits 판단용)
+      .mockResolvedValueOnce({
+        rows: [
+          { sector: "Technology", avg_rs: "65", rs_rank: 1 },
+          { sector: "Healthcare", avg_rs: "55", rs_rank: 2 },
+        ],
+      })
+      // 5th: 전주 이름 기반 (순위 비교용 — Energy는 전주 미존재)
       .mockResolvedValueOnce({
         rows: [
           { sector: "Technology", avg_rs: "65", rs_rank: 1 },
@@ -264,7 +283,11 @@ describe("getLeadingSectors", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_week_date: "2026-02-28" }],
       })
-      // 전주에 NewSector 없음
+      // 4th: 전주 limit 기반
+      .mockResolvedValueOnce({
+        rows: [{ sector: "OldSector", avg_rs: "48", rs_rank: 1 }],
+      })
+      // 5th: 전주 이름 기반 (NewSector는 전주 미존재)
       .mockResolvedValueOnce({
         rows: [{ sector: "OldSector", avg_rs: "48", rs_rank: 1 }],
       });

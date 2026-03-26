@@ -114,6 +114,24 @@ export async function findSectorsByDate(
 }
 
 /**
+ * 지정 날짜에서 특정 섹터 이름 목록의 RS 랭킹(compact)을 조회한다.
+ * LIMIT 없이 이름 기반으로 조회하여, 순위권 밖 섹터의 과거 데이터도 정확히 추적한다.
+ */
+export async function findSectorsByDateAndNames(
+  date: string,
+  sectors: string[],
+): Promise<SectorRsCompactRow[]> {
+  const { rows } = await pool.query<SectorRsCompactRow>(
+    `SELECT sector, avg_rs::text, rs_rank
+     FROM sector_rs_daily
+     WHERE date = $1 AND sector = ANY($2)`,
+    [date, sectors],
+  );
+
+  return rows;
+}
+
+/**
  * 지정 날짜 기준 group_phase 1→2 전환 섹터 목록을 조회한다.
  */
 export async function findSectorsWithPhaseTransition(
