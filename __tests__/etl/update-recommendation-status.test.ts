@@ -126,59 +126,59 @@ describe("update-recommendation-status", () => {
 describe("trailing stop logic (progressive profit tiers)", () => {
   // --- maxPnl < 5%: 미발동 ---
 
-  it("does not trigger when maxPnL is below minimum tier (4.9%)", () => {
+  it("does not trigger when maxPnL is below minimum tier (1.9%)", () => {
     expect(
       shouldTriggerTrailingStop({
         currentPhase: 2,
-        maxPnlPercent: 4.9,
+        maxPnlPercent: 1.9,
         pnlPercent: 0,
       }),
     ).toBe(false);
   });
 
-  // --- Tier 5%+: 40% 되돌림, floor 0% ---
+  // --- Tier 5%+: 30% 되돌림, floor 1% (#438 타이트닝) ---
 
-  it("triggers at 5% tier boundary (maxPnl=5, pnl drops below 3)", () => {
-    // trailingLevel = max(5 * 0.60, 0) = 3
+  it("triggers at 5% tier boundary (maxPnl=5, pnl drops below 3.5)", () => {
+    // trailingLevel = max(5 * 0.70, 1) = 3.5
     expect(
       shouldTriggerTrailingStop({
         currentPhase: 2,
         maxPnlPercent: 5,
-        pnlPercent: 2.9,
+        pnlPercent: 3.4,
       }),
     ).toBe(true);
   });
 
-  it("does not trigger at 5% tier when within bounds (maxPnl=5, pnl=3.1)", () => {
+  it("does not trigger at 5% tier when within bounds (maxPnl=5, pnl=3.6)", () => {
     expect(
       shouldTriggerTrailingStop({
         currentPhase: 2,
         maxPnlPercent: 5,
-        pnlPercent: 3.1,
+        pnlPercent: 3.6,
       }),
     ).toBe(false);
   });
 
-  // --- Tier 10%+: 30% 되돌림, floor 3% ---
+  // --- Tier 10%+: 25% 되돌림, floor 5% (#438 타이트닝) ---
 
-  it("triggers at 10% tier boundary (maxPnl=10, pnl drops below 7)", () => {
-    // trailingLevel = max(10 * 0.70, 3) = 7
+  it("triggers at 10% tier boundary (maxPnl=10, pnl drops below 7.5)", () => {
+    // trailingLevel = max(10 * 0.75, 5) = 7.5
     expect(
       shouldTriggerTrailingStop({
         currentPhase: 2,
         maxPnlPercent: 10,
-        pnlPercent: 6,
+        pnlPercent: 7,
       }),
     ).toBe(true);
   });
 
-  it("does not trigger at 10% tier when within bounds (maxPnl=15, pnl=11)", () => {
-    // trailingLevel = max(15 * 0.70, 3) = 10.5
+  it("does not trigger at 10% tier when within bounds (maxPnl=15, pnl=12)", () => {
+    // trailingLevel = max(15 * 0.75, 5) = 11.25
     expect(
       shouldTriggerTrailingStop({
         currentPhase: 2,
         maxPnlPercent: 15,
-        pnlPercent: 11,
+        pnlPercent: 12,
       }),
     ).toBe(false);
   });
@@ -234,7 +234,7 @@ describe("trailing stop logic (progressive profit tiers)", () => {
 
   it("triggers trailing stop even when PnL is negative if maxPnL was above threshold", () => {
     // maxPnL: 15% (tier 10%+), currentPnL: -3%
-    // trailingLevel = max(15 * 0.70, 3) = 10.5 → -3 < 10.5 → 발동
+    // trailingLevel = max(15 * 0.75, 5) = 11.25 → -3 < 11.25 → 발동
     expect(
       shouldTriggerTrailingStop({
         currentPhase: 3,
