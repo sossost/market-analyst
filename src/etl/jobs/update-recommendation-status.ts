@@ -22,12 +22,12 @@ const TAG = "UPDATE_RECOMMENDATION_STATUS";
  *
  * 근거: #359 — AAOI +27.4% → -5.7% 사례. Phase exit 의존 청산으로 수익 증발.
  * 확장: #413 — maxPnl 0~5% 구간 보호 부재. 소수익 포지션이 phase exit 시 손실 전환.
- * 주의: AAOI/DWSN 2건 기반 초기 추정값 + 2% tier 추가. 운영 데이터 축적 후 조정 필요.
+ * 타이트닝: #438 — 5-10% 구간 되돌림 과대. 수익 구간에서 손실 전환 방지 강화.
  */
 export const PROFIT_TIERS = [
   { minMaxPnl: 20, retracement: 0.25, profitFloor: 10 },
-  { minMaxPnl: 10, retracement: 0.30, profitFloor: 3 },
-  { minMaxPnl: 5, retracement: 0.40, profitFloor: 0 },
+  { minMaxPnl: 10, retracement: 0.25, profitFloor: 5 },
+  { minMaxPnl: 5, retracement: 0.30, profitFloor: 1 },
   { minMaxPnl: 2, retracement: 0.50, profitFloor: 0 },
 ] as const;
 
@@ -74,7 +74,8 @@ export function findProfitTier(maxPnlPercent: number) {
  * 5. pnlPercent < trailing level → 발동
  *
  * 예: maxPnl 27.4% → tier(20, 0.25, 10) → level = max(20.55, 10) = 20.55
- *     pnl이 20.55% 아래로 떨어지면 발동
+ *     maxPnl 15%  → tier(10, 0.25, 5)  → level = max(11.25, 5) = 11.25
+ *     pnl이 trailing level 아래로 떨어지면 발동
  */
 export function shouldTriggerTrailingStop(params: {
   currentPhase: number | null;
