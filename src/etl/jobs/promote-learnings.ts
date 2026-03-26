@@ -33,30 +33,35 @@ interface PromotionThresholds {
   skipBinomialTest: boolean;
 }
 
+/** Bootstrap (0~1건): 단일 적중으로도 학습 루프 시동 허용. binomial test 면제. */
+const BOOTSTRAP_THRESHOLDS: PromotionThresholds = { minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true };
+/**
+ * Cold start (2~4건): 완화 기준 + binomial test 면제.
+ * 소표본(2~4건)에서 p<0.05는 수학적으로 불가 → hitRate로 품질 제어. (#437)
+ */
+const COLD_START_THRESHOLDS: PromotionThresholds = { minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true };
+/** 성장기 (5~14건): 중간 기준 — binomial test 필수 */
+const GROWTH_THRESHOLDS: PromotionThresholds = { minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false };
+/** 정상 운영 (15건+): 엄격 기준 유지 */
+const NORMAL_THRESHOLDS: PromotionThresholds = { minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false };
+
 /**
  * 현재 활성 학습 건수에 따라 승격 기준을 동적으로 반환한다.
  *
- * - Bootstrap (0~1건): 최소 기준 — 단일 적중으로도 학습 루프 시동 허용. binomial test 면제.
- *   소표본에서 binomial test(p<0.05)는 수학적으로 통과 불가(5건에서 5/5 필요).
- *   첫 학습 진입이 불가능하면 전체 학습 루프가 영구 비활성 상태에 빠진다.
- * - Cold start (2~4건): 완화 기준 + binomial test 면제 — 초기 학습 확장 허용.
- *   소표본(2~4건)에서 binomial 유의성 달성 불가 → hitRate로 품질 제어. (#437)
- * - 성장기 (5~14건): 중간 기준 — binomial test 필수
- * - 정상 운영 (15건+): 엄격 기준 유지
+ * 소표본에서 binomial test(p<0.05)는 수학적으로 통과 불가(5건에서 5/5 필요).
+ * 첫 학습 진입이 불가능하면 전체 학습 루프가 영구 비활성 상태에 빠진다.
  */
 export function getPromotionThresholds(activeLearningCount: number): PromotionThresholds {
   if (activeLearningCount < BOOTSTRAP_THRESHOLD) {
-    return { minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true };
+    return BOOTSTRAP_THRESHOLDS;
   }
-  // Cold start: binomial test 면제 — 소표본(2~4건)에서 p<0.05는 수학적으로 불가.
-  // P(X≥2|n=2,p=0.5)=0.25 → 절대 통과 불가. hitRate 55%로 품질 제어. (#437)
   if (activeLearningCount < COLD_START_THRESHOLD) {
-    return { minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true };
+    return COLD_START_THRESHOLDS;
   }
   if (activeLearningCount < GROWTH_PHASE_THRESHOLD) {
-    return { minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false };
+    return GROWTH_THRESHOLDS;
   }
-  return { minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false };
+  return NORMAL_THRESHOLDS;
 }
 
 interface PromotionCandidate {
