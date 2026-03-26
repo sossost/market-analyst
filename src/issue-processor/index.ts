@@ -2,16 +2,17 @@
  * 자율 이슈 처리 시스템 — 메인 오케스트레이터
  *
  * 1. 미처리 이슈 조회 (auto: 라벨 없는 이슈)
- * 2. 바로 Claude Code CLI로 구현 → PR 생성
+ * 2. 사전 트리아지 (~3분) — PROCEED / SKIP / ESCALATE 판정
+ * 3. PROCEED만 Claude Code CLI로 구현 → PR 생성
  *
- * CEO가 PR 리뷰에서 최종 판단하므로 트리아지 불필요.
- * 1사이클 최대 2건 처리.
+ * 1사이클 최대 1건 처리.
  */
 
 import 'dotenv/config'
 
-import { fetchUnprocessedIssues } from './githubClient.js'
+import { fetchUnprocessedIssues, addComment, addLabel } from './githubClient.js'
 import { executeIssue } from './executeIssue.js'
+import { triageIssue } from './triageIssue.js'
 import { MAX_ISSUES_PER_CYCLE } from './types.js'
 import { logger } from '@/lib/logger'
 
@@ -19,6 +20,18 @@ const TAG = 'ISSUE_PROCESSOR'
 
 function log(message: string): void {
   logger.info(TAG, message)
+}
+
+/**
+ * 트리아지 코멘트를 이슈에 남긴다.
+ * 코멘트가 비어 있으면(폴백) 스킵한다.
+ */
+async function postTriageComment(issueNumber: number, comment: string): Promise<void> {
+  if (comment === '') return
+  await addComment(
+    issueNumber,
+    `**[사전 트리아지]**\n\n${comment}`,
+  )
 }
 
 export async function processIssues(): Promise<void> {
@@ -32,13 +45,36 @@ export async function processIssues(): Promise<void> {
     return
   }
 
-  // Step 2: 최대 MAX_ISSUES_PER_CYCLE건만 실행
+  // Step 2: 최대 MAX_ISSUES_PER_CYCLE건만 처리
   const toProcess = unprocessedIssues.slice(0, MAX_ISSUES_PER_CYCLE)
 
   for (const issue of toProcess) {
     try {
+      // Step 2a: 사전 트리아지
+      log(`▶ 트리아지: #${issue.number} "${issue.title}"`)
+      const triage = await triageIssue(issue)
+      log(`  트리아지 판정: ${triage.verdict}`)
+
+      if (triage.verdict === 'SKIP') {
+        await postTriageComment(issue.number, triage.comment)
+        await addLabel(issue.number, 'auto:blocked')
+        log(`  ✗ SKIP — auto:blocked 라벨 부착`)
+        continue
+      }
+
+      if (triage.verdict === 'ESCALATE') {
+        await postTriageComment(issue.number, triage.comment)
+        await addLabel(issue.number, 'auto:needs-ceo')
+        log(`  ⚠ ESCALATE — auto:needs-ceo 라벨 부착`)
+        continue
+      }
+
+      // PROCEED: 트리아지 코멘트 남기고 실행
+      await postTriageComment(issue.number, triage.comment)
+
       log(`▶ 실행: #${issue.number} "${issue.title}"`)
-      const result = await executeIssue(issue)
+      const triageComment = triage.comment !== '' ? triage.comment : undefined
+      const result = await executeIssue(issue, triageComment)
 
       if (result.success) {
         log(`  ✓ PR 생성 완료: ${result.prUrl}`)

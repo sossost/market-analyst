@@ -84,6 +84,47 @@ describe('buildClaudePrompt — 프로토콜 통일 검증', () => {
 })
 
 // ---------------------------------------------------------------------------
+// buildClaudePrompt — triageComment 연동 검증
+// ---------------------------------------------------------------------------
+
+describe('buildClaudePrompt — triageComment 연동', () => {
+  const issue = { number: 99, title: 'feat: 테스트', body: '테스트 본문', labels: [], author: 'test' }
+
+  it('triageComment가 없으면 기존 자체 검증 지시를 포함한다', () => {
+    const prompt = buildClaudePrompt(issue, 'feat')
+
+    expect(prompt).toContain('골 정렬: "Phase 2 주도섹터/주도주 초입 포착"')
+    expect(prompt).toContain('무효 판정: LLM 백테스트')
+    expect(prompt).not.toContain('사전 트리아지 분석')
+    expect(prompt).not.toContain('사전 트리아지에서 검증 완료')
+  })
+
+  it('triageComment가 있으면 사전 트리아지 분석 섹션을 추가한다', () => {
+    const prompt = buildClaudePrompt(issue, 'feat', '트리아지 분석 내용')
+
+    expect(prompt).toContain('## 사전 트리아지 분석')
+    expect(prompt).toContain('트리아지 분석 내용')
+  })
+
+  it('triageComment가 있으면 골 정렬 자체 검증을 사전 트리아지 참조로 대체한다', () => {
+    const prompt = buildClaudePrompt(issue, 'feat', '분석')
+
+    expect(prompt).toContain('사전 트리아지에서 골 정렬 및 무효 판정 검증 완료')
+    expect(prompt).not.toContain('골 정렬: "Phase 2 주도섹터/주도주 초입 포착"')
+    expect(prompt).not.toContain('무효 판정: LLM 백테스트')
+  })
+
+  it('triageComment가 있어도 기본 프로토콜은 유지한다', () => {
+    const prompt = buildClaudePrompt(issue, 'feat', '분석')
+
+    expect(prompt).toContain('plan.md')
+    expect(prompt).toContain('셀프 리뷰')
+    expect(prompt).toContain('git checkout main')
+    expect(prompt).toContain('untrusted-issue')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // extractBranchType 테스트
 // ---------------------------------------------------------------------------
 
