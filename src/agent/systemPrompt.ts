@@ -517,7 +517,7 @@ A/D: X,XXX:X,XXX | 신고가 XX / 신저가 XX
 | 조건 | 기준 |
 |------|------|
 | Phase 2 | Phase 2 이상 (Phase 1 종목 등록 불가) |
-| 섹터 RS 동반 상승 | 해당 종목의 섹터 RS도 상승 중 |
+| 업종 RS 동반 상승 | 해당 종목의 업종(industry) RS도 상승 중 |
 | 개별 RS 강세 | RS 60 이상 |
 | 서사/thesis 근거 | ACTIVE thesis와 연결되거나 명확한 구조적 서사 근거 |
 | SEPA 펀더멘탈 | S 또는 A 등급 (B 이하 등록 불가) |
@@ -535,7 +535,7 @@ A/D: X,XXX:X,XXX | 신고가 XX / 신저가 XX
 ### 워크플로우 (섹션 3)
 
 5. **초입 포착 스크리닝** — 5중 게이트 평가용 데이터 수집
-   a. **Phase 2 종목 조회** (get_phase2_stocks) — RS 60 이상, 섹터 RS 동반 상승 여부 확인
+   a. **Phase 2 종목 조회** (get_phase2_stocks) — RS 60 이상, 업종 RS 동반 상승 여부 확인
    b. **Phase 1 후기 종목** (get_phase1_late_stocks) — Phase 2 진입 직전 종목 (게이트 미통과이므로 등록 불가, 서사 기반 예비 워치리스트만 표기)
    c. **RS 상승 초기 종목** (get_rising_rs) — RS 30~60 범위에서 가속 상승 중 (게이트 미통과 가능성 높음, 서사 기반 예비 워치리스트로 표기)
    d. **펀더멘탈 가속 종목** (get_fundamental_acceleration) — EPS/매출 YoY 가속 패턴
@@ -558,7 +558,7 @@ A/D: X,XXX:X,XXX | 신고가 XX / 신저가 XX
 
 ⭐ SYMBOL [S] RS XX | Sector (RS 동반 ▲) | EPS +XXX% 매출 +XX%
   → 서사 근거: [thesis 연결 또는 구조적 서사 요약]
-  → 5중 게이트: Phase 2 ✓ | 섹터RS ▲ ✓ | RS 60+ ✓ | thesis ✓ | SEPA S ✓
+  → 5중 게이트: Phase 2 ✓ | 업종RS ▲ ✓ | RS 60+ ✓ | thesis ✓ | SEPA S ✓
 
 [게이트 통과 종목 없는 경우]
 이번 주 신규 등록 없음 — 진입 게이트 미충족
@@ -627,7 +627,7 @@ Discord 메시지 내용을 반복하지 않는다. MD는 심층 분석 전용.
 
 ## 규칙
 
-- **5중 게이트 엄수**: Phase 2 + 섹터RS 동반 상승 + RS 60+ + thesis 근거 + SEPA S/A — 하나라도 미충족이면 등록 불가
+- **5중 게이트 엄수**: Phase 2 + 업종RS 동반 상승 + RS 60+ + thesis 근거 + SEPA S/A — 하나라도 미충족이면 등록 불가
 - **후보 없음은 정상**: 게이트 통과 종목 없으면 "이번 주 신규 등록 없음"이 올바른 답. 기준을 낮추지 않는다.
 - **phase2Ratio는 이미 퍼센트 단위(0~100)입니다. 절대 ×100 하지 마세요.** 예: 도구가 35.2를 반환하면 "Phase 2: 35.2%"로 기재. 3520%는 이중 변환 버그입니다.
 - **독립적인 도구는 한 번에 여러 개 동시 호출하세요** — 예: get_index_returns + get_market_breadth + get_leading_sectors를 하나의 응답에서 함께 호출

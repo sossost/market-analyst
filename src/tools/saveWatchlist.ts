@@ -29,7 +29,7 @@ interface WatchlistRegisterInput {
   date: string;
   phase: number;
   rs_score: number;
-  sector_rs: number;
+  industry_rs: number;
   sepa_grade: string;
   thesis_id: number | null;
   sector: string;
@@ -56,7 +56,7 @@ export const saveWatchlist: AgentTool = {
   definition: {
     name: "save_watchlist",
     description:
-      "관심종목을 등록(register) 하거나 해제(exit)합니다. 등록 시 5중 교집합 게이트(Phase 2 + 섹터RS + 개별RS + thesis 근거 + SEPA S/A)를 모두 통과해야 합니다.",
+      "관심종목을 등록(register) 하거나 해제(exit)합니다. 등록 시 5중 교집합 게이트(Phase 2 + 업종RS + 개별RS + thesis 근거 + SEPA S/A)를 모두 통과해야 합니다.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -73,7 +73,7 @@ export const saveWatchlist: AgentTool = {
             date: { type: "string", description: "등록일 (YYYY-MM-DD)" },
             phase: { type: "number", description: "현재 Phase (1~4)" },
             rs_score: { type: "number", description: "개별 RS 점수 (0~100)" },
-            sector_rs: { type: "number", description: "섹터 RS 평균 (avg_rs)" },
+            industry_rs: { type: "number", description: "업종(industry) RS 평균 (avg_rs)" },
             sepa_grade: {
               type: "string",
               enum: ["S", "A", "B", "C", "F"],
@@ -95,7 +95,7 @@ export const saveWatchlist: AgentTool = {
             },
           },
           required: [
-            "symbol", "date", "phase", "rs_score", "sector_rs",
+            "symbol", "date", "phase", "rs_score", "industry_rs",
             "sepa_grade", "thesis_id", "sector", "industry", "reason",
           ],
         },
@@ -160,7 +160,7 @@ async function executeRegister(
   }
 
   const rsScore = typeof rawInput.rs_score === "number" ? rawInput.rs_score : null;
-  const sectorRs = typeof rawInput.sector_rs === "number" ? rawInput.sector_rs : null;
+  const industryRs = typeof rawInput.industry_rs === "number" ? rawInput.industry_rs : null;
   const sepaGrade = typeof rawInput.sepa_grade === "string" ? rawInput.sepa_grade.toUpperCase() : null;
   const thesisId = typeof rawInput.thesis_id === "number" ? rawInput.thesis_id : null;
   const sector = typeof rawInput.sector === "string" ? rawInput.sector : null;
@@ -173,7 +173,7 @@ async function executeRegister(
     symbol,
     phase,
     rsScore,
-    sectorRs,
+    industryRs,
     sepaGrade,
     thesisId,
   };
@@ -226,7 +226,7 @@ async function executeRegister(
         entryDate: date,
         entryPhase: phase,
         entryRsScore: rsScore,
-        entrySectorRs: sectorRs != null ? String(sectorRs) : null,
+        entrySectorRs: industryRs != null ? String(industryRs) : null,
         entrySepaGrade: sepaGrade,
         entryThesisId: thesisId,
         entrySector: sector,

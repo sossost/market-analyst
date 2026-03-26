@@ -69,7 +69,7 @@ function makeValidRegisterInput() {
       date: "2026-03-22",
       phase: 2,
       rs_score: 75,
-      sector_rs: 65,
+      industry_rs: 65,
       sepa_grade: "A",
       thesis_id: 42,
       sector: "Technology",
@@ -122,13 +122,13 @@ describe("saveWatchlist.execute — register", () => {
     expect(result.gateFailures.some((f: { condition: string }) => f.condition === "phase")).toBe(true);
   });
 
-  it("섹터 RS 미달이면 게이트 거부", async () => {
+  it("업종 RS 미달이면 게이트 거부", async () => {
     const input = makeValidRegisterInput();
-    (input.register as Record<string, unknown>).sector_rs = 20;
+    (input.register as Record<string, unknown>).industry_rs = 20;
     const result = JSON.parse(await saveWatchlist.execute(input));
     expect(result.success).toBe(false);
     expect(result.blocked).toBe(true);
-    expect(result.gateFailures.some((f: { condition: string }) => f.condition === "sectorRs")).toBe(true);
+    expect(result.gateFailures.some((f: { condition: string }) => f.condition === "industryRs")).toBe(true);
   });
 
   it("개별 RS 미달이면 게이트 거부", async () => {
