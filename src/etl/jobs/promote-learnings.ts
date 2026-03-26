@@ -39,22 +39,24 @@ interface PromotionThresholds {
  * - Bootstrap (0~1건): 최소 기준 — 단일 적중으로도 학습 루프 시동 허용. binomial test 면제.
  *   소표본에서 binomial test(p<0.05)는 수학적으로 통과 불가(5건에서 5/5 필요).
  *   첫 학습 진입이 불가능하면 전체 학습 루프가 영구 비활성 상태에 빠진다.
- *   데이터 희소 환경(persona+metric별 1~2건)에서 minTotal=3은 실질적 진입 불가.
- * - Cold start (2~4건): 완화 기준 — 초기 학습 진입 허용
- * - 성장기 (5~14건): 중간 기준
- * - 정상 운영 (15건+): 기존 엄격 기준 유지
+ * - Cold start (2~4건): 완화 기준 + binomial test 면제 — 초기 학습 확장 허용.
+ *   소표본(2~4건)에서 binomial 유의성 달성 불가 → hitRate로 품질 제어. (#437)
+ * - 성장기 (5~14건): 중간 기준 — binomial test 필수
+ * - 정상 운영 (15건+): 엄격 기준 유지
  */
 export function getPromotionThresholds(activeLearningCount: number): PromotionThresholds {
   if (activeLearningCount < BOOTSTRAP_THRESHOLD) {
     return { minHits: 1, minHitRate: 0.55, minTotal: 1, skipBinomialTest: true };
   }
+  // Cold start: binomial test 면제 — 소표본(2~4건)에서 p<0.05는 수학적으로 불가.
+  // P(X≥2|n=2,p=0.5)=0.25 → 절대 통과 불가. hitRate 55%로 품질 제어. (#437)
   if (activeLearningCount < COLD_START_THRESHOLD) {
-    return { minHits: 2, minHitRate: 0.60, minTotal: 3, skipBinomialTest: false };
+    return { minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true };
   }
   if (activeLearningCount < GROWTH_PHASE_THRESHOLD) {
-    return { minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false };
+    return { minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false };
   }
-  return { minHits: 10, minHitRate: 0.70, minTotal: 10, skipBinomialTest: false };
+  return { minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false };
 }
 
 interface PromotionCandidate {
