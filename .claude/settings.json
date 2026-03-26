@@ -23,6 +23,15 @@
             "command": "bash scripts/check-doc-sync.sh"
           }
         ]
+      },
+      {
+        "matcher": "mcp__github__create_issue",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/validate-issue-labels.sh"
+          }
+        ]
       }
     ]
   }
