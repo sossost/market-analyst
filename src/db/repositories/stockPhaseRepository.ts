@@ -173,7 +173,7 @@ export async function findPhase2PersistenceBySymbol(
      WHERE symbol = $1
        AND date >= $2
        AND date <= $3
-       AND phase >= 2`,
+       AND phase = 2`,
     [symbol, startDate, endDate],
   );
 

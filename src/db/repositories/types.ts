@@ -262,6 +262,10 @@ export interface Phase2PersistenceRow {
   phase2_count: string;
 }
 
+export interface Phase2StabilityRow {
+  symbol: string;
+}
+
 // ─── symbolRepository ─────────────────────────────────────────────────────────
 
 export interface SymbolMetaRow {

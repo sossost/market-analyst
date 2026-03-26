@@ -97,18 +97,24 @@ function makeInsertChain(rowCount: number) {
   };
 }
 
-function setupDefaultPoolMocks(overrides?: { persistenceRows?: { symbol: string; phase2_count: string }[] }) {
+function setupDefaultPoolMocks(overrides?: {
+  persistenceRows?: { symbol: string; phase2_count: string }[];
+  stabilityRows?: { symbol: string }[];
+}) {
   // pool.query 호출 순서 (Promise.all 병렬이지만 mock은 순차 소비):
   // 1. activeRows (ACTIVE symbol)
   // 2. cooldownRows (CLOSED/CLOSED_PHASE_EXIT/CLOSED_TRAILING_STOP/CLOSED_STOP_LOSS symbol in cooldown)
-  // 3. persistenceRows (stock_phases phase >= 2)  ← activeRows/cooldownRows와 병렬
-  // 4. priceRows (daily_prices)
+  // 3. persistenceRows (stock_phases phase = 2)  ← activeRows/cooldownRows와 병렬
+  // 4. stabilityRows (최근 N거래일 연속 Phase 2 확인, #436)
+  // 5. priceRows (daily_prices)
   // saveFactorSnapshot 내부 쿼리는 별도
   const defaultPersistence = overrides?.persistenceRows ?? [{ symbol: "AAPL", phase2_count: "3" }];
+  const defaultStability = overrides?.stabilityRows ?? [{ symbol: "AAPL" }];
   mockPool.query
     .mockResolvedValueOnce({ rows: [] })                // activeRows
     .mockResolvedValueOnce({ rows: [] })                // cooldownRows
     .mockResolvedValueOnce({ rows: defaultPersistence }) // persistenceRows
+    .mockResolvedValueOnce({ rows: defaultStability })   // stabilityRows
     .mockResolvedValueOnce({ rows: [] });               // priceRows
 }
 
@@ -197,6 +203,7 @@ describe("Phase 1: 레짐 하드 게이트 + Bear 예외", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -251,6 +258,7 @@ describe("Phase 1: 레짐 하드 게이트 + Bear 예외", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot (LMT만 저장됨)
       .mockResolvedValueOnce({ rows: [] })
@@ -405,6 +413,7 @@ describe("Phase 2: 쿨다운 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })                         // activeRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })     // cooldownRows: AAPL 존재
       .mockResolvedValueOnce({ rows: [] })                         // persistenceRows
+      .mockResolvedValueOnce({ rows: [] })                         // stabilityRows
       .mockResolvedValueOnce({ rows: [] });                        // priceRows
 
     const result = await saveRecommendations.execute({
@@ -425,6 +434,7 @@ describe("Phase 2: 쿨다운 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows: 비어있음
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] }); // priceRows
 
     // saveFactorSnapshot
@@ -468,6 +478,7 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows: 3일
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -492,6 +503,7 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "2" }] })  // persistenceRows: 2일
+      .mockResolvedValueOnce({ rows: [] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] });  // priceRows
 
     const result = await saveRecommendations.execute({
@@ -515,6 +527,7 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [] })  // persistenceRows: 0일
+      .mockResolvedValueOnce({ rows: [] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] });  // priceRows
 
     const result = await saveRecommendations.execute({
@@ -591,6 +604,7 @@ describe("Phase 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -646,6 +660,7 @@ describe("RS 하한 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -804,6 +819,7 @@ describe("레짐 조회 실패 시 fail-open", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -864,6 +880,7 @@ describe("RS 과열 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -888,6 +905,7 @@ describe("RS 과열 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "MSFT", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "MSFT" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -964,6 +982,7 @@ describe("저가주 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "XYZ", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "XYZ" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -987,6 +1006,7 @@ describe("저가주 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // activeRows
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "MSFT", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "MSFT" }] })  // stabilityRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })

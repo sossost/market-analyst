@@ -12,6 +12,7 @@ import {
   findActiveRecommendations,
   findRecentlyClosed,
   findPhase2Persistence,
+  findPhase2Stability,
 } from "@/db/repositories/recommendationRepository.js";
 import {
   findStockPhaseDetail,
@@ -61,6 +62,13 @@ const PHASE2_PERSISTENCE_DAYS = 5;
  * - 3: 지속성 기준 강화로 불안정 Phase 2 진입 차단
  */
 const MIN_PHASE2_PERSISTENCE_COUNT = 3;
+
+/**
+ * Phase 2 안정성 판단: 최근 N 거래일 연속 Phase 2 필수.
+ * 근거: 90일 추천 중 50%가 진입 1-2일 만에 Phase 3 전환 (#436).
+ * 7/8 경계 종목이 하루 만에 조건 깨지는 패턴을 차단한다.
+ */
+const PHASE2_STABILITY_DAYS = 3;
 
 /**
  * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
@@ -208,7 +216,7 @@ export const saveRecommendations: AgentTool = {
       .map((r) => validateSymbol(r.symbol))
       .filter((s): s is string => s != null);
 
-    // Phase 2 + Phase 3: 쿨다운·중복 방지·지속성 3가지 쿼리 병렬 조회
+    // Phase 2 + Phase 3: 쿨다운·중복 방지·지속성·안정성 4가지 쿼리 병렬 조회
     const cooldownStart = getDateOffset(date, COOLDOWN_CALENDAR_DAYS);
     const persistenceStart = getDateOffset(date, PHASE2_PERSISTENCE_DAYS);
 
@@ -216,16 +224,19 @@ export const saveRecommendations: AgentTool = {
       activeRows,
       cooldownRows,
       persistenceRows,
+      stabilityRows,
     ] = await Promise.all([
       retryDatabaseOperation(() => findActiveRecommendations(symbols)),
       retryDatabaseOperation(() => findRecentlyClosed(cooldownStart, symbols)),
       retryDatabaseOperation(() => findPhase2Persistence(symbols, persistenceStart, date)),
+      retryDatabaseOperation(() => findPhase2Stability(symbols, date, PHASE2_STABILITY_DAYS)),
     ]);
     const activeSymbols = new Set(activeRows.map((r) => r.symbol));
     const cooldownSymbols = new Set(cooldownRows.map((r) => r.symbol));
     const persistenceMap = new Map(
       persistenceRows.map((r) => [r.symbol, Number(r.phase2_count)]),
     );
+    const stableSymbols = new Set(stabilityRows.map((r) => r.symbol));
 
     // 진입가 검증: 추천일 종가 사전 일괄 조회
     const priceRows = await retryDatabaseOperation(() =>
@@ -245,6 +256,7 @@ export const saveRecommendations: AgentTool = {
     let blockedByOverheatedRS = 0;
     let blockedByLowPrice = 0;
     let blockedByPersistence = 0;
+    let blockedByStability = 0;
 
     for (const rec of recs) {
       const symbol = validateSymbol(rec.symbol);
@@ -370,7 +382,7 @@ export const saveRecommendations: AgentTool = {
         taggedReason = tagBearExceptionReason(taggedReason);
       }
 
-      // Phase 3: Phase 2 지속성 하드 블록 — 최소 2일 Phase 2 유지 필수
+      // Phase 3: Phase 2 지속성 하드 블록 — 최소 3일 Phase 2 유지 필수
       const phase2Count = persistenceMap.get(symbol) ?? 0;
       if (phase2Count < MIN_PHASE2_PERSISTENCE_COUNT) {
         logger.warn(
@@ -378,6 +390,16 @@ export const saveRecommendations: AgentTool = {
           `${symbol}: Phase 2 지속성 ${phase2Count}일 < 기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일, 추천 차단`,
         );
         blockedByPersistence++;
+        continue;
+      }
+
+      // Phase 3.5: Phase 2 안정성 하드 블록 — 최근 N 거래일 연속 Phase 2 필수 (#436)
+      if (!stableSymbols.has(symbol)) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: 최근 ${PHASE2_STABILITY_DAYS}거래일 연속 Phase 2 미충족, 추천 차단`,
+        );
+        blockedByStability++;
         continue;
       }
 
@@ -452,7 +474,8 @@ export const saveRecommendations: AgentTool = {
       blockedByOverheatedRS,
       blockedByLowPrice,
       blockedByPersistence,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단`,
+      blockedByStability,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단, ${blockedByStability}개 안정성 차단`,
     });
   },
 };
