@@ -49,13 +49,13 @@ async function main() {
   console.log(`[${TAG}] Deactivated ${rowCount} Shell Companies symbols.`);
 }
 
+let exitCode = 0;
 main()
-  .then(async () => {
-    await pool.end();
-    process.exit(0);
-  })
-  .catch(async (error) => {
+  .catch((error) => {
     console.error(`[${TAG}] Failed:`, error instanceof Error ? error.message : String(error));
+    exitCode = 1;
+  })
+  .finally(async () => {
     await pool.end();
-    process.exit(1);
+    process.exit(exitCode);
   });
