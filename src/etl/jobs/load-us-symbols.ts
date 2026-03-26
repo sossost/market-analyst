@@ -11,6 +11,7 @@ import { fetchJson, isValidTicker } from "@/etl/utils/common";
 import { logger } from "@/lib/logger";
 
 const TAG = "LOAD_US_SYMBOLS";
+const EXCLUDED_INDUSTRIES = ["Shell Companies"];
 
 const API = process.env.DATA_API! + "/stable";
 const KEY = process.env.FMP_API_KEY!;
@@ -74,7 +75,8 @@ async function main() {
         r.symbol != null &&
         isValidTicker(r.symbol) &&
         !r.isEtf &&
-        !r.isFund
+        !r.isFund &&
+        !EXCLUDED_INDUSTRIES.includes(r.industry ?? "")
       );
     });
 

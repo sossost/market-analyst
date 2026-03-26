@@ -218,6 +218,7 @@ export async function findUnusualStocks(
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false
+       AND s.industry != 'Shell Companies'
        AND dm.vol_ma30::numeric > 0
        AND dp_prev.close::numeric > 0
        AND (
@@ -326,7 +327,8 @@ export async function findPhase1LateStocks(
 export async function findActiveNonEtfSymbols(): Promise<EtlSymbolRow[]> {
   const { rows } = await pool.query<EtlSymbolRow>(
     `SELECT symbol, sector, industry FROM symbols
-     WHERE is_actively_trading = true AND is_etf = false
+     WHERE is_actively_trading = true AND is_etf = false AND is_fund = false
+       AND industry != 'Shell Companies'
      ORDER BY symbol`,
   );
   return rows;
@@ -515,7 +517,8 @@ export async function findBreadthCheckByDate(
 export async function countNullIndustrySymbols(): Promise<EtlNullIndustryRow> {
   const { rows } = await pool.query<EtlNullIndustryRow>(
     `SELECT COUNT(*) as cnt FROM symbols
-     WHERE is_actively_trading = true AND is_etf = false
+     WHERE is_actively_trading = true AND is_etf = false AND is_fund = false
+       AND industry != 'Shell Companies'
        AND (industry IS NULL OR industry = '')`,
   );
   return rows[0] ?? { cnt: "0" };
@@ -724,7 +727,8 @@ export async function findPhase2RatioForQa(
      WHERE sp.date = $1
        AND s.is_actively_trading = true
        AND s.is_etf = false
-       AND s.is_fund = false`,
+       AND s.is_fund = false
+       AND s.industry != 'Shell Companies'`,
     [date],
   );
   return rows[0] ?? null;
