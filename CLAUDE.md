@@ -1,3 +1,5 @@
+@~/.claude/market-analyst-private.md
+
 # Market Analyst — Project Instructions
 
 ## 너의 역할: 매니저
