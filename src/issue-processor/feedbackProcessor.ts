@@ -12,6 +12,7 @@ import { fetchThreadMessages } from './discordClient.js'
 import { sendThreadMessage } from './discordClient.js'
 import { updateLastScannedMessageId } from './prThreadStore.js'
 import { isAllowedSender } from './discordAuth.js'
+import { buildSandboxedEnv, classifyCliError } from './cliUtils.js'
 
 const TAG = 'FEEDBACK_PROCESSOR'
 const EXECUTION_TIMEOUT_MS = 30 * 60 * 1_000 // 30분
@@ -67,24 +68,6 @@ ${feedbackBlock}
 }
 
 /**
- * Claude Code CLI 실행용 환경 변수를 반환한다.
- * Discord 토큰을 제거하여 CLI가 Discord API를 직접 호출하는 사고를 방지.
- */
-function buildSandboxedEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env }
-  delete env.ANTHROPIC_API_KEY
-  delete env.DISCORD_BOT_TOKEN
-  delete env.DISCORD_PR_CHANNEL_ID
-  delete env.DISCORD_WEBHOOK_URL
-  delete env.DISCORD_WEEKLY_WEBHOOK_URL
-  delete env.DISCORD_ERROR_WEBHOOK_URL
-  delete env.DISCORD_DEBATE_WEBHOOK_URL
-  delete env.DISCORD_SYSTEM_REPORT_WEBHOOK_URL
-  delete env.DISCORD_STOCK_REPORT_WEBHOOK_URL
-  return env
-}
-
-/**
  * Claude Code CLI로 피드백을 실행한다.
  */
 async function runClaudeWithFeedback(prompt: string): Promise<void> {
@@ -106,16 +89,8 @@ async function runClaudeWithFeedback(prompt: string): Promise<void> {
       },
       (error, _stdout, stderr) => {
         if (error != null) {
-          const nodeError = error as NodeJS.ErrnoException & { killed?: boolean }
-          if (nodeError.code === 'ENOENT') {
-            reject(new Error('Claude CLI를 찾을 수 없음'))
-            return
-          }
-          if (nodeError.killed === true || nodeError.code === 'ETIMEDOUT') {
-            reject(new Error(`Claude CLI 타임아웃 (${EXECUTION_TIMEOUT_MS / 60_000}분 초과)`))
-            return
-          }
-          reject(new Error(stderr.trim() !== '' ? `CLI stderr: ${stderr.trim().slice(0, 500)}` : error.message))
+          const classified = classifyCliError(error, stderr, EXECUTION_TIMEOUT_MS)
+          reject(new Error(classified))
           return
         }
         resolve()
