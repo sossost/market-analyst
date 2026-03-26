@@ -62,6 +62,7 @@ vi.mock("@/db/repositories/recommendationRepository.js", () => ({
   findActiveRecommendations: vi.fn().mockResolvedValue([]),
   findRecentlyClosed: vi.fn().mockResolvedValue([]),
   findPhase2Persistence: vi.fn().mockResolvedValue([]),
+  findPhase2Stability: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/db/repositories/priceRepository.js", () => ({
@@ -95,13 +96,20 @@ vi.mock("@/db/repositories/sectorRepository.js", () => ({
 }));
 
 import { saveRecommendations } from "@/tools/saveRecommendations";
-import { findPhase2Persistence } from "@/db/repositories/recommendationRepository.js";
+import {
+  findPhase2Persistence,
+  findPhase2Stability,
+} from "@/db/repositories/recommendationRepository.js";
 
 describe("saveRecommendations", () => {
-  function setupPersistenceMock() {
-    vi.mocked(findPhase2Persistence).mockResolvedValue([
-      { symbol: "AAPL", phase2_count: "3" },
-    ]);
+  /** persistence + stability 모두 충족하도록 설정 */
+  function setupGatesMock(symbols: string[] = ["AAPL"]) {
+    vi.mocked(findPhase2Persistence).mockResolvedValue(
+      symbols.map((s) => ({ symbol: s, phase2_count: "3" })),
+    );
+    vi.mocked(findPhase2Stability).mockResolvedValue(
+      symbols.map((s) => ({ symbol: s })),
+    );
   }
 
   beforeEach(() => {
@@ -110,8 +118,9 @@ describe("saveRecommendations", () => {
       onConflictDoNothing: mockOnConflictDoNothing,
     });
     mockOnConflictDoNothing.mockResolvedValue({ rowCount: 1 });
-    // 기본 persistence: 빈 배열 (지속성 미충족)
+    // 기본: 지속성·안정성 미충족
     vi.mocked(findPhase2Persistence).mockResolvedValue([]);
+    vi.mocked(findPhase2Stability).mockResolvedValue([]);
   });
 
   it("has correct tool name", () => {
@@ -148,7 +157,7 @@ describe("saveRecommendations", () => {
   });
 
   it("saves valid recommendations", async () => {
-    setupPersistenceMock();
+    setupGatesMock();
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
       recommendations: [
@@ -172,7 +181,7 @@ describe("saveRecommendations", () => {
   });
 
   it("skips recommendations with zero entry price", async () => {
-    setupPersistenceMock();
+    setupGatesMock(["BAD"]);
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
       recommendations: [
@@ -195,7 +204,7 @@ describe("saveRecommendations", () => {
   });
 
   it("skips recommendations with invalid symbol", async () => {
-    setupPersistenceMock();
+    setupGatesMock();
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
       recommendations: [
@@ -219,7 +228,7 @@ describe("saveRecommendations", () => {
 
   it("handles duplicate (onConflictDoNothing) as skip", async () => {
     mockOnConflictDoNothing.mockResolvedValue({ rowCount: 0 });
-    setupPersistenceMock();
+    setupGatesMock();
 
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
@@ -246,10 +255,8 @@ describe("saveRecommendations", () => {
     mockOnConflictDoNothing
       .mockResolvedValueOnce({ rowCount: 1 })
       .mockResolvedValueOnce({ rowCount: 1 });
-    // AAPL만 persistence 충족
-    vi.mocked(findPhase2Persistence).mockResolvedValue([
-      { symbol: "AAPL", phase2_count: "3" },
-    ]);
+    // AAPL만 persistence + stability 충족
+    setupGatesMock(["AAPL"]);
 
     const result = await saveRecommendations.execute({
       date: "2026-03-05",
@@ -279,5 +286,113 @@ describe("saveRecommendations", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(1);
     expect(parsed.skippedCount).toBe(1);
+  });
+
+  describe("Phase 2 persistence gate", () => {
+    it("blocks when persistence count is below threshold", async () => {
+      // persistence 미충족, stability 충족
+      vi.mocked(findPhase2Persistence).mockResolvedValue([]);
+      vi.mocked(findPhase2Stability).mockResolvedValue([
+        { symbol: "AAPL" },
+      ]);
+
+      const result = await saveRecommendations.execute({
+        date: "2026-03-05",
+        recommendations: [
+          {
+            symbol: "AAPL",
+            entry_price: 185,
+            phase: 2,
+            rs_score: 78,
+            sector: "Technology",
+            industry: "CE",
+            reason: "test",
+          },
+        ],
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.blockedByPersistence).toBe(1);
+      expect(parsed.savedCount).toBe(0);
+    });
+  });
+
+  describe("Phase 2 stability gate (#436)", () => {
+    it("blocks when recent trading days are not all Phase 2", async () => {
+      // persistence 충족하지만 stability 미충족
+      vi.mocked(findPhase2Persistence).mockResolvedValue([
+        { symbol: "BATL", phase2_count: "3" },
+      ]);
+      vi.mocked(findPhase2Stability).mockResolvedValue([]);
+
+      const result = await saveRecommendations.execute({
+        date: "2026-03-12",
+        recommendations: [
+          {
+            symbol: "BATL",
+            entry_price: 10,
+            phase: 2,
+            rs_score: 93,
+            sector: "Technology",
+            industry: "Software",
+            reason: "RS 강세",
+          },
+        ],
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.blockedByStability).toBe(1);
+      expect(parsed.savedCount).toBe(0);
+    });
+
+    it("passes when both persistence and stability are satisfied", async () => {
+      setupGatesMock(["NVDA"]);
+
+      const result = await saveRecommendations.execute({
+        date: "2026-03-12",
+        recommendations: [
+          {
+            symbol: "NVDA",
+            entry_price: 120,
+            phase: 2,
+            rs_score: 85,
+            sector: "Technology",
+            industry: "Semiconductors",
+            reason: "안정적 Phase 2",
+          },
+        ],
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.blockedByStability).toBe(0);
+      expect(parsed.blockedByPersistence).toBe(0);
+      expect(parsed.savedCount).toBe(1);
+    });
+
+    it("reports stability count in result message", async () => {
+      vi.mocked(findPhase2Persistence).mockResolvedValue([
+        { symbol: "PTN", phase2_count: "3" },
+      ]);
+      vi.mocked(findPhase2Stability).mockResolvedValue([]);
+
+      const result = await saveRecommendations.execute({
+        date: "2026-03-06",
+        recommendations: [
+          {
+            symbol: "PTN",
+            entry_price: 8,
+            phase: 2,
+            rs_score: 93,
+            sector: "Healthcare",
+            industry: "Biotech",
+            reason: "test",
+          },
+        ],
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.message).toContain("안정성 차단");
+      expect(parsed.blockedByStability).toBe(1);
+    });
   });
 });

@@ -3,6 +3,7 @@ import type {
   ActiveRecommendationRow,
   RecentlyClosedRow,
   Phase2PersistenceRow,
+  Phase2StabilityRow,
 } from "./types.js";
 
 /**
@@ -52,8 +53,12 @@ export async function findRecentlyClosed(
 }
 
 /**
- * 지정 기간 동안 Phase 2 이상을 유지한 종목별 카운트를 조회한다.
+ * 지정 기간 동안 Phase 2를 유지한 종목별 카운트를 조회한다.
  * saveRecommendations의 Phase 2 지속성 검사용.
+ *
+ * 변경 이력:
+ * - phase >= 2: Phase 3/4도 카운트되어 지속성 검사 무력화 (#436)
+ * - phase = 2: Phase 2만 정확히 카운트
  */
 export async function findPhase2Persistence(
   symbols: string[],
@@ -70,9 +75,43 @@ export async function findPhase2Persistence(
      WHERE symbol = ANY($1)
        AND date >= $2
        AND date <= $3
-       AND phase >= 2
+       AND phase = 2
      GROUP BY symbol`,
     [symbols, startDate, endDate],
+  );
+
+  return rows;
+}
+
+/**
+ * 최근 N 거래일이 모두 Phase 2인 종목만 반환한다.
+ * saveRecommendations의 Phase 2 안정성 게이트용.
+ *
+ * 동작: 각 symbol의 endDate 이하 최근 requiredDays 개 거래일을 추출하고,
+ * 전부 phase = 2인 symbol만 결과에 포함한다.
+ */
+export async function findPhase2Stability(
+  symbols: string[],
+  endDate: string,
+  requiredDays: number,
+): Promise<Phase2StabilityRow[]> {
+  if (symbols.length === 0) {
+    return [];
+  }
+
+  const { rows } = await pool.query<Phase2StabilityRow>(
+    `SELECT symbol
+     FROM (
+       SELECT symbol, phase,
+         ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+       FROM stock_phases
+       WHERE symbol = ANY($1) AND date <= $2
+     ) sub
+     WHERE rn <= $3
+     GROUP BY symbol
+     HAVING COUNT(*) = $3
+        AND COUNT(*) FILTER (WHERE phase = 2) = $3`,
+    [symbols, endDate, requiredDays],
   );
 
   return rows;
