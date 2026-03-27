@@ -1055,6 +1055,62 @@ export const priceTargetConsensus = pgTable(
 );
 
 /**
+ * stock_news — 종목별 최신 뉴스.
+ * FMP /api/v3/stock_news?tickers={symbol}&limit=5 에서 수집.
+ * Phase 2 + 관심종목 대상. 90일 초과 데이터 삭제.
+ * news_archive(매크로 뉴스, symbol 없음)와 별개 테이블.
+ */
+export const stockNews = pgTable(
+  "stock_news",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    publishedDate: text("published_date").notNull(), // YYYY-MM-DD HH:MM:SS (FMP 원본)
+    title: text("title").notNull(),
+    text: text("text"), // 본문 요약
+    image: text("image"), // 썸네일 URL
+    site: text("site"), // 소스 도메인 (예: reuters.com)
+    url: text("url").notNull(), // 원본 기사 URL
+    collectedAt: timestamp("collected_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqUrl: unique("uq_stock_news_url").on(t.url),
+    idxSymbol: index("idx_stock_news_symbol").on(t.symbol),
+    idxPublishedDate: index("idx_stock_news_published_date").on(t.publishedDate),
+  }),
+);
+
+/**
+ * earning_calendar — 실적 발표 일정.
+ * FMP /api/v3/earning_calendar?from=YYYY-MM-DD&to=YYYY-MM-DD 에서 수집.
+ * 오늘 -7일 ~ +30일 범위를 1회 조회 후 Phase 2 + 관심종목 필터링.
+ * 발표 후 실제값(eps, revenue)이 채워지면 ON CONFLICT DO UPDATE.
+ */
+export const earningCalendar = pgTable(
+  "earning_calendar",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+    date: date("date").notNull(), // 실적 발표일 (YYYY-MM-DD)
+    eps: numeric("eps"), // 실제 EPS (발표 전 null)
+    epsEstimated: numeric("eps_estimated"),
+    revenue: numeric("revenue"), // 실제 Revenue (발표 전 null)
+    revenueEstimated: numeric("revenue_estimated"),
+    time: text("time"), // 'amc' (After Market Close) | 'bmo' (Before Market Open)
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_earning_calendar_symbol_date").on(t.symbol, t.date),
+    idxSymbol: index("idx_earning_calendar_symbol").on(t.symbol),
+    idxDate: index("idx_earning_calendar_date").on(t.date),
+  }),
+);
+
+/**
  * daily_reports — 일간/주간 리포트 아카이빙.
  * 기존 data/reports/ JSON 파일을 DB로 이관.
  * report_date별 UNIQUE — 같은 날짜에 같은 타입의 리포트는 하나만 존재.
