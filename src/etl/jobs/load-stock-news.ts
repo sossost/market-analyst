@@ -2,7 +2,7 @@ import "dotenv/config";
 import pLimit from "p-limit";
 import { db, pool } from "@/db/client";
 import { sql } from "drizzle-orm";
-import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
+import { fetchJson, getFmpV3Config, sleep } from "@/etl/utils/common";
 import { stockNews } from "@/db/schema/analyst";
 import { validateEnvironmentVariables } from "@/etl/utils/validation";
 import {
@@ -20,18 +20,6 @@ const NEWS_LIMIT_PER_SYMBOL = 5;
 const CLEANUP_DAYS = 90;
 const MIN_RS_SCORE = 70;
 const MIN_VOL_RATIO = 1.5;
-
-function getApiConfig(): { baseUrl: string; key: string } {
-  const dataApi = process.env.DATA_API;
-  const fmpKey = process.env.FMP_API_KEY;
-  if (dataApi == null || dataApi === "") {
-    throw new Error("Missing required environment variable: DATA_API");
-  }
-  if (fmpKey == null || fmpKey === "") {
-    throw new Error("Missing required environment variable: FMP_API_KEY");
-  }
-  return { baseUrl: dataApi, key: fmpKey };
-}
 
 interface FmpStockNewsRow {
   symbol?: string;
@@ -128,7 +116,7 @@ async function upsertNews(rows: FmpStockNewsRow[]): Promise<number> {
 async function cleanupOldNews(): Promise<number> {
   const result = await db.execute(sql`
     DELETE FROM stock_news
-    WHERE collected_at < NOW() - INTERVAL '${sql.raw(String(CLEANUP_DAYS))} days'
+    WHERE collected_at < NOW() - (${String(CLEANUP_DAYS)} || ' days')::INTERVAL
     RETURNING id
   `);
   return result.rows.length;
@@ -146,7 +134,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { baseUrl, key } = getApiConfig();
+  const { baseUrl, key } = getFmpV3Config();
 
   // 90일 초과 뉴스 정리
   const deletedCount = await cleanupOldNews();
@@ -167,26 +155,19 @@ async function main() {
   );
 
   const limit = pLimit(CONCURRENCY);
-  let done = 0;
-  let skip = 0;
-  let totalInserted = 0;
   const startTime = Date.now();
 
-  await Promise.all(
+  const results = await Promise.all(
     symbols.map((symbol) =>
       limit(async () => {
         try {
           const rows = await fetchNewsForSymbol(symbol, baseUrl, key);
           const inserted = await upsertNews(rows);
-          totalInserted += inserted;
-          done++;
-          if (done % 50 === 0) {
-            logger.info(TAG, `Progress: ${done}/${symbols.length} (${symbol})`);
-          }
+          return { ok: true, inserted } as const;
         } catch (e: unknown) {
-          skip++;
           const message = e instanceof Error ? e.message : String(e);
           logger.warn(TAG, `Skipped ${symbol}: ${message}`);
+          return { ok: false, inserted: 0 } as const;
         } finally {
           await sleep(PAUSE_MS);
         }
@@ -194,6 +175,9 @@ async function main() {
     ),
   );
 
+  const done = results.filter((r) => r.ok).length;
+  const skip = results.filter((r) => !r.ok).length;
+  const totalInserted = results.reduce((sum, r) => sum + r.inserted, 0);
   const totalTime = Date.now() - startTime;
   logger.info(
     TAG,
