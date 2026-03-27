@@ -872,7 +872,6 @@ describe("buildAntiPatternCandidates", () => {
     const candidates = buildAntiPatternCandidates(
       invalidated as never,
       confirmed as never,
-      new Set<number>(),
       0, // bootstrap: minHits=1
     );
 
@@ -895,7 +894,6 @@ describe("buildAntiPatternCandidates", () => {
     const candidates = buildAntiPatternCandidates(
       invalidated as never,
       confirmed as never,
-      new Set<number>(),
       3, // cold start: minHits=2
     );
 
@@ -917,23 +915,7 @@ describe("buildAntiPatternCandidates", () => {
     const candidates = buildAntiPatternCandidates(
       invalidated as never,
       confirmed as never,
-      new Set<number>(),
       3,
-    );
-
-    expect(candidates).toHaveLength(0);
-  });
-
-  it("기존 anti-pattern에 포함된 thesis ID는 제외된다", () => {
-    const invalidated = [
-      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "INVALIDATED" }),
-    ];
-
-    const candidates = buildAntiPatternCandidates(
-      invalidated as never,
-      [] as never,
-      new Set<number>([1]), // ID 1은 이미 포함됨
-      0,
     );
 
     expect(candidates).toHaveLength(0);
@@ -948,7 +930,6 @@ describe("buildAntiPatternCandidates", () => {
     const candidates = buildAntiPatternCandidates(
       invalidated as never,
       [] as never,
-      new Set<number>(),
       3, // cold start: minHits=2
     );
 

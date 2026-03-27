@@ -142,28 +142,8 @@ export function normalizeMetricKey(raw: string): string {
   return trimmed;
 }
 
-/**
- * 기존 thesis_anti_pattern caution learning에 포함된 thesis ID를 수집.
- * promoteAntiPatterns에서 중복 방지에 사용.
- */
-function collectExistingAntiPatternIds(
-  learnings: typeof agentLearnings.$inferSelect[],
-): Set<number> {
-  const ids = new Set<number>();
-  for (const learning of learnings) {
-    if (learning.category !== "caution") continue;
-    try {
-      const parsed = JSON.parse(learning.sourceThesisIds ?? "{}") as { source?: string };
-      if (parsed.source === THESIS_ANTI_PATTERN_SOURCE) {
-        // thesis_anti_pattern caution은 sourceThesisIds에 JSON 키를 저장하므로
-        // 실제 thesis ID는 별도로 추적하지 않는다 — 중복은 cautionSourceKey로 방지.
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return ids;
-}
+// anti-pattern 중복 방지는 promoteAntiPatterns 내부의 cautionSourceKey DB 조회로 처리.
+// thesis ID 단위 추적은 불필요 — sourceThesisIds에 persona::metric JSON 키를 저장하므로.
 
 /**
  * 장기 기억 승격/강등 ETL.
@@ -273,11 +253,10 @@ async function main() {
   const promotedCount = await promoteNewLearnings(candidates, activeCountAfterDemotion, today, preBias.isSkewed);
 
   // 5b. INVALIDATED thesis → anti-pattern caution learning (#451)
-  const existingAntiPatternIds = collectExistingAntiPatternIds(remainingLearnings);
+  // anti-pattern 중복 방지는 promoteAntiPatterns 내부 cautionSourceKey DB 조회로 처리
   const antiCandidates = buildAntiPatternCandidates(
     invalidatedTheses,
     confirmedTheses,
-    existingAntiPatternIds,
     activeCountAfterDemotion + promotedCount,
   );
   const antiPromotedCount = await promoteAntiPatterns(
@@ -825,12 +804,11 @@ interface AntiPatternCandidate {
  *
  * persona::metric으로 그룹핑한 후, 반복 실패 (missCount >= threshold)이면 후보로 선정.
  * metric 그룹 미달 시 persona::category 폴백.
- * 기존 thesis_anti_pattern caution learning에 이미 포함된 thesis는 제외.
+ * 중복 방지는 promoteAntiPatterns 내부 cautionSourceKey DB 조회로 처리.
  */
 export function buildAntiPatternCandidates(
   invalidatedTheses: typeof theses.$inferSelect[],
   confirmedTheses: typeof theses.$inferSelect[],
-  existingAntiPatternIds: Set<number>,
   activeLearningCount: number = 0,
 ): AntiPatternCandidate[] {
   const thresholds = getPromotionThresholds(activeLearningCount);
@@ -839,7 +817,6 @@ export function buildAntiPatternCandidates(
   const groups = new Map<string, { invalidated: typeof theses.$inferSelect[]; confirmed: typeof theses.$inferSelect[] }>();
 
   for (const t of invalidatedTheses) {
-    if (existingAntiPatternIds.has(t.id)) continue;
     const normalizedMetric = normalizeMetricKey(t.verificationMetric);
     const key = `${t.agentPersona}::${normalizedMetric}`;
     const group = groups.get(key) ?? { invalidated: [], confirmed: [] };
@@ -849,7 +826,6 @@ export function buildAntiPatternCandidates(
 
   // CONFIRMED thesis를 같은 그룹에 추가 (실패율 계산용)
   for (const t of confirmedTheses) {
-    if (existingAntiPatternIds.has(t.id)) continue;
     const normalizedMetric = normalizeMetricKey(t.verificationMetric);
     const key = `${t.agentPersona}::${normalizedMetric}`;
     const group = groups.get(key);
@@ -868,10 +844,10 @@ export function buildAntiPatternCandidates(
   }
 
   const remainingInvalidated = invalidatedTheses.filter(
-    (t) => !existingAntiPatternIds.has(t.id) && !promotedIds.has(t.id),
+    (t) => !promotedIds.has(t.id),
   );
   const remainingConfirmed = confirmedTheses.filter(
-    (t) => !existingAntiPatternIds.has(t.id) && !promotedIds.has(t.id),
+    (t) => !promotedIds.has(t.id),
   );
 
   const categoryGroups = new Map<string, { invalidated: typeof theses.$inferSelect[]; confirmed: typeof theses.$inferSelect[] }>();
@@ -975,10 +951,13 @@ export async function promoteAntiPatterns(
   expiresAt.setMonth(expiresAt.getMonth() + LEARNING_EXPIRY_MONTHS);
   const expiresAtStr = expiresAt.toISOString().slice(0, 10);
 
+  let newInsertCount = 0;
+  let updatedCount = 0;
+
   for (let i = 0; i < toPromote.length; i += CONCURRENCY_LIMIT) {
     const batch = toPromote.slice(i, i + CONCURRENCY_LIMIT);
-    await Promise.all(
-      batch.map(async (candidate) => {
+    const results = await Promise.all(
+      batch.map(async (candidate): Promise<boolean> => {
         const total = candidate.missCount + candidate.hitCount;
         const missRate = candidate.missCount / total;
         const sanitizedMetric = candidate.metric.replace(/[\n\r]/g, " ").slice(0, 100);
@@ -989,6 +968,12 @@ export async function promoteAntiPatterns(
           persona: candidate.persona,
           metric: candidate.metric,
         });
+
+        // caution learning은 "실패가 시그널"이므로 hitCount/missCount를 반전 저장:
+        // hitCount ← missCount (실패 횟수 = caution 관점에서의 적중)
+        // missCount ← hitCount (성공 횟수 = caution 관점에서의 미적중)
+        const cautionHitCount = candidate.missCount;
+        const cautionMissCount = candidate.hitCount;
 
         // 기존 동일 패턴 caution learning 확인
         const existing = await db
@@ -1002,13 +987,12 @@ export async function promoteAntiPatterns(
           );
 
         if (existing.length > 0) {
-          // 업데이트
           await db
             .update(agentLearnings)
             .set({
               principle,
-              hitCount: candidate.missCount,
-              missCount: candidate.hitCount,
+              hitCount: cautionHitCount,
+              missCount: cautionMissCount,
               hitRate: String(missRate.toFixed(2)),
               lastVerified: today,
               isActive: true,
@@ -1021,8 +1005,8 @@ export async function promoteAntiPatterns(
         await db.insert(agentLearnings).values({
           principle,
           category: "caution",
-          hitCount: candidate.missCount,
-          missCount: candidate.hitCount,
+          hitCount: cautionHitCount,
+          missCount: cautionMissCount,
           hitRate: String(missRate.toFixed(2)),
           sourceThesisIds: cautionSourceKey,
           firstConfirmed: today,
@@ -1040,9 +1024,16 @@ export async function promoteAntiPatterns(
         return true;
       }),
     );
+    for (const isNew of results) {
+      if (isNew) newInsertCount++;
+      else updatedCount++;
+    }
   }
 
-  return toPromote.length;
+  if (updatedCount > 0) {
+    logger.info(TAG, `Anti-pattern summary: ${newInsertCount} new, ${updatedCount} updated`);
+  }
+  return newInsertCount;
 }
 
 // ─── Failure Pattern → Caution Learning 승격/강등 ─────────────────
