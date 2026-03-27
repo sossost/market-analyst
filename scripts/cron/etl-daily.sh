@@ -69,6 +69,12 @@ run_step "Collect Failure Patterns" "src/etl/jobs/collect-failure-patterns.ts"
 run_step "Update Recommendation Status" "src/etl/jobs/update-recommendation-status.ts"
 run_step "Update Watchlist Tracking" "src/etl/jobs/update-watchlist-tracking.ts"
 
+# Phase 3.9 (종목 촉매 데이터 — stock_phases 완료 후 실행하여 오늘의 Phase 2 기준 일치)
+run_parallel \
+  "Load Stock News" "src/etl/jobs/load-stock-news.ts" \
+  "Load Earning Calendar" "src/etl/jobs/load-earning-calendar.ts" \
+  "Load Earnings Surprises FMP" "src/etl/jobs/load-earnings-surprises-fmp.ts"
+
 # Phase 4
 run_step "Validate Data" "src/etl/jobs/validate-data.ts"
 

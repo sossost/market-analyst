@@ -5,6 +5,22 @@
  */
 export { sleep, toNum, chunk } from "@/lib/utils";
 
+/**
+ * FMP v3 API 설정 로드.
+ * DATA_API, FMP_API_KEY 환경변수가 없으면 즉시 throw.
+ */
+export function getFmpV3Config(): { baseUrl: string; key: string } {
+  const dataApi = process.env.DATA_API;
+  const fmpKey = process.env.FMP_API_KEY;
+  if (dataApi == null || dataApi === "") {
+    throw new Error("Missing required environment variable: DATA_API");
+  }
+  if (fmpKey == null || fmpKey === "") {
+    throw new Error("Missing required environment variable: FMP_API_KEY");
+  }
+  return { baseUrl: dataApi, key: fmpKey };
+}
+
 function sanitizeUrl(url: string): string {
   try {
     const u = new URL(url);

@@ -44,6 +44,7 @@
 | 펀더멘탈 데이터 | 분기 재무제표 + 비율 (FMP API) |
 | 돌파/노이즈 신호 | 기술적 시그널 필터링 (breakout_signals, noise_signals) |
 | 지수 가격 ETL | S&P 500, NASDAQ, DOW, Russell 2000, VIX 일간 가격 (FMP API → `index_prices` 테이블) — #420 |
+| 종목 촉매 데이터 | stock_news(종목 뉴스), earning_calendar(실적 일정), eps_surprises(어닝 서프라이즈) — Phase 2/관심종목 대상, ETL Phase 3.9 병렬 실행 — #456 |
 
 **파이프라인:** GitHub Actions + 맥미니 launchd, 일~금 UTC 23:30 (KST 08:30), ~50분 소요.
 
