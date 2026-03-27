@@ -13,6 +13,7 @@ const TAG = "PROMOTE_LEARNINGS";
 
 const LEARNING_EXPIRY_MONTHS = 6;
 const MAX_ACTIVE_LEARNINGS = 50;
+const THESIS_ANTI_PATTERN_SOURCE = "thesis_anti_pattern";
 
 /**
  * 성숙도 게이트: 시스템이 bootstrap/cold start를 탈출한 후,
@@ -142,12 +143,36 @@ export function normalizeMetricKey(raw: string): string {
 }
 
 /**
+ * 기존 thesis_anti_pattern caution learning에 포함된 thesis ID를 수집.
+ * promoteAntiPatterns에서 중복 방지에 사용.
+ */
+function collectExistingAntiPatternIds(
+  learnings: typeof agentLearnings.$inferSelect[],
+): Set<number> {
+  const ids = new Set<number>();
+  for (const learning of learnings) {
+    if (learning.category !== "caution") continue;
+    try {
+      const parsed = JSON.parse(learning.sourceThesisIds ?? "{}") as { source?: string };
+      if (parsed.source === THESIS_ANTI_PATTERN_SOURCE) {
+        // thesis_anti_pattern caution은 sourceThesisIds에 JSON 키를 저장하므로
+        // 실제 thesis ID는 별도로 추적하지 않는다 — 중복은 cautionSourceKey로 방지.
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return ids;
+}
+
+/**
  * 장기 기억 승격/강등 ETL.
  *
  * 흐름:
  * 1. 만료 강등 (6개월 초과 or expiresAt 지남)
  * 2. 기존 learnings의 hitCount/missCount 업데이트
  * 3. CONFIRMED thesis에서 반복 패턴 → 신규 learning 승격
+ * 3b. INVALIDATED thesis에서 반복 실패 패턴 → caution learning (#451)
  * 4. 최대 50개 유지
  */
 async function main() {
@@ -247,6 +272,20 @@ async function main() {
   );
   const promotedCount = await promoteNewLearnings(candidates, activeCountAfterDemotion, today, preBias.isSkewed);
 
+  // 5b. INVALIDATED thesis → anti-pattern caution learning (#451)
+  const existingAntiPatternIds = collectExistingAntiPatternIds(remainingLearnings);
+  const antiCandidates = buildAntiPatternCandidates(
+    invalidatedTheses,
+    confirmedTheses,
+    existingAntiPatternIds,
+    activeCountAfterDemotion + promotedCount,
+  );
+  const antiPromotedCount = await promoteAntiPatterns(
+    antiCandidates,
+    activeCountAfterDemotion + promotedCount,
+    today,
+  );
+
   // 6. 실패 패턴 기반 경계 학습 승격/강등
   const cautionPromoted = await promoteFailurePatterns(today);
 
@@ -262,7 +301,7 @@ async function main() {
     logger.warn(TAG, `BIAS WARNING: Bull-bias ${(bias.bullRatio * 100).toFixed(0)}% > 80% 임계값`);
   }
 
-  logger.info(TAG, `Results: ${demotedCount} expired-demoted, ${maturationDemotedCount} maturation-demoted, ${updatedCount} updated, ${absorbedCount} absorbed, ${promotedCount} promoted, ${cautionPromoted} caution`);
+  logger.info(TAG, `Results: ${demotedCount} expired-demoted, ${maturationDemotedCount} maturation-demoted, ${updatedCount} updated, ${absorbedCount} absorbed, ${promotedCount} promoted, ${antiPromotedCount} anti-pattern, ${cautionPromoted} caution`);
   logger.info(TAG, `Active learnings: ${latestLearnings.length}`);
 
   // 학습 루프 헬스체크 — 활성 학습 0건이면 경고
@@ -548,11 +587,67 @@ export async function absorbNewTheses(
 }
 
 /**
+ * 그룹 맵에서 threshold를 충족하는 후보를 필터링하여 PromotionCandidate[] 반환.
+ * buildPromotionCandidates 내부에서 metric 그룹과 category 폴백 그룹 모두에 사용.
+ */
+function filterCandidateGroups(
+  groups: Map<string, { confirmed: typeof theses.$inferSelect[]; invalidated: typeof theses.$inferSelect[] }>,
+  thresholds: PromotionThresholds,
+  activeLearningCount: number,
+): PromotionCandidate[] {
+  return Array.from(groups.entries())
+    .filter(([key, g]) => {
+      const total = g.confirmed.length + g.invalidated.length;
+      const hitRate = total > 0 ? g.confirmed.length / total : 0;
+
+      if (g.confirmed.length < thresholds.minHits) return false;
+      if (hitRate < thresholds.minHitRate) return false;
+      if (total < thresholds.minTotal) return false;
+
+      if (thresholds.skipBinomialTest) {
+        logger.info(TAG, `  BOOTSTRAP: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
+      } else {
+        const test = binomialTest(g.confirmed.length, total);
+        if (!test.isSignificant) {
+          logger.info(TAG, `  SKIP (not significant): ${key} p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
+          return false;
+        }
+      }
+
+      return true;
+    })
+    .map(([key, g]) => {
+      const [persona, metric] = key.split("::");
+      const allTheses = [...g.confirmed, ...g.invalidated];
+      const verificationMethods = [
+        ...new Set(
+          allTheses
+            .map((t) => t.verificationMethod)
+            .filter((m): m is string => m != null),
+        ),
+      ];
+
+      return {
+        persona,
+        metric,
+        confirmedIds: g.confirmed.map((t) => t.id),
+        invalidatedIds: g.invalidated.map((t) => t.id),
+        hitCount: g.confirmed.length,
+        missCount: g.invalidated.length,
+        verificationMethods,
+      };
+    });
+}
+
+/**
  * 검증된 thesis에서 persona + verificationMetric 기준으로
  * 반복 패턴을 그룹화하여 승격 후보 생성.
  *
  * activeLearningCount에 따라 graduated threshold가 적용된다.
  * binomialTest는 모든 단계에서 유지한다.
+ *
+ * metric 그룹이 threshold 미달 시, 잔여 thesis를 persona::category로
+ * 재그룹핑하는 카테고리 폴백을 수행한다. (#451)
  */
 export function buildPromotionCandidates(
   confirmedTheses: typeof theses.$inferSelect[],
@@ -591,51 +686,53 @@ export function buildPromotionCandidates(
     logger.info(TAG, `  GROUP: ${key} — hits=${g.confirmed.length}, misses=${g.invalidated.length}, total=${total}, hitRate=${(hitRate * 100).toFixed(0)}%`);
   }
 
-  return Array.from(groups.entries())
-    .filter(([key, g]) => {
+  const metricCandidates = filterCandidateGroups(groups, thresholds, activeLearningCount);
+
+  // ── 카테고리 폴백: metric 그룹에서 승격되지 못한 thesis를 persona::category로 재그룹핑 (#451)
+  // metric 그룹이 너무 세분화되어 threshold를 못 넘는 thesis들을 더 넓은 카테고리로 모아
+  // 학습 루프 시동을 돕는다.
+  const promotedThesisIds = new Set<number>();
+  for (const c of metricCandidates) {
+    for (const id of c.confirmedIds) promotedThesisIds.add(id);
+    for (const id of c.invalidatedIds) promotedThesisIds.add(id);
+  }
+
+  const remainingConfirmed = confirmedTheses.filter(
+    (t) => !existingSourceIds.has(t.id) && !promotedThesisIds.has(t.id),
+  );
+  const remainingInvalidated = invalidatedTheses.filter(
+    (t) => !existingSourceIds.has(t.id) && !promotedThesisIds.has(t.id),
+  );
+
+  const categoryGroups = new Map<string, { confirmed: typeof theses.$inferSelect[]; invalidated: typeof theses.$inferSelect[] }>();
+
+  for (const t of remainingConfirmed) {
+    const key = `${t.agentPersona}::cat:${t.category}`;
+    const group = categoryGroups.get(key) ?? { confirmed: [], invalidated: [] };
+    group.confirmed.push(t);
+    categoryGroups.set(key, group);
+  }
+
+  for (const t of remainingInvalidated) {
+    const key = `${t.agentPersona}::cat:${t.category}`;
+    const group = categoryGroups.get(key);
+    if (group != null) {
+      group.invalidated.push(t);
+    }
+  }
+
+  if (categoryGroups.size > 0) {
+    logger.info(TAG, `Category fallback groups: ${categoryGroups.size}`);
+    for (const [key, g] of categoryGroups.entries()) {
       const total = g.confirmed.length + g.invalidated.length;
       const hitRate = total > 0 ? g.confirmed.length / total : 0;
+      logger.info(TAG, `  CAT-GROUP: ${key} — hits=${g.confirmed.length}, misses=${g.invalidated.length}, total=${total}, hitRate=${(hitRate * 100).toFixed(0)}%`);
+    }
+  }
 
-      // graduated threshold: 활성 학습 건수에 따라 기준이 자동 조정됨
-      if (g.confirmed.length < thresholds.minHits) return false;
-      if (hitRate < thresholds.minHitRate) return false;
-      if (total < thresholds.minTotal) return false;
+  const categoryCandidates = filterCandidateGroups(categoryGroups, thresholds, activeLearningCount);
 
-      // 통계적 유의성 검증 (자기확증편향 방지)
-      // bootstrap 단계에서는 소표본 한계로 binomial test를 면제한다
-      if (thresholds.skipBinomialTest) {
-        logger.info(TAG, `  BOOTSTRAP: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
-      } else {
-        const test = binomialTest(g.confirmed.length, total);
-        if (!test.isSignificant) {
-          logger.info(TAG, `  SKIP (not significant): ${key} p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
-          return false;
-        }
-      }
-
-      return true;
-    })
-    .map(([key, g]) => {
-      const [persona, metric] = key.split("::");
-      const allTheses = [...g.confirmed, ...g.invalidated];
-      const verificationMethods = [
-        ...new Set(
-          allTheses
-            .map((t) => t.verificationMethod)
-            .filter((m): m is string => m != null),
-        ),
-      ];
-
-      return {
-        persona,
-        metric,
-        confirmedIds: g.confirmed.map((t) => t.id),
-        invalidatedIds: g.invalidated.map((t) => t.id),
-        hitCount: g.confirmed.length,
-        missCount: g.invalidated.length,
-        verificationMethods,
-      };
-    });
+  return [...metricCandidates, ...categoryCandidates];
 }
 
 export async function promoteNewLearnings(
@@ -704,6 +801,243 @@ export async function promoteNewLearnings(
         });
 
         logger.info(TAG, `  PROMOTED: ${principle}`);
+      }),
+    );
+  }
+
+  return toPromote.length;
+}
+
+// ─── INVALIDATED Thesis → Anti-Pattern Caution Learning (#451) ────────────────
+
+interface AntiPatternCandidate {
+  persona: string;
+  metric: string;
+  invalidatedIds: number[];
+  confirmedIds: number[];
+  missCount: number;
+  hitCount: number;
+  verificationMethods: string[];
+}
+
+/**
+ * INVALIDATED thesis에서 반복 실패 패턴을 추출하여 anti-pattern 후보 생성. (#451)
+ *
+ * persona::metric으로 그룹핑한 후, 반복 실패 (missCount >= threshold)이면 후보로 선정.
+ * metric 그룹 미달 시 persona::category 폴백.
+ * 기존 thesis_anti_pattern caution learning에 이미 포함된 thesis는 제외.
+ */
+export function buildAntiPatternCandidates(
+  invalidatedTheses: typeof theses.$inferSelect[],
+  confirmedTheses: typeof theses.$inferSelect[],
+  existingAntiPatternIds: Set<number>,
+  activeLearningCount: number = 0,
+): AntiPatternCandidate[] {
+  const thresholds = getPromotionThresholds(activeLearningCount);
+
+  // persona::metric 그룹핑
+  const groups = new Map<string, { invalidated: typeof theses.$inferSelect[]; confirmed: typeof theses.$inferSelect[] }>();
+
+  for (const t of invalidatedTheses) {
+    if (existingAntiPatternIds.has(t.id)) continue;
+    const normalizedMetric = normalizeMetricKey(t.verificationMetric);
+    const key = `${t.agentPersona}::${normalizedMetric}`;
+    const group = groups.get(key) ?? { invalidated: [], confirmed: [] };
+    group.invalidated.push(t);
+    groups.set(key, group);
+  }
+
+  // CONFIRMED thesis를 같은 그룹에 추가 (실패율 계산용)
+  for (const t of confirmedTheses) {
+    if (existingAntiPatternIds.has(t.id)) continue;
+    const normalizedMetric = normalizeMetricKey(t.verificationMetric);
+    const key = `${t.agentPersona}::${normalizedMetric}`;
+    const group = groups.get(key);
+    if (group != null) {
+      group.confirmed.push(t);
+    }
+  }
+
+  const metricCandidates = filterAntiPatternGroups(groups, thresholds, activeLearningCount);
+
+  // 카테고리 폴백
+  const promotedIds = new Set<number>();
+  for (const c of metricCandidates) {
+    for (const id of c.invalidatedIds) promotedIds.add(id);
+    for (const id of c.confirmedIds) promotedIds.add(id);
+  }
+
+  const remainingInvalidated = invalidatedTheses.filter(
+    (t) => !existingAntiPatternIds.has(t.id) && !promotedIds.has(t.id),
+  );
+  const remainingConfirmed = confirmedTheses.filter(
+    (t) => !existingAntiPatternIds.has(t.id) && !promotedIds.has(t.id),
+  );
+
+  const categoryGroups = new Map<string, { invalidated: typeof theses.$inferSelect[]; confirmed: typeof theses.$inferSelect[] }>();
+
+  for (const t of remainingInvalidated) {
+    const key = `${t.agentPersona}::cat:${t.category}`;
+    const group = categoryGroups.get(key) ?? { invalidated: [], confirmed: [] };
+    group.invalidated.push(t);
+    categoryGroups.set(key, group);
+  }
+
+  for (const t of remainingConfirmed) {
+    const key = `${t.agentPersona}::cat:${t.category}`;
+    const group = categoryGroups.get(key);
+    if (group != null) {
+      group.confirmed.push(t);
+    }
+  }
+
+  const categoryCandidates = filterAntiPatternGroups(categoryGroups, thresholds, activeLearningCount);
+
+  const allCandidates = [...metricCandidates, ...categoryCandidates];
+
+  if (allCandidates.length > 0) {
+    logger.info(TAG, `Anti-pattern candidates: ${allCandidates.length} (metric=${metricCandidates.length}, category=${categoryCandidates.length})`);
+  }
+
+  return allCandidates;
+}
+
+/**
+ * anti-pattern 그룹에서 threshold를 충족하는 후보를 필터링.
+ * 실패율(missRate) 기준으로 판단: missCount >= minHits, missRate >= minHitRate.
+ */
+function filterAntiPatternGroups(
+  groups: Map<string, { invalidated: typeof theses.$inferSelect[]; confirmed: typeof theses.$inferSelect[] }>,
+  thresholds: PromotionThresholds,
+  activeLearningCount: number,
+): AntiPatternCandidate[] {
+  return Array.from(groups.entries())
+    .filter(([key, g]) => {
+      const total = g.invalidated.length + g.confirmed.length;
+      const missRate = total > 0 ? g.invalidated.length / total : 0;
+
+      if (g.invalidated.length < thresholds.minHits) return false;
+      if (missRate < thresholds.minHitRate) return false;
+      if (total < thresholds.minTotal) return false;
+
+      if (thresholds.skipBinomialTest) {
+        logger.info(TAG, `  ANTI-BOOTSTRAP: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
+      } else {
+        const test = binomialTest(g.invalidated.length, total);
+        if (!test.isSignificant) {
+          logger.info(TAG, `  ANTI-SKIP (not significant): ${key} p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
+          return false;
+        }
+      }
+
+      return true;
+    })
+    .map(([key, g]) => {
+      const [persona, metric] = key.split("::");
+      const allTheses = [...g.invalidated, ...g.confirmed];
+      const verificationMethods = [
+        ...new Set(
+          allTheses
+            .map((t) => t.verificationMethod)
+            .filter((m): m is string => m != null),
+        ),
+      ];
+
+      return {
+        persona,
+        metric,
+        invalidatedIds: g.invalidated.map((t) => t.id),
+        confirmedIds: g.confirmed.map((t) => t.id),
+        missCount: g.invalidated.length,
+        hitCount: g.confirmed.length,
+        verificationMethods,
+      };
+    });
+}
+
+/**
+ * INVALIDATED anti-pattern 후보를 caution learning으로 승격. (#451)
+ *
+ * failure_patterns 기반 caution과 구분하기 위해
+ * sourceThesisIds에 { source: "thesis_anti_pattern", persona, metric } 저장.
+ */
+export async function promoteAntiPatterns(
+  candidates: AntiPatternCandidate[],
+  currentActiveCount: number,
+  today: string,
+): Promise<number> {
+  const slotsAvailable = MAX_ACTIVE_LEARNINGS - currentActiveCount;
+  if (slotsAvailable <= 0 || candidates.length === 0) return 0;
+
+  const toPromote = candidates.slice(0, slotsAvailable);
+
+  const expiresAt = new Date(today);
+  expiresAt.setMonth(expiresAt.getMonth() + LEARNING_EXPIRY_MONTHS);
+  const expiresAtStr = expiresAt.toISOString().slice(0, 10);
+
+  for (let i = 0; i < toPromote.length; i += CONCURRENCY_LIMIT) {
+    const batch = toPromote.slice(i, i + CONCURRENCY_LIMIT);
+    await Promise.all(
+      batch.map(async (candidate) => {
+        const total = candidate.missCount + candidate.hitCount;
+        const missRate = candidate.missCount / total;
+        const sanitizedMetric = candidate.metric.replace(/[\n\r]/g, " ").slice(0, 100);
+        const principle = `[경계-thesis] ${candidate.persona} ${sanitizedMetric} 관련 전망이 ${candidate.missCount}회 실패 (실패율 ${(missRate * 100).toFixed(0)}%, ${total}회 관측)`;
+
+        const cautionSourceKey = JSON.stringify({
+          source: THESIS_ANTI_PATTERN_SOURCE,
+          persona: candidate.persona,
+          metric: candidate.metric,
+        });
+
+        // 기존 동일 패턴 caution learning 확인
+        const existing = await db
+          .select()
+          .from(agentLearnings)
+          .where(
+            and(
+              eq(agentLearnings.category, "caution"),
+              eq(agentLearnings.sourceThesisIds, cautionSourceKey),
+            ),
+          );
+
+        if (existing.length > 0) {
+          // 업데이트
+          await db
+            .update(agentLearnings)
+            .set({
+              principle,
+              hitCount: candidate.missCount,
+              missCount: candidate.hitCount,
+              hitRate: String(missRate.toFixed(2)),
+              lastVerified: today,
+              isActive: true,
+            })
+            .where(eq(agentLearnings.id, existing[0].id));
+          logger.info(TAG, `  ANTI-PATTERN UPDATED: ${principle}`);
+          return false;
+        }
+
+        await db.insert(agentLearnings).values({
+          principle,
+          category: "caution",
+          hitCount: candidate.missCount,
+          missCount: candidate.hitCount,
+          hitRate: String(missRate.toFixed(2)),
+          sourceThesisIds: cautionSourceKey,
+          firstConfirmed: today,
+          lastVerified: today,
+          expiresAt: expiresAtStr,
+          isActive: true,
+          verificationPath: candidate.verificationMethods.length === 0
+            ? null
+            : candidate.verificationMethods.length === 1
+              ? candidate.verificationMethods[0] === "quantitative" ? "quantitative" : "llm"
+              : "mixed",
+        });
+
+        logger.info(TAG, `  ANTI-PATTERN PROMOTED: ${principle}`);
+        return true;
       }),
     );
   }
@@ -864,12 +1198,15 @@ const HEALTHCHECK_STALE_DAYS = 7;
  *
  * - 활성 학습 0건: 즉시 경고
  * - 최근 7일간 신규/업데이트 학습 0건: 루프 정체 경고
+ * - 자기참조 루프 위험: quantitative 검증 비율 < 30% 시 경고 (#451)
  */
 /**
  * 학습 추출률 기준 — 이 비율 미만이면 경고.
  * 판정 완료 thesis 대비 활성 학습 비율.
  */
 const MIN_EXTRACTION_RATE = 0.20;
+/** quantitative 검증 비율 최소 기준 — 미만이면 자기참조 루프 경고 (#451) */
+export const MIN_QUANTITATIVE_RATE = 0.30;
 
 export async function checkLearningLoopHealth(
   activeLearningCount: number,
@@ -906,6 +1243,9 @@ export async function checkLearningLoopHealth(
     }
   }
 
+  // 자기참조 루프 모니터링: quantitative vs LLM 검증 비율 (#451)
+  await checkVerificationMethodRatio();
+
   // 최근 7일간 업데이트 없는지 확인
   const staleDate = new Date(today);
   staleDate.setDate(staleDate.getDate() - HEALTHCHECK_STALE_DAYS);
@@ -927,6 +1267,43 @@ export async function checkLearningLoopHealth(
     logger.warn(
       TAG,
       `⚠️ LEARNING LOOP STALE: 최근 ${HEALTHCHECK_STALE_DAYS}일간 학습 업데이트 0건. 루프 정체 가능.`,
+    );
+  }
+}
+
+/**
+ * 자기참조 루프 위험 모니터링 (#451).
+ *
+ * CONFIRMED/INVALIDATED thesis의 verificationMethod 분포를 확인.
+ * quantitative 비율 < MIN_QUANTITATIVE_RATE이면 경고.
+ * LLM이 자기 thesis를 자기가 검증하는 비율이 높으면 편향 위험.
+ */
+async function checkVerificationMethodRatio(): Promise<void> {
+  const judgedTheses = await db
+    .select({
+      verificationMethod: theses.verificationMethod,
+    })
+    .from(theses)
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]));
+
+  if (judgedTheses.length === 0) return;
+
+  const quantCount = judgedTheses.filter((t) => t.verificationMethod === "quantitative").length;
+  const llmCount = judgedTheses.filter((t) => t.verificationMethod === "llm").length;
+  const otherCount = judgedTheses.length - quantCount - llmCount;
+  const quantRate = quantCount / judgedTheses.length;
+
+  logger.info(
+    TAG,
+    `Verification methods: quantitative=${quantCount}, llm=${llmCount}, other=${otherCount} ` +
+    `(quantitative rate: ${(quantRate * 100).toFixed(0)}%)`,
+  );
+
+  if (quantRate < MIN_QUANTITATIVE_RATE) {
+    logger.warn(
+      TAG,
+      `⚠️ SELF-REFERENTIAL LOOP RISK: quantitative 검증 ${(quantRate * 100).toFixed(0)}% < ${(MIN_QUANTITATIVE_RATE * 100).toFixed(0)}%. ` +
+      `LLM이 자기 thesis를 자기가 검증하는 비율이 높음. 정량 검증 커버리지 확대 필요.`,
     );
   }
 }
