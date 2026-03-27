@@ -154,8 +154,7 @@ function checkPhase2RatioRange(
 ): void {
   // Phase 2: NUM% (콜론 포함, 중간 텍스트 허용) + Phase 2 비율 NUM% (콜론 없음)
   const phase2Pattern = /Phase\s*2(?:[^:\n]*:\s*|\s*(?:비율|종목\s*비율)\s*)([\d,]+(?:\.\d+)?)\s*%/gi;
-  let match: RegExpExecArray | null;
-  while ((match = phase2Pattern.exec(markdown)) !== null) {
+  for (const match of markdown.matchAll(phase2Pattern)) {
     const rawValue = match[1].replace(/,/g, "");
     const value = Number(rawValue);
     if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
@@ -167,7 +166,7 @@ function checkPhase2RatioRange(
 
   // (전일 NUM%) 패턴 — Phase 2 전일 비율도 0~100 범위
   const prevDayPattern = /\(전일\s*([\d,]+(?:\.\d+)?)\s*%\)/gi;
-  while ((match = prevDayPattern.exec(markdown)) !== null) {
+  for (const match of markdown.matchAll(prevDayPattern)) {
     const rawValue = match[1].replace(/,/g, "");
     const value = Number(rawValue);
     if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
@@ -698,6 +697,108 @@ function checkReserveChangeReason(
 }
 
 // ---------------------------------------------------------------------------
+// O. Phase 방향 크로스체크 — 테이블의 X→Y와 서술 방향 일치 검증
+// ---------------------------------------------------------------------------
+
+/**
+ * `Phase X→Y` 표기와 같은 줄의 방향 서술(개선/악화)이 일치하는지 검증한다.
+ *
+ * 규칙:
+ * - Phase 1→2 = 개선(강세). "악화", "약세" 서술 시 ERROR
+ * - Phase 2→3, 3→4 = 악화(약세). "개선", "강세" 서술 시 ERROR
+ *
+ * 예: "Utilities Phase 3→2 개선" (개선=맞음) vs "Utilities Phase 2→3 개선" (ERROR)
+ */
+const PHASE_TRANSITION_PATTERN = /Phase\s*(\d)\s*→\s*(\d)/g;
+
+const IMPROVEMENT_KEYWORDS = ["개선", "강세", "호전", "상향", "반등", "회복"] as const;
+const DETERIORATION_KEYWORDS = ["악화", "약세", "하향", "둔화", "이탈", "하락"] as const;
+
+export function checkPhaseDirectionConsistency(
+  markdown: string,
+  errors: string[],
+): void {
+  const lines = markdown.split("\n");
+
+  for (const line of lines) {
+    for (const match of line.matchAll(PHASE_TRANSITION_PATTERN)) {
+      const fromPhase = Number(match[1]);
+      const toPhase = Number(match[2]);
+
+      if (fromPhase === toPhase) continue;
+
+      // Phase 2가 최적(상승 추세). Phase 2에 가까워지면 개선, 멀어지면 악화.
+      // 개선: 1→2, 3→2, 4→3 등 (Phase 2에 접근)
+      // 악화: 2→3, 3→4, 2→1 등 (Phase 2에서 이탈)
+      const distanceBefore = Math.abs(fromPhase - 2);
+      const distanceAfter = Math.abs(toPhase - 2);
+      const isImproving = distanceAfter < distanceBefore; // Phase 2에 가까워짐
+      const isDeteriorating = distanceAfter > distanceBefore; // Phase 2에서 멀어짐
+
+      const hasImprovementWord = IMPROVEMENT_KEYWORDS.some((kw) => line.includes(kw));
+      const hasDeteriorationWord = DETERIORATION_KEYWORDS.some((kw) => line.includes(kw));
+
+      if (isImproving && hasDeteriorationWord && !hasImprovementWord) {
+        errors.push(
+          `Phase 방향 모순: Phase ${fromPhase}→${toPhase}은 개선 방향인데 악화 서술 감지. 줄: "${line.trim().slice(0, 80)}"`,
+        );
+      }
+
+      if (isDeteriorating && hasImprovementWord && !hasDeteriorationWord) {
+        errors.push(
+          `Phase 방향 모순: Phase ${fromPhase}→${toPhase}은 악화 방향인데 개선 서술 감지. 줄: "${line.trim().slice(0, 80)}"`,
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// P. 데이터 유무 일관성 — 수치 존재 + "확인 불가" 동시 등장 감지
+// ---------------------------------------------------------------------------
+
+/**
+ * 같은 엔티티(섹터명/티커) 주변에서 수치가 존재하면서
+ * "확인 불가", "조회 오류", "데이터 없음" 등의 표현이 동시에 등장하면 ERROR.
+ *
+ * 예: "Technology RS 43.49 ... 데이터 조회 오류로 정확한 수치 확인 불가" → ERROR
+ */
+const DATA_UNAVAILABLE_KEYWORDS = [
+  "확인 불가",
+  "조회 오류",
+  "데이터 없음",
+  "데이터 미수집",
+  "수치 확인 불가",
+] as const;
+
+const NUMERIC_VALUE_PATTERN = /(?:RS|Phase\s*2\s*비율|비율)\s*:?\s*[\d.]+/i;
+
+export function checkDataPresenceConsistency(
+  markdown: string,
+  errors: string[],
+): void {
+  const lines = markdown.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const hasUnavailable = DATA_UNAVAILABLE_KEYWORDS.some((kw) => line.includes(kw));
+    if (!hasUnavailable) continue;
+
+    // 현재 줄과 앞뒤 2줄 범위에서 같은 엔티티의 수치가 있는지 확인
+    const contextStart = Math.max(0, i - 2);
+    const contextEnd = Math.min(lines.length - 1, i + 2);
+    const context = lines.slice(contextStart, contextEnd + 1).join("\n");
+
+    if (NUMERIC_VALUE_PATTERN.test(context)) {
+      const unavailableKeyword = DATA_UNAVAILABLE_KEYWORDS.find((kw) => line.includes(kw));
+      errors.push(
+        `데이터 유무 모순: "${unavailableKeyword}" 서술 주변에 수치가 동시에 존재합니다. 수치가 있으면 "확인 불가" 서술을 삭제하거나, 수치가 부정확하면 테이블에서도 제거하세요. 줄: "${line.trim().slice(0, 80)}"`,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -743,6 +844,10 @@ export function validateReport(
     checkIndependentRiskSection(input.markdown, warnings);
     // N. 예비군 교체 사유 서술 검증
     checkReserveChangeReason(input.markdown, warnings);
+    // O. Phase 방향 크로스체크
+    checkPhaseDirectionConsistency(input.markdown, errors);
+    // P. 데이터 유무 일관성
+    checkDataPresenceConsistency(input.markdown, errors);
   }
 
   // F. 마크다운 텍스트에서 Phase 1 추천 감지 (recommendations 없어도 동작)

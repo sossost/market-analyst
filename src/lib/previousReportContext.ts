@@ -47,6 +47,12 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
       ? reserveStocks.map((s) => `- ${s}`).join("\n")
       : "- 없음";
 
+  const keyInsights = extractKeyInsights(log.fullContent ?? null);
+  const insightLines =
+    keyInsights.length > 0
+      ? keyInsights.map((s) => `- ${s}`).join("\n")
+      : "";
+
   const fearGreedLine =
     marketSummary.fearGreedScore != null
       ? `- 공포탐욕지수: ${marketSummary.fearGreedScore}`
@@ -79,6 +85,10 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
     lines.push("", "### 직전 섹터 RS 상위", sectorRsLines);
   }
 
+  if (insightLines !== "") {
+    lines.push("", "### 직전 핵심 인사이트 (후속 추적 필수)", insightLines);
+  }
+
   return lines.join("\n");
 }
 
@@ -92,6 +102,35 @@ export function formatSectorRsLines(
   return topSectorRs
     .map((s) => `- ${s.sector} (RS ${s.avgRs})`)
     .join("\n");
+}
+
+/**
+ * 마크다운 본문에서 💡 오늘의 인사이트 섹션의 내용을 추출한다.
+ * 추출 불가 시 빈 배열 반환 (fail-open).
+ *
+ * 전일 핵심 인사이트를 익일 리포트에서 후속 추적하기 위한 데이터 소스.
+ */
+export function extractKeyInsights(
+  fullContent: string | null,
+): string[] {
+  if (fullContent == null || fullContent === "") return [];
+
+  // 💡 오늘의 인사이트 섹션 시작 ~ 다음 이모지 섹션 또는 ## 또는 EOF
+  const sectionMatch = fullContent.match(
+    /💡[^\n]*인사이트[^\n]*\n([\s\S]*?)(?=\n(?:##\s|[⭐◎⚠️🔥🏆📊📈😨🌡️🌱👀])|$)/,
+  );
+  if (sectionMatch == null) return [];
+
+  const section = sectionMatch[1].trim();
+  if (section === "") return [];
+
+  // 각 줄에서 의미 있는 텍스트만 추출 (빈 줄, 순수 마크다운 구조 제외)
+  const insights = section
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 10 && !line.startsWith("---"));
+
+  return insights;
 }
 
 /**
