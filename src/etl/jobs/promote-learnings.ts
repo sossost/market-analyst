@@ -692,6 +692,9 @@ export function buildPromotionCandidates(
     categoryGroups.set(key, group);
   }
 
+  // invalidated는 confirmed 그룹이 이미 존재하는 카테고리에만 추가.
+  // confirmed 0건인 카테고리는 promotion 대상이 아니므로 의도적 제외.
+  // (invalidated-only 패턴은 buildAntiPatternCandidates에서 처리)
   for (const t of remainingInvalidated) {
     const key = `${t.agentPersona}::cat:${t.category}`;
     const group = categoryGroups.get(key);
@@ -961,7 +964,8 @@ export async function promoteAntiPatterns(
         const total = candidate.missCount + candidate.hitCount;
         const missRate = candidate.missCount / total;
         const sanitizedMetric = candidate.metric.replace(/[\n\r]/g, " ").slice(0, 100);
-        const principle = `[경계-thesis] ${candidate.persona} ${sanitizedMetric} 관련 전망이 ${candidate.missCount}회 실패 (실패율 ${(missRate * 100).toFixed(0)}%, ${total}회 관측)`;
+        const sanitizedPersona = candidate.persona.replace(/[\n\r]/g, " ").slice(0, 50);
+        const principle = `[경계-thesis] ${sanitizedPersona} ${sanitizedMetric} 관련 전망이 ${candidate.missCount}회 실패 (실패율 ${(missRate * 100).toFixed(0)}%, ${total}회 관측)`;
 
         const cautionSourceKey = JSON.stringify({
           source: THESIS_ANTI_PATTERN_SOURCE,
