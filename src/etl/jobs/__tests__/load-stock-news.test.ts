@@ -31,6 +31,10 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/etl/utils/common", () => ({
   fetchJson: mockFetchJson,
   sleep: mockSleep,
+  getFmpV3Config: () => ({
+    baseUrl: "https://financialmodelingprep.com",
+    key: "test-api-key-12345",
+  }),
   toStrNum: (v: unknown) => {
     const n = Number(v);
     return Number.isFinite(n) ? String(n) : null;

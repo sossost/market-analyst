@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db, pool } from "@/db/client";
 import { sql } from "drizzle-orm";
-import { fetchJson, toStrNum } from "@/etl/utils/common";
+import { fetchJson, getFmpV3Config, toStrNum } from "@/etl/utils/common";
 import { earningCalendar } from "@/db/schema/analyst";
 import { validateEnvironmentVariables } from "@/etl/utils/validation";
 import {
@@ -15,18 +15,7 @@ const TAG = "LOAD_EARNING_CALENDAR";
 
 const DAYS_PAST = 7;
 const DAYS_FUTURE = 30;
-
-function getApiConfig(): { baseUrl: string; key: string } {
-  const dataApi = process.env.DATA_API;
-  const fmpKey = process.env.FMP_API_KEY;
-  if (dataApi == null || dataApi === "") {
-    throw new Error("Missing required environment variable: DATA_API");
-  }
-  if (fmpKey == null || fmpKey === "") {
-    throw new Error("Missing required environment variable: FMP_API_KEY");
-  }
-  return { baseUrl: dataApi, key: fmpKey };
-}
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -45,6 +34,8 @@ interface FmpEarningCalendarRow {
 /**
  * Phase 2 + watchlist ACTIVE 종목 심볼 SET 로드.
  * earning_calendar 필터링에 사용.
+ *
+ * RS/vol 필터 없는 이유: 1회 API 호출이므로 대상 넓혀도 비용 차이 없음.
  */
 async function fetchTargetSymbolSet(): Promise<Set<string>> {
   const result = await db.execute(sql`
@@ -140,14 +131,14 @@ async function main() {
     process.exit(1);
   }
 
-  const { baseUrl, key } = getApiConfig();
+  const { baseUrl, key } = getFmpV3Config();
 
   const today = new Date();
   const fromDate = toDateString(
-    new Date(today.getTime() - DAYS_PAST * 24 * 60 * 60 * 1000),
+    new Date(today.getTime() - DAYS_PAST * MS_PER_DAY),
   );
   const toDate = toDateString(
-    new Date(today.getTime() + DAYS_FUTURE * 24 * 60 * 60 * 1000),
+    new Date(today.getTime() + DAYS_FUTURE * MS_PER_DAY),
   );
 
   logger.info(TAG, `Fetching earning calendar: ${fromDate} ~ ${toDate}`);

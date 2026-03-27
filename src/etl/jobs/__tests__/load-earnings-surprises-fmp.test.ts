@@ -31,6 +31,10 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/etl/utils/common", () => ({
   fetchJson: mockFetchJson,
   sleep: mockSleep,
+  getFmpV3Config: () => ({
+    baseUrl: "https://financialmodelingprep.com",
+    key: "test-api-key-12345",
+  }),
   toStrNum: (v: unknown) => {
     const n = Number(v);
     return Number.isFinite(n) ? String(n) : null;
@@ -123,15 +127,15 @@ describe("load-earnings-surprises-fmp", () => {
     );
   });
 
-  it("최근 4분기만 처리한다 (5개 응답 → 4건 upsert)", async () => {
+  it("최근 4분기만 처리한다 (5개 응답 → 4건 배치 upsert)", async () => {
     mockFetchJson
       .mockResolvedValueOnce(MOCK_SURPRISES_AAPL) // 5개
       .mockResolvedValueOnce([]);
 
     await loadEarningsSurprisesFmp();
 
-    // AAPL: 4건 upsert (5번째 항목 제외), NVDA: 빈 배열이므로 upsert 없음
-    expect(mockInsert).toHaveBeenCalledTimes(4);
+    // AAPL: 4건을 배치 1회 upsert (5번째 항목 제외), NVDA: 빈 배열이므로 upsert 없음
+    expect(mockInsert).toHaveBeenCalledTimes(1);
   });
 
   it("FMP URL에 apikey가 포함된다", async () => {

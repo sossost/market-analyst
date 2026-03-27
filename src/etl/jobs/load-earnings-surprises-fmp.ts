@@ -2,7 +2,7 @@ import "dotenv/config";
 import pLimit from "p-limit";
 import { db, pool } from "@/db/client";
 import { sql } from "drizzle-orm";
-import { fetchJson, sleep, toStrNum } from "@/etl/utils/common";
+import { fetchJson, getFmpV3Config, sleep, toStrNum } from "@/etl/utils/common";
 import { epsSurprises } from "@/db/schema/analyst";
 import { validateEnvironmentVariables } from "@/etl/utils/validation";
 import {
@@ -20,17 +20,6 @@ const LIMIT_QUARTERS = 4;
 const MIN_RS_SCORE = 70;
 const MIN_VOL_RATIO = 1.5;
 
-function getApiConfig(): { baseUrl: string; key: string } {
-  const dataApi = process.env.DATA_API;
-  const fmpKey = process.env.FMP_API_KEY;
-  if (dataApi == null || dataApi === "") {
-    throw new Error("Missing required environment variable: DATA_API");
-  }
-  if (fmpKey == null || fmpKey === "") {
-    throw new Error("Missing required environment variable: FMP_API_KEY");
-  }
-  return { baseUrl: dataApi, key: fmpKey };
-}
 
 interface FmpEarningsSurpriseRow {
   symbol?: string;
@@ -83,46 +72,36 @@ async function upsertSurprises(
   symbol: string,
   rows: FmpEarningsSurpriseRow[],
 ): Promise<number> {
-  const validRows = rows.filter(
-    (r) => r.date != null && r.date !== "",
-  );
+  const validRows = rows.filter((r) => r.date != null && r.date !== "");
 
   if (validRows.length === 0) {
     return 0;
   }
 
-  let upserted = 0;
-  for (const row of validRows) {
-    const actualDate = row.date as string;
+  const insertValues = validRows.map((r) => ({
+    symbol,
+    actualDate: r.date as string,
+    actualEps: r.actualEarningResult != null ? toStrNum(r.actualEarningResult) : null,
+    estimatedEps: r.estimatedEarning != null ? toStrNum(r.estimatedEarning) : null,
+  }));
 
-    await retryDatabaseOperation(
-      () =>
-        db
-          .insert(epsSurprises)
-          .values({
-            symbol,
-            actualDate,
-            actualEps: row.actualEarningResult != null
-              ? toStrNum(row.actualEarningResult)
-              : null,
-            estimatedEps: row.estimatedEarning != null
-              ? toStrNum(row.estimatedEarning)
-              : null,
-          })
-          .onConflictDoUpdate({
-            target: [epsSurprises.symbol, epsSurprises.actualDate],
-            set: {
-              actualEps: sql`EXCLUDED.actual_eps`,
-              estimatedEps: sql`EXCLUDED.estimated_eps`,
-              updatedAt: new Date(),
-            },
-          }),
-      DEFAULT_RETRY_OPTIONS,
-    );
-    upserted++;
-  }
+  await retryDatabaseOperation(
+    () =>
+      db
+        .insert(epsSurprises)
+        .values(insertValues)
+        .onConflictDoUpdate({
+          target: [epsSurprises.symbol, epsSurprises.actualDate],
+          set: {
+            actualEps: sql`EXCLUDED.actual_eps`,
+            estimatedEps: sql`EXCLUDED.estimated_eps`,
+            updatedAt: new Date(),
+          },
+        }),
+    DEFAULT_RETRY_OPTIONS,
+  );
 
-  return upserted;
+  return insertValues.length;
 }
 
 async function main() {
@@ -137,7 +116,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { baseUrl, key } = getApiConfig();
+  const { baseUrl, key } = getFmpV3Config();
 
   const symbols = await fetchTargetSymbols();
 
@@ -152,32 +131,29 @@ async function main() {
   );
 
   const limit = pLimit(CONCURRENCY);
-  let done = 0;
-  let skip = 0;
-  let totalUpserted = 0;
   const startTime = Date.now();
 
-  await Promise.all(
+  const results = await Promise.all(
     symbols.map((symbol) =>
       limit(async () => {
         try {
           const rows = await fetchSurprisesForSymbol(symbol, baseUrl, key);
           const upserted = await upsertSurprises(symbol, rows);
-          totalUpserted += upserted;
-          done++;
-          if (done % 50 === 0) {
-            logger.info(TAG, `Progress: ${done}/${symbols.length} (${symbol})`);
-          }
+          return { ok: true, upserted } as const;
         } catch (e: unknown) {
-          skip++;
           const message = e instanceof Error ? e.message : String(e);
           logger.warn(TAG, `Skipped ${symbol}: ${message}`);
+          return { ok: false, upserted: 0 } as const;
         } finally {
           await sleep(PAUSE_MS);
         }
       }),
     ),
   );
+
+  const done = results.filter((r) => r.ok).length;
+  const skip = results.filter((r) => !r.ok).length;
+  const totalUpserted = results.reduce((sum, r) => sum + r.upserted, 0);
 
   const totalTime = Date.now() - startTime;
   logger.info(

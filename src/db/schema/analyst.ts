@@ -984,7 +984,7 @@ export const analystEstimates = pgTable(
 
 /**
  * eps_surprises — EPS 서프라이즈 히스토리.
- * FMP /stable/earnings-surprises 엔드포인트에서 수집.
+ * FMP /api/v3/earnings-surprises/{symbol} 엔드포인트에서 수집.
  * (symbol, actual_date) UNIQUE.
  */
 export const epsSurprises = pgTable(
