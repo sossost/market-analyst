@@ -18,145 +18,97 @@
 ## Before -> After
 
 **Before**: 이슈 생성 -> 즉시 90분 Claude CLI 실행 -> PR 생성 -> 사후 리뷰에서 HOLD/REJECT 가능
-**After**: 이슈 생성 -> 사전 트리아지(~3분) -> PROCEED만 90분 실행 / SKIP은 코멘트만 남기고 종료
+
+**After (최종 구조)**:
+```
+09:00 KST  배치 트리아지(triageBatch) — 미처리 이슈 전체 분석
+              PROCEED → 코멘트만 남기고 대기
+              SKIP    → 코멘트 + auto:blocked 라벨 부착
+              ESCALATE→ 코멘트 + auto:needs-ceo 라벨 부착
+10:00~ KST 이슈 프로세서(loopOrchestrator) — 매 정시 실행
+              fetchUnprocessedIssues() → SKIP/ESCALATE 이슈는 auto: 라벨로 이미 필터링됨
+              fetchTriageComment() → 배치가 남긴 분석 코멘트 읽기
+              executeIssue(issue, triageComment) → 구현 실행
+```
+
+**설계 근거**: 트리아지(3분)와 구현(90분)을 별도 cron으로 분리하면
+- 트리아지가 실패해도 구현 파이프라인에 영향 없음
+- 이슈 프로세서가 단순 읽기 폴백으로 동작 (triageComment 없으면 기존 방식대로)
 
 ## 변경 사항
 
-### 1. 새 파일: `src/issue-processor/triageIssue.ts`
+### 1. 신규: `src/issue-processor/triageIssue.ts`
 
 트리아지 전담 모듈. Claude CLI `--print` 모드로 이슈를 분석한다.
 
 **입력**: `GitHubIssue`
 **출력**: `TriageResult` (verdict: PROCEED | SKIP | ESCALATE, comment: string)
 **실행 방식**: `claude --print` (도구 호출 없음, 텍스트 분석만)
-**타임아웃**: 5분 (분석만 하므로 충분)
-
-트리아지 프롬프트가 평가하는 항목:
-- 골 정렬: Phase 2 포착 목표와의 관계
-- 무효 판정: LLM 백테스트, 자기검증 루프 등
-- 실행 가능성: 이슈 본문만으로 구현 가능한 수준인지
-- 원인 분석 + 수정 방향 + 영향 범위 + 주의사항 코멘트 생성
+**타임아웃**: 5분
 
 **판정 기준:**
 - PROCEED: 골 정렬 ALIGNED 또는 SUPPORT + 무효 판정 없음 + 실행 가능
-- SKIP: 골 정렬 NEUTRAL/MISALIGNED, 또는 무효 판정 해당, 또는 정보 부족으로 실행 불가
+- SKIP: 골 정렬 NEUTRAL/MISALIGNED, 또는 무효 판정 해당, 또는 정보 부족
 - ESCALATE: 판단 불가능한 경우 (예외적)
 
-**CEO 이슈 처리 규칙:**
-- CEO 수동 이슈(라벨에 `strategic-review`도 `report-feedback`도 없는 이슈)는 SKIP 판정하지 않는다.
-- 이유: ALLOWED_AUTHORS가 `sossost` 하나이므로 모든 이슈가 CEO 작성이지만, 자동 시스템이 생성하는 이슈에는 반드시 `strategic-review` 또는 `report-feedback` 라벨이 붙어 있다.
-- 라벨로 "자동 생성 이슈"를 식별하고, 이 이슈들만 SKIP 판정 대상으로 삼는다.
-- CEO가 수동으로 만든 이슈(위 두 라벨 없음)는 트리아지 분석 코멘트는 남기되, 판정은 항상 PROCEED로 강제한다.
+**CEO 수동 이슈**: `strategic-review`/`report-feedback` 라벨 없는 이슈는 항상 PROCEED 강제
 
-### 2. `src/issue-processor/index.ts` 수정
+### 2. 신규: `src/issue-processor/triageBatch.ts`
 
-`processIssues()` 함수에 트리아지 단계 삽입:
+배치 트리아지 진입점. 09:00 KST cron에 의해 실행됨.
 
 ```
-기존: fetchUnprocessedIssues -> executeIssue
-변경: fetchUnprocessedIssues -> triageIssue -> (PROCEED만) executeIssue
+fetchUnprocessedIssues() → 미처리 이슈 전체 (최대 20건)
+for each issue:
+  triageIssue(issue)
+  PROCEED  → 코멘트만 남기고 라벨 안 붙임
+  SKIP     → 코멘트 + auto:blocked 라벨
+  ESCALATE → 코멘트 + auto:needs-ceo 라벨
 ```
 
-- PROCEED: 트리아지 코멘트를 이슈에 남기고 executeIssue로 진행
-- SKIP: 트리아지 코멘트를 이슈에 남기고 `auto:blocked` 라벨 부착. executeIssue 건너뜀
-- ESCALATE: 트리아지 코멘트를 이슈에 남기고 `auto:needs-ceo` 라벨 부착. executeIssue 건너뜀
-- 트리아지 실패(타임아웃/에러): PROCEED로 폴백 (기존 동작 보존). 로그에 경고만 남김.
+### 3. 수정: `src/issue-processor/index.ts`
 
-### 3. `src/issue-processor/types.ts` 수정
+triageIssue 인라인 호출 제거. 배치가 남긴 코멘트를 읽어 executeIssue에 전달.
 
-새 타입 추가:
-
-```typescript
-export type TriageVerdict = 'PROCEED' | 'SKIP' | 'ESCALATE'
-
-export interface TriageResult {
-  verdict: TriageVerdict
-  comment: string  // 이슈에 남길 분석 코멘트
-}
-
-export type AutoLabel = 'auto:in-progress' | 'auto:done' | 'auto:blocked' | 'auto:needs-ceo' | 'auto:queued'
+```
+기존: fetchUnprocessedIssues -> triageIssue -> executeIssue
+변경: fetchUnprocessedIssues -> fetchTriageComment -> executeIssue(issue, triageComment)
 ```
 
-`auto:needs-ceo`와 `auto:queued`는 기존 라벨에 이미 존재. `AutoLabel` 타입에 추가만 하면 된다.
+SKIP/ESCALATE 이슈는 auto: 라벨로 이미 필터링되어 fetchUnprocessedIssues에서 제외됨.
 
-### 4. `src/issue-processor/executeIssue.ts` 프롬프트 조건부 전환
+### 4. 수정: `src/issue-processor/githubClient.ts`
 
-`buildClaudePrompt` 시그니처에 `triageComment?: string` 파라미터를 추가한다.
+`fetchTriageComment(issueNumber)` 추가:
+이슈 코멘트 중 `[사전 트리아지]` 마커가 있는 가장 최근 코멘트 본문 반환.
 
-**triageComment가 있을 때** (정상 트리아지 통과):
-- 프롬프트 상단에 "사전 트리아지 분석" 섹션을 추가하여 구현 방향 가이드로 전달
-- 기획서 자체 검증 단계(3번)의 골 정렬/무효 판정 지시를 "사전 트리아지에서 검증 완료. 아래 분석을 참고하라"로 대체
+### 5. 수정: `src/issue-processor/executeIssue.ts`
 
-**triageComment가 없을 때** (트리아지 폴백):
-- 기존 프롬프트를 그대로 유지 (골 정렬 + 무효 판정 자체 검증 포함)
-- 트리아지 실패 시에도 검증 공백이 발생하지 않도록 보장
+`buildClaudePrompt`에 `triageComment?: string` 파라미터 추가.
+- triageComment 있음: `<triage-analysis>` 태그로 감싸 프롬프트에 삽입, 골 정렬 자체 검증 대체
+- triageComment 없음(폴백): 기존 프롬프트 그대로 유지
 
-변경 범위:
-- `buildClaudePrompt` 시그니처에 `triageComment?: string` 파라미터 추가
-- 3번 단계를 triageComment 유무에 따라 조건부 렌더링
+### 6. 신규: 공유 유틸 `src/issue-processor/cliUtils.ts`
 
-### 5. PR 리뷰어 strategic 부분과의 역할 분담
+`buildSandboxedEnv()` + `classifyCliError(error, stderr, timeoutMs)` 추출.
+executeIssue, triageIssue, feedbackProcessor 3곳에서 import.
 
-사전 트리아지와 사후 strategic review의 중복을 정리한다.
+### 7. 신규: cron/launchd 설정
+- `scripts/cron/triage-issues.sh` — 배치 트리아지 실행 스크립트
+- `scripts/launchd/com.market-analyst.issue-triage.plist` — 09:00 KST 1회 실행
+- `scripts/launchd/com.market-analyst.issue-processor.plist` — 09시 항목 제거, 10시부터 시작 (17회)
 
-| 검토 항목 | 사전 트리아지 | 사후 Strategic Review |
-|-----------|-------------|---------------------|
-| 골 정렬 | O (사전 판단) | O (구현 결과 기준 재확인) |
-| 무효 판정 | O (사전 차단) | O (구현에서 드러난 무효 패턴) |
-| 이슈 충족 여부 | X (구현 전이므로 불가) | O (diff 기반 확인) |
-| 문서 업데이트 | X | O |
-| 수정 방향 가이드 | O | X (이미 구현됨) |
+### 8. 타입: `src/issue-processor/types.ts`
 
-**변경 없음**: Strategic reviewer 프롬프트는 그대로 유지한다. 사전 트리아지가 있어도 구현 결과를 기준으로 다시 확인하는 것은 가치가 있다. 다만 사전 트리아지가 잘 작동하면 HOLD/REJECT 빈도가 자연스럽게 줄어들 것이다.
+`TriageVerdict`, `TriageResult` 타입 추가.
+`AutoLabel`에 `auto:needs-ceo`, `auto:queued` 추가.
 
-### 6. 라벨 변경
+## 작업 계획 (완료)
 
-신규 라벨 생성 불필요. 기존 라벨로 모두 커버:
-- `auto:blocked` -- SKIP 판정 시 부착 (기존 라벨)
-- `auto:needs-ceo` -- ESCALATE 판정 시 부착 (기존 라벨)
-- `auto:in-progress` -- executeIssue 시작 시 부착 (기존 동작)
-
-`scripts/hooks/validate-issue-labels.sh` 변경 불필요.
-
-## 작업 계획
-
-### Phase 1: 트리아지 모듈 구현
-
-1. `src/issue-processor/types.ts`에 `TriageVerdict`, `TriageResult` 타입 추가
-2. `src/issue-processor/triageIssue.ts` 신규 생성
-   - `triageIssue(issue: GitHubIssue): Promise<TriageResult>` 함수
-   - Claude CLI `--print` 모드 호출
-   - 프롬프트: 골 정렬 + 무효 판정 + 실행 가능성 분석
-   - 출력 파싱: verdict + comment 추출
-   - CEO 이슈 강제 PROCEED 로직
-   - 타임아웃 5분, 에러 시 PROCEED 폴백
-   - 완료 기준: 단위 테스트 통과 (프롬프트 생성, 출력 파싱, CEO 이슈 폴백)
-
-### Phase 2: 이슈 처리 흐름에 삽입
-
-3. `src/issue-processor/index.ts` 수정
-   - `processIssues()` 내 executeIssue 호출 전에 triageIssue 호출 삽입
-   - 판정에 따른 분기 처리 (PROCEED/SKIP/ESCALATE)
-   - 완료 기준: 통합 테스트 -- SKIP 시 executeIssue 미호출 확인
-
-4. `src/issue-processor/executeIssue.ts` 프롬프트 조건부 전환
-   - `buildClaudePrompt`에 triageComment 전달
-   - triageComment 있으면: 사전 분석 섹션 추가 + 골 정렬 자체 검증 생략
-   - triageComment 없으면(폴백): 기존 프롬프트 유지 (검증 공백 방지)
-   - 완료 기준: 프롬프트 스냅샷 테스트 갱신
-
-### Phase 3: 테스트
-
-5. `src/issue-processor/__tests__/triageIssue.test.ts` 작성
-   - 프롬프트 빌드 테스트
-   - 출력 파싱 테스트 (PROCEED/SKIP/ESCALATE 각각)
-   - CEO 수동 이슈 강제 PROCEED 테스트
-   - 타임아웃/에러 시 PROCEED 폴백 테스트
-   - 완료 기준: 커버리지 80%+
-
-6. 기존 테스트 갱신
-   - executeIssue 프롬프트 변경에 따른 스냅샷/단위 테스트 수정
-   - 완료 기준: 전체 테스트 스위트 통과
+- Phase 1: triageIssue.ts + types.ts — 완료
+- Phase 2: triageBatch.ts 신규 + index.ts 배치 분리 + githubClient.ts fetchTriageComment — 완료
+- Phase 3: cron/launchd 설정 — 완료
+- Phase 4: 테스트 (triageIssue.test.ts, triageBatch.test.ts, index.test.ts) — 완료
 
 ## 리스크
 
