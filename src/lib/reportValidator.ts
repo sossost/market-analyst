@@ -154,8 +154,7 @@ function checkPhase2RatioRange(
 ): void {
   // Phase 2: NUM% (콜론 포함, 중간 텍스트 허용) + Phase 2 비율 NUM% (콜론 없음)
   const phase2Pattern = /Phase\s*2(?:[^:\n]*:\s*|\s*(?:비율|종목\s*비율)\s*)([\d,]+(?:\.\d+)?)\s*%/gi;
-  let match: RegExpExecArray | null;
-  while ((match = phase2Pattern.exec(markdown)) !== null) {
+  for (const match of markdown.matchAll(phase2Pattern)) {
     const rawValue = match[1].replace(/,/g, "");
     const value = Number(rawValue);
     if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
@@ -167,7 +166,7 @@ function checkPhase2RatioRange(
 
   // (전일 NUM%) 패턴 — Phase 2 전일 비율도 0~100 범위
   const prevDayPattern = /\(전일\s*([\d,]+(?:\.\d+)?)\s*%\)/gi;
-  while ((match = prevDayPattern.exec(markdown)) !== null) {
+  for (const match of markdown.matchAll(prevDayPattern)) {
     const rawValue = match[1].replace(/,/g, "");
     const value = Number(rawValue);
     if (Number.isFinite(value) && value > MAX_PHASE2_RATIO) {
@@ -722,10 +721,7 @@ export function checkPhaseDirectionConsistency(
   const lines = markdown.split("\n");
 
   for (const line of lines) {
-    PHASE_TRANSITION_PATTERN.lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = PHASE_TRANSITION_PATTERN.exec(line)) !== null) {
+    for (const match of line.matchAll(PHASE_TRANSITION_PATTERN)) {
       const fromPhase = Number(match[1]);
       const toPhase = Number(match[2]);
 
