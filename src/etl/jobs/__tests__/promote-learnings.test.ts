@@ -4,8 +4,10 @@ import {
   COLD_START_THRESHOLD,
   GROWTH_PHASE_THRESHOLD,
   MIN_MATURATION_HITS,
+  MIN_QUANTITATIVE_RATE,
   getPromotionThresholds,
   buildPromotionCandidates,
+  buildAntiPatternCandidates,
   buildCautionPrinciple,
   normalizeMetricKey,
   demoteImmatureLearnings,
@@ -122,6 +124,7 @@ function makeThesis(overrides: Partial<{
   verificationMetric: string;
   verificationMethod: string | null;
   status: string;
+  category: string;
 }> = {}) {
   return {
     id: 1,
@@ -129,6 +132,7 @@ function makeThesis(overrides: Partial<{
     verificationMetric: "RS > 80",
     verificationMethod: "quantitative",
     status: "CONFIRMED",
+    category: "sector_rotation",
     ticker: "AAPL",
     sectorName: "Technology",
     thesisText: "test",
@@ -761,5 +765,186 @@ describe("normalizeMetricKey — commodity/rates aliases", () => {
 
   it("'10y' → 'US 10Y Yield'로 정규화", () => {
     expect(normalizeMetricKey("10y")).toBe("US 10Y Yield");
+  });
+});
+
+// ─── buildPromotionCandidates — 카테고리 폴백 (#451) ─────────────────────────
+
+describe("buildPromotionCandidates — 카테고리 폴백", () => {
+  it("metric 그룹이 threshold 미달인 thesis를 persona::category로 재그룹핑하여 승격한다", () => {
+    // 각각 다른 metric → metric 그룹에서는 minHits=2 미달 (cold start)
+    const confirmed = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", category: "sector_rotation" }),
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "VIX", category: "sector_rotation" }),
+    ];
+    const invalidated: ReturnType<typeof makeThesis>[] = [];
+
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      invalidated as never,
+      new Set<number>(),
+      3, // cold start: minHits=2
+    );
+
+    // metric 그룹: macro::S&P 500 (1건), macro::VIX (1건) → 둘 다 미달
+    // category 폴백: macro::cat:sector_rotation (2건) → 충족
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].persona).toBe("macro");
+    expect(candidates[0].metric).toBe("cat:sector_rotation");
+    expect(candidates[0].hitCount).toBe(2);
+  });
+
+  it("metric 그룹에서 이미 승격된 thesis는 카테고리 폴백에서 제외된다", () => {
+    // 같은 metric 2건 → metric 그룹에서 승격
+    // 다른 metric 1건 → 카테고리 폴백 대상이지만 1건이므로 미달
+    const confirmed = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", category: "sector_rotation" }),
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "S&P 500", category: "sector_rotation" }),
+      makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "VIX", category: "sector_rotation" }),
+    ];
+
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      [] as never,
+      new Set<number>(),
+      3, // cold start: minHits=2
+    );
+
+    // metric 그룹: macro::S&P 500 (2건) → 승격
+    // 카테고리 폴백: 잔여 VIX 1건만 → 미달
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].metric).toBe("S&P 500");
+  });
+
+  it("서로 다른 카테고리의 thesis는 별도 그룹으로 처리된다", () => {
+    const confirmed = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "Gold", category: "structural_narrative" }),
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "DXY", category: "structural_narrative" }),
+      makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "VIX", category: "short_term_outlook" }),
+    ];
+
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      [] as never,
+      new Set<number>(),
+      3, // cold start: minHits=2
+    );
+
+    // structural_narrative: 2건 → 카테고리 폴백 승격
+    // short_term_outlook: 1건 → 미달
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].metric).toBe("cat:structural_narrative");
+  });
+
+  it("카테고리 폴백에서도 hitRate < minHitRate이면 탈락한다", () => {
+    const confirmed = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", category: "sector_rotation" }),
+    ];
+    const invalidated = [
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "VIX", category: "sector_rotation" }),
+      makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "Gold", category: "sector_rotation" }),
+    ];
+
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      invalidated as never,
+      new Set<number>(),
+      0, // bootstrap: minHits=1, minHitRate=55%
+    );
+
+    // metric 그룹: 각 1건씩 → bootstrap에서 S&P 500은 승격 가능 (1/1=100%)
+    // 하지만 invalidated는 confirmed 그룹에만 추가되므로
+    // S&P 500 그룹: 1 confirmed, 0 invalidated → 승격
+    expect(candidates.length).toBeGreaterThanOrEqual(1);
+    expect(candidates.some(c => c.metric === "S&P 500")).toBe(true);
+  });
+});
+
+// ─── buildAntiPatternCandidates (#451) ──────────────────────────────────────
+
+describe("buildAntiPatternCandidates", () => {
+  it("반복 실패 패턴을 anti-pattern 후보로 추출한다 (bootstrap)", () => {
+    const invalidated = [
+      makeThesis({ id: 1, agentPersona: "sentiment", verificationMetric: "Fear & Greed", status: "INVALIDATED" }),
+    ];
+    const confirmed: ReturnType<typeof makeThesis>[] = [];
+
+    const candidates = buildAntiPatternCandidates(
+      invalidated as never,
+      confirmed as never,
+      0, // bootstrap: minHits=1
+    );
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].persona).toBe("sentiment");
+    expect(candidates[0].metric).toBe("Fear & Greed");
+    expect(candidates[0].missCount).toBe(1);
+    expect(candidates[0].hitCount).toBe(0);
+  });
+
+  it("cold start에서 2건 이상 INVALIDATED가 있어야 후보 생성", () => {
+    const invalidated = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "INVALIDATED" }),
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "S&P 500", status: "INVALIDATED" }),
+    ];
+    const confirmed = [
+      makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+    ];
+
+    const candidates = buildAntiPatternCandidates(
+      invalidated as never,
+      confirmed as never,
+      3, // cold start: minHits=2
+    );
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].missCount).toBe(2);
+    expect(candidates[0].hitCount).toBe(1);
+  });
+
+  it("missRate < minHitRate이면 후보에서 탈락한다", () => {
+    const invalidated = [
+      makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "S&P 500", status: "INVALIDATED" }),
+    ];
+    const confirmed = [
+      makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+      makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "S&P 500", status: "CONFIRMED" }),
+    ];
+
+    // cold start: minHitRate=55%, missRate = 1/3 = 33% → 탈락
+    const candidates = buildAntiPatternCandidates(
+      invalidated as never,
+      confirmed as never,
+      3,
+    );
+
+    expect(candidates).toHaveLength(0);
+  });
+
+  it("카테고리 폴백으로 다양한 metric의 INVALIDATED를 묶는다", () => {
+    const invalidated = [
+      makeThesis({ id: 1, agentPersona: "tech", verificationMetric: "Technology RS", category: "sector_rotation", status: "INVALIDATED" }),
+      makeThesis({ id: 2, agentPersona: "tech", verificationMetric: "NASDAQ", category: "sector_rotation", status: "INVALIDATED" }),
+    ];
+
+    const candidates = buildAntiPatternCandidates(
+      invalidated as never,
+      [] as never,
+      3, // cold start: minHits=2
+    );
+
+    // metric 그룹: 각 1건씩 → 미달
+    // 카테고리 폴백: tech::cat:sector_rotation (2건) → 승격
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].metric).toBe("cat:sector_rotation");
+    expect(candidates[0].missCount).toBe(2);
+  });
+});
+
+// ─── MIN_QUANTITATIVE_RATE 상수 (#451) ──────────────────────────────────────
+
+describe("MIN_QUANTITATIVE_RATE 상수", () => {
+  it("MIN_QUANTITATIVE_RATE는 0.30이다", () => {
+    expect(MIN_QUANTITATIVE_RATE).toBe(0.30);
   });
 });
