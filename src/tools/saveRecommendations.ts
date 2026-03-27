@@ -15,6 +15,9 @@ import {
   findPhase2Stability,
 } from "@/db/repositories/recommendationRepository.js";
 import {
+  findFundamentalGrades,
+} from "@/db/repositories/fundamentalRepository.js";
+import {
   findStockPhaseDetail,
   findMarketPhase2Ratio,
 } from "@/db/repositories/stockPhaseRepository.js";
@@ -69,6 +72,15 @@ const MIN_PHASE2_PERSISTENCE_COUNT = 3;
  * 7/8 경계 종목이 하루 만에 조건 깨지는 패턴을 차단한다.
  */
 const PHASE2_STABILITY_DAYS = 3;
+
+/**
+ * 펀더멘탈 하드 게이트: SEPA F등급 종목 추천 차단.
+ * 근거: 90일 추천 중 Phase Exit 6건(avg 2일), Stop Loss 3건(max PnL -0.28%) —
+ * 기술적 Phase 2만으로는 생존율 14%. 최소한의 펀더멘탈 뒷받침 필수 (#449).
+ * F = SEPA 기준 전부 미충족. C 이상(기준 1개라도 충족)이면 통과.
+ * 등급 없음(데이터 미확보)은 fail-open으로 통과.
+ */
+const BLOCKED_FUNDAMENTAL_GRADE = "F";
 
 /**
  * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
@@ -225,11 +237,13 @@ export const saveRecommendations: AgentTool = {
       cooldownRows,
       persistenceRows,
       stabilityRows,
+      fundamentalGradeRows,
     ] = await Promise.all([
       retryDatabaseOperation(() => findActiveRecommendations(symbols)),
       retryDatabaseOperation(() => findRecentlyClosed(cooldownStart, symbols)),
       retryDatabaseOperation(() => findPhase2Persistence(symbols, persistenceStart, date)),
       retryDatabaseOperation(() => findPhase2Stability(symbols, date, PHASE2_STABILITY_DAYS)),
+      retryDatabaseOperation(() => findFundamentalGrades(symbols, date)),
     ]);
     const activeSymbols = new Set(activeRows.map((r) => r.symbol));
     const cooldownSymbols = new Set(cooldownRows.map((r) => r.symbol));
@@ -237,6 +251,9 @@ export const saveRecommendations: AgentTool = {
       persistenceRows.map((r) => [r.symbol, Number(r.phase2_count)]),
     );
     const stableSymbols = new Set(stabilityRows.map((r) => r.symbol));
+    const fundamentalGradeMap = new Map(
+      fundamentalGradeRows.map((r) => [r.symbol, r.grade]),
+    );
 
     // 진입가 검증: 추천일 종가 사전 일괄 조회
     const priceRows = await retryDatabaseOperation(() =>
@@ -257,6 +274,7 @@ export const saveRecommendations: AgentTool = {
     let blockedByLowPrice = 0;
     let blockedByPersistence = 0;
     let blockedByStability = 0;
+    let blockedByFundamental = 0;
 
     for (const rec of recs) {
       const symbol = validateSymbol(rec.symbol);
@@ -403,6 +421,17 @@ export const saveRecommendations: AgentTool = {
         continue;
       }
 
+      // Phase 4: 펀더멘탈 하드 게이트 — SEPA F등급 종목 추천 차단 (#449)
+      const fundamentalGrade = fundamentalGradeMap.get(symbol) ?? null;
+      if (fundamentalGrade === BLOCKED_FUNDAMENTAL_GRADE) {
+        logger.warn(
+          "QualityGate",
+          `${symbol}: SEPA 등급 ${fundamentalGrade} — 펀더멘탈 기준 전부 미충족, 추천 차단`,
+        );
+        blockedByFundamental++;
+        continue;
+      }
+
       // 1. recommendations 테이블 INSERT
       const insertResult = await retryDatabaseOperation(() =>
         db
@@ -475,7 +504,8 @@ export const saveRecommendations: AgentTool = {
       blockedByLowPrice,
       blockedByPersistence,
       blockedByStability,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단, ${blockedByStability}개 안정성 차단`,
+      blockedByFundamental,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단, ${blockedByStability}개 안정성 차단, ${blockedByFundamental}개 펀더멘탈 차단`,
     });
   },
 };

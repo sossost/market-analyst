@@ -95,6 +95,10 @@ vi.mock("@/db/repositories/sectorRepository.js", () => ({
   findIndustryRsDetail: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("@/db/repositories/fundamentalRepository.js", () => ({
+  findFundamentalGrades: vi.fn().mockResolvedValue([]),
+}));
+
 import { saveRecommendations } from "@/tools/saveRecommendations";
 import {
   findPhase2Persistence,
