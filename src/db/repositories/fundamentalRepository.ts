@@ -28,6 +28,29 @@ export async function findLatestFundamentalGrade(
   return rows[0] ?? null;
 }
 
+/** 복수 종목의 최신 SEPA 등급을 일괄 조회한다. */
+export interface FundamentalGradeBatchRow {
+  symbol: string;
+  grade: string;
+}
+
+export async function findFundamentalGrades(
+  symbols: string[],
+  date: string,
+): Promise<FundamentalGradeBatchRow[]> {
+  if (symbols.length === 0) return [];
+
+  const { rows } = await pool.query<FundamentalGradeBatchRow>(
+    `SELECT DISTINCT ON (symbol) symbol, grade
+     FROM fundamental_scores
+     WHERE symbol = ANY($1) AND scored_date <= $2
+     ORDER BY symbol, scored_date DESC`,
+    [symbols, date],
+  );
+
+  return rows;
+}
+
 /**
  * Phase 1 또는 Phase 2 종목 중 최근 8분기 실적 데이터를 조회한다.
  * getFundamentalAcceleration 전용 — 종목별 그룹화 및 가속 패턴 계산은 호출부에서 수행.

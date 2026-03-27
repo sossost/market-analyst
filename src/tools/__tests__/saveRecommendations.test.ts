@@ -100,21 +100,25 @@ function makeInsertChain(rowCount: number) {
 function setupDefaultPoolMocks(overrides?: {
   persistenceRows?: { symbol: string; phase2_count: string }[];
   stabilityRows?: { symbol: string }[];
+  fundamentalGradeRows?: { symbol: string; grade: string }[];
 }) {
   // pool.query 호출 순서 (Promise.all 병렬이지만 mock은 순차 소비):
   // 1. activeRows (ACTIVE symbol)
   // 2. cooldownRows (CLOSED/CLOSED_PHASE_EXIT/CLOSED_TRAILING_STOP/CLOSED_STOP_LOSS symbol in cooldown)
   // 3. persistenceRows (stock_phases phase = 2)  ← activeRows/cooldownRows와 병렬
   // 4. stabilityRows (최근 N거래일 연속 Phase 2 확인, #436)
-  // 5. priceRows (daily_prices)
+  // 5. fundamentalGradeRows (SEPA 등급, #449)
+  // 6. priceRows (daily_prices)
   // saveFactorSnapshot 내부 쿼리는 별도
   const defaultPersistence = overrides?.persistenceRows ?? [{ symbol: "AAPL", phase2_count: "3" }];
   const defaultStability = overrides?.stabilityRows ?? [{ symbol: "AAPL" }];
+  const defaultFundamental = overrides?.fundamentalGradeRows ?? [];
   mockPool.query
     .mockResolvedValueOnce({ rows: [] })                // activeRows
     .mockResolvedValueOnce({ rows: [] })                // cooldownRows
     .mockResolvedValueOnce({ rows: defaultPersistence }) // persistenceRows
     .mockResolvedValueOnce({ rows: defaultStability })   // stabilityRows
+    .mockResolvedValueOnce({ rows: defaultFundamental }) // fundamentalGradeRows
     .mockResolvedValueOnce({ rows: [] });               // priceRows
 }
 
@@ -204,6 +208,7 @@ describe("Phase 1: 레짐 하드 게이트 + Bear 예외", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "LMT" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -259,6 +264,7 @@ describe("Phase 1: 레짐 하드 게이트 + Bear 예외", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "LMT" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot (LMT만 저장됨)
       .mockResolvedValueOnce({ rows: [] })
@@ -414,6 +420,7 @@ describe("Phase 2: 쿨다운 게이트", () => {
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })     // cooldownRows: AAPL 존재
       .mockResolvedValueOnce({ rows: [] })                         // persistenceRows
       .mockResolvedValueOnce({ rows: [] })                         // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })                         // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] });                        // priceRows
 
     const result = await saveRecommendations.execute({
@@ -435,6 +442,7 @@ describe("Phase 2: 쿨다운 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows: 비어있음
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] }); // priceRows
 
     // saveFactorSnapshot
@@ -479,6 +487,7 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows: 3일
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -504,6 +513,7 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "2" }] })  // persistenceRows: 2일
       .mockResolvedValueOnce({ rows: [] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] });  // priceRows
 
     const result = await saveRecommendations.execute({
@@ -528,6 +538,7 @@ describe("Phase 3: Phase 2 지속성 하드 블록", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [] })  // persistenceRows: 0일
       .mockResolvedValueOnce({ rows: [] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] });  // priceRows
 
     const result = await saveRecommendations.execute({
@@ -605,6 +616,7 @@ describe("Phase 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -661,6 +673,7 @@ describe("RS 하한 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -820,6 +833,7 @@ describe("레짐 조회 실패 시 fail-open", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -881,6 +895,7 @@ describe("RS 과열 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -906,6 +921,7 @@ describe("RS 과열 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "MSFT", phase2_count: "3" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "MSFT" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -983,6 +999,7 @@ describe("저가주 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "XYZ", phase2_count: "3" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "XYZ" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -1007,6 +1024,7 @@ describe("저가주 하드 게이트", () => {
       .mockResolvedValueOnce({ rows: [] })  // cooldownRows
       .mockResolvedValueOnce({ rows: [{ symbol: "MSFT", phase2_count: "3" }] })  // persistenceRows
       .mockResolvedValueOnce({ rows: [{ symbol: "MSFT" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
       .mockResolvedValueOnce({ rows: [] })  // priceRows
       // saveFactorSnapshot
       .mockResolvedValueOnce({ rows: [] })
@@ -1027,5 +1045,160 @@ describe("저가주 하드 게이트", () => {
     const parsed = JSON.parse(result);
     expect(parsed.savedCount).toBe(1);
     expect(parsed.blockedByLowPrice).toBe(2);
+  });
+});
+
+// =============================================================================
+// Phase 4: 펀더멘탈 하드 게이트 (#449)
+// =============================================================================
+
+describe("Phase 4: 펀더멘탈 하드 게이트", () => {
+  beforeEach(() => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+  });
+
+  it("SEPA F등급 종목은 blockedByFundamental로 차단한다", async () => {
+    setupDefaultPoolMocks({
+      fundamentalGradeRows: [{ symbol: "AAPL", grade: "F" }],
+    });
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByFundamental).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "QualityGate",
+      expect.stringContaining("SEPA 등급 F"),
+    );
+  });
+
+  it("SEPA C등급 종목은 펀더멘탈 게이트를 통과한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", grade: "C" }] })  // fundamentalGradeRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByFundamental).toBe(0);
+  });
+
+  it("SEPA B등급 종목은 펀더멘탈 게이트를 통과한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "AAPL", grade: "B" }] })  // fundamentalGradeRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByFundamental).toBe(0);
+  });
+
+  it("fundamental_scores에 데이터 없는 종목은 fail-open으로 통과한다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "NEWCO", phase2_count: "3" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "NEWCO" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows: 데이터 없음
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "NEWCO" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByFundamental).toBe(0);
+  });
+
+  it("F등급 2건 + A등급 1건: 펀더멘탈 2건 차단, 정상 1건 저장", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [
+        { symbol: "ALTO", phase2_count: "3" },
+        { symbol: "VICR", phase2_count: "3" },
+        { symbol: "MSFT", phase2_count: "3" },
+      ] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [
+        { symbol: "ALTO" },
+        { symbol: "VICR" },
+        { symbol: "MSFT" },
+      ] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [
+        { symbol: "ALTO", grade: "F" },
+        { symbol: "VICR", grade: "F" },
+        { symbol: "MSFT", grade: "A" },
+      ] })  // fundamentalGradeRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot (MSFT만 저장됨)
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [
+        makeRec({ symbol: "ALTO" }),
+        makeRec({ symbol: "VICR" }),
+        makeRec({ symbol: "MSFT" }),
+      ],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByFundamental).toBe(2);
   });
 });
