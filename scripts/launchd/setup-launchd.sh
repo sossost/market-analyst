@@ -25,6 +25,7 @@ PLISTS=(
   "com.market-analyst.log-cleanup"
   "com.market-analyst.news-collect"
   "com.market-analyst.strategic-review"
+  "com.market-analyst.issue-triage"
   "com.market-analyst.issue-processor"
   "com.market-analyst.pr-reviewer"
 )
