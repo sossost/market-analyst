@@ -714,7 +714,7 @@ export function formatPersonaCategoryHitRates(
 
   const warnings: string[] = [];
 
-  for (const r of valid) {
+  for (const r of valid.sort((a, b) => (b.hitRate ?? 0) - (a.hitRate ?? 0))) {
     const label = CATEGORY_LABEL_KR[r.category] ?? r.category;
     const rateStr = r.hitRate != null ? `${(r.hitRate * 100).toFixed(0)}%` : "-";
     lines.push(`| ${label} | ${r.confirmed} | ${r.invalidated} | ${rateStr} |`);
