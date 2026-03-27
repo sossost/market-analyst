@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizePhase2Ratios, validateReport, MIN_DAILY_MD_LENGTH } from "../reportValidator";
+import { sanitizePhase2Ratios, validateReport, MIN_DAILY_MD_LENGTH, checkPhaseDirectionConsistency, checkDataPresenceConsistency } from "../reportValidator";
 
 /** 500자 이상 마크다운을 만들기 위한 패딩 생성 헬퍼 */
 function padToMinLength(base: string): string {
@@ -1183,5 +1183,152 @@ describe("validateReport — 극단적 거래량 과열 경고 누락", () => {
       w.includes("예비군 교체"),
     );
     expect(reserveWarning).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O. Phase 방향 크로스체크
+// ---------------------------------------------------------------------------
+
+describe("checkPhaseDirectionConsistency", () => {
+  it("Phase 2→3 + 악화 서술 → 정상 통과 (방향 일치)", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "Utilities 섹터 Phase 2→3 악화 — 주의 필요",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("Phase 1→2 + 개선 서술 → 정상 통과 (방향 일치)", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "Financial Services Phase 1→2 개선 — 강세 전환 초입",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("Phase 2→3 + 개선 서술 → ERROR (악화인데 개선 서술)", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "Utilities Phase 2→3 개선 — 긍정적 신호",
+      errors,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("Phase 방향 모순");
+    expect(errors[0]).toContain("악화 방향인데 개선 서술");
+  });
+
+  it("Phase 3→2 + 악화 서술 → ERROR (개선인데 악화 서술)", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "Energy Phase 3→2 악화 — 하락세 지속",
+      errors,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("Phase 방향 모순");
+    expect(errors[0]).toContain("개선 방향인데 악화 서술");
+  });
+
+  it("Phase X→X (동일) → 무시", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "Technology Phase 2→2 유지 — 개선 조짐",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("방향 서술이 없는 Phase 전환 → 정상 통과", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "Healthcare Phase 2→3 전환",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("양방향 서술이 모두 있으면 → 정상 통과 (복합 서술 허용)", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "Utilities Phase 2→3 악화이나 일부 개선 조짐",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("validateReport에서 daily 리포트로 Phase 방향 모순 감지", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\nUtilities Phase 2→3 개선 — 강세 전환. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 방향 모순"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P. 데이터 유무 일관성
+// ---------------------------------------------------------------------------
+
+describe("checkDataPresenceConsistency", () => {
+  it("수치 존재 + 확인 불가 동시 등장 → ERROR", () => {
+    const errors: string[] = [];
+    checkDataPresenceConsistency(
+      "Technology RS: 43.49\n데이터 조회 오류로 정확한 수치 확인 불가",
+      errors,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("데이터 유무 모순");
+  });
+
+  it("수치 없이 확인 불가만 있으면 → 정상 통과", () => {
+    const errors: string[] = [];
+    checkDataPresenceConsistency(
+      "Technology 섹터 데이터 조회 오류로 정확한 수치 확인 불가",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("수치만 있고 확인 불가 없으면 → 정상 통과", () => {
+    const errors: string[] = [];
+    checkDataPresenceConsistency(
+      "Technology RS: 43.49 — 상승 추세 지속",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("같은 줄에 RS 수치 + 확인 불가 → ERROR", () => {
+    const errors: string[] = [];
+    checkDataPresenceConsistency(
+      "Technology RS 43.49이나 데이터 미수집으로 확인 불가",
+      errors,
+    );
+    expect(errors).toHaveLength(1);
+  });
+
+  it("멀리 떨어진 줄(3줄 이상)이면 → 정상 통과 (다른 엔티티일 가능성)", () => {
+    const errors: string[] = [];
+    checkDataPresenceConsistency(
+      "Energy RS: 55.2\n에너지 섹터 강세\n반도체 약세\n순환주 전환\nTechnology 섹터 데이터 조회 오류로 수치 확인 불가",
+      errors,
+    );
+    expect(errors).toHaveLength(0);
+  });
+
+  it("validateReport에서 daily 리포트로 데이터 유무 모순 감지", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\nTechnology RS: 43.49\n데이터 조회 오류로 수치 확인 불가.\n## 시장 흐름\n전망. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("데이터 유무 모순"))).toBe(true);
   });
 });

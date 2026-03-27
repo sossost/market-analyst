@@ -13,6 +13,7 @@ import {
   loadPreviousReportContext,
   formatPreviousReportContext,
   extractReserveStocks,
+  extractKeyInsights,
   formatSectorRsLines,
 } from "../previousReportContext";
 import type { DailyReportLog } from "@/types";
@@ -238,6 +239,74 @@ describe("formatPreviousReportContext — topSectorRs", () => {
     const result = formatPreviousReportContext(logWithEmptyRs);
 
     expect(result).not.toContain("직전 섹터 RS 상위");
+  });
+});
+
+describe("extractKeyInsights", () => {
+  it("💡 인사이트 섹션에서 내용 추출", () => {
+    const content = "💡 오늘의 인사이트\nFinancial Services 72건 Phase 1→2 전환 — 차기 주도섹터 전환 초입 신호\nAI 인프라 투자 사이클 2분기 연속 확대\n\n⚠️ 약세 경고";
+    const result = extractKeyInsights(content);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toContain("Financial Services");
+    expect(result[1]).toContain("AI 인프라");
+  });
+
+  it("null 입력 시 빈 배열", () => {
+    expect(extractKeyInsights(null)).toEqual([]);
+  });
+
+  it("빈 문자열 입력 시 빈 배열", () => {
+    expect(extractKeyInsights("")).toEqual([]);
+  });
+
+  it("💡 섹션 없으면 빈 배열", () => {
+    const content = "⭐ 강세 종목\n• NVDA RS 90 Phase 2";
+    expect(extractKeyInsights(content)).toEqual([]);
+  });
+
+  it("짧은 줄(10자 이하)과 구분선은 제외", () => {
+    const content = "💡 오늘의 인사이트\n---\n짧은\nFinancial Services Phase 1→2 전환 — 핵심 시그널\n\n⚠️ 약세";
+    const result = extractKeyInsights(content);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("Financial Services");
+  });
+
+  it("## 헤더로 끝나는 섹션에서도 추출", () => {
+    const content = "💡 오늘의 인사이트\nEnergy 섹터 지정학 리스크 기반 RS 상승\n\n## 시장 흐름 및 종합 전망";
+    const result = extractKeyInsights(content);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("Energy");
+  });
+});
+
+describe("formatPreviousReportContext — keyInsights", () => {
+  it("fullContent에 인사이트 섹션이 있으면 핵심 인사이트 블록 포함", () => {
+    const logWithInsights: DailyReportLog = {
+      ...SAMPLE_LOG,
+      fullContent: "💡 오늘의 인사이트\nFinancial Services 72건 Phase 1→2 전환 — 차기 주도섹터 전환 초입 신호\n\n⚠️ 약세 경고",
+    };
+
+    const result = formatPreviousReportContext(logWithInsights);
+
+    expect(result).toContain("### 직전 핵심 인사이트 (후속 추적 필수)");
+    expect(result).toContain("Financial Services");
+  });
+
+  it("fullContent에 인사이트 섹션이 없으면 핵심 인사이트 블록 미포함", () => {
+    const result = formatPreviousReportContext(SAMPLE_LOG);
+
+    expect(result).not.toContain("직전 핵심 인사이트");
+  });
+
+  it("fullContent가 없으면 핵심 인사이트 블록 미포함", () => {
+    const logNoContent: DailyReportLog = {
+      ...SAMPLE_LOG,
+      fullContent: undefined,
+    };
+
+    const result = formatPreviousReportContext(logNoContent);
+
+    expect(result).not.toContain("직전 핵심 인사이트");
   });
 });
 
