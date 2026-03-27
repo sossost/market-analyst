@@ -10,7 +10,7 @@ import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
 import { sql, eq, and, inArray, desc } from "drizzle-orm";
 import { logger } from "@/lib/logger";
-import type { AgentPersona, Confidence } from "@/types/debate";
+import type { AgentPersona, Confidence, ThesisCategory } from "@/types/debate";
 import { EXPERT_PERSONAS } from "./personas.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -395,9 +395,10 @@ export async function buildEnhancedPerAgentCalibrationContexts(): Promise<
   const entries = await Promise.all(
     EXPERT_PERSONAS.map(async (persona) => {
       try {
-        const [calibResult, failures] = await Promise.all([
+        const [calibResult, failures, categoryRates] = await Promise.all([
           getCalibrationResultForPersona(persona),
           loadRecentInvalidatedTheses(persona),
+          getPersonaCategoryHitRates(persona),
         ]);
 
         const parts: string[] = [];
@@ -405,6 +406,11 @@ export async function buildEnhancedPerAgentCalibrationContexts(): Promise<
         const calibFormatted = formatCalibrationForPrompt(calibResult);
         if (calibFormatted.length > 0) {
           parts.push(calibFormatted);
+        }
+
+        const categoryFormatted = formatPersonaCategoryHitRates(categoryRates);
+        if (categoryFormatted.length > 0) {
+          parts.push(categoryFormatted);
         }
 
         const failuresFormatted = formatRecentFailuresForPrompt(failures);
@@ -528,6 +534,201 @@ export function formatModeratorPerformanceContext(
     else if (hr.hitRate != null && hr.hitRate < LOW_HIT_RATE_THRESHOLD) reliability = "⚠️ 저신뢰";
     else reliability = "정상";
     lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${rateStr} | ${reliability} |`);
+  }
+
+  return lines.join("\n");
+}
+
+// ─── Category Hit Rate ──────────────────────────────────────────────────────────
+
+export interface CategoryHitRate {
+  category: ThesisCategory;
+  confirmed: number;
+  invalidated: number;
+  hitRate: number | null;
+}
+
+const CATEGORY_LABEL_KR: Record<ThesisCategory, string> = {
+  structural_narrative: "구조적 서사",
+  sector_rotation: "섹터 로테이션",
+  short_term_outlook: "단기 전망",
+};
+
+const CATEGORY_LOW_HIT_RATE_THRESHOLD = 0.55;
+
+/**
+ * 카테고리별 CONFIRMED/INVALIDATED 적중률을 조회한다.
+ */
+export async function getCategoryHitRates(): Promise<CategoryHitRate[]> {
+  const rows = await db
+    .select({
+      category: theses.category,
+      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
+      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+    })
+    .from(theses)
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
+    .groupBy(theses.category);
+
+  return rows.map((r) => {
+    const total = r.confirmed + r.invalidated;
+    return {
+      category: r.category as ThesisCategory,
+      confirmed: r.confirmed,
+      invalidated: r.invalidated,
+      hitRate: total > 0 ? r.confirmed / total : null,
+    };
+  });
+}
+
+/**
+ * 카테고리별 적중률을 모더레이터 프롬프트용 마크다운으로 변환한다.
+ * 저적중 카테고리에 대한 thesis 생성 경고를 포함한다.
+ * 순수 함수 — 테스트 용이.
+ */
+export function formatCategoryHitRateContext(
+  hitRates: CategoryHitRate[],
+): string {
+  if (hitRates.length === 0) return "";
+
+  const sorted = [...hitRates].sort((a, b) => (b.hitRate ?? 0) - (a.hitRate ?? 0));
+
+  const lines: string[] = [
+    "## 카테고리별 Thesis 적중률",
+    "",
+    "아래는 thesis 카테고리별 과거 적중률입니다.",
+    "",
+    "| 카테고리 | 적중 | 기각 | 적중률 | 신뢰도 |",
+    "|----------|------|------|--------|--------|",
+  ];
+
+  const lowCategories: string[] = [];
+
+  for (const hr of sorted) {
+    const label = CATEGORY_LABEL_KR[hr.category] ?? hr.category;
+    const total = hr.confirmed + hr.invalidated;
+    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
+    let reliability: string;
+    if (total < 3) {
+      reliability = "데이터 부족";
+    } else if (hr.hitRate != null && hr.hitRate < CATEGORY_LOW_HIT_RATE_THRESHOLD) {
+      reliability = "⚠️ 저신뢰";
+      lowCategories.push(label);
+    } else {
+      reliability = "정상";
+    }
+    lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${rateStr} | ${reliability} |`);
+  }
+
+  if (lowCategories.length > 0) {
+    lines.push("");
+    lines.push("### ⚠️ 저적중 카테고리 경고");
+    lines.push(`**${lowCategories.join(", ")}** 카테고리의 적중률이 ${(CATEGORY_LOW_HIT_RATE_THRESHOLD * 100).toFixed(0)}% 미만입니다.`);
+    lines.push("이 카테고리의 thesis를 생성할 때:");
+    lines.push("- 구체적 가격/지수 목표치 대신 **조건부(if-then) 형식**을 사용하세요.");
+    lines.push("- confidence를 한 단계 낮춰 설정하세요 (high → medium, medium → low).");
+    lines.push("- 방향성 단정보다 **구조적 분석**(포지셔닝, 정책 단계, 공급 체인)에 집중하세요.");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * 카테고리별 적중률 컨텍스트를 생성한다.
+ * 모더레이터 성과 컨텍스트에 합쳐서 전달된다.
+ */
+export async function buildCategoryHitRateContext(): Promise<string> {
+  try {
+    const hitRates = await getCategoryHitRates();
+    if (hitRates.length === 0) return "";
+    return formatCategoryHitRateContext(hitRates);
+  } catch (err) {
+    logger.warn(
+      "Calibration",
+      `카테고리 적중률 컨텍스트 생성 실패: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return "";
+  }
+}
+
+// ─── Per-Agent Category Hit Rate ────────────────────────────────────────────────
+
+export interface PersonaCategoryHitRate {
+  persona: AgentPersona;
+  category: ThesisCategory;
+  confirmed: number;
+  invalidated: number;
+  hitRate: number | null;
+}
+
+/**
+ * 특정 에이전트의 카테고리별 적중률을 조회한다.
+ */
+export async function getPersonaCategoryHitRates(
+  persona: AgentPersona,
+): Promise<PersonaCategoryHitRate[]> {
+  const rows = await db
+    .select({
+      category: theses.category,
+      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
+      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+    })
+    .from(theses)
+    .where(
+      and(
+        eq(theses.agentPersona, persona),
+        inArray(theses.status, ["CONFIRMED", "INVALIDATED"]),
+      ),
+    )
+    .groupBy(theses.category);
+
+  return rows.map((r) => {
+    const total = r.confirmed + r.invalidated;
+    return {
+      persona,
+      category: r.category as ThesisCategory,
+      confirmed: r.confirmed,
+      invalidated: r.invalidated,
+      hitRate: total > 0 ? r.confirmed / total : null,
+    };
+  });
+}
+
+/**
+ * 에이전트별 카테고리 적중률을 프롬프트 주입용 마크다운으로 변환한다.
+ * 순수 함수 — 테스트 용이.
+ */
+export function formatPersonaCategoryHitRates(
+  rates: PersonaCategoryHitRate[],
+): string {
+  // 유효 데이터(3건 이상)가 있는 항목만 필터
+  const valid = rates.filter((r) => r.confirmed + r.invalidated >= 3);
+  if (valid.length === 0) return "";
+
+  const lines: string[] = [
+    "### 카테고리별 적중률",
+    "",
+    "| 카테고리 | 적중 | 기각 | 적중률 |",
+    "|----------|------|------|--------|",
+  ];
+
+  const warnings: string[] = [];
+
+  for (const r of valid) {
+    const label = CATEGORY_LABEL_KR[r.category] ?? r.category;
+    const rateStr = r.hitRate != null ? `${(r.hitRate * 100).toFixed(0)}%` : "-";
+    lines.push(`| ${label} | ${r.confirmed} | ${r.invalidated} | ${rateStr} |`);
+
+    if (r.hitRate != null && r.hitRate < CATEGORY_LOW_HIT_RATE_THRESHOLD) {
+      warnings.push(`**${label}** 카테고리 적중률 ${(r.hitRate * 100).toFixed(0)}% — 이 카테고리에서 방향성 예측을 자제하고 조건부 형식을 사용하세요.`);
+    }
+  }
+
+  if (warnings.length > 0) {
+    lines.push("");
+    for (const w of warnings) {
+      lines.push(`- ⚠️ ${w}`);
+    }
   }
 
   return lines.join("\n");

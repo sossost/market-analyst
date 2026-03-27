@@ -40,6 +40,7 @@ vi.mock("@/db/schema/analyst", () => ({
     confidence: "confidence",
     status: "status",
     agentPersona: "agent_persona",
+    category: "category",
   },
 }));
 
@@ -65,10 +66,14 @@ import {
   generateFeedback,
   formatRecentFailuresForPrompt,
   formatModeratorPerformanceContext,
+  formatCategoryHitRateContext,
+  formatPersonaCategoryHitRates,
   type CalibrationBin,
   type CalibrationResult,
   type InvalidatedThesisRow,
   type PersonaHitRate,
+  type CategoryHitRate,
+  type PersonaCategoryHitRate,
 } from "../confidenceCalibrator.js";
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -543,5 +548,133 @@ describe("formatModeratorPerformanceContext", () => {
     const output = formatModeratorPerformanceContext(hitRates);
 
     expect(output).toContain("정상");
+  });
+});
+
+// ─── formatCategoryHitRateContext ─────────────────────────────────────────────
+
+describe("formatCategoryHitRateContext", () => {
+  it("빈 배열이면 빈 문자열 반환", () => {
+    expect(formatCategoryHitRateContext([])).toBe("");
+  });
+
+  it("카테고리별 적중률 테이블을 생성한다", () => {
+    const hitRates: CategoryHitRate[] = [
+      { category: "structural_narrative", confirmed: 6, invalidated: 1, hitRate: 0.857 },
+      { category: "sector_rotation", confirmed: 3, invalidated: 2, hitRate: 0.6 },
+      { category: "short_term_outlook", confirmed: 8, invalidated: 9, hitRate: 0.471 },
+    ];
+
+    const output = formatCategoryHitRateContext(hitRates);
+
+    expect(output).toContain("카테고리별 Thesis 적중률");
+    expect(output).toContain("구조적 서사");
+    expect(output).toContain("섹터 로테이션");
+    expect(output).toContain("단기 전망");
+    expect(output).toContain("86%"); // structural_narrative
+    expect(output).toContain("47%"); // short_term_outlook
+  });
+
+  it("적중률 55% 미만 카테고리에 저적중 경고를 포함한다", () => {
+    const hitRates: CategoryHitRate[] = [
+      { category: "structural_narrative", confirmed: 6, invalidated: 1, hitRate: 0.857 },
+      { category: "short_term_outlook", confirmed: 8, invalidated: 9, hitRate: 0.471 },
+    ];
+
+    const output = formatCategoryHitRateContext(hitRates);
+
+    expect(output).toContain("⚠️ 저신뢰");
+    expect(output).toContain("저적중 카테고리 경고");
+    expect(output).toContain("단기 전망");
+    expect(output).toContain("조건부(if-then) 형식");
+    expect(output).toContain("confidence를 한 단계 낮춰");
+  });
+
+  it("모든 카테고리가 55% 이상이면 경고 없음", () => {
+    const hitRates: CategoryHitRate[] = [
+      { category: "structural_narrative", confirmed: 6, invalidated: 1, hitRate: 0.857 },
+      { category: "sector_rotation", confirmed: 4, invalidated: 2, hitRate: 0.667 },
+      { category: "short_term_outlook", confirmed: 7, invalidated: 5, hitRate: 0.583 },
+    ];
+
+    const output = formatCategoryHitRateContext(hitRates);
+
+    expect(output).not.toContain("저적중 카테고리 경고");
+  });
+
+  it("3건 미만 카테고리는 데이터 부족으로 표시한다", () => {
+    const hitRates: CategoryHitRate[] = [
+      { category: "structural_narrative", confirmed: 1, invalidated: 0, hitRate: 1.0 },
+    ];
+
+    const output = formatCategoryHitRateContext(hitRates);
+
+    expect(output).toContain("데이터 부족");
+  });
+
+  it("적중률 내림차순으로 정렬한다", () => {
+    const hitRates: CategoryHitRate[] = [
+      { category: "short_term_outlook", confirmed: 5, invalidated: 5, hitRate: 0.5 },
+      { category: "structural_narrative", confirmed: 8, invalidated: 2, hitRate: 0.8 },
+    ];
+
+    const output = formatCategoryHitRateContext(hitRates);
+
+    const structIdx = output.indexOf("구조적 서사");
+    const shortIdx = output.indexOf("단기 전망");
+    expect(structIdx).toBeLessThan(shortIdx);
+  });
+});
+
+// ─── formatPersonaCategoryHitRates ──────────────────────────────────────────
+
+describe("formatPersonaCategoryHitRates", () => {
+  it("빈 배열이면 빈 문자열 반환", () => {
+    expect(formatPersonaCategoryHitRates([])).toBe("");
+  });
+
+  it("3건 미만 항목은 필터링한다", () => {
+    const rates: PersonaCategoryHitRate[] = [
+      { persona: "sentiment", category: "short_term_outlook", confirmed: 1, invalidated: 1, hitRate: 0.5 },
+    ];
+
+    expect(formatPersonaCategoryHitRates(rates)).toBe("");
+  });
+
+  it("카테고리별 적중률 테이블을 생성한다", () => {
+    const rates: PersonaCategoryHitRate[] = [
+      { persona: "sentiment", category: "short_term_outlook", confirmed: 3, invalidated: 5, hitRate: 0.375 },
+      { persona: "sentiment", category: "structural_narrative", confirmed: 4, invalidated: 1, hitRate: 0.8 },
+    ];
+
+    const output = formatPersonaCategoryHitRates(rates);
+
+    expect(output).toContain("카테고리별 적중률");
+    expect(output).toContain("단기 전망");
+    expect(output).toContain("구조적 서사");
+    expect(output).toContain("38%"); // short_term_outlook
+    expect(output).toContain("80%"); // structural_narrative
+  });
+
+  it("55% 미만 카테고리에 경고를 포함한다", () => {
+    const rates: PersonaCategoryHitRate[] = [
+      { persona: "geopolitics", category: "short_term_outlook", confirmed: 3, invalidated: 4, hitRate: 0.429 },
+    ];
+
+    const output = formatPersonaCategoryHitRates(rates);
+
+    expect(output).toContain("⚠️");
+    expect(output).toContain("방향성 예측을 자제");
+    expect(output).toContain("조건부 형식");
+  });
+
+  it("모든 카테고리가 55% 이상이면 경고 없음", () => {
+    const rates: PersonaCategoryHitRate[] = [
+      { persona: "tech", category: "structural_narrative", confirmed: 5, invalidated: 1, hitRate: 0.833 },
+    ];
+
+    const output = formatPersonaCategoryHitRates(rates);
+
+    expect(output).not.toContain("⚠️");
   });
 });
