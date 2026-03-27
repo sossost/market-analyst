@@ -13,13 +13,27 @@ export interface GitHubIssue {
 /** 이슈 처리를 허용할 GitHub 계정 — 프롬프트 인젝션 방지 */
 export const ALLOWED_AUTHORS: readonly string[] = ['sossost'] as const
 
-export type AutoLabel = 'auto:in-progress' | 'auto:done' | 'auto:blocked'
+export type AutoLabel = 'auto:in-progress' | 'auto:done' | 'auto:blocked' | 'auto:needs-ceo' | 'auto:queued'
 
 export const AUTO_LABELS: readonly AutoLabel[] = [
   'auto:in-progress',
   'auto:done',
   'auto:blocked',
+  'auto:needs-ceo',
+  'auto:queued',
 ] as const
+
+// ---------------------------------------------------------------------------
+// 이슈 사전 트리아지 타입
+// ---------------------------------------------------------------------------
+
+export type TriageVerdict = 'PROCEED' | 'SKIP' | 'ESCALATE'
+
+export interface TriageResult {
+  verdict: TriageVerdict
+  /** 이슈에 남길 분석 코멘트 */
+  comment: string
+}
 
 export type BranchType = 'fix' | 'feat' | 'refactor' | 'chore'
 

@@ -2,7 +2,7 @@
 
 **Status:** Active (운영 중)
 **Created:** 2026-03-04
-**Last Updated:** 2026-03-20
+**Last Updated:** 2026-03-27
 
 ---
 
@@ -90,7 +90,7 @@ QA 주간:         KST 12:00 토
   Claude Code CLI 기반 시스템 건강도 점검
 
 이슈 프로세서:    KST 09:00~02:00 매 정시 (18회/일)
-  GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
+  GitHub 이슈 → 사전 트리아지(~3분, PROCEED/SKIP/ESCALATE) → Claude Code CLI 자동 처리 → PR 생성
 
 로그 정리:       KST 09:00 일
 ```

@@ -136,3 +136,38 @@ export async function addComment(
     body,
   ])
 }
+
+/** 트리아지 코멘트를 식별하는 마커 */
+const TRIAGE_MARKER = '[사전 트리아지]'
+
+/**
+ * 이슈 코멘트 중 트리아지 마커가 포함된 가장 최근 코멘트의 본문을 반환한다.
+ * 마커 이후 내용만 반환하여 헤더 포맷("[사전 트리아지]\n\n")을 제거한다.
+ * 트리아지 코멘트가 없으면 undefined를 반환한다.
+ */
+export async function fetchTriageComment(issueNumber: number): Promise<string | undefined> {
+  const raw = await gh([
+    'issue',
+    'view',
+    String(issueNumber),
+    '--json',
+    'comments',
+  ])
+
+  if (raw === '') return undefined
+
+  const data = JSON.parse(raw) as { comments: Array<{ body: string }> }
+  const comments = data.comments
+
+  // 가장 최근 것이 뒤에 있으므로 reverse iterate
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const body = comments[i]?.body ?? ''
+    const markerIndex = body.indexOf(TRIAGE_MARKER)
+    if (markerIndex !== -1) {
+      // 마커 이후 내용 추출 (헤더 라인 제거, 앞뒤 공백 제거)
+      return body.slice(markerIndex + TRIAGE_MARKER.length).trim()
+    }
+  }
+
+  return undefined
+}

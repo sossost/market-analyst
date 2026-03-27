@@ -2,15 +2,16 @@
  * 자율 이슈 처리 시스템 — 메인 오케스트레이터
  *
  * 1. 미처리 이슈 조회 (auto: 라벨 없는 이슈)
- * 2. 바로 Claude Code CLI로 구현 → PR 생성
+ *    - SKIP/ESCALATE는 triageBatch(09:00)가 auto:blocked/auto:needs-ceo 라벨로 이미 필터링
+ * 2. 이슈 코멘트에서 사전 트리아지 분석 추출
+ * 3. Claude Code CLI로 구현 → PR 생성
  *
- * CEO가 PR 리뷰에서 최종 판단하므로 트리아지 불필요.
- * 1사이클 최대 2건 처리.
+ * 1사이클 최대 1건 처리.
  */
 
 import 'dotenv/config'
 
-import { fetchUnprocessedIssues } from './githubClient.js'
+import { fetchUnprocessedIssues, fetchTriageComment } from './githubClient.js'
 import { executeIssue } from './executeIssue.js'
 import { MAX_ISSUES_PER_CYCLE } from './types.js'
 import { logger } from '@/lib/logger'
@@ -23,6 +24,7 @@ function log(message: string): void {
 
 export async function processIssues(): Promise<void> {
   // Step 1: 미처리 이슈 조회 (auto: 라벨 없는 이슈)
+  // SKIP/ESCALATE 이슈는 triageBatch가 auto:blocked/auto:needs-ceo 라벨을 붙여 이미 필터링됨
   log('▶ 미처리 이슈 조회')
   const unprocessedIssues = await fetchUnprocessedIssues()
   log(`  발견: ${unprocessedIssues.length}건`)
@@ -32,13 +34,19 @@ export async function processIssues(): Promise<void> {
     return
   }
 
-  // Step 2: 최대 MAX_ISSUES_PER_CYCLE건만 실행
+  // Step 2: 최대 MAX_ISSUES_PER_CYCLE건만 처리
   const toProcess = unprocessedIssues.slice(0, MAX_ISSUES_PER_CYCLE)
 
   for (const issue of toProcess) {
     try {
+      // Step 2a: 사전 트리아지 분석 조회 (triageBatch가 남긴 코멘트)
+      log(`▶ 트리아지 코멘트 조회: #${issue.number}`)
+      const triageComment = await fetchTriageComment(issue.number)
+      log(`  트리아지 코멘트: ${triageComment != null ? '있음' : '없음 (폴백)'}`)
+
+      // Step 2b: 구현 실행
       log(`▶ 실행: #${issue.number} "${issue.title}"`)
-      const result = await executeIssue(issue)
+      const result = await executeIssue(issue, triageComment)
 
       if (result.success) {
         log(`  ✓ PR 생성 완료: ${result.prUrl}`)
