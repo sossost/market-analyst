@@ -104,6 +104,9 @@ yarn etl:stock-phases       # Weinstein Phase 판별
 yarn etl:sector-rs          # 섹터 RS 계산
 yarn etl:industry-rs        # 산업 RS 계산
 yarn etl:index-prices       # 지수 가격 (S&P 500, NASDAQ, DOW, Russell 2000, VIX)
+yarn etl:stock-news         # 종목 뉴스 수집 (Phase 2 + 관심종목)
+yarn etl:earning-calendar   # 실적 발표 일정 수집 (-7일 ~ +30일)
+yarn etl:earnings-surprises-fmp  # EPS 서프라이즈 수집 (최근 4분기)
 yarn etl:validate           # 데이터 검증
 
 # Agent 실행
