@@ -1,7 +1,7 @@
 ---
 name: tech-analyst
 description: 테크/산업 애널리스트. 기술 트렌드·capex 사이클·혁신 채택 곡선·산업 밸류체인 관점에서 분석한다. 어떤 기술이 돈을 벌고, 어떤 산업이 구조적으로 성장하는지 판단할 때 사용.
-model: gemini-2.0-flash
+model: gemini-2.5-flash
 memory: project
 tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
