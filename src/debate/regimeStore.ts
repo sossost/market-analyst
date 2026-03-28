@@ -19,16 +19,18 @@ const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
 
 /**
  * 동일 레짐이 연속으로 판정되어야 확정되는 일수.
- * 너무 작으면 노이즈 제거 효과 없음, 너무 크면 실제 전환도 과도하게 지연됨.
+ * 5거래일 연속 동일 시그널을 요구하여 노이즈 전환을 차단한다.
+ * 근거: 3일 기준에서 15일간 5회 전환 발생 (#464)
  */
-const CONFIRMATION_DAYS = 3;
+const CONFIRMATION_DAYS = 5;
 
 /**
  * 레짐 전환 확정 후 다른 레짐으로의 전환을 차단하는 최소 유지 기간 (달력일).
- * 7달력일 ≈ 5거래일. 변동성 높은 시장에서 레짐이 매일 바뀌는 것을 방지한다.
+ * 14달력일 ≈ 10거래일. 레짐이 최소 2주는 유지되도록 보장한다.
+ * 근거: 7일(≈5거래일) 기준에서 3-4일마다 전환 발생 (#464)
  * 동일 레짐 재확정은 쿨다운 미적용.
  */
-const MIN_HOLD_CALENDAR_DAYS = 7;
+const MIN_HOLD_CALENDAR_DAYS = 14;
 
 /**
  * 허용된 레짐 전환 맵.
@@ -58,6 +60,30 @@ const ALLOWED_TRANSITIONS: Readonly<Record<MarketRegimeType, ReadonlySet<MarketR
  * 4보다 크면 중간에 거래일이 2개 이상 빠진 것이므로 연속으로 보지 않는다.
  */
 const MAX_GAP_DAYS = 4;
+
+/**
+ * VIX 임계값 — 이 수준을 초과하면 시장 스트레스가 높은 것으로 판단.
+ * VIX 25+ 는 역사적으로 상승장과 양립하기 어려운 수준이다.
+ */
+const STRESS_VIX_THRESHOLD = 25;
+
+/**
+ * 공포탐욕지수 임계값 — 이 수준 미만이면 극단적 공포 상태.
+ * 25 미만은 CNN Fear & Greed에서 "Extreme Fear" 영역이다.
+ */
+const STRESS_FEAR_GREED_THRESHOLD = 25;
+
+/** BULL 계열 레짐 — 스트레스 교차검증 대상 */
+const BULL_REGIMES = new Set<MarketRegimeType>(["EARLY_BULL", "MID_BULL", "LATE_BULL"]);
+
+/**
+ * 레짐 확정 시 교차검증에 사용하는 시장 스트레스 지표.
+ * null이면 해당 지표를 검증에서 제외한다 (graceful degradation).
+ */
+export interface MarketStressContext {
+  vix: number | null;
+  fearGreedScore: number | null;
+}
 
 export interface MarketRegimeInput {
   regime: MarketRegimeType;
@@ -195,6 +221,7 @@ export function areDatesConsecutive(dates: string[]): boolean {
  */
 export async function applyHysteresis(
   date: string,
+  stressContext?: MarketStressContext,
 ): Promise<MarketRegimeRow | null> {
   // 진입 시점에 한 번만 confirmed 레짐 조회
   const confirmedRegime = await loadConfirmedRegime();
@@ -257,14 +284,25 @@ export async function applyHysteresis(
       date,
     ) < MIN_HOLD_CALENDAR_DAYS;
 
+  // 스트레스 교차검증 — VIX 고수준 + 공포탐욕 극단적 공포 상태에서 BULL 계열 확정 차단
+  // 두 조건이 AND로 모두 충족되어야 차단 (한쪽만 높으면 허용)
+  const isStressBlocked =
+    BULL_REGIMES.has(latestPendingRegime) &&
+    stressContext != null &&
+    stressContext.vix != null &&
+    stressContext.fearGreedScore != null &&
+    stressContext.vix > STRESS_VIX_THRESHOLD &&
+    stressContext.fearGreedScore < STRESS_FEAR_GREED_THRESHOLD;
+
   const canConfirm =
     (shouldConfirmImmediately ||
       (allSameRegime && datesConsecutive && hasEnoughPending)) &&
     isTransitionAllowed &&
-    !isInCooldown;
+    !isInCooldown &&
+    !isStressBlocked;
 
   if (!canConfirm) {
-    // 연속 판정 불충족, 허용되지 않은 전환, 또는 쿨다운 — 기존 확정 레짐 유지
+    // 연속 판정 불충족, 허용되지 않은 전환, 쿨다운, 또는 스트레스 차단 — 기존 확정 레짐 유지
     const transitionNote =
       !isTransitionAllowed
         ? ` 허용되지 않은 전환: ${confirmedRegime?.regime} → ${latestPendingRegime}`
@@ -272,9 +310,12 @@ export async function applyHysteresis(
     const cooldownNote = isInCooldown
       ? ` 쿨다운 중: ${confirmedRegime?.confirmedAt ?? confirmedRegime?.regimeDate}부터 ${MIN_HOLD_CALENDAR_DAYS}일 미경과`
       : "";
+    const stressNote = isStressBlocked
+      ? ` 스트레스 차단: VIX ${stressContext?.vix}, 공포탐욕 ${stressContext?.fearGreedScore} — BULL 확정 불가`
+      : "";
     logger.info(
       "RegimeStore",
-      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${CONFIRMATION_DAYS}${transitionNote}${cooldownNote}). 확정 대기 중.`,
+      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${CONFIRMATION_DAYS}${transitionNote}${cooldownNote}${stressNote}). 확정 대기 중.`,
     );
     return confirmedRegime;
   }
