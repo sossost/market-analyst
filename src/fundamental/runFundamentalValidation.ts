@@ -1,8 +1,9 @@
 /**
  * 펀더멘탈 검증 파이프라인.
  *
- * 전체 활성 종목 스코어링 → DB 저장 → S등급 LLM 분석 → 리포트 발행.
- * 주간 에이전트에서 호출하거나 독립 실행 가능.
+ * 전체 활성 종목 스코어링 → DB 저장.
+ * 주간 에이전트 토론의 보조 스코어링 데이터를 제공한다.
+ * 종목 리포트 발행은 F10(기업분석) 경로에서만 수행한다.
  */
 import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -11,22 +12,17 @@ import {
   scoreFundamentals,
   promoteTopToS,
 } from "@/lib/fundamental-scorer";
-import { analyzeFundamentals } from "./fundamentalAgent.js";
-import { generateStockReport, publishStockReport } from "./stockReport.js";
-import { runStockReportQA, reportQAIssueToGitHub } from "./stockReportQA.js";
 import { logger } from "@/lib/logger";
-import type { DataQualityVerdict, FundamentalInput, FundamentalScore } from "@/types/fundamental";
-
-interface AnalysisEntry {
-  narrative: string;
-  verdict: DataQualityVerdict;
-}
+import type { FundamentalInput, FundamentalScore } from "@/types/fundamental";
 
 export interface ValidationResult {
   scores: FundamentalScore[];
-  reportsPublished: string[]; // symbols that got individual reports
+  /** @deprecated 항상 빈 배열. 리포트 발행은 F10 경로에서만 수행한다. */
+  reportsPublished: string[];
+  /** @deprecated 항상 0. LLM 호출 없음. */
   totalTokens: { input: number; output: number };
-  qualityExcluded: string[]; // 품질 게이트 제외된 종목
+  /** @deprecated 항상 빈 배열. SUSPECT 판정 로직 제거됨. */
+  qualityExcluded: string[];
 }
 
 /**
@@ -58,22 +54,21 @@ export async function runFundamentalValidation(
   options?: {
     /** 특정 종목만 검증 (테스트용) */
     symbols?: string[];
-    /** 리포트 발행 건너뛰기 */
+    /**
+     * @deprecated 리포트 발행이 제거되어 더 이상 의미 없음.
+     * 인터페이스 호환을 위해 필드는 유지한다.
+     */
     skipPublish?: boolean;
     /** true면 당일 스코어가 있어도 재실행 */
     forceRescore?: boolean;
   },
 ): Promise<ValidationResult> {
-  const totalTokens = { input: 0, output: 0 };
-  const reportsPublished: string[] = [];
-
   // 1. 스코어링 기준일 결정
   const scoredDate = await getScoredDate();
 
   // ── 스코어 획득 단계 ──────────────────────────────────────────────
   // canSkip이면 DB 기존 스코어 재사용, 아니면 전체 재계산
   let scores: FundamentalScore[];
-  let inputs: FundamentalInput[];
 
   const canSkip =
     options?.symbols == null &&
@@ -81,14 +76,7 @@ export async function runFundamentalValidation(
     (await canSkipScoring(scoredDate));
 
   if (canSkip) {
-    // 기존 스코어 DB 로드
     scores = await loadExistingScores(scoredDate);
-
-    // S등급 종목만 LLM 분석용 실적 데이터 로드
-    const sSymbols = scores
-      .filter((s) => s.grade === "S")
-      .map((s) => s.symbol);
-    inputs = sSymbols.length > 0 ? await loadFundamentalData(sSymbols) : [];
   } else {
     // 2. 대상 종목 리스트
     const symbols = options?.symbols ?? (await getAllScoringSymbols());
@@ -96,12 +84,12 @@ export async function runFundamentalValidation(
 
     if (symbols.length === 0) {
       logger.warn("Fundamental", "스코어링 대상 종목 없음 — 검증 생략");
-      return { scores: [], reportsPublished, totalTokens, qualityExcluded: [] };
+      return { scores: [], reportsPublished: [], totalTokens: { input: 0, output: 0 }, qualityExcluded: [] };
     }
 
     // 3. DB에서 분기 실적 로드 (500개씩 배치)
     const BATCH_SIZE = 500;
-    inputs = [];
+    const inputs: FundamentalInput[] = [];
     for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
       const batch = symbols.slice(i, i + BATCH_SIZE);
       const batchInputs = await loadFundamentalData(batch);
@@ -128,176 +116,7 @@ export async function runFundamentalValidation(
     }
   }
 
-  // 6. S급 종목에 대해 LLM 분석 (기술적 데이터 선로딩)
-  const sGradeScores = scores.filter((s) => s.grade === "S");
-
-  // 기술적 데이터를 LLM 분석 전에 로드하여 프롬프트에 포함
-  const technicalMap = new Map<string, Awaited<ReturnType<typeof loadTechnicalData>>>();
-  for (const score of sGradeScores) {
-    const tech = await loadTechnicalData(score.symbol);
-    if (tech != null) {
-      technicalMap.set(score.symbol, tech);
-    }
-  }
-
-  const analyses = new Map<string, AnalysisEntry>();
-  const qualityExcluded: string[] = [];
-
-  for (const score of sGradeScores) {
-    const input = inputs.find((i) => i.symbol === score.symbol);
-    if (input == null) continue;
-
-    try {
-      const technical = technicalMap.get(score.symbol);
-      const analysis = await analyzeFundamentals(score, input, technical);
-      analyses.set(score.symbol, {
-        narrative: analysis.narrative,
-        verdict: analysis.dataQualityVerdict,
-      });
-      totalTokens.input += analysis.tokensUsed.input;
-      totalTokens.output += analysis.tokensUsed.output;
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      logger.error(
-        "Fundamental",
-        `${score.symbol} LLM 분석 실패: ${reason}`,
-      );
-    }
-  }
-
-  // 6-b. SUSPECT 판정 S급 제외 + A급 후보 보충 (1회 제한)
-  const suspectSymbols = sGradeScores
-    .filter((s) => analyses.get(s.symbol)?.verdict === "SUSPECT")
-    .map((s) => s.symbol);
-
-  // SUSPECT 종목 제거 (불변 필터)
-  let cleanSGradeScores = sGradeScores.filter(
-    (s) => !suspectSymbols.includes(s.symbol),
-  );
-  let allInputs = [...inputs];
-  const promotedSymbols = new Set<string>();
-
-  for (const symbol of suspectSymbols) {
-    logger.warn("Fundamental", `SUSPECT 판정 — ${symbol} S급 제외`);
-    qualityExcluded.push(symbol);
-
-    // 현재 S급 심볼 집합 기준으로 후보 선정
-    const currentSSymbols = new Set(cleanSGradeScores.map((s) => s.symbol));
-    const candidates = selectFallbackCandidates(scores, currentSSymbols, 1);
-    if (candidates.length === 0) {
-      logger.warn("Fundamental", `${symbol} 보충 가능한 A급 후보 없음`);
-      continue;
-    }
-
-    const candidate = candidates[0];
-    logger.info("Fundamental", `${candidate.symbol} A→S 승격 시도 (보충)`);
-
-    // 기술적 데이터 로드
-    const candidateTech = await loadTechnicalData(candidate.symbol);
-    if (candidateTech != null) {
-      technicalMap.set(candidate.symbol, candidateTech);
-    }
-
-    // 실적 데이터 로드
-    let candidateInput = allInputs.find((i) => i.symbol === candidate.symbol);
-    if (candidateInput == null) {
-      const loaded = await loadFundamentalData([candidate.symbol]);
-      candidateInput = loaded[0];
-    }
-
-    if (candidateInput == null) {
-      logger.warn("Fundamental", `${candidate.symbol} 실적 데이터 없음 — 보충 건너뜀`);
-      continue;
-    }
-
-    try {
-      const promotedScore: FundamentalScore = { ...candidate, grade: "S" };
-      const analysis = await analyzeFundamentals(
-        promotedScore,
-        candidateInput,
-        candidateTech,
-      );
-      totalTokens.input += analysis.tokensUsed.input;
-      totalTokens.output += analysis.tokensUsed.output;
-
-      if (analysis.dataQualityVerdict === "SUSPECT") {
-        logger.warn(
-          "Fundamental",
-          `${candidate.symbol} 보충 후보도 SUSPECT — 보충 제외 (재귀 1회 제한)`,
-        );
-        qualityExcluded.push(candidate.symbol);
-        continue;
-      }
-
-      analyses.set(candidate.symbol, {
-        narrative: analysis.narrative,
-        verdict: analysis.dataQualityVerdict,
-      });
-      allInputs = [...allInputs, candidateInput];
-      cleanSGradeScores = [...cleanSGradeScores, promotedScore];
-      promotedSymbols.add(candidate.symbol);
-      logger.info("Fundamental", `${candidate.symbol} A→S 승격 (보충)`);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      logger.error(
-        "Fundamental",
-        `${candidate.symbol} 보충 LLM 분석 실패: ${reason}`,
-      );
-    }
-  }
-
-  // 7. S급 종목만 리포트 발행
-  if (options?.skipPublish !== true) {
-    for (const score of cleanSGradeScores) {
-      const input = allInputs.find((i) => i.symbol === score.symbol);
-      const entry = analyses.get(score.symbol);
-      if (input == null || entry == null) continue;
-      const narrative = entry.narrative;
-
-      // technicalMap에 항상 존재해야 하나, 6번 스텝에서 DB 조회 실패 시 누락될 수 있어 방어적으로 재시도
-      const technical = technicalMap.get(score.symbol) ?? await loadTechnicalData(score.symbol);
-      const reportMd = generateStockReport({
-        score,
-        input,
-        narrative,
-        technical,
-        dataQualityVerdict: entry.verdict,
-        isPromoted: promotedSymbols.has(score.symbol),
-      });
-
-      let published = false;
-      try {
-        await publishStockReport(score.symbol, reportMd);
-        reportsPublished.push(score.symbol);
-        published = true;
-        logger.info("Fundamental", `${score.symbol} 리포트 발행 완료`);
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
-        logger.error(
-          "Fundamental",
-          `${score.symbol} 리포트 발행 실패: ${reason}`,
-        );
-      }
-
-      // QA: 발행 성공한 리포트에 대해서만 실행. 검출만, 발행 흐름에 영향 없음.
-      if (published) {
-        try {
-          const qaResult = runStockReportQA(score.symbol, reportMd);
-          if (!qaResult.passed) {
-            await reportQAIssueToGitHub(qaResult);
-          }
-        } catch (qaErr) {
-          const reason = qaErr instanceof Error ? qaErr.message : String(qaErr);
-          logger.warn(
-            "Fundamental",
-            `${score.symbol} QA 실행 실패 (계속 진행): ${reason}`,
-          );
-        }
-      }
-    }
-  }
-
-  return { scores, reportsPublished, totalTokens, qualityExcluded };
+  return { scores, reportsPublished: [], totalTokens: { input: 0, output: 0 }, qualityExcluded: [] };
 }
 
 /**
@@ -504,62 +323,6 @@ async function saveFundamentalScoresToDB(
   );
 }
 
-// ─── Internal helpers ───────────────────────────────────────────────
-
-async function loadTechnicalData(
-  symbol: string,
-): Promise<
-  | {
-      phase: number;
-      rsScore: number;
-      volumeConfirmed: boolean;
-      pctFromHigh52w: number;
-      marketCapB: number;
-      sector: string;
-      industry: string;
-    }
-  | undefined
-> {
-  const rows = await db.execute(sql`
-    SELECT
-      sp.phase,
-      sp.rs_score,
-      sp.volume_confirmed,
-      sp.pct_from_high_52w,
-      s.market_cap,
-      s.sector,
-      s.industry
-    FROM stock_phases sp
-    JOIN symbols s ON sp.symbol = s.symbol
-    WHERE sp.symbol = ${symbol}
-      AND sp.date = (SELECT MAX(date) FROM stock_phases)
-    LIMIT 1
-  `);
-
-  const row = (
-    rows.rows as unknown as Array<{
-      phase: number;
-      rs_score: number;
-      volume_confirmed: boolean;
-      pct_from_high_52w: string;
-      market_cap: string;
-      sector: string;
-      industry: string;
-    }>
-  )[0];
-
-  if (row == null) return undefined;
-
-  return {
-    phase: row.phase,
-    rsScore: row.rs_score,
-    volumeConfirmed: row.volume_confirmed ?? false,
-    pctFromHigh52w: Number(row.pct_from_high_52w) * 100,
-    marketCapB: Number(row.market_cap) / 1_000_000_000,
-    sector: row.sector ?? "Unknown",
-    industry: row.industry ?? "Unknown",
-  };
-}
 
 function gradeOrder(grade: string): number {
   const order: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, F: 4 };

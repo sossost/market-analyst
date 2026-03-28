@@ -97,7 +97,7 @@ async function main() {
   }
   logger.step(`[2/7] Target date: ${targetDate}`);
 
-  // 3. 펀더멘탈 검증 (Phase 2 종목 SEPA 스코어링 + S등급 리포트 발행)
+  // 3. 펀더멘탈 검증 (전체 활성 종목 SEPA 스코어링 → DB 저장)
   logger.step("[3/7] Running fundamental validation...");
 
   let fundamentalSupplement = "";
@@ -105,9 +105,7 @@ async function main() {
     const validationResult = await runFundamentalValidation();
     fundamentalSupplement = formatFundamentalSupplement(validationResult.scores, { includeHeader: false });
 
-    const { scores, reportsPublished, totalTokens } = validationResult;
-    logger.info("Fundamental", `${scores.length}개 종목 검증 완료, S등급 리포트 ${reportsPublished.length}개 발행`);
-    logger.info("Fundamental", `Sonnet tokens: ${totalTokens.input} input / ${totalTokens.output} output`);
+    logger.info("Fundamental", `${validationResult.scores.length}개 종목 검증 완료`);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.error("Fundamental", `검증 실패 (에이전트는 계속 진행): ${reason}`);
