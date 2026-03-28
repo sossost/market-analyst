@@ -23,6 +23,13 @@ export const AUTO_LABELS: readonly AutoLabel[] = [
   'auto:queued',
 ] as const
 
+/**
+ * 트리아지 배치 전용 라벨 — AUTO_LABELS에 포함하지 않는다.
+ * AUTO_LABELS에 포함되면 이슈 프로세서가 PROCEED 이슈를 처리하지 못하게 된다.
+ */
+export type TriagedLabel = 'triaged'
+export const TRIAGED_LABEL: TriagedLabel = 'triaged'
+
 // ---------------------------------------------------------------------------
 // 이슈 사전 트리아지 타입
 // ---------------------------------------------------------------------------

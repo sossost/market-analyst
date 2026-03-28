@@ -2,16 +2,19 @@
  * 배치 트리아지 진입점
  *
  * 별도 cron(09:00 KST)에 의해 실행된다.
- * 미처리 이슈 전체를 조회하여 하나씩 트리아지하고, 결과를 이슈에 기록한다.
+ * 미트리아지 이슈 전체를 조회하여 하나씩 트리아지하고, 결과를 이슈에 기록한다.
  *
- * PROCEED: 코멘트만 남기고 라벨 안 붙임 → 이슈 프로세서(10:00~)가 가져감
- * SKIP: 코멘트 + auto:blocked 라벨 → 이슈 프로세서가 필터링
- * ESCALATE: 코멘트 + auto:needs-ceo 라벨 → CEO가 직접 판단
+ * PROCEED: 코멘트 + triaged 라벨 → 이슈 프로세서(10:00~)가 가져감
+ * SKIP: 코멘트 + auto:blocked + triaged 라벨 → 이슈 프로세서가 필터링
+ * ESCALATE: 코멘트 + auto:needs-ceo + triaged 라벨 → CEO가 직접 판단
+ *
+ * triaged 라벨은 모든 판정에 공통으로 부착하여 배치 재실행 시 중복 처리를 방지한다.
+ * fetchUntriagedIssues()가 triaged 라벨이 있는 이슈를 제외하므로 재실행에 안전하다.
  */
 
 import 'dotenv/config'
 
-import { fetchUnprocessedIssues, addComment, addLabel } from './githubClient.js'
+import { fetchUntriagedIssues, addComment, addLabel } from './githubClient.js'
 import { triageIssue } from './triageIssue.js'
 import { logger } from '@/lib/logger'
 
@@ -24,8 +27,8 @@ function log(message: string): void {
 export async function runTriageBatch(): Promise<void> {
   log('▶ 배치 트리아지 시작')
 
-  const issues = await fetchUnprocessedIssues()
-  log(`  미처리 이슈: ${issues.length}건`)
+  const issues = await fetchUntriagedIssues()
+  log(`  미트리아지 이슈: ${issues.length}건`)
 
   if (issues.length === 0) {
     log('  트리아지할 이슈 없음')
@@ -48,18 +51,21 @@ export async function runTriageBatch(): Promise<void> {
 
       if (result.verdict === 'SKIP') {
         await addLabel(issue.number, 'auto:blocked')
-        log(`  ✗ SKIP — auto:blocked 라벨 부착`)
+        await addLabel(issue.number, 'triaged')
+        log(`  ✗ SKIP — auto:blocked + triaged 라벨 부착`)
         continue
       }
 
       if (result.verdict === 'ESCALATE') {
         await addLabel(issue.number, 'auto:needs-ceo')
-        log(`  ⚠ ESCALATE — auto:needs-ceo 라벨 부착`)
+        await addLabel(issue.number, 'triaged')
+        log(`  ⚠ ESCALATE — auto:needs-ceo + triaged 라벨 부착`)
         continue
       }
 
-      // PROCEED: 라벨 없음 — 이슈 프로세서가 정상 처리
-      log(`  ✓ PROCEED — 이슈 프로세서 대기`)
+      // PROCEED: triaged 라벨 부착 → 이슈 프로세서가 정상 처리
+      await addLabel(issue.number, 'triaged')
+      log(`  ✓ PROCEED — triaged 라벨 부착, 이슈 프로세서 대기`)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       log(`  ✗ 트리아지 실패 #${issue.number}: ${errorMessage}`)
