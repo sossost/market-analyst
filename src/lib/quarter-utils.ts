@@ -20,3 +20,14 @@ export function parseQuarterStr(asOfQ: string): { quarter: number; year: number 
 
   return null;
 }
+
+/**
+ * period_end_date ("2025-12-31") → "Q4 2025" 형식의 asOfQ 문자열로 변환.
+ * 월 기준: 1~3→Q1, 4~6→Q2, 7~9→Q3, 10~12→Q4
+ */
+export function periodEndDateToAsOfQ(periodEndDate: string): string {
+  const [yearStr, monthStr] = periodEndDate.split("-");
+  const month = Number(monthStr);
+  const quarter = Math.ceil(month / 3);
+  return `Q${quarter} ${yearStr}`;
+}

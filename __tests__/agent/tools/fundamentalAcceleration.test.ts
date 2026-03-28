@@ -100,12 +100,34 @@ describe("computeYoYGrowths", () => {
 });
 
 describe("isAccelerating", () => {
-  it("detects accelerating growth pattern", () => {
-    // Latest: 100%, prev: 80%, older: 50% — accelerating
+  it("detects accelerating growth pattern above minimum hurdle", () => {
+    // Latest: 100%, prev: 80%, older: 50% — accelerating + above 15% hurdle
     const growths = [
       { yoyGrowth: 100 },
       { yoyGrowth: 80 },
       { yoyGrowth: 50 },
+    ];
+
+    expect(isAccelerating(growths)).toBe(true);
+  });
+
+  it("rejects low-growth acceleration below 15% hurdle", () => {
+    // 12% > 8% > 5% — monotonic increasing but latest < 15%
+    const growths = [
+      { yoyGrowth: 12 },
+      { yoyGrowth: 8 },
+      { yoyGrowth: 5 },
+    ];
+
+    expect(isAccelerating(growths)).toBe(false);
+  });
+
+  it("accepts acceleration exactly at 15% hurdle", () => {
+    // 15% > 10% > 5% — exactly at hurdle threshold
+    const growths = [
+      { yoyGrowth: 15 },
+      { yoyGrowth: 10 },
+      { yoyGrowth: 5 },
     ];
 
     expect(isAccelerating(growths)).toBe(true);
