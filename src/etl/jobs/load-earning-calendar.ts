@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { db, pool } from "@/db/client";
 import { sql } from "drizzle-orm";
-import { fetchJson, getFmpV3Config, toStrNum } from "@/etl/utils/common";
+import { chunk, fetchJson, getFmpV3Config, toStrNum } from "@/etl/utils/common";
 import { earningCalendar } from "@/db/schema/analyst";
 import { validateEnvironmentVariables } from "@/etl/utils/validation";
 import {
@@ -16,6 +16,7 @@ const TAG = "LOAD_EARNING_CALENDAR";
 const DAYS_PAST = 7;
 const DAYS_FUTURE = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const BATCH_SIZE = 50;
 
 function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -74,14 +75,23 @@ async function upsertEarningCalendar(
   rows: FmpEarningCalendarRow[],
   symbolSet: Set<string>,
 ): Promise<number> {
-  const filteredRows = rows.filter(
-    (r) =>
-      r.symbol != null &&
-      r.symbol !== "" &&
-      r.date != null &&
-      r.date !== "" &&
-      symbolSet.has(r.symbol),
-  );
+  // FMP API가 동일 (symbol, date) 쌍을 중복 반환할 수 있음 — 제거 필수
+  const seen = new Set<string>();
+  const filteredRows = rows.filter((r) => {
+    if (
+      r.symbol == null ||
+      r.symbol === "" ||
+      r.date == null ||
+      r.date === "" ||
+      !symbolSet.has(r.symbol)
+    ) {
+      return false;
+    }
+    const key = `${r.symbol}|${r.date}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   if (filteredRows.length === 0) {
     return 0;
@@ -97,25 +107,29 @@ async function upsertEarningCalendar(
     time: r.time ?? null,
   }));
 
-  await retryDatabaseOperation(
-    () =>
-      db
-        .insert(earningCalendar)
-        .values(insertValues)
-        .onConflictDoUpdate({
-          target: [earningCalendar.symbol, earningCalendar.date],
-          set: {
-            eps: sql`EXCLUDED.eps`,
-            epsEstimated: sql`EXCLUDED.eps_estimated`,
-            revenue: sql`EXCLUDED.revenue`,
-            revenueEstimated: sql`EXCLUDED.revenue_estimated`,
-            time: sql`EXCLUDED.time`,
-            updatedAt: new Date(),
-          },
-        }),
-    DEFAULT_RETRY_OPTIONS,
-  );
+  const batches = chunk(insertValues, BATCH_SIZE);
+  for (const batch of batches) {
+    await retryDatabaseOperation(
+      () =>
+        db
+          .insert(earningCalendar)
+          .values(batch)
+          .onConflictDoUpdate({
+            target: [earningCalendar.symbol, earningCalendar.date],
+            set: {
+              eps: sql`EXCLUDED.eps`,
+              epsEstimated: sql`EXCLUDED.eps_estimated`,
+              revenue: sql`EXCLUDED.revenue`,
+              revenueEstimated: sql`EXCLUDED.revenue_estimated`,
+              time: sql`EXCLUDED.time`,
+              updatedAt: new Date(),
+            },
+          }),
+      DEFAULT_RETRY_OPTIONS,
+    );
+  }
 
+  logger.info(TAG, `Upserted ${filteredRows.length} rows in ${batches.length} batches`);
   return filteredRows.length;
 }
 

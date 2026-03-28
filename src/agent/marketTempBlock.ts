@@ -25,7 +25,8 @@ function formatIndexClose(n: number): string {
 }
 
 /** 등락률을 부호 포함 문자열로 변환한다. */
-function formatPercent(pct: number): string {
+function formatPercent(pct: number | null): string {
+  if (pct == null) return "N/A";
   const sign = pct >= 0 ? "+" : "";
   return `${sign}${pct.toFixed(2)}%`;
 }

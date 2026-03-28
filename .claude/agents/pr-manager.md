@@ -84,7 +84,14 @@ git log main..HEAD --oneline
 mcp__github__create_pull_request(owner, repo, title, body, head, base)
 ```
 
-### 7. 결과 반환
+### 7. PR 리뷰 실행
+PR 생성 직후 로컬에서 PR 리뷰어 스크립트를 실행한다:
+```bash
+bash scripts/cron/pr-reviewer.sh
+```
+리뷰 결과는 GitHub PR 코멘트로 자동 게시된다. 리뷰어 실패 시에도 PR 생성 결과는 반환한다.
+
+### 8. 결과 반환
 ```
 ## PR 생성 완료
 

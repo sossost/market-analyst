@@ -3,7 +3,7 @@ import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { LLMProviderError } from "./types.js";
 
 const DEFAULT_MODEL = "claude-opus-4-6";
-const TIMEOUT_MS = 300_000; // 5분 — Round 3 Opus 긴 출력 대응
+const TIMEOUT_MS = 600_000; // 10분 — Round 3 Opus 합성 시 입력 ~30K 토큰 처리 대응
 const MAX_SYSTEM_PROMPT_BYTES = 64 * 1024; // 64KB
 
 interface ClaudeCliJsonOutput {
