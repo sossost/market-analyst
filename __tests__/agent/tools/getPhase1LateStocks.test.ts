@@ -107,6 +107,18 @@ describe("getPhase1LateStocks", () => {
     expect(sqlArg).toMatch(/sp\.prev_phase\s*=\s*1/i);
   });
 
+  it("SQL에 ma150_slope >= 0 조건이 포함된다 (음수 slope 차단)", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await getPhase1LateStocks.execute({ date: "2026-03-07" });
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    // ma150_slope >= 0 (하락 중인 종목 차단)
+    expect(sqlArg).toMatch(/ma150_slope::numeric\s*>=\s*0/);
+    // 과거의 관대한 조건(> -0.001)이 없어야 한다
+    expect(sqlArg).not.toMatch(/-0\.001/);
+  });
+
   it("returns totalFound equal to number of stocks", async () => {
     mockQuery.mockResolvedValue({
       rows: [makeRow({ symbol: "A" }), makeRow({ symbol: "B" })],

@@ -38,7 +38,7 @@ export const getPhase1LateStocks: AgentTool = {
     }
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
-    // Phase 1 종목 중 MA150 기울기가 양전환 조짐 (기울기 > -0.001, 즉 거의 0이거나 양수)
+    // Phase 1 종목 중 MA150 기울기가 안정화/양전환 (기울기 >= 0)
     // + 거래량 비율 1.5x 이상 (의미 있는 거래량 증가는 1.5배 이상)
     // + RS 30 이상 (false positive 감소: 20은 너무 관대)
     const rows = await retryDatabaseOperation(() =>
@@ -74,7 +74,7 @@ export const getPhase1LateStocks: AgentTool = {
     return JSON.stringify({
       date,
       totalFound: stocks.length,
-      description: "Phase 1 후기 — MA150 기울기 양전환 조짐 + 거래량 증가(1.5x+) + RS 30+",
+      description: "Phase 1 후기 — MA150 기울기 안정화/양전환(>=0) + 거래량 증가(1.5x+) + RS 30+",
       stocks,
     });
   },
