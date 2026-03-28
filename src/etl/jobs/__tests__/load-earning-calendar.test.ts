@@ -27,17 +27,21 @@ vi.mock("@/etl/utils/retry", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("@/etl/utils/common", () => ({
-  fetchJson: mockFetchJson,
-  getFmpV3Config: () => ({
-    baseUrl: process.env.DATA_API ?? "https://financialmodelingprep.com",
-    key: process.env.FMP_API_KEY ?? "test-api-key-12345",
-  }),
-  toStrNum: (v: unknown) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? String(n) : null;
-  },
-}));
+vi.mock("@/etl/utils/common", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/etl/utils/common")>();
+  return {
+    ...actual,
+    fetchJson: mockFetchJson,
+    getFmpV3Config: () => ({
+      baseUrl: process.env.DATA_API ?? "https://financialmodelingprep.com",
+      key: process.env.FMP_API_KEY ?? "test-api-key-12345",
+    }),
+    toStrNum: (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? String(n) : null;
+    },
+  };
+});
 
 import { loadEarningCalendar } from "../load-earning-calendar.js";
 
