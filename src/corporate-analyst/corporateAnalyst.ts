@@ -239,7 +239,7 @@ ${peerRows}
   // 최근 뉴스 (stock_news)
   if (inputs.recentNews != null && inputs.recentNews.length > 0) {
     const newsLines = inputs.recentNews
-      .map((n) => `- ${escapeXml(n.title)} (${n.site != null ? escapeXml(n.site) : "출처 미확인"}, ${n.publishedDate})`)
+      .map((n) => `- ${escapeXml(n.title)} (${n.site != null ? escapeXml(n.site) : "출처 미확인"}, ${escapeXml(n.publishedDate)})`)
       .join("\n");
     sections.push(`<recent_news>
 ${newsLines}
@@ -253,7 +253,7 @@ ${newsLines}
         const time = e.time != null ? escapeXml(e.time) : "시간 미확인";
         const eps = e.epsEstimated != null ? String(e.epsEstimated) : "N/A";
         const rev = e.revenueEstimated != null ? fmt(e.revenueEstimated) : "N/A";
-        return `- ${e.date} (${time}) | EPS est: ${eps} | Rev est: ${rev}`;
+        return `- ${escapeXml(e.date)} (${time}) | EPS est: ${eps} | Rev est: ${rev}`;
       })
       .join("\n");
     sections.push(`<upcoming_earnings>
@@ -347,7 +347,7 @@ function buildSurpriseLine(actualEps: number | null, estimatedEps: number | null
  * 외부 데이터를 XML 태그 내에 삽입할 때 태그 구조가 깨지지 않도록 방지한다.
  */
 function escapeXml(s: string): string {
-  return s.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**

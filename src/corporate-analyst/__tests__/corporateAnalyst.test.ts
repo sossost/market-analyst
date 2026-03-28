@@ -564,6 +564,7 @@ describe("generateAnalysisReport", () => {
 
       // 이스케이프된 형태로 삽입되어야 한다
       expect(userContent).toContain("&lt;$10B&gt;");
+      expect(userContent).toContain("&amp; Growth");
       expect(userContent).toContain("&lt;/recent_news&gt;");
       expect(userContent).toContain("&lt;evil&gt;site&lt;/evil&gt;");
 
