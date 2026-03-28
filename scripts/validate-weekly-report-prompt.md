@@ -53,13 +53,46 @@
   },
   "totalScore": <0~50>,
   "hasIssue": <true|false>,
-  "issueTitle": "<GitHub 이슈 제목. hasIssue=false면 빈 문자열>",
-  "issueBody": "<GitHub 이슈 본문 (마크다운). hasIssue=false면 빈 문자열>",
+  "issueTitle": "[주간 QA] {REPORT_DATE} — {핵심 1줄 요약}  (hasIssue=false면 빈 문자열)",
+  "issueBody": "<아래 고정 템플릿을 반드시 따를 것. hasIssue=false면 빈 문자열>",
   "summary": "<검증 요약 1~2줄>"
 }
 
 판단 기준:
 - hasIssue = true 조건: 어느 하나라도 7점 미만이거나 totalScore ≤ 35
 - novelty가 null이면 totalScore는 나머지 4항목 합산으로만 판단 (28점 이하면 hasIssue)
-- issueBody에는 감점 항목별 근거, 재발 방지 제안 포함
 - 모든 점수 ≥ 7이고 totalScore ≥ 36이면 hasIssue = false
+
+issueTitle 형식 (반드시 준수):
+- 형식: [주간 QA] YYYY-MM-DD — {핵심 1줄 요약}
+- 예시: [주간 QA] 2026-03-22 — 전망 검증 가능성 부족, 팩트 불일치
+- {REPORT_DATE} 자리에 실제 리포트 날짜를 넣을 것
+
+issueBody 형식 (반드시 아래 구조를 준수):
+
+## 점수
+
+| 항목 | 점수 | 기준 |
+|------|------|------|
+| 팩트 일관성 | X/10 | 7 미만 시 이슈 |
+| bull-bias | X/10 | 7 미만 시 이슈 |
+| 구조/가독성 | X/10 | 7 미만 시 이슈 |
+| 전일 대비 변화 | X/10 또는 N/A | 7 미만 시 이슈 |
+| 전망 검증 가능성 | X/10 | 7 미만 시 이슈 |
+| **총점** | **X/50** | **35 이하 시 이슈** |
+
+## 감점 근거
+
+### 1. {항목명} ({점수}/10)
+- {구체적 사실과 근거}
+
+### 2. {항목명} ({점수}/10)
+- {구체적 사실과 근거}
+
+(감점된 항목만 나열)
+
+## 재발 방지 제안
+- {구체적 제안 1}
+- {구체적 제안 2}
+
+주의: issueBody는 JSON 문자열이므로 줄바꿈은 \n, 테이블의 파이프(|)는 그대로 사용.
