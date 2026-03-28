@@ -102,6 +102,67 @@ describe("getUnusualStocks — phase2WithDrop 플래그", () => {
   });
 });
 
+describe("getUnusualStocks — splitSuspect 플래그", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("daily_return이 +0.95(+95%)이면 splitSuspect: true를 반환한다", async () => {
+    const row = makeRow({ phase: 2, daily_return: "0.95" });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+    expect(result.stocks[0].splitSuspect).toBe(true);
+  });
+
+  it("daily_return이 -0.65(-65%)이면 splitSuspect: true를 반환한다", async () => {
+    const row = makeRow({ phase: 2, daily_return: "-0.65" });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+    expect(result.stocks[0].splitSuspect).toBe(true);
+  });
+
+  it("daily_return이 +0.08(+8%)이면 splitSuspect: false를 반환한다", async () => {
+    const row = makeRow({ phase: 2, daily_return: "0.08", vol_ratio: "2.5" });
+    row.prev_phase = 1;
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+    expect(result.stocks[0].splitSuspect).toBe(false);
+  });
+
+  it("경계값: daily_return이 정확히 +0.90이면 splitSuspect: true (경계 포함)", async () => {
+    const row = makeRow({ phase: 2, daily_return: "0.90" });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+    expect(result.stocks[0].splitSuspect).toBe(true);
+  });
+
+  it("경계값: daily_return이 정확히 -0.60이면 splitSuspect: true (경계 포함)", async () => {
+    const row = makeRow({ phase: 2, daily_return: "-0.60" });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+    expect(result.stocks[0].splitSuspect).toBe(true);
+  });
+});
+
 describe("getUnusualStocks — MIN_CONDITIONS 필터 우회", () => {
   beforeEach(() => {
     mockQuery.mockReset();

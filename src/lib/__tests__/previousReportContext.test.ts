@@ -14,6 +14,7 @@ import {
   formatPreviousReportContext,
   extractReserveStocks,
   extractKeyInsights,
+  extractBullBearClassification,
   formatSectorRsLines,
 } from "../previousReportContext";
 import type { DailyReportLog } from "@/types";
@@ -179,22 +180,96 @@ describe("extractReserveStocks", () => {
   });
 });
 
+describe("extractBullBearClassification", () => {
+  it("🔥 섹션에서 강세 종목 추출", () => {
+    const content = "🔥 강세 특이종목\n• NVDA RS 90 Phase 2 +8.5%\n• AAPL RS 80 Phase 2 +5.2%\n\n⚠️ 약세 경고";
+    const result = extractBullBearClassification(content);
+    expect(result.bullish).toContain("NVDA");
+    expect(result.bullish).toContain("AAPL");
+  });
+
+  it("⚠️ 섹션에서 약세 종목 추출", () => {
+    const content = "🔥 강세 특이종목\n• NVDA +8.5%\n\n⚠️ 약세 경고\n• UGRO RS 45 Phase 2 -22.84%\n• AXTI RS 60 Phase 1 -13.13%\n\n🌱 주도주 예비군";
+    const result = extractBullBearClassification(content);
+    expect(result.bearish).toContain("UGRO");
+    expect(result.bearish).toContain("AXTI");
+    expect(result.bearish).not.toContain("NVDA");
+  });
+
+  it("강세/약세 섹션 모두 없으면 빈 배열", () => {
+    const content = "📊 시장 일일 브리핑\n일반 텍스트만 있는 리포트";
+    const result = extractBullBearClassification(content);
+    expect(result.bullish).toEqual([]);
+    expect(result.bearish).toEqual([]);
+  });
+
+  it("null 입력 시 빈 배열", () => {
+    const result = extractBullBearClassification(null);
+    expect(result.bullish).toEqual([]);
+    expect(result.bearish).toEqual([]);
+  });
+
+  it("빈 문자열 입력 시 빈 배열", () => {
+    const result = extractBullBearClassification("");
+    expect(result.bullish).toEqual([]);
+    expect(result.bearish).toEqual([]);
+  });
+
+  it("일반 키워드(RS, Phase 등)는 제외", () => {
+    const content = "🔥 강세 특이종목\n• TSLA RS 85 Phase 2 MA150\n\n⚠️ 약세";
+    const result = extractBullBearClassification(content);
+    expect(result.bullish).toEqual(["TSLA"]);
+    expect(result.bullish).not.toContain("RS");
+    expect(result.bullish).not.toContain("Phase");
+  });
+
+  it("⭐ 섹션도 강세로 분류", () => {
+    const content = "⭐ 매수 후보\n• MSFT RS 88 Phase 2\n\n⚠️ 약세";
+    const result = extractBullBearClassification(content);
+    expect(result.bullish).toContain("MSFT");
+  });
+});
+
+describe("formatPreviousReportContext — bull/bear classification", () => {
+  it("fullContent에 강세/약세 분류가 있으면 태그 포함", () => {
+    const logWithContent: DailyReportLog = {
+      ...SAMPLE_LOG,
+      fullContent: "🔥 강세 특이종목\n• AXTI RS 85 Phase 2 +10%\n\n⚠️ 약세 경고\n• XOM RS 78 Phase 2 -5%\n\n🌱 예비군",
+    };
+
+    const result = formatPreviousReportContext(logWithContent);
+
+    expect(result).toContain("AXTI (Phase 2, RS 85, Technology) [강세]");
+    expect(result).toContain("XOM (Phase 2, RS 78, Energy) [약세]");
+  });
+
+  it("fullContent가 없으면 태그 없이 기존 형식 유지", () => {
+    const result = formatPreviousReportContext(SAMPLE_LOG);
+
+    expect(result).toContain("AXTI (Phase 2, RS 85, Technology)");
+    expect(result).not.toContain("[강세]");
+    expect(result).not.toContain("[약세]");
+  });
+});
+
 describe("formatPreviousReportContext — fearGreedScore", () => {
-  it("fearGreedScore가 있으면 공포탐욕지수 줄 포함", () => {
+  it("fearGreedScore가 있으면 '전일 확정값'을 강조한 문구를 포함한다", () => {
     const logWithFg: DailyReportLog = {
       ...SAMPLE_LOG,
       marketSummary: {
         ...SAMPLE_LOG.marketSummary,
-        fearGreedScore: 14.5,
+        fearGreedScore: 18.2,
       },
     };
 
     const result = formatPreviousReportContext(logWithFg);
 
-    expect(result).toContain("공포탐욕지수: 14.5");
+    expect(result).toContain(
+      '⚠️ 공포탐욕지수 (전일 확정값): 18.2 — 이 값을 "전일" 수치로 사용하세요',
+    );
   });
 
-  it("fearGreedScore가 없으면 공포탐욕지수 줄 미포함", () => {
+  it("fearGreedScore가 없으면 공포탐욕지수 줄을 포함하지 않는다", () => {
     const result = formatPreviousReportContext(SAMPLE_LOG);
 
     expect(result).not.toContain("공포탐욕지수");
