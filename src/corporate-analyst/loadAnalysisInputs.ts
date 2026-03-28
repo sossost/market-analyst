@@ -29,6 +29,8 @@ import {
   findSectorRsByDate,
   findIndustryRsByDate,
   findPeerRatios,
+  findStockNews,
+  findUpcomingEarnings,
 } from "@/db/repositories/index.js";
 
 /** 최근 토론 synthesis를 사용하는 최대 일수 */
@@ -51,6 +53,9 @@ const ANALYST_ESTIMATES_QUARTERS = 4;
 
 /** 조회할 EPS 서프라이즈 분기 수 */
 const EPS_SURPRISES_QUARTERS = 4;
+
+/** 조회할 최근 뉴스 건수 */
+const RECENT_NEWS_LIMIT = 5;
 
 export interface AnalysisInputs {
   /** 기술적 데이터 (recommendation_factors) */
@@ -184,6 +189,21 @@ export interface AnalysisInputs {
 
   /** Phase C: 정량 모델 입력용 현재가 (stock_phases.close, recommendationDate 이하 최신) */
   currentPrice: number | null;
+
+  /** 최근 뉴스 5건 (stock_news) — title + site + publishedDate */
+  recentNews: Array<{
+    title: string;
+    site: string | null;
+    publishedDate: string;
+  }> | null;
+
+  /** 30일 이내 실적 발표 일정 (earning_calendar) */
+  upcomingEarnings: Array<{
+    date: string;
+    epsEstimated: number | null;
+    revenueEstimated: number | null;
+    time: string | null;
+  }> | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +340,19 @@ interface StockPhasesCloseRow {
   close: string;
 }
 
+interface StockNewsRow {
+  title: string;
+  site: string | null;
+  published_date: string;
+}
+
+interface EarningCalendarRow {
+  date: string;
+  eps_estimated: string | null;
+  revenue_estimated: string | null;
+  time: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // 개별 쿼리 함수 (에러 시 null 반환하는 safe wrapper)
 // ---------------------------------------------------------------------------
@@ -364,7 +397,7 @@ export async function loadAnalysisInputs(
 ): Promise<AnalysisInputs> {
   const debateCutoff = getDateOffset(recommendationDate, DEBATE_LOOKBACK_DAYS);
 
-  // Phase 1: 심볼 독립 쿼리 병렬 실행 (14개)
+  // Phase 1: 심볼 독립 쿼리 병렬 실행 (16개)
   const [
     factorsRows,
     symbolRows,
@@ -380,6 +413,8 @@ export async function loadAnalysisInputs(
     peerGroupRows,
     priceTargetRows,
     currentPriceRows,
+    stockNewsRows,
+    upcomingEarningsRows,
   ] = await Promise.all([
     safeQuery<RecommendationFactorsRow>(
       () => findRecommendationFactors(symbol, recommendationDate, pool),
@@ -436,6 +471,14 @@ export async function loadAnalysisInputs(
     safeQuery<StockPhasesCloseRow>(
       () => findCurrentPriceFromStockPhases(symbol, recommendationDate, pool),
       "stock_phases (currentPrice)",
+    ),
+    safeQuery<StockNewsRow>(
+      () => findStockNews(symbol, RECENT_NEWS_LIMIT, pool),
+      "stock_news",
+    ),
+    safeQuery<EarningCalendarRow>(
+      () => findUpcomingEarnings(symbol, recommendationDate, pool),
+      "earning_calendar",
     ),
   ]);
 
@@ -626,6 +669,27 @@ export async function loadAnalysisInputs(
       ? toNumOrNull(currentPriceRows[0].close)
       : null;
 
+  // recentNews: stock_news 최근 5건
+  const recentNews =
+    stockNewsRows == null || stockNewsRows.length === 0
+      ? null
+      : stockNewsRows.map((row) => ({
+          title: row.title,
+          site: row.site,
+          publishedDate: row.published_date,
+        }));
+
+  // upcomingEarnings: earning_calendar 30일 이내
+  const upcomingEarnings =
+    upcomingEarningsRows == null || upcomingEarningsRows.length === 0
+      ? null
+      : upcomingEarningsRows.map((row) => ({
+          date: row.date,
+          epsEstimated: toNumOrNull(row.eps_estimated),
+          revenueEstimated: toNumOrNull(row.revenue_estimated),
+          time: row.time,
+        }));
+
   return {
     technical: {
       rsScore: factorsRow?.rs_score ?? null,
@@ -669,6 +733,8 @@ export async function loadAnalysisInputs(
     peerGroup,
     priceTargetConsensus,
     currentPrice,
+    recentNews,
+    upcomingEarnings,
   };
 }
 

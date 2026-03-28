@@ -59,6 +59,8 @@ const MOCK_INPUTS: AnalysisInputs = {
   peerGroup: null,
   priceTargetConsensus: null,
   currentPrice: null,
+  recentNews: null,
+  upcomingEarnings: null,
 };
 
 const MOCK_REPORT = {

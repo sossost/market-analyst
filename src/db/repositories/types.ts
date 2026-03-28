@@ -406,6 +406,21 @@ export interface LatestCloseRow {
   close: string;
 }
 
+// ─── stock_news / earning_calendar ───────────────────────────────────────────
+
+export interface CorporateStockNewsRow {
+  title: string;
+  site: string | null;
+  published_date: string;
+}
+
+export interface CorporateEarningCalendarRow {
+  date: string;
+  eps_estimated: string | null;
+  revenue_estimated: string | null;
+  time: string | null;
+}
+
 // ─── corporateRepository ──────────────────────────────────────────────────────
 
 export interface CorporateRecommendationFactorsRow {

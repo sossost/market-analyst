@@ -28,7 +28,9 @@ const SYSTEM_PROMPT = `당신은 15년 경력의 미국 주식 전문 기업 애
 - valuationAnalysis: peer_valuation 데이터가 있으면 피어 대비 할인/프리미엄 포지션을 구체적 수치로 명시
 - fundamentalTrend: forward_estimates 데이터가 있으면 포워드 EPS 방향성과 서프라이즈 트랙 레코드를 포함
 - earningsCallHighlights: earnings_call 데이터가 있을 때만 이 필드를 JSON에 포함 — 경영진 핵심 발언, 가이던스 변화, 톤 분석 포함
-- priceTargetAnalysis: price_target_model 데이터를 기반으로 작성. 적정가 산출 근거(어떤 멀티플, 피어 몇 개), 상승여력 해석, 월가 컨센서스와의 비교, 모델의 한계(데이터 부재·가정)를 명시. 데이터 불충분 시 "정량 모델 산출 불가 — [이유]" 형식. valuationAnalysis와 내용 중복 최소화.`;
+- priceTargetAnalysis: price_target_model 데이터를 기반으로 작성. 적정가 산출 근거(어떤 멀티플, 피어 몇 개), 상승여력 해석, 월가 컨센서스와의 비교, 모델의 한계(데이터 부재·가정)를 명시. 데이터 불충분 시 "정량 모델 산출 불가 — [이유]" 형식. valuationAnalysis와 내용 중복 최소화.
+- investmentSummary / riskFactors: recent_news 데이터가 있으면 최근 뉴스에서 드러나는 촉매, 이벤트, 리스크를 반영
+- riskFactors: upcoming_earnings 데이터가 있으면 임박한 실적 발표 일정과 컨센서스를 리스크 요인에 명시`;
 
 export interface AnalysisReport {
   investmentSummary: string;
@@ -234,6 +236,31 @@ ${peerRows}
 </price_targets>`);
   }
 
+  // 최근 뉴스 (stock_news)
+  if (inputs.recentNews != null && inputs.recentNews.length > 0) {
+    const newsLines = inputs.recentNews
+      .map((n) => `- ${escapeXml(n.title)} (${n.site != null ? escapeXml(n.site) : "출처 미확인"}, ${n.publishedDate})`)
+      .join("\n");
+    sections.push(`<recent_news>
+${newsLines}
+</recent_news>`);
+  }
+
+  // 임박 실적 발표 (earning_calendar)
+  if (inputs.upcomingEarnings != null && inputs.upcomingEarnings.length > 0) {
+    const earningsLines = inputs.upcomingEarnings
+      .map((e) => {
+        const time = e.time != null ? escapeXml(e.time) : "시간 미확인";
+        const eps = e.epsEstimated != null ? String(e.epsEstimated) : "N/A";
+        const rev = e.revenueEstimated != null ? fmt(e.revenueEstimated) : "N/A";
+        return `- ${e.date} (${time}) | EPS est: ${eps} | Rev est: ${rev}`;
+      })
+      .join("\n");
+    sections.push(`<upcoming_earnings>
+${earningsLines}
+</upcoming_earnings>`);
+  }
+
   // 정량 모델 결과 (Phase C)
   if (priceTargetResult != null) {
     sections.push(`<price_target_model>
@@ -313,6 +340,14 @@ function buildSurpriseLine(actualEps: number | null, estimatedEps: number | null
   const surprise = ((actualEps - estimatedEps) / Math.abs(estimatedEps)) * 100;
   const direction = surprise > 0 ? "Beat" : "Miss";
   return ` (${direction} ${Math.abs(surprise).toFixed(1)}%)`;
+}
+
+/**
+ * XML 특수문자를 이스케이프한다.
+ * 외부 데이터를 XML 태그 내에 삽입할 때 태그 구조가 깨지지 않도록 방지한다.
+ */
+function escapeXml(s: string): string {
+  return s.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
