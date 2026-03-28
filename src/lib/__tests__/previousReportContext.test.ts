@@ -252,8 +252,8 @@ describe("formatPreviousReportContext — bull/bear classification", () => {
   });
 });
 
-describe("formatPreviousReportContext — fearGreedScore emphasis", () => {
-  it("fearGreedScore가 있으면 '전일 확정값' 강조 포함", () => {
+describe("formatPreviousReportContext — fearGreedScore", () => {
+  it("fearGreedScore가 있으면 '전일 확정값'을 강조한 문구를 포함한다", () => {
     const logWithFg: DailyReportLog = {
       ...SAMPLE_LOG,
       marketSummary: {
@@ -264,27 +264,12 @@ describe("formatPreviousReportContext — fearGreedScore emphasis", () => {
 
     const result = formatPreviousReportContext(logWithFg);
 
-    expect(result).toContain("전일 확정값");
-    expect(result).toContain("18.2");
-  });
-});
-
-describe("formatPreviousReportContext — fearGreedScore", () => {
-  it("fearGreedScore가 있으면 공포탐욕지수 줄 포함", () => {
-    const logWithFg: DailyReportLog = {
-      ...SAMPLE_LOG,
-      marketSummary: {
-        ...SAMPLE_LOG.marketSummary,
-        fearGreedScore: 14.5,
-      },
-    };
-
-    const result = formatPreviousReportContext(logWithFg);
-
-    expect(result).toContain("공포탐욕지수 (전일 확정값): 14.5");
+    expect(result).toContain(
+      '⚠️ 공포탐욕지수 (전일 확정값): 18.2 — 이 값을 "전일" 수치로 사용하세요',
+    );
   });
 
-  it("fearGreedScore가 없으면 공포탐욕지수 줄 미포함", () => {
+  it("fearGreedScore가 없으면 공포탐욕지수 줄을 포함하지 않는다", () => {
     const result = formatPreviousReportContext(SAMPLE_LOG);
 
     expect(result).not.toContain("공포탐욕지수");
