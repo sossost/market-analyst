@@ -244,6 +244,40 @@ describe('parseTriageOutput', () => {
   it('깨진 JSON은 null을 반환한다', () => {
     expect(parseTriageOutput('{ "verdict": "PROCEED", comment: }')).toBeNull()
   })
+
+  it('comment 값에 중괄호가 포함된 JSON을 올바르게 파싱한다', () => {
+    const output = JSON.stringify({
+      verdict: 'PROCEED',
+      goalAlignment: 'ALIGNED',
+      invalidation: null,
+      feasibility: true,
+      comment: '수정 방향: extractJsonObject({ start, depth }) 패턴으로 교체할 것',
+    })
+
+    const result = parseTriageOutput(output)
+
+    expect(result).toEqual({
+      verdict: 'PROCEED',
+      comment: '수정 방향: extractJsonObject({ start, depth }) 패턴으로 교체할 것',
+    })
+  })
+
+  it('comment에 중첩 JSON 예시가 포함된 경우 파싱에 성공한다', () => {
+    const output = JSON.stringify({
+      verdict: 'SKIP',
+      goalAlignment: 'NEUTRAL',
+      invalidation: null,
+      feasibility: false,
+      comment: '참고 예시: {"type": "fix", "scope": {"module": "parser"}} 형태의 구조',
+    })
+
+    const result = parseTriageOutput(output)
+
+    expect(result).toEqual({
+      verdict: 'SKIP',
+      comment: '참고 예시: {"type": "fix", "scope": {"module": "parser"}} 형태의 구조',
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
