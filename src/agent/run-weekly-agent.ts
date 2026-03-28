@@ -288,10 +288,26 @@ async function main() {
     logger.step("[6/7] Running review pipeline...");
     const sentDrafts = await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL", { reportType: "weekly" });
 
-    // full_content DB 저장
+    // DB 저장: INSERT (레코드 생성) → UPDATE (full_content 추가)
+    // 주간 에이전트는 save_report_log 도구를 안정적으로 호출하지 않으므로 코드 레벨에서 직접 INSERT.
+    // saveReportLog는 onConflictDoNothing이므로, 에이전트가 도구 호출한 경우에도 안전.
     if (sentDrafts.length > 0) {
-      const { updateReportFullContent } = await import("@/lib/reportLog");
+      const { saveReportLog, updateReportFullContent } = await import("@/lib/reportLog");
       const fullContent = draftsToFullContent(sentDrafts);
+
+      await saveReportLog({
+        date: targetDate,
+        type: "weekly",
+        reportedSymbols: [],
+        marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
+        fullContent,
+        metadata: {
+          model: MODEL,
+          tokensUsed: { input: 0, output: 0 },
+          toolCalls: 0,
+          executionTime: 0,
+        },
+      });
       await updateReportFullContent(targetDate, "weekly", fullContent);
     }
   } else if (loopError != null) {
