@@ -300,7 +300,7 @@ async function main() {
         type: "weekly",
         reportedSymbols: [],
         marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
-        fullContent,
+        fullContent: null,
         metadata: {
           model: MODEL,
           tokensUsed: { input: 0, output: 0 },
