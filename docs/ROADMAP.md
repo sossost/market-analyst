@@ -180,7 +180,7 @@
 | 구성 요소 | 설명 |
 |-----------|------|
 | Strategic Auto-Review (F9) | 매일 04:00 시스템 분석 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거) + 이슈 생성 (PR #266, #343) |
-| Corporate Analyst (F10) | 추천 종목별 심층 분석 리포트 자동 생성 (PR #277) |
+| Corporate Analyst (F10) | 추천 종목별 심층 분석 리포트 자동 생성 (PR #277); 뉴스/실적 컨텍스트 주입 — stock_news(최근 5건) + earning_calendar(30일 이내) (PR #459) |
 | 정량 목표주가 | DCF + P/E 피어 멀티플 가중 평균 기반 목표주가 산출 |
 | 컨센서스 교차 검증 | 월가 컨센서스 대비 ALIGNED/DIVERGENT/LARGE_DIVERGENT 판정 |
 | 시장 레짐 분류 | EARLY_BULL/MID_BULL/LATE_BULL/EARLY_BEAR/BEAR 5단계 + 히스테리시스 (#270) |
