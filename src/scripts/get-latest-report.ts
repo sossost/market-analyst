@@ -61,7 +61,7 @@ export function formatMarketSummary(summary: MarketSummary): string {
   return [
     "## 시장 요약",
     "",
-    `- Phase 2 비율: ${(summary.phase2Ratio * 100).toFixed(1)}%`,
+    `- Phase 2 비율: ${summary.phase2Ratio.toFixed(1)}%`,
     `- 주도 섹터: ${sectors}`,
     `- 분석 대상: ${summary.totalAnalyzed}개 종목`,
   ].join("\n");

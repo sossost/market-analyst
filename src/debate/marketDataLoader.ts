@@ -1,5 +1,7 @@
 import { clampPercent } from "@/tools/validation";
 import { logger } from "@/lib/logger";
+import { db } from "@/db/client";
+import { sql } from "drizzle-orm";
 import {
   findSectorSnapshot,
   findNewPhase2Stocks,
@@ -218,57 +220,57 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   };
 }
 
+const INDEX_SYMBOL_NAMES: Record<string, string> = {
+  "^GSPC": "S&P 500",
+  "^IXIC": "NASDAQ",
+  "^DJI": "DOW 30",
+  "^RUT": "Russell 2000",
+  "^VIX": "VIX",
+};
+
 /**
- * Fetch index quotes from Yahoo Finance API.
+ * DB index_prices 테이블에서 대상일 기준 지수 종가를 조회한다.
+ * 전일 종가 대비 등락률을 계산하여 반환.
  */
-async function fetchIndexQuotes(): Promise<IndexQuote[]> {
-  const symbols: Record<string, string> = {
-    "^GSPC": "S&P 500",
-    "^IXIC": "NASDAQ",
-    "^DJI": "DOW 30",
-    "^RUT": "Russell 2000",
-    "^VIX": "VIX",
-  };
+async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
+  const symbolList = Object.keys(INDEX_SYMBOL_NAMES);
+  const rows = await db.execute(sql`
+    SELECT symbol, date, close
+    FROM index_prices
+    WHERE symbol = ANY(${symbolList})
+      AND date <= ${targetDate}
+    ORDER BY date DESC
+    LIMIT ${symbolList.length * 2}
+  `);
+
+  const typed = rows.rows as { symbol: string; date: string; close: string }[];
+
+  // 심볼별로 최근 2일 그룹핑
+  const bySymbol = new Map<string, { close: number; prevClose: number | null }>();
+  for (const row of typed) {
+    const existing = bySymbol.get(row.symbol);
+    if (existing == null) {
+      bySymbol.set(row.symbol, { close: Number(row.close), prevClose: null });
+    } else if (existing.prevClose == null) {
+      existing.prevClose = Number(row.close);
+    }
+  }
 
   const results: IndexQuote[] = [];
+  for (const [symbol, name] of Object.entries(INDEX_SYMBOL_NAMES)) {
+    const data = bySymbol.get(symbol);
+    if (data == null) continue;
 
-  for (const [symbol, name] of Object.entries(symbols)) {
-    try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=2d&interval=1d`;
-      const response = await fetch(url, {
-        headers: { "User-Agent": "market-analyst/1.0" },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
+    const changePercent =
+      data.prevClose != null && data.prevClose !== 0
+        ? ((data.close - data.prevClose) / data.prevClose) * 100
+        : 0;
 
-      if (!response.ok) continue;
-
-      const data = await response.json();
-      const result = data?.chart?.result?.[0];
-      if (result == null) continue;
-
-      const meta = result.meta;
-      const regularMarketPrice: number | undefined = meta?.regularMarketPrice;
-      const chartPreviousClose: number | undefined = meta?.chartPreviousClose;
-
-      if (
-        regularMarketPrice == null ||
-        chartPreviousClose == null ||
-        chartPreviousClose === 0
-      ) {
-        continue;
-      }
-
-      const changePercent =
-        ((regularMarketPrice - chartPreviousClose) / chartPreviousClose) * 100;
-
-      results.push({
-        name,
-        close: Number(regularMarketPrice.toFixed(2)),
-        changePercent: Number(changePercent.toFixed(2)),
-      });
-    } catch {
-      // Individual index failure is tolerable
-    }
+    results.push({
+      name,
+      close: Number(data.close.toFixed(2)),
+      changePercent: Number(changePercent.toFixed(2)),
+    });
   }
 
   return results;
@@ -337,7 +339,7 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
     loadSectorSnapshot(date),
     loadPhase2Stocks(date),
     loadMarketBreadth(date),
-    fetchIndexQuotes().catch(() => [] as IndexQuote[]),
+    fetchIndexQuotes(date).catch(() => [] as IndexQuote[]),
     fetchFearGreed().catch(() => null),
   ]);
 
