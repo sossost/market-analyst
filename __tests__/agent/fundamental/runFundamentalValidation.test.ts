@@ -16,26 +16,6 @@ vi.mock("../../../src/lib/fundamental-scorer.js", () => ({
   promoteTopToS: vi.fn(),
 }));
 
-vi.mock("@/fundamental/fundamentalAgent.js", () => ({
-  analyzeFundamentals: vi.fn(),
-}));
-
-vi.mock("@/fundamental/stockReport.js", () => ({
-  generateStockReport: vi.fn(),
-  publishStockReport: vi.fn(),
-}));
-
-vi.mock("@/fundamental/stockReportQA.js", () => ({
-  runStockReportQA: vi.fn().mockReturnValue({ passed: true, symbol: "TEST", date: "2026-01-01", issues: [] }),
-  reportQAIssueToGitHub: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("@anthropic-ai/sdk", () => {
-  return {
-    default: class MockAnthropic {},
-  };
-});
-
 vi.mock("../../../src/agent/logger.js", () => ({
   logger: {
     info: vi.fn(),
@@ -47,8 +27,6 @@ vi.mock("../../../src/agent/logger.js", () => ({
 import { db } from "../../../src/db/client.js";
 import { loadFundamentalData } from "../../../src/lib/fundamental-data-loader.js";
 import { scoreFundamentals, promoteTopToS } from "../../../src/lib/fundamental-scorer.js";
-import { analyzeFundamentals } from "@/fundamental/fundamentalAgent.js";
-import { generateStockReport, publishStockReport } from "@/fundamental/stockReport.js";
 import { runFundamentalValidation } from "@/fundamental/runFundamentalValidation.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -137,20 +115,6 @@ function setupDbForCanSkip(existingScores: FundamentalScore[]) {
         })),
       } as any;
     }
-    // loadTechnicalData
-    if (sql.includes("stock_phases") && sql.includes("symbols")) {
-      return {
-        rows: [{
-          phase: 2,
-          rs_score: 95,
-          volume_confirmed: true,
-          pct_from_high_52w: "-0.05",
-          market_cap: "2800000000000",
-          sector: "Technology",
-          industry: "Semiconductors",
-        }],
-      } as any;
-    }
     return { rows: [] } as any;
   });
 }
@@ -177,20 +141,6 @@ function setupDbForFullScoring(symbols: string[]) {
     if (sql.includes("INSERT INTO") && sql.includes("fundamental_scores")) {
       return { rows: [] } as any;
     }
-    // loadTechnicalData
-    if (sql.includes("stock_phases") && sql.includes("symbols")) {
-      return {
-        rows: [{
-          phase: 2,
-          rs_score: 90,
-          volume_confirmed: true,
-          pct_from_high_52w: "-0.08",
-          market_cap: "1500000000000",
-          sector: "Technology",
-          industry: "Software",
-        }],
-      } as any;
-    }
     return { rows: [] } as any;
   });
 }
@@ -203,85 +153,42 @@ describe("runFundamentalValidation", () => {
   });
 
   describe("canSkipScoring true — DB 기존 스코어 재사용", () => {
-    it("S등급 종목의 리포트가 발행된다", async () => {
+    it("DB에서 기존 스코어를 로드하여 반환한다", async () => {
       const sScore = makeScore({ symbol: "NVDA", grade: "S" });
       const aScore = makeScore({ symbol: "AAPL", grade: "A" });
       setupDbForCanSkip([sScore, aScore]);
 
-      const nvdaInput = makeInput("NVDA");
-      vi.mocked(loadFundamentalData).mockResolvedValue([nvdaInput]);
-
-      vi.mocked(analyzeFundamentals).mockResolvedValue({
-        symbol: "NVDA",
-        narrative: "AI 인프라 사이클 핵심 수혜",
-        tokensUsed: { input: 1000, output: 500 },
-        dataQualityVerdict: "CLEAN",
-        dataQualityReason: "",
-      });
-
-      vi.mocked(generateStockReport).mockReturnValue("# NVDA 리포트");
-      vi.mocked(publishStockReport).mockResolvedValue({ gistUrl: null });
-
       const result = await runFundamentalValidation();
-
-      // S등급 NVDA만 로드
-      expect(loadFundamentalData).toHaveBeenCalledWith(["NVDA"]);
-
-      // LLM 분석 호출
-      expect(analyzeFundamentals).toHaveBeenCalledTimes(1);
-
-      // 리포트 발행
-      expect(publishStockReport).toHaveBeenCalledWith("NVDA", "# NVDA 리포트");
-      expect(result.reportsPublished).toEqual(["NVDA"]);
 
       // 스코어는 DB에서 로드한 것 그대로
       expect(result.scores).toHaveLength(2);
       expect(result.scores[0].symbol).toBe("NVDA");
       expect(result.scores[0].grade).toBe("S");
-    });
 
-    it("skipPublish: true 시 canSkip 경로에서도 리포트 미발행", async () => {
-      const sScore = makeScore({ symbol: "NVDA", grade: "S" });
-      setupDbForCanSkip([sScore]);
-
-      const nvdaInput = makeInput("NVDA");
-      vi.mocked(loadFundamentalData).mockResolvedValue([nvdaInput]);
-
-      vi.mocked(analyzeFundamentals).mockResolvedValue({
-        symbol: "NVDA",
-        narrative: "분析 내용",
-        tokensUsed: { input: 500, output: 200 },
-        dataQualityVerdict: "CLEAN",
-        dataQualityReason: "",
-      });
-
-      const result = await runFundamentalValidation({ skipPublish: true });
-
-      expect(publishStockReport).not.toHaveBeenCalled();
+      // LLM 분석/리포트 발행 없음 (deprecated)
       expect(result.reportsPublished).toEqual([]);
+      expect(result.totalTokens).toEqual({ input: 0, output: 0 });
+      expect(result.qualityExcluded).toEqual([]);
+
+      // loadFundamentalData 호출 안 함 (canSkip이면 DB 스코어 재사용)
+      expect(loadFundamentalData).not.toHaveBeenCalled();
     });
 
-    it("S등급 종목이 없으면 loadFundamentalData에 빈 배열을 전달하지 않는다", async () => {
+    it("S등급 종목이 없어도 정상 반환한다", async () => {
       const aScore = makeScore({ symbol: "AAPL", grade: "A" });
       const bScore = makeScore({ symbol: "MSFT", grade: "B" });
       setupDbForCanSkip([aScore, bScore]);
 
-      // S등급 없으므로 loadFundamentalData에 빈 배열 → 빈 결과
-      vi.mocked(loadFundamentalData).mockResolvedValue([]);
-
       const result = await runFundamentalValidation();
 
-      // S등급 없으므로 LLM 분석/리포트 발행 없음
       expect(loadFundamentalData).not.toHaveBeenCalled();
-      expect(analyzeFundamentals).not.toHaveBeenCalled();
-      expect(publishStockReport).not.toHaveBeenCalled();
       expect(result.reportsPublished).toEqual([]);
       expect(result.scores).toHaveLength(2);
     });
   });
 
   describe("canSkipScoring false — 전체 스코어링 경로", () => {
-    it("전체 스코어링 → LLM 분석 → 리포트 발행", async () => {
+    it("전체 스코어링 → DB 저장", async () => {
       const symbols = ["NVDA", "AAPL"];
       setupDbForFullScoring(symbols);
 
@@ -296,17 +203,6 @@ describe("runFundamentalValidation", () => {
         .mockReturnValueOnce(aScore);
       vi.mocked(promoteTopToS).mockReturnValue([sScore, aScore]);
 
-      vi.mocked(analyzeFundamentals).mockResolvedValue({
-        symbol: "NVDA",
-        narrative: "GPU 수요 폭발",
-        tokensUsed: { input: 800, output: 400 },
-        dataQualityVerdict: "CLEAN",
-        dataQualityReason: "",
-      });
-
-      vi.mocked(generateStockReport).mockReturnValue("# NVDA 리포트");
-      vi.mocked(publishStockReport).mockResolvedValue({ gistUrl: null });
-
       const result = await runFundamentalValidation();
 
       // 전체 종목 데이터 로드
@@ -316,12 +212,24 @@ describe("runFundamentalValidation", () => {
       expect(scoreFundamentals).toHaveBeenCalledTimes(2);
       expect(promoteTopToS).toHaveBeenCalledTimes(1);
 
-      // S등급만 LLM 분석
-      expect(analyzeFundamentals).toHaveBeenCalledTimes(1);
+      // deprecated 필드는 빈 값
+      expect(result.reportsPublished).toEqual([]);
+      expect(result.totalTokens).toEqual({ input: 0, output: 0 });
+      expect(result.qualityExcluded).toEqual([]);
 
-      // S등급만 리포트 발행
-      expect(result.reportsPublished).toEqual(["NVDA"]);
-      expect(result.totalTokens).toEqual({ input: 800, output: 400 });
+      // 스코어 결과
+      expect(result.scores).toHaveLength(2);
+      expect(result.scores[0].grade).toBe("S");
+    });
+
+    it("대상 종목이 0개이면 빈 결과를 반환한다", async () => {
+      setupDbForFullScoring([]);
+
+      const result = await runFundamentalValidation();
+
+      expect(loadFundamentalData).not.toHaveBeenCalled();
+      expect(result.scores).toEqual([]);
+      expect(result.reportsPublished).toEqual([]);
     });
   });
 });
