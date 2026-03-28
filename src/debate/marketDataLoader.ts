@@ -63,7 +63,8 @@ interface MarketBreadthSnapshot {
 interface IndexQuote {
   name: string;
   close: number;
-  changePercent: number;
+  /** 전일 종가 대비 등락률. 전일 데이터 없으면 null. */
+  changePercent: number | null;
 }
 
 interface FearGreedSnapshot {
@@ -246,7 +247,11 @@ async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
     ORDER BY symbol, rn
   `);
 
-  const typed = rows.rows as { symbol: string; date: string; close: string }[];
+  const typed = (rows.rows as Record<string, unknown>[]).map((r) => ({
+    symbol: String(r.symbol ?? ""),
+    date: String(r.date ?? ""),
+    close: String(r.close ?? "0"),
+  }));
 
   // 심볼별로 최근 2일 그룹핑
   const bySymbol = new Map<string, { close: number; prevClose: number | null }>();
@@ -266,13 +271,13 @@ async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
 
     const changePercent =
       data.prevClose != null && data.prevClose !== 0
-        ? ((data.close - data.prevClose) / data.prevClose) * 100
-        : 0;
+        ? Number((((data.close - data.prevClose) / data.prevClose) * 100).toFixed(2))
+        : null;
 
     results.push({
       name,
       close: Number(data.close.toFixed(2)),
-      changePercent: Number(changePercent.toFixed(2)),
+      changePercent,
     });
   }
 
@@ -391,6 +396,9 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
   // 1. Index overview
   if (snapshot.indices.length > 0) {
     const indexLines = snapshot.indices.map((idx) => {
+      if (idx.changePercent == null) {
+        return `- ${idx.name}: ${idx.close.toLocaleString()}`;
+      }
       const sign = idx.changePercent >= 0 ? "+" : "";
       return `- ${idx.name}: ${idx.close.toLocaleString()} (${sign}${idx.changePercent}%)`;
     });
