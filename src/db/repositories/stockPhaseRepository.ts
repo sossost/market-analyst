@@ -308,7 +308,7 @@ export async function findPhase1LateStocks(
      WHERE sp.date = $1
        AND sp.phase = 1
        AND (sp.prev_phase IS NULL OR sp.prev_phase = 1)
-       AND sp.ma150_slope::numeric > -0.001
+       AND sp.ma150_slope::numeric >= 0
        AND sp.rs_score >= 30
        AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.5
      ORDER BY sp.ma150_slope::numeric DESC, sp.rs_score DESC
