@@ -57,6 +57,7 @@ describe("formatEarlyDetectionContext", () => {
           latestRevenueGrowth: 122.0,
           isEpsAccelerating: true,
           isRevenueAccelerating: true,
+          sepaGrade: "A",
         },
       ],
     };
@@ -66,6 +67,7 @@ describe("formatEarlyDetectionContext", () => {
     expect(result).toContain("+145.3%");
     expect(result).toContain("+122%");
     expect(result).toContain("EPS+매출");
+    expect(result).toContain("| A |");
   });
 
   it("3개 카테고리 모두 있으면 모든 섹션 생성", () => {
@@ -84,6 +86,7 @@ describe("formatEarlyDetectionContext", () => {
           latestRevenueGrowth: 80,
           isEpsAccelerating: true,
           isRevenueAccelerating: false,
+          sepaGrade: "B",
         },
       ],
     };
@@ -121,12 +124,14 @@ describe("formatEarlyDetectionContext", () => {
           latestRevenueGrowth: 20,
           isEpsAccelerating: true,
           isRevenueAccelerating: false,
+          sepaGrade: "B",
         },
       ],
     };
     const result = formatEarlyDetectionContext(data);
     const amdLine = result.split("\n").find((l) => l.includes("AMD"));
     expect(amdLine).toContain("| EPS |");
+    expect(amdLine).toContain("| B |");
   });
 
   it("음수 성장률도 올바르게 포맷", () => {
@@ -141,6 +146,7 @@ describe("formatEarlyDetectionContext", () => {
           latestRevenueGrowth: -10.0,
           isEpsAccelerating: false,
           isRevenueAccelerating: true,
+          sepaGrade: "C",
         },
       ],
     };

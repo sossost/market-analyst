@@ -8,6 +8,10 @@ import type { FundamentalAccelerationRow } from "@/db/repositories/types.js";
 
 const DEFAULT_LIMIT = 20;
 const MIN_QUARTERS = 3;
+/** 가속 판정 최소 EPS/매출 성장률 허들 (%).
+ *  SEPA 필수 기준 25%의 60% — noise 필터 목적.
+ *  5%→8%→12% 같은 저성장 가속은 제외. */
+const MIN_ACCELERATION_GROWTH = 15;
 
 type QuarterRow = FundamentalAccelerationRow;
 
@@ -136,10 +140,11 @@ export function isAccelerating(growths: { yoyGrowth: number }[]): boolean {
   if (growths.length < MIN_QUARTERS) return false;
 
   // 최근 3개: growths[0] > growths[1] > growths[2] (최신이 가장 높음)
-  // 추가 조건: 최신 성장률이 양수 (축소가 아닌 성장이어야)
+  // 조건 1: 최신 성장률이 MIN_ACCELERATION_GROWTH 이상 (의미 있는 규모의 성장)
+  // 조건 2: strictly monotonic increasing (가속 패턴)
   const [latest, prev, older] = growths;
   return (
-    latest.yoyGrowth > 0 &&
+    latest.yoyGrowth >= MIN_ACCELERATION_GROWTH &&
     latest.yoyGrowth > prev.yoyGrowth &&
     prev.yoyGrowth > older.yoyGrowth
   );

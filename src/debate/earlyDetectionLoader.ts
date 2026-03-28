@@ -5,6 +5,10 @@ import { findPhase1LateStocks } from "@/db/repositories/stockPhaseRepository.js"
 import { findRisingRsStocks } from "@/db/repositories/stockPhaseRepository.js";
 import { findFundamentalAcceleration } from "@/db/repositories/fundamentalRepository.js";
 import { computeYoYGrowths, isAccelerating } from "@/tools/getFundamentalAcceleration";
+import { scoreFundamentals } from "@/lib/fundamental-scorer";
+import { periodEndDateToAsOfQ } from "@/lib/quarter-utils";
+import { toNum as toNumForScorer } from "@/etl/utils/common";
+import type { QuarterlyData, FundamentalGrade } from "@/types/fundamental.js";
 
 /** 카테고리별 최대 종목 수 — 토큰 절약 */
 const MAX_PER_CATEGORY = 10;
@@ -35,6 +39,7 @@ interface AcceleratingStock {
   latestRevenueGrowth: number | null;
   isEpsAccelerating: boolean;
   isRevenueAccelerating: boolean;
+  sepaGrade: FundamentalGrade;
 }
 
 export interface EarlyDetectionData {
@@ -132,6 +137,20 @@ async function loadAccelerating(): Promise<AcceleratingStock[]> {
 
       if (!isEpsAcc && !isRevAcc) continue;
 
+      // SEPA 등급 산출 — 이미 로드된 quarters 데이터 재활용 (추가 DB 쿼리 없음)
+      const quarterlyData: QuarterlyData[] = data.quarters.map((q) => ({
+        periodEndDate: q.period_end_date,
+        asOfQ: periodEndDateToAsOfQ(q.period_end_date),
+        revenue: q.revenue != null ? toNumForScorer(q.revenue) : null,
+        netIncome: q.net_income != null ? toNumForScorer(q.net_income) : null,
+        epsDiluted: q.eps_diluted != null ? toNumForScorer(q.eps_diluted) : null,
+        netMargin: null, // ratio 데이터 미포함 — scorer 내부에서 optional 처리
+      }));
+      const sepaScore = scoreFundamentals({ symbol, quarters: quarterlyData });
+
+      // SEPA F등급 종목은 가속 리스트에서 제외 — 모순 신호 방지
+      if (sepaScore.grade === "F") continue;
+
       results.push({
         symbol,
         sector: data.sector,
@@ -139,6 +158,7 @@ async function loadAccelerating(): Promise<AcceleratingStock[]> {
         latestRevenueGrowth: revenueGrowths[0]?.yoyGrowth ?? null,
         isEpsAccelerating: isEpsAcc,
         isRevenueAccelerating: isRevAcc,
+        sepaGrade: sepaScore.grade,
       });
     }
 
@@ -199,14 +219,14 @@ export function formatEarlyDetectionContext(data: EarlyDetectionData): string {
         s.isEpsAccelerating ? "EPS" : null,
         s.isRevenueAccelerating ? "매출" : null,
       ].filter(Boolean).join("+");
-      return `| ${s.symbol} | ${eps} | ${rev} | ${accel} | ${s.sector ?? "—"} |`;
+      return `| ${s.symbol} | ${eps} | ${rev} | ${accel} | ${s.sepaGrade} | ${s.sector ?? "—"} |`;
     });
     sections.push([
       "### 펀더멘탈 가속 — 실적 전환 초기",
-      "분기 YoY 성장률이 연속 가속하는 패턴 (예: +20% → +30% → +40%).",
+      "분기 YoY 성장률이 연속 가속하는 패턴 (예: +20% → +30% → +40%). SEPA F등급은 제외됨.",
       "",
-      "| 종목 | EPS YoY | 매출 YoY | 가속항목 | 섹터 |",
-      "|------|---------|---------|---------|------|",
+      "| 종목 | EPS YoY | 매출 YoY | 가속항목 | SEPA | 섹터 |",
+      "|------|---------|---------|---------|------|------|",
       ...rows,
     ].join("\n"));
   }
