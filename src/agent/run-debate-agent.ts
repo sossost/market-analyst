@@ -12,6 +12,7 @@ import {
   saveRegimePending,
   applyHysteresis,
   loadConfirmedRegime,
+  type MarketStressContext,
 } from "@/debate/regimeStore";
 import {
   getRegimePerformanceSummary,
@@ -657,7 +658,11 @@ async function main() {
       const validated = validateRegimeInput(result.marketRegime);
       if (validated != null) {
         await saveRegimePending(debateDate, validated);
-        const confirmed = await applyHysteresis(debateDate);
+        const stressContext: MarketStressContext = {
+          vix: marketSnapshot.indices.find((i) => i.name === "VIX")?.close ?? null,
+          fearGreedScore: marketSnapshot.fearGreed?.score ?? null,
+        };
+        const confirmed = await applyHysteresis(debateDate, stressContext);
         if (confirmed != null) {
           logger.info(
             "Regime",
