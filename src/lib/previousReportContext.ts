@@ -34,11 +34,21 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
   const { date, reportedSymbols, marketSummary } = log;
 
   const leadingSectors = marketSummary.leadingSectors.join(", ");
+
+  // 강세/약세 분류 추출 — 전일 종목 상태 오기재 방지
+  const classification = extractBullBearClassification(log.fullContent ?? null);
+  const bullSet = new Set(classification.bullish);
+  const bearSet = new Set(classification.bearish);
+
   const symbolLines = reportedSymbols
-    .map(
-      (s) =>
-        `- ${s.symbol} (Phase ${s.phase}, RS ${s.rsScore}, ${s.sector})`,
-    )
+    .map((s) => {
+      const tag = bullSet.has(s.symbol)
+        ? " [강세]"
+        : bearSet.has(s.symbol)
+          ? " [약세]"
+          : "";
+      return `- ${s.symbol} (Phase ${s.phase}, RS ${s.rsScore}, ${s.sector})${tag}`;
+    })
     .join("\n");
 
   const reserveStocks = extractReserveStocks(log.fullContent ?? null);
@@ -55,7 +65,7 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
 
   const fearGreedLine =
     marketSummary.fearGreedScore != null
-      ? `- 공포탐욕지수: ${marketSummary.fearGreedScore}`
+      ? `- ⚠️ 공포탐욕지수 (전일 확정값): ${marketSummary.fearGreedScore} — 이 값을 "전일" 수치로 사용하세요`
       : "";
 
   const sectorRsLines = formatSectorRsLines(marketSummary.topSectorRs ?? []);
@@ -131,6 +141,52 @@ export function extractKeyInsights(
     .filter((line) => line.length > 10 && !line.startsWith("---"));
 
   return insights;
+}
+
+/**
+ * 마크다운 본문에서 강세/약세 섹션별 티커를 추출한다.
+ * 🔥/⭐ 섹션 → bullish, ⚠️ 섹션 → bearish.
+ * 추출 불가 시 양쪽 모두 빈 배열 반환 (fail-open).
+ */
+export function extractBullBearClassification(
+  fullContent: string | null,
+): { bullish: string[]; bearish: string[] } {
+  const empty = { bullish: [], bearish: [] };
+  if (fullContent == null || fullContent === "") return empty;
+
+  const TICKER_RE = /\b([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\b/g;
+  const COMMON_WORDS = new Set([
+    "RS", "MA", "EPS", "PE", "PB", "ETF", "VIX", "DOW", "QQQ", "SPY",
+    "IWM", "WTI", "DXY", "Phase", "ACTIVE", "HIGH", "LOW", "USD",
+    "NASDAQ", "HOLD", "BUY", "SELL", "MD", "AI", "CEO", "IPO",
+  ]);
+
+  function extractTickers(section: string): string[] {
+    const tickers: string[] = [];
+    let match: RegExpExecArray | null;
+    const re = new RegExp(TICKER_RE.source, "g");
+    while ((match = re.exec(section)) !== null) {
+      const ticker = match[1];
+      if (!COMMON_WORDS.has(ticker) && !tickers.includes(ticker)) {
+        tickers.push(ticker);
+      }
+    }
+    return tickers;
+  }
+
+  // 강세 섹션: 🔥 또는 ⭐ 로 시작하는 블록
+  const bullSectionMatch = fullContent.match(
+    /[🔥⭐][^\n]*\n([\s\S]*?)(?=\n(?:##\s|[⚠️🌱💡👀🏆📊📈😨🌡️◎])|$)/,
+  );
+  const bullish = bullSectionMatch != null ? extractTickers(bullSectionMatch[1]) : [];
+
+  // 약세 섹션: ⚠️ 로 시작하는 블록
+  const bearSectionMatch = fullContent.match(
+    /⚠️[^\n]*\n([\s\S]*?)(?=\n(?:##\s|[🔥⭐🌱💡👀🏆📊📈😨🌡️◎])|$)/,
+  );
+  const bearish = bearSectionMatch != null ? extractTickers(bearSectionMatch[1]) : [];
+
+  return { bullish, bearish };
 }
 
 /**

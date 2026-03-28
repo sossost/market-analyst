@@ -12,6 +12,10 @@ const MIN_CONDITIONS = 2;
 const MIN_RS_SCORE = 40;
 const MAX_RESULTS = 15;
 
+// 역분할/액분할 의심 임계값 — 일간 수익률이 이 범위 밖이면 corporate action 가능성
+const SPLIT_SUSPECT_UPPER = 0.9; // +90%
+const SPLIT_SUSPECT_LOWER = -0.6; // -60%
+
 // Phase 2 (상승 추세) 우선, Phase 1 (바닥→전환) 다음
 const PHASE_PRIORITY: Readonly<Record<number, number>> = { 2: 0, 1: 1, 3: 2, 4: 3 } as const;
 
@@ -66,6 +70,10 @@ export const getUnusualStocks: AgentTool = {
 
         const phase2WithDrop = r.phase === 2 && dailyReturn <= -BIG_MOVE_THRESHOLD;
 
+        // 역분할/액분할 의심 플래그 — 극단적 가격 변동은 corporate action 가능성
+        const splitSuspect =
+          dailyReturn >= SPLIT_SUSPECT_UPPER || dailyReturn <= SPLIT_SUSPECT_LOWER;
+
         return {
           symbol: r.symbol,
           companyName: r.company_name,
@@ -80,6 +88,7 @@ export const getUnusualStocks: AgentTool = {
           industry: r.industry,
           conditions,
           phase2WithDrop,
+          splitSuspect,
         };
       })
       .filter(
