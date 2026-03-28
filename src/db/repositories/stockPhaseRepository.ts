@@ -270,7 +270,7 @@ export async function findRisingRsStocks(params: {
      JOIN symbols s ON sp.symbol = s.symbol
      LEFT JOIN rs_4w r4w ON r4w.symbol = sp.symbol
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
-     WHERE sp.date = $1
+     WHERE sp.date = $1::text
        AND sp.rs_score >= $2
        AND sp.rs_score <= $3
        AND (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) >= $5
@@ -822,7 +822,7 @@ export async function findThesisBeneficiaryTickers(
     `SELECT debate_date, beneficiary_tickers
      FROM theses
      WHERE debate_date >= ($1::date - INTERVAL '2 days')::text
-       AND debate_date <= $1
+       AND debate_date <= $1::text
        AND status = 'ACTIVE'
      ORDER BY debate_date DESC`,
     [date],
