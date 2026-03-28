@@ -235,12 +235,15 @@ const INDEX_SYMBOL_NAMES: Record<string, string> = {
 async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
   const symbolList = Object.keys(INDEX_SYMBOL_NAMES);
   const rows = await db.execute(sql`
-    SELECT symbol, date, close
-    FROM index_prices
-    WHERE symbol = ANY(${symbolList})
-      AND date <= ${targetDate}
-    ORDER BY date DESC
-    LIMIT ${symbolList.length * 2}
+    SELECT symbol, date, close FROM (
+      SELECT symbol, date, close,
+        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+      FROM index_prices
+      WHERE symbol = ANY(${symbolList})
+        AND date <= ${targetDate}
+    ) t
+    WHERE rn <= 2
+    ORDER BY symbol, rn
   `);
 
   const typed = rows.rows as { symbol: string; date: string; close: string }[];
