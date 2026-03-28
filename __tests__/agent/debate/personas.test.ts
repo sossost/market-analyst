@@ -37,12 +37,12 @@ describe("personas", () => {
       }
     });
 
-    it("macro-economist uses gpt-4o, tech-analyst uses gemini-2.0-flash", () => {
+    it("macro-economist uses gpt-4o, tech-analyst uses gemini-2.5-flash", () => {
       const experts = loadExpertPersonas();
       const macro = experts.find((e) => e.name === "macro");
       const tech = experts.find((e) => e.name === "tech");
       expect(macro?.model).toBe("gpt-4o");
-      expect(tech?.model).toBe("gemini-2.0-flash");
+      expect(tech?.model).toBe("gemini-2.5-flash");
     });
 
     it("geopolitics and sentiment keep Claude (sonnet)", () => {
