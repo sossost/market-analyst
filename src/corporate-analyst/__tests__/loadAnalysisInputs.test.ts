@@ -176,7 +176,7 @@ const PRICE_TARGET_ROW = {
 // ---------------------------------------------------------------------------
 // 헬퍼: 전체 데이터가 있는 Pool 생성
 // pool.query 호출 순서 (safeQuery 패턴):
-// Phase 1 (Promise.all 14개, 병렬이지만 mock은 순서대로 소비):
+// Phase 1 (Promise.all 16개, 병렬이지만 mock은 순서대로 소비):
 //   1. recommendation_factors
 //   2. symbols
 //   3. quarterly_financials
@@ -191,15 +191,29 @@ const PRICE_TARGET_ROW = {
 //  12. peer_groups
 //  13. price_target_consensus
 //  14. stock_phases (currentPrice)
+//  15. stock_news
+//  16. earning_calendar
 // Phase 2 (symbolRow 의존, 직렬):
-//  15. sector_rs_daily (sector != null)
-//  16. industry_rs_daily (industry != null)
+//  17. sector_rs_daily (sector != null)
+//  18. industry_rs_daily (industry != null)
 // Phase 3 (peerGroupRow 의존, 직렬):
-//  17. quarterly_ratios (peers)
+//  19. quarterly_ratios (peers)
 // ---------------------------------------------------------------------------
 
 const CURRENT_PRICE_ROW = {
   close: "175.50",
+};
+
+const STOCK_NEWS_ROWS = [
+  { title: "NVIDIA Posts Record Revenue", site: "Reuters", published_date: "2026-03-20" },
+  { title: "AI Chip Demand Surges", site: "Bloomberg", published_date: "2026-03-18" },
+];
+
+const UPCOMING_EARNINGS_ROW = {
+  date: "2026-04-15",
+  eps_estimated: "3.20",
+  revenue_estimated: "43500000000",
+  time: "AMC",
 };
 
 function makeFullPool(): Pool {
@@ -218,9 +232,11 @@ function makeFullPool(): Pool {
     { rows: [PEER_GROUP_ROW] },           // 12. peer_groups
     { rows: [PRICE_TARGET_ROW] },         // 13. price_target_consensus
     { rows: [CURRENT_PRICE_ROW] },        // 14. stock_phases (currentPrice)
-    { rows: [SECTOR_RS_ROW] },            // 15. sector_rs_daily
-    { rows: [INDUSTRY_RS_ROW] },          // 16. industry_rs_daily
-    { rows: PEER_RATIOS_ROWS },           // 17. quarterly_ratios (peers)
+    { rows: STOCK_NEWS_ROWS },            // 15. stock_news
+    { rows: [UPCOMING_EARNINGS_ROW] },    // 16. earning_calendar
+    { rows: [SECTOR_RS_ROW] },            // 17. sector_rs_daily
+    { rows: [INDUSTRY_RS_ROW] },          // 18. industry_rs_daily
+    { rows: PEER_RATIOS_ROWS },           // 19. quarterly_ratios (peers)
   ]);
 }
 
@@ -311,8 +327,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -338,8 +356,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [SECTOR_RS_ROW] }, // 17. sector_rs_daily
+        { rows: [INDUSTRY_RS_ROW] }, // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -363,8 +383,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },              // 12. peer_groups
         { rows: [] },              // 13. price_target_consensus
         { rows: [] },              // 14. stock_phases (currentPrice)
-        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
+        { rows: [] },              // 15. stock_news
+        { rows: [] },              // 16. earning_calendar
+        { rows: [SECTOR_RS_ROW] }, // 17. sector_rs_daily
+        { rows: [INDUSTRY_RS_ROW] }, // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -388,8 +410,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },              // 12. peer_groups
         { rows: [] },              // 13. price_target_consensus
         { rows: [] },              // 14. stock_phases (currentPrice)
-        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
+        { rows: [] },              // 15. stock_news
+        { rows: [] },              // 16. earning_calendar
+        { rows: [SECTOR_RS_ROW] }, // 17. sector_rs_daily
+        { rows: [INDUSTRY_RS_ROW] }, // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -413,8 +437,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },              // 12. peer_groups
         { rows: [] },              // 13. price_target_consensus
         { rows: [] },              // 14. stock_phases (currentPrice)
-        { rows: [SECTOR_RS_ROW] }, // 15. sector_rs
-        { rows: [INDUSTRY_RS_ROW] }, // 16. industry_rs
+        { rows: [] },              // 15. stock_news
+        { rows: [] },              // 16. earning_calendar
+        { rows: [SECTOR_RS_ROW] }, // 17. sector_rs_daily
+        { rows: [INDUSTRY_RS_ROW] }, // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -424,7 +450,7 @@ describe("loadAnalysisInputs", () => {
 
     it("symbols 테이블에 종목이 없으면 companyName/sector/industry가 null이고 sector_rs 쿼리는 실행되지 않는다", async () => {
       // symbols가 없으면 sector/industry가 null → sector_rs/industry_rs 쿼리 미실행
-      // Phase 1 (14개) + Phase 2 미실행 = 총 14번 호출
+      // Phase 1 (16개) + Phase 2 미실행 = 총 16번 호출
       // peer_groups도 비어있으므로 peer_ratios도 미실행
       const pool = makePool([
         { rows: [FACTORS_ROW] },  //  1. factors
@@ -441,7 +467,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        // 15, 16번 sector_rs/industry_rs 쿼리는 실행되지 않아야 함
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        // 17, 18번 sector_rs/industry_rs 쿼리는 실행되지 않아야 함
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -449,8 +477,8 @@ describe("loadAnalysisInputs", () => {
       expect(result.companyName).toBeNull();
       expect(result.sector).toBeNull();
       expect(result.industry).toBeNull();
-      // sector_rs/industry_rs 쿼리가 실행되지 않으므로 총 14번 호출
-      expect((pool.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(14);
+      // sector_rs/industry_rs 쿼리가 실행되지 않으므로 총 16번 호출
+      expect((pool.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(16);
     });
 
     it("모든 데이터 소스가 없어도 에러 없이 null 필드 구조를 반환한다", async () => {
@@ -469,7 +497,9 @@ describe("loadAnalysisInputs", () => {
         { rows: [] }, // 12. peer_groups
         { rows: [] }, // 13. price_target_consensus
         { rows: [] }, // 14. stock_phases (currentPrice)
-        // 15, 16번 sector_rs/industry_rs 쿼리는 symbols 없으므로 미실행
+        { rows: [] }, // 15. stock_news
+        { rows: [] }, // 16. earning_calendar
+        // 17, 18번 sector_rs/industry_rs 쿼리는 symbols 없으므로 미실행
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -500,8 +530,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },                                       // 12. peer_groups
         { rows: [] },                                       // 13. price_target_consensus
         { rows: [] },                                       // 14. stock_phases (currentPrice)
-        { rows: [] },                                       // 15. sector_rs
-        { rows: [] },                                       // 16. industry_rs
+        { rows: [] },                                       // 15. stock_news
+        { rows: [] },                                       // 16. earning_calendar
+        { rows: [] },                                       // 17. sector_rs_daily
+        { rows: [] },                                       // 18. industry_rs_daily
       ]);
     }
 
@@ -553,8 +585,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -588,8 +622,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -624,8 +660,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -651,8 +689,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -709,8 +749,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups (없음)
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -744,8 +786,10 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus (없음)
         { rows: [] },             // 14. stock_phases (currentPrice)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
@@ -778,13 +822,155 @@ describe("loadAnalysisInputs", () => {
         { rows: [] },             // 12. peer_groups
         { rows: [] },             // 13. price_target_consensus
         { rows: [] },             // 14. stock_phases (결과 없음)
-        { rows: [] },             // 15. sector_rs
-        { rows: [] },             // 16. industry_rs
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
       ]);
 
       const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
 
       expect(result.currentPrice).toBeNull();
+    });
+  });
+
+  describe("recentNews 로딩", () => {
+    it("stock_news 데이터를 올바르게 매핑한다", async () => {
+      const pool = makeFullPool();
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.recentNews).not.toBeNull();
+      expect(result.recentNews).toHaveLength(2);
+      expect(result.recentNews![0].title).toBe("NVIDIA Posts Record Revenue");
+      expect(result.recentNews![0].site).toBe("Reuters");
+      expect(result.recentNews![0].publishedDate).toBe("2026-03-20");
+    });
+
+    it("stock_news가 없으면 recentNews가 null이다", async () => {
+      const pool = makePool([
+        { rows: [FACTORS_ROW] },  //  1. factors
+        { rows: [SYMBOL_ROW] },   //  2. symbols
+        { rows: [] },             //  3. financials
+        { rows: [] },             //  4. ratios
+        { rows: [] },             //  5. regime
+        { rows: [] },             //  6. debate
+        { rows: [] },             //  7. company_profiles
+        { rows: [] },             //  8. annual_financials
+        { rows: [] },             //  9. earning_call_transcripts
+        { rows: [] },             // 10. analyst_estimates
+        { rows: [] },             // 11. eps_surprises
+        { rows: [] },             // 12. peer_groups
+        { rows: [] },             // 13. price_target_consensus
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. stock_news (없음)
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
+      ]);
+
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.recentNews).toBeNull();
+    });
+
+    it("site가 null인 뉴스도 올바르게 매핑한다", async () => {
+      const pool = makePool([
+        { rows: [] },             //  1. factors
+        { rows: [SYMBOL_ROW] },   //  2. symbols
+        { rows: [] },             //  3. financials
+        { rows: [] },             //  4. ratios
+        { rows: [] },             //  5. regime
+        { rows: [] },             //  6. debate
+        { rows: [] },             //  7. company_profiles
+        { rows: [] },             //  8. annual_financials
+        { rows: [] },             //  9. earning_call_transcripts
+        { rows: [] },             // 10. analyst_estimates
+        { rows: [] },             // 11. eps_surprises
+        { rows: [] },             // 12. peer_groups
+        { rows: [] },             // 13. price_target_consensus
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [{ title: "Breaking News", site: null, published_date: "2026-03-25" }] }, // 15. stock_news
+        { rows: [] },             // 16. earning_calendar
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
+      ]);
+
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.recentNews).not.toBeNull();
+      expect(result.recentNews![0].site).toBeNull();
+      expect(result.recentNews![0].publishedDate).toBe("2026-03-25");
+    });
+  });
+
+  describe("upcomingEarnings 로딩", () => {
+    it("earning_calendar 데이터를 올바르게 매핑한다", async () => {
+      const pool = makeFullPool();
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.upcomingEarnings).not.toBeNull();
+      expect(result.upcomingEarnings).toHaveLength(1);
+      expect(result.upcomingEarnings![0].date).toBe("2026-04-15");
+      expect(result.upcomingEarnings![0].epsEstimated).toBe(3.20);
+      expect(result.upcomingEarnings![0].revenueEstimated).toBe(43_500_000_000);
+      expect(result.upcomingEarnings![0].time).toBe("AMC");
+    });
+
+    it("earning_calendar가 없으면 upcomingEarnings가 null이다", async () => {
+      const pool = makePool([
+        { rows: [FACTORS_ROW] },  //  1. factors
+        { rows: [SYMBOL_ROW] },   //  2. symbols
+        { rows: [] },             //  3. financials
+        { rows: [] },             //  4. ratios
+        { rows: [] },             //  5. regime
+        { rows: [] },             //  6. debate
+        { rows: [] },             //  7. company_profiles
+        { rows: [] },             //  8. annual_financials
+        { rows: [] },             //  9. earning_call_transcripts
+        { rows: [] },             // 10. analyst_estimates
+        { rows: [] },             // 11. eps_surprises
+        { rows: [] },             // 12. peer_groups
+        { rows: [] },             // 13. price_target_consensus
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. stock_news
+        { rows: [] },             // 16. earning_calendar (없음)
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
+      ]);
+
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.upcomingEarnings).toBeNull();
+    });
+
+    it("eps_estimated, revenue_estimated가 null이면 null로 매핑한다", async () => {
+      const pool = makePool([
+        { rows: [] },             //  1. factors
+        { rows: [SYMBOL_ROW] },   //  2. symbols
+        { rows: [] },             //  3. financials
+        { rows: [] },             //  4. ratios
+        { rows: [] },             //  5. regime
+        { rows: [] },             //  6. debate
+        { rows: [] },             //  7. company_profiles
+        { rows: [] },             //  8. annual_financials
+        { rows: [] },             //  9. earning_call_transcripts
+        { rows: [] },             // 10. analyst_estimates
+        { rows: [] },             // 11. eps_surprises
+        { rows: [] },             // 12. peer_groups
+        { rows: [] },             // 13. price_target_consensus
+        { rows: [] },             // 14. stock_phases (currentPrice)
+        { rows: [] },             // 15. stock_news
+        { rows: [{ date: "2026-04-20", eps_estimated: null, revenue_estimated: null, time: null }] }, // 16.
+        { rows: [] },             // 17. sector_rs_daily
+        { rows: [] },             // 18. industry_rs_daily
+      ]);
+
+      const result = await loadAnalysisInputs(BASE_SYMBOL, BASE_DATE, pool);
+
+      expect(result.upcomingEarnings).not.toBeNull();
+      expect(result.upcomingEarnings![0].epsEstimated).toBeNull();
+      expect(result.upcomingEarnings![0].revenueEstimated).toBeNull();
+      expect(result.upcomingEarnings![0].time).toBeNull();
     });
   });
 });

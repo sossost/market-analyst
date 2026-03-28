@@ -28,6 +28,8 @@ import type {
   CorporateIndustryRsRow,
   CorporateAnalysisReportRow,
   CorporateActiveRecommendationRow,
+  CorporateStockNewsRow,
+  CorporateEarningCalendarRow,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -290,6 +292,38 @@ export async function findIndustryRsByDate(
      WHERE industry = $1 AND date = $2
      LIMIT 1`,
     [industry, date],
+  );
+  return rows;
+}
+
+export async function findStockNews(
+  symbol: string,
+  limit: number,
+  pool: Pool,
+): Promise<CorporateStockNewsRow[]> {
+  const { rows } = await pool.query<CorporateStockNewsRow>(
+    `SELECT title, site, published_date
+     FROM stock_news
+     WHERE symbol = $1
+     ORDER BY published_date DESC
+     LIMIT $2`,
+    [symbol, limit],
+  );
+  return rows;
+}
+
+export async function findUpcomingEarnings(
+  symbol: string,
+  baseDate: string,
+  pool: Pool,
+): Promise<CorporateEarningCalendarRow[]> {
+  const { rows } = await pool.query<CorporateEarningCalendarRow>(
+    `SELECT date, eps_estimated, revenue_estimated, time
+     FROM earning_calendar
+     WHERE symbol = $1
+       AND date BETWEEN $2 AND ($2::date + INTERVAL '30 days')::date
+     ORDER BY date ASC`,
+    [symbol, baseDate],
   );
   return rows;
 }
