@@ -7,8 +7,8 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { AutoLabel, GitHubIssue, PriorityLabel } from './types.js'
-import { ALLOWED_AUTHORS, AUTO_LABELS, PRIORITY_ORDER } from './types.js'
+import type { AutoLabel, GitHubIssue, PriorityLabel, TriagedLabel } from './types.js'
+import { ALLOWED_AUTHORS, AUTO_LABELS, PRIORITY_ORDER, TRIAGED_LABEL } from './types.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -86,11 +86,23 @@ export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
 }
 
 /**
+ * 트리아지 배치 전용 — triaged 라벨이 없는 미처리 이슈 조회
+ *
+ * fetchUnprocessedIssues() 결과에서 triaged 라벨이 있는 이슈를 추가 제외한다.
+ * 배치 재실행 시 이미 트리아지된 이슈를 중복 처리하지 않도록 방지한다.
+ * (이슈 프로세서는 triaged 라벨이 있어도 정상 처리하므로 fetchUnprocessedIssues를 사용한다.)
+ */
+export async function fetchUntriagedIssues(): Promise<GitHubIssue[]> {
+  const issues = await fetchUnprocessedIssues()
+  return issues.filter((issue) => !issue.labels.includes(TRIAGED_LABEL))
+}
+
+/**
  * 이슈에 라벨 추가
  */
 export async function addLabel(
   issueNumber: number,
-  label: AutoLabel,
+  label: AutoLabel | TriagedLabel,
 ): Promise<void> {
   await gh([
     'issue',
