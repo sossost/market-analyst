@@ -18,6 +18,7 @@ const TAG = 'TRIAGE'
 
 const TRIAGE_TIMEOUT_MS = 5 * 60 * 1_000 // 5분
 const MAX_BUFFER = 10 * 1024 * 1024 // 10MB
+const MAX_STDOUT_LOG_LENGTH = 2_000
 
 /** 자동 생성 이슈를 식별하는 라벨. 이 라벨이 없으면 CEO 수동 이슈로 간주. */
 const AUTO_GENERATED_LABELS: readonly string[] = ['strategic-review', 'report-feedback'] as const
@@ -198,7 +199,7 @@ export async function triageIssue(issue: GitHubIssue): Promise<TriageResult> {
     const parsed = parseTriageOutput(stdout)
 
     if (parsed == null) {
-      logger.warn(TAG, `#${issue.number}: 트리아지 출력 파싱 실패 — PROCEED 폴백`)
+      logger.warn(TAG, `#${issue.number}: 트리아지 출력 파싱 실패 — PROCEED 폴백\nstdout: ${stdout.slice(0, MAX_STDOUT_LOG_LENGTH)}`)
       return PROCEED_FALLBACK
     }
 
