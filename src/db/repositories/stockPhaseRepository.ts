@@ -1,4 +1,5 @@
 import { pool } from "@/db/client";
+import { MIN_MARKET_CAP } from "@/lib/constants";
 import type { Pool } from "pg";
 import type {
   StockPhaseRow,
@@ -78,9 +79,10 @@ export async function findPhase2Stocks(params: {
        AND sp.phase = 2
        AND sp.rs_score >= $2
        AND sp.rs_score <= $3
+       AND s.market_cap::numeric >= $5
      ORDER BY sp.rs_score DESC
      LIMIT $4`,
-    [date, minRs, maxRs, limit],
+    [date, minRs, maxRs, limit, MIN_MARKET_CAP],
   );
 
   return rows;
@@ -275,12 +277,13 @@ export async function findRisingRsStocks(params: {
        AND sp.rs_score <= $3
        AND (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) >= $5
        AND sp.phase = ANY($6::int[])
+       AND s.market_cap::numeric >= $7
      ORDER BY
        CASE WHEN srd.change_4w::numeric > 0 THEN 0 ELSE 1 END,
        (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) DESC,
        sp.rs_score DESC
      LIMIT $4`,
-    [date, rsMin, rsMax, limit, minRsChange, allowedPhases],
+    [date, rsMin, rsMax, limit, minRsChange, allowedPhases, MIN_MARKET_CAP],
   );
 
   return rows;
@@ -311,9 +314,10 @@ export async function findPhase1LateStocks(
        AND sp.ma150_slope::numeric >= 0
        AND sp.rs_score >= 30
        AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.5
+       AND s.market_cap::numeric >= $3
      ORDER BY sp.ma150_slope::numeric DESC, sp.rs_score DESC
      LIMIT $2`,
-    [date, limit],
+    [date, limit, MIN_MARKET_CAP],
   );
 
   return rows;
@@ -579,8 +583,9 @@ export async function findPhase1to2Transitions(
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = sym.sector
      WHERE sp.date = $1
        AND sp.phase = 2
-       AND sp.prev_phase IS DISTINCT FROM 2`,
-    [targetDate],
+       AND sp.prev_phase IS DISTINCT FROM 2
+       AND sym.market_cap::numeric >= $2`,
+    [targetDate, MIN_MARKET_CAP],
   );
   return rows;
 }

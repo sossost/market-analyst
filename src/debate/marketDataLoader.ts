@@ -1,5 +1,6 @@
 import { clampPercent } from "@/tools/validation";
 import { logger } from "@/lib/logger";
+import { MIN_MARKET_CAP } from "@/lib/constants";
 import { db } from "@/db/client";
 import { sql } from "drizzle-orm";
 import {
@@ -28,8 +29,6 @@ interface SectorSnapshot {
   phase2Ratio: number | null;
   phase1to2Count5d: number;
 }
-
-const MIN_MARKET_CAP = 300_000_000; // $300M — 초소형주 제외
 
 interface Phase2Stock {
   symbol: string;

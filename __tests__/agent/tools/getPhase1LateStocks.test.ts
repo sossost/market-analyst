@@ -119,6 +119,24 @@ describe("getPhase1LateStocks", () => {
     expect(sqlArg).not.toMatch(/-0\.001/);
   });
 
+  it("SQL includes market_cap filter", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await getPhase1LateStocks.execute({ date: "2026-03-07" });
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    expect(sqlArg).toMatch(/s\.market_cap::numeric\s*>=\s*\$\d/);
+  });
+
+  it("passes MIN_MARKET_CAP (300M) as query parameter", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await getPhase1LateStocks.execute({ date: "2026-03-07" });
+
+    const queryArgs = mockQuery.mock.calls[0][1];
+    expect(queryArgs).toContain(300_000_000);
+  });
+
   it("returns totalFound equal to number of stocks", async () => {
     mockQuery.mockResolvedValue({
       rows: [makeRow({ symbol: "A" }), makeRow({ symbol: "B" })],
