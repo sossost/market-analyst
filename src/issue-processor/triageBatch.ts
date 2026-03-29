@@ -41,13 +41,16 @@ export async function runTriageBatch(): Promise<void> {
       const result = await triageIssue(issue)
       log(`  판정: ${result.verdict}`)
 
-      // 코멘트 남기기 (비어 있으면 스킵 — 폴백 PROCEED 케이스)
-      if (result.comment !== '') {
-        await addComment(
-          issue.number,
-          `**[사전 트리아지]**\n\n${result.comment}`,
-        )
+      // 폴백 PROCEED (트리아지 실패) — triaged 라벨 없이 넘어가서 다음 배치에서 재시도
+      if (result.comment === '') {
+        log(`  ⚠ 트리아지 실패 (폴백) — triaged 라벨 미부착, 다음 배치에서 재시도`)
+        continue
       }
+
+      await addComment(
+        issue.number,
+        `**[사전 트리아지]**\n\n${result.comment}`,
+      )
 
       if (result.verdict === 'SKIP') {
         await addLabel(issue.number, 'auto:blocked')

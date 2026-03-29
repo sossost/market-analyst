@@ -198,7 +198,7 @@ export async function triageIssue(issue: GitHubIssue): Promise<TriageResult> {
     const parsed = parseTriageOutput(stdout)
 
     if (parsed == null) {
-      logger.warn(TAG, `#${issue.number}: 트리아지 출력 파싱 실패 — PROCEED 폴백`)
+      logger.warn(TAG, `#${issue.number}: 트리아지 출력 파싱 실패 — PROCEED 폴백\nstdout: ${stdout.slice(0, 2000)}`)
       return PROCEED_FALLBACK
     }
 
