@@ -244,6 +244,10 @@ ${round2Section}
 - \`sector_rotation\`: 섹터 로테이션 전망. 기본 timeframe 30~60일.
 - \`short_term_outlook\`: 단기 시장/지수 전망. 기본 timeframe 30일.
 
+**에이전트별 카테고리 제한:**
+- **sentiment** 에이전트의 thesis는 \`structural_narrative\` 또는 \`sector_rotation\`만 허용됩니다. sentiment의 방향성 예측(지수 목표치, VIX 하락 예측 등)은 thesis로 추출하지 마세요. sentiment의 분석은 포지셔닝 과밀/자금 흐름 구조 관점에서만 thesis화하세요.
+- 위 제한을 위반한 thesis는 시스템에서 자동 재분류됩니다.
+
 **정량 조건 작성 규칙 (중요 — 자동 검증의 핵심):**
 - targetCondition과 invalidationCondition은 **반드시 수치 비교 형식**으로 작성하세요
 - 형식: "[지표] [비교연산자] [숫자]" — 비교연산자: >, <, >=, <=
@@ -348,6 +352,21 @@ const VALID_CATEGORIES = new Set<string>([
 ]);
 
 /**
+ * 페르소나별 허용 카테고리 맵.
+ * 맵에 없는 페르소나는 모든 카테고리 허용.
+ * sentiment: short_term_outlook 적중률 40% (15건 resolved) — 방향성 예측 차단.
+ */
+const ALLOWED_CATEGORIES_PER_PERSONA: Partial<Record<AgentPersona, Set<ThesisCategory>>> = {
+  sentiment: new Set<ThesisCategory>(["structural_narrative", "sector_rotation"]),
+};
+
+const CATEGORY_FALLBACK: Record<ThesisCategory, ThesisCategory> = {
+  short_term_outlook: "sector_rotation",
+  sector_rotation: "sector_rotation",
+  structural_narrative: "structural_narrative",
+};
+
+/**
  * minorityView 필드를 정규화.
  * 유효한 객체면 wasCorrect: null을 보장, 그 외 null 반환.
  */
@@ -382,10 +401,24 @@ function normalizeMinorityView(raw: unknown): MinorityView | null {
 function normalizeThesisFields(
   obj: Record<string, unknown>,
 ): Record<string, unknown> {
-  const category =
+  let category: ThesisCategory =
     obj.category == null || !VALID_CATEGORIES.has(obj.category as string)
       ? ("short_term_outlook" satisfies ThesisCategory)
-      : obj.category;
+      : (obj.category as ThesisCategory);
+
+  // 페르소나별 허용 카테고리 강제 적용
+  const persona = obj.agentPersona as AgentPersona | undefined;
+  if (persona != null) {
+    const allowed = ALLOWED_CATEGORIES_PER_PERSONA[persona];
+    if (allowed != null && !allowed.has(category)) {
+      const fallback = CATEGORY_FALLBACK[category];
+      logger.info(
+        "Round3",
+        `${persona}의 thesis 카테고리 재분류: ${category} → ${fallback} (허용: ${[...allowed].join(", ")})`,
+      );
+      category = fallback;
+    }
+  }
 
   return {
     ...obj,
