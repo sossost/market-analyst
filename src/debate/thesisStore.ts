@@ -4,8 +4,9 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import type { Thesis, ThesisCategory, Confidence, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "@/types/debate";
 import { recordNarrativeChain } from "./narrativeChainService.js";
-import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
+import { tryQuantitativeVerification, parseQuantitativeCondition } from "./quantitativeVerifier.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
+import type { AgentPersona } from "@/types/debate";
 
 function parseConsensusScore(level: ConsensusLevel): number {
   const score = parseInt(level.split("/")[0], 10);
@@ -48,6 +49,17 @@ export async function saveTheses(
     minorityView: t.minorityView ?? null,
     status: "ACTIVE" as const,
   }));
+
+  // 정량 파싱 가능성 검증 — 자동 검증 불가 thesis 조기 경고
+  for (const t of extractedTheses) {
+    const targetParsed = parseQuantitativeCondition(t.targetCondition);
+    if (targetParsed == null) {
+      logger.warn(
+        "ThesisStore",
+        `[정량 검증 불가] ${t.agentPersona}: targetCondition "${t.targetCondition}" — LLM 주관 판정 의존`,
+      );
+    }
+  }
 
   const result = await db.insert(theses).values(rows).returning({ id: theses.id });
   logger.info("ThesisStore", `Saved ${result.length} theses for ${debateDate}`);
@@ -489,4 +501,60 @@ export function formatThesesForPrompt(
   }
 
   return lines.join("\n");
+}
+
+/**
+ * ID 배열 기반 배치 EXPIRED 처리.
+ * HOLD 강제 만료 등 프로그래밍 방식 만료에 사용.
+ */
+export async function forceExpireTheses(
+  ids: number[],
+  today: string,
+  reason: string,
+): Promise<number> {
+  if (ids.length === 0) return 0;
+
+  const result = await db
+    .update(theses)
+    .set({
+      status: "EXPIRED",
+      verificationDate: today,
+      verificationResult: reason,
+      closeReason: "hold_override",
+      verificationMethod: "llm",
+    })
+    .where(and(inArray(theses.id, ids), eq(theses.status, "ACTIVE")))
+    .returning({ id: theses.id });
+
+  logger.info("ThesisStore", `${result.length}개 thesis 강제 만료: [${result.map((r) => r.id).join(", ")}]`);
+  return result.length;
+}
+
+/**
+ * 에이전트(persona)별 status 집계 조회.
+ * 반환 예: { tech: { ACTIVE: 16, CONFIRMED: 4 }, macro: { ACTIVE: 5, ... } }
+ */
+export async function getThesisStatsByPersona(): Promise<
+  Partial<Record<AgentPersona, Record<string, number>>>
+> {
+  const rows = await db
+    .select({
+      persona: theses.agentPersona,
+      status: theses.status,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(theses)
+    .groupBy(theses.agentPersona, theses.status);
+
+  const result: Partial<Record<AgentPersona, Record<string, number>>> = {};
+
+  for (const r of rows) {
+    const persona = r.persona as AgentPersona;
+    if (result[persona] == null) {
+      result[persona] = {};
+    }
+    result[persona]![r.status] = r.count;
+  }
+
+  return result;
 }

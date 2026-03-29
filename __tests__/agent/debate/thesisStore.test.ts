@@ -22,6 +22,17 @@ vi.mock("@/debate/narrativeChainService.js", () => ({
   recordNarrativeChain: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockLoggerWarn = vi.fn();
+const mockLoggerInfo = vi.fn();
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    info: (...args: unknown[]) => mockLoggerInfo(...args),
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
+    error: vi.fn(),
+    step: vi.fn(),
+  },
+}));
+
 vi.mock("../../../src/db/client.js", () => ({
   db: {
     insert: (...args: unknown[]) => {
@@ -100,6 +111,8 @@ import {
   getThesisStats,
   getThesisStatsByCategory,
   getConsensusByHitRate,
+  forceExpireTheses,
+  getThesisStatsByPersona,
 } from "@/debate/thesisStore.js";
 
 describe("thesisStore", () => {
@@ -606,6 +619,125 @@ describe("thesisStore", () => {
       expect(mockValues).toHaveBeenCalledWith([
         expect.objectContaining({ dissentReason: null }),
       ]);
+    });
+  });
+
+  describe("saveTheses — 정량 파싱 가능성 경고", () => {
+    it("정량 파싱 불가능한 targetCondition에 대해 경고를 로그한다", async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "tech",
+          thesis: "AI capex → revenue 전환 가속",
+          timeframeDays: 60,
+          verificationMetric: "AI revenue",
+          targetCondition: "AI capex → revenue 전환 가시화",
+          confidence: "medium",
+          consensusLevel: "3/4",
+        },
+      ];
+
+      mockReturning.mockResolvedValueOnce([{ id: 10 }]);
+      await saveTheses("2026-03-29", theses);
+
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "ThesisStore",
+        expect.stringContaining("[정량 검증 불가]"),
+      );
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "ThesisStore",
+        expect.stringContaining("tech"),
+      );
+    });
+
+    it("정량 파싱 가능한 targetCondition에 대해서는 경고하지 않는다", async () => {
+      const theses: Thesis[] = [
+        {
+          agentPersona: "tech",
+          thesis: "Technology 섹터 RS 상승",
+          timeframeDays: 30,
+          verificationMetric: "Technology RS",
+          targetCondition: "Technology RS > 65",
+          confidence: "medium",
+          consensusLevel: "3/4",
+        },
+      ];
+
+      mockReturning.mockResolvedValueOnce([{ id: 11 }]);
+      mockLoggerWarn.mockClear();
+      await saveTheses("2026-03-29", theses);
+
+      const warnCalls = mockLoggerWarn.mock.calls.filter(
+        (args: unknown[]) => typeof args[1] === "string" && (args[1] as string).includes("[정량 검증 불가]"),
+      );
+      expect(warnCalls).toHaveLength(0);
+    });
+  });
+
+  describe("forceExpireTheses", () => {
+    it("ID 배열 기반으로 배치 EXPIRED 처리하고 실제 영향받은 행 수를 반환한다", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([{ id: 10 }, { id: 20 }, { id: 30 }]);
+
+      const count = await forceExpireTheses(
+        [10, 20, 30],
+        "2026-03-29",
+        "진행률 80% 이상 + LLM 판정 유보 → 강제 만료",
+      );
+
+      expect(count).toBe(3);
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "EXPIRED",
+          closeReason: "hold_override",
+          verificationMethod: "llm",
+        }),
+      );
+    });
+
+    it("일부 ID가 이미 비-ACTIVE이면 실제 영향받은 행만 카운트한다", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([{ id: 10 }]);
+
+      const count = await forceExpireTheses(
+        [10, 20, 30],
+        "2026-03-29",
+        "강제 만료",
+      );
+
+      expect(count).toBe(1);
+    });
+
+    it("빈 ID 배열이면 DB 호출 없이 0을 반환한다", async () => {
+      const count = await forceExpireTheses([], "2026-03-29", "강제 만료");
+
+      expect(count).toBe(0);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getThesisStatsByPersona", () => {
+    it("에이전트별 status 집계를 반환한다", async () => {
+      mockGroupBy.mockResolvedValueOnce([
+        { persona: "tech", status: "ACTIVE", count: 16 },
+        { persona: "tech", status: "CONFIRMED", count: 4 },
+        { persona: "macro", status: "ACTIVE", count: 5 },
+        { persona: "sentiment", status: "INVALIDATED", count: 3 },
+      ]);
+
+      const stats = await getThesisStatsByPersona();
+
+      expect(stats).toEqual({
+        tech: { ACTIVE: 16, CONFIRMED: 4 },
+        macro: { ACTIVE: 5 },
+        sentiment: { INVALIDATED: 3 },
+      });
+    });
+
+    it("데이터가 없으면 빈 객체를 반환한다", async () => {
+      mockGroupBy.mockResolvedValueOnce([]);
+
+      const stats = await getThesisStatsByPersona();
+
+      expect(stats).toEqual({});
     });
   });
 
