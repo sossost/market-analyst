@@ -78,6 +78,24 @@ describe("getRisingRS", () => {
     expect(sql).toContain("sp.phase = ANY($6::int[])");
   });
 
+  it("SQL includes market_cap filter", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getRisingRS.execute({ date: "2025-01-15" });
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    expect(sqlArg).toMatch(/s\.market_cap::numeric\s*>=\s*\$\d/);
+  });
+
+  it("passes MIN_MARKET_CAP (300M) as query parameter", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getRisingRS.execute({ date: "2025-01-15" });
+
+    const queryArgs = mockQuery.mock.calls[0][1];
+    expect(queryArgs).toContain(300_000_000);
+  });
+
   it("returns stocks with correct shape", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [makeRow()],
