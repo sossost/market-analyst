@@ -258,7 +258,7 @@ ${round2Section}
 - **정성적 조건은 수치 비교가 구조적으로 불가능한 경우에만 허용합니다** (예: 규제 발표, 지정학 이벤트)
   - 정성적 조건 허용 예: "반도체 수출 규제 추가 발표", "FOMC 금리 동결 결정"
   - 정성적 조건 불허 예: "AI 반도체 수요 지속", "기술주 실적 호조 유지", "시장 심리 개선" — 이런 조건은 verificationMetric과 함께 수치 형식으로 변환하세요
-- **tech 에이전트 전망 주의**: 기술/산업 전망도 반드시 지수 또는 섹터 RS 기반 정량 조건을 포함하세요. 예: "Technology RS > 65", "Communication Services RS > 55"
+- **tech 에이전트 전망 주의**: 기술/산업 전망도 반드시 지수 또는 섹터 RS 기반 정량 조건을 포함하세요. 예: "Technology RS > 65", "NASDAQ > 18000". 정량 조건이 없는 tech thesis는 자동 검증이 불가능하여 ACTIVE 상태로 적체되고, 학습 루프(agent_learnings)에 반영되지 않습니다. 검증 불가 thesis는 진행률 80% 초과 시 강제 만료됩니다.
 
 **verificationMetric 지원 형식:**
 - 지수명: "S&P 500", "NASDAQ", "DOW 30", "Russell 2000", "VIX"

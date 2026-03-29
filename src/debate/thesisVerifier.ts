@@ -1,4 +1,4 @@
-import { loadActiveTheses, resolveThesis, saveCausalAnalysis } from "./thesisStore.js";
+import { loadActiveTheses, resolveThesis, saveCausalAnalysis, forceExpireTheses } from "./thesisStore.js";
 import { analyzeCauses } from "./causalAnalyzer.js";
 import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
 import { logger } from "@/lib/logger";
@@ -24,11 +24,14 @@ interface VerificationResult {
   confirmed: number;
   invalidated: number;
   held: number;
+  forceExpired: number;
   quantitative: number;
   llm: number;
   quantitativeRate: number;
   tokensUsed: { input: number; output: number };
 }
+
+const HOLD_EXPIRE_PROGRESS = 0.8;
 
 /**
  * LLM 기반 thesis 자동 검증.
@@ -47,7 +50,7 @@ export async function verifyTheses(
 
   if (activeTheses.length === 0) {
     logger.info("ThesisVerifier", "No active theses to verify");
-    return { confirmed: 0, invalidated: 0, held: 0, quantitative: 0, llm: 0, quantitativeRate: 0, tokensUsed: { input: 0, output: 0 } };
+    return { confirmed: 0, invalidated: 0, held: 0, forceExpired: 0, quantitative: 0, llm: 0, quantitativeRate: 0, tokensUsed: { input: 0, output: 0 } };
   }
 
   logger.info("ThesisVerifier", `Verifying ${activeTheses.length} active theses`);
@@ -135,6 +138,7 @@ export async function verifyTheses(
 
 - HOLD는 timeframe이 남아 있어 판단이 **시기상조**인 경우로만 사용.
 - 진행률이 높고 시장 방향이 전망과 다르면 HOLD가 아닌 INVALIDATED로 판정.
+- **진행률 80% 이상 thesis는 HOLD 금지.** 반드시 CONFIRMED 또는 INVALIDATED를 선택. 근거가 불충분하면 "근거 불충분" 사유와 함께 INVALIDATED 부여.
 - 각 판정에 1~2줄의 구체적 근거를 포함.
 - 반드시 JSON 배열로만 응답. 다른 텍스트 없이.
 
@@ -189,19 +193,41 @@ ${thesesText}
     tokensUsed = llmResult.tokensUsed;
   }
 
+  // 진행률 80%+ HOLD → 강제 만료 (학습 루프 적체 방지)
+  const llmHeld = llmJudgments.filter((j) => j.verdict === "HOLD");
+  const llmThesisMap = new Map(llmTheses.map((t) => [t.id, t]));
+  const forceExpireIds = findHighProgressHolds(llmHeld, llmThesisMap, debateDate);
+
+  for (const id of forceExpireIds) {
+    const thesis = llmThesisMap.get(id);
+    if (thesis == null) continue;
+    const elapsedDays = calcElapsedDays(thesis.debateDate, debateDate);
+    const progress = thesis.timeframeDays > 0 ? elapsedDays / thesis.timeframeDays : 0;
+    logger.warn(
+      "ThesisVerifier",
+      `[HOLD OVERRIDE] Thesis #${id} (${thesis.agentPersona}): 진행률 ${Math.round(progress * 100)}% — HOLD → 강제 만료`,
+    );
+  }
+
+  const forceExpiredCount = await forceExpireTheses(
+    forceExpireIds,
+    debateDate,
+    "진행률 80% 이상 + LLM 판정 유보 → 강제 만료",
+  );
+
   // Combine all resolved for stats and causal analysis
   const quantitativeConfirmed = quantitativeResults.filter((j) => j.verdict === "CONFIRMED").length;
   const quantitativeInvalidated = quantitativeResults.filter((j) => j.verdict === "INVALIDATED").length;
   const llmConfirmed = llmJudgments.filter((j) => j.verdict === "CONFIRMED").length;
   const llmInvalidated = llmJudgments.filter((j) => j.verdict === "INVALIDATED").length;
-  const held = llmJudgments.filter((j) => j.verdict === "HOLD").length;
+  const held = llmHeld.length - forceExpiredCount;
 
   const confirmed = quantitativeConfirmed + llmConfirmed;
   const invalidated = quantitativeInvalidated + llmInvalidated;
 
   logger.info(
     "ThesisVerifier",
-    `Results: ${confirmed} confirmed, ${invalidated} invalidated, ${held} held (quantitative: ${quantitativeResults.length}, llm: ${llmTheses.length})`,
+    `Results: ${confirmed} confirmed, ${invalidated} invalidated, ${held} held, ${forceExpiredCount} force-expired (quantitative: ${quantitativeResults.length}, llm: ${llmTheses.length})`,
   );
 
   // Causal analysis — all resolved theses (both quantitative and LLM)
@@ -267,6 +293,7 @@ ${thesesText}
     confirmed,
     invalidated,
     held,
+    forceExpired: forceExpiredCount,
     quantitative: quantitativeResults.length,
     llm: llmTheses.length,
     quantitativeRate,
@@ -276,6 +303,7 @@ ${thesesText}
 
 function calcExpiry(debateDate: string, timeframeDays: number): string {
   const d = new Date(debateDate);
+  if (Number.isNaN(d.getTime())) return "unknown";
   d.setDate(d.getDate() + timeframeDays);
   return d.toISOString().slice(0, 10);
 }
@@ -283,6 +311,7 @@ function calcExpiry(debateDate: string, timeframeDays: number): string {
 export function calcElapsedDays(debateDate: string, currentDate: string): number {
   const start = new Date(debateDate).getTime();
   const now = new Date(currentDate).getTime();
+  if (Number.isNaN(start) || Number.isNaN(now)) return 0;
   return Math.max(0, Math.floor((now - start) / MS_PER_DAY));
 }
 
@@ -338,4 +367,26 @@ export function parseJudgments(
       verdict: obj.verdict as VerificationJudgment["verdict"],
       reason: obj.reason as string,
     }));
+}
+
+/**
+ * HOLD 판정 중 진행률 80% 이상인 thesis ID를 추출 (강제 만료 대상).
+ * 순수 함수 — DB 접근 없음.
+ */
+export function findHighProgressHolds(
+  heldJudgments: VerificationJudgment[],
+  thesisMap: Map<number, { debateDate: string; timeframeDays: number }>,
+  debateDate: string,
+): number[] {
+  const ids: number[] = [];
+  for (const held of heldJudgments) {
+    const thesis = thesisMap.get(held.thesisId);
+    if (thesis == null) continue;
+    const elapsedDays = calcElapsedDays(thesis.debateDate, debateDate);
+    const progress = thesis.timeframeDays > 0 ? elapsedDays / thesis.timeframeDays : 0;
+    if (progress >= HOLD_EXPIRE_PROGRESS) {
+      ids.push(held.thesisId);
+    }
+  }
+  return ids;
 }
