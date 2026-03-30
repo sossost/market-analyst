@@ -134,6 +134,8 @@ export const getLeadingSectors: AgentTool = {
           `industry:${i.industry}:phase2Ratio`,
         ),
         change4w: i.change_4w != null ? toNum(i.change_4w) : null,
+        change8w: i.change_8w != null ? toNum(i.change_8w) : null,
+        change12w: i.change_12w != null ? toNum(i.change_12w) : null,
         sectorAvgRs: i.sector_avg_rs != null ? toNum(i.sector_avg_rs) : null,
         sectorRsRank: i.sector_rs_rank,
         divergence:

@@ -153,6 +153,46 @@ describe("mode: 'industry'", () => {
     expect(parsed.industries[0].change4w).toBeNull();
   });
 
+  it("change8w가 null이면 null로, 값이 있으면 숫자로 반환된다", async () => {
+    const rowWithNull = makeIndustryRow({ change_8w: null });
+    mockQuery.mockResolvedValueOnce({ rows: [rowWithNull] } as never);
+
+    const resultNull = await getLeadingSectors.execute({
+      date: "2026-03-28",
+      mode: "industry",
+    });
+    expect(JSON.parse(resultNull).industries[0].change8w).toBeNull();
+
+    const rowWithValue = makeIndustryRow({ change_8w: "8.50" });
+    mockQuery.mockResolvedValueOnce({ rows: [rowWithValue] } as never);
+
+    const resultValue = await getLeadingSectors.execute({
+      date: "2026-03-28",
+      mode: "industry",
+    });
+    expect(JSON.parse(resultValue).industries[0].change8w).toBe(8.5);
+  });
+
+  it("change12w가 null이면 null로, 값이 있으면 숫자로 반환된다", async () => {
+    const rowWithNull = makeIndustryRow({ change_12w: null });
+    mockQuery.mockResolvedValueOnce({ rows: [rowWithNull] } as never);
+
+    const resultNull = await getLeadingSectors.execute({
+      date: "2026-03-28",
+      mode: "industry",
+    });
+    expect(JSON.parse(resultNull).industries[0].change12w).toBeNull();
+
+    const rowWithValue = makeIndustryRow({ change_12w: "12.75" });
+    mockQuery.mockResolvedValueOnce({ rows: [rowWithValue] } as never);
+
+    const resultValue = await getLeadingSectors.execute({
+      date: "2026-03-28",
+      mode: "industry",
+    });
+    expect(JSON.parse(resultValue).industries[0].change12w).toBe(12.75);
+  });
+
   it("잘못된 date 입력 시 error 객체를 반환한다", async () => {
     const result = await getLeadingSectors.execute({
       date: "not-a-date",
