@@ -103,15 +103,29 @@ const VALID_VERDICTS = new Set<string>(['PROCEED', 'SKIP', 'ESCALATE'])
 /**
  * 문자열에서 첫 번째 완전한 JSON 객체를 추출한다.
  * bracket counting 방식으로 중첩 중괄호를 올바르게 처리한다.
+ * 문자열 리터럴("...") 내부의 중괄호와 escape 시퀀스를 올바르게 무시한다.
  */
 function extractJsonObject(str: string): string | null {
   const start = str.indexOf('{')
   if (start === -1) return null
   let depth = 0
+  let inString = false
   for (let i = start; i < str.length; i++) {
-    if (str[i] === '{') depth++
-    if (str[i] === '}') depth--
-    if (depth === 0) return str.slice(start, i + 1)
+    const ch = str[i]
+    if (inString) {
+      if (ch === '\\') {
+        i++ // escape 시퀀스 — 다음 문자 스킵
+        continue
+      }
+      if (ch === '"') inString = false
+    } else {
+      if (ch === '"') inString = true
+      else if (ch === '{') depth++
+      else if (ch === '}') {
+        depth--
+        if (depth === 0) return str.slice(start, i + 1)
+      }
+    }
   }
   return null
 }
@@ -119,18 +133,16 @@ function extractJsonObject(str: string): string | null {
 /**
  * Claude CLI stdout에서 트리아지 JSON을 파싱한다.
  * JSON 블록이 ```json ... ``` 안에 있을 수도, 직접 출력될 수도 있다.
+ * extractJsonObject가 문자열 리터럴 내부의 코드블록(```sql, ```typescript 등)을 올바르게 무시한다.
  */
 export function parseTriageOutput(stdout: string): TriageResult | null {
-  // 1. ```json ... ``` 블록에서 추출 시도
-  const codeBlockMatch = stdout.match(/```json\s*([\s\S]*?)```/)
-  const jsonStr = codeBlockMatch != null ? codeBlockMatch[1].trim() : stdout.trim()
-
-  // 2. JSON 객체 부분만 추출 (앞뒤 텍스트 제거) — bracket counting으로 중첩 중괄호를 처리
-  const jsonStr2 = extractJsonObject(jsonStr)
-  if (jsonStr2 == null) return null
+  // bracket counting으로 JSON 객체를 직접 추출한다.
+  // regex 방식은 comment 내부의 triple backtick에서 오매칭되므로 사용하지 않는다.
+  const jsonStr = extractJsonObject(stdout)
+  if (jsonStr == null) return null
 
   try {
-    const parsed = JSON.parse(jsonStr2) as Record<string, unknown>
+    const parsed = JSON.parse(jsonStr) as Record<string, unknown>
 
     const verdict = parsed.verdict
     if (typeof verdict !== 'string' || !VALID_VERDICTS.has(verdict)) return null
