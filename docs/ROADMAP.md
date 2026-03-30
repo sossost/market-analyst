@@ -39,7 +39,7 @@
 
 | 구성 요소 | 설명 |
 |-----------|------|
-| Stock Phases | Weinstein Stage Analysis — 8개 조건으로 Phase 1~4 판별 |
+| Stock Phases | Weinstein Stage Analysis — 8개 조건으로 Phase 1~4 판별 + Volume Dry-Up(VDU) ratio로 축적 패턴 감지 (#509) |
 | Sector/Industry RS | 상대 강도 점수 + 가속도 + 브레드스 (Phase 2 비율) |
 | 펀더멘탈 데이터 | 분기 재무제표 + 비율 (FMP API) |
 | 돌파/노이즈 신호 | 기술적 시그널 필터링 (breakout_signals, noise_signals) |

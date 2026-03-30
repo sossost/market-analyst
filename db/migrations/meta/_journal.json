@@ -183,6 +183,13 @@
       "when": 1774173932763,
       "tag": "0024_stock_news_earning_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1774958400000,
+      "tag": "0025_volume_dryup",
+      "breakpoints": true
     }
   ]
 }
