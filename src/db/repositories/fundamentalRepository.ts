@@ -64,10 +64,9 @@ export async function findFundamentalAcceleration(): Promise<FundamentalAccelera
      target_symbols AS (
        SELECT sp.symbol
        FROM stock_phases sp
-       JOIN symbols s ON sp.symbol = s.symbol,
-       latest_date ld
-       WHERE sp.date = ld.d
-         AND sp.phase IN (1, 2)
+       JOIN latest_date ld ON sp.date = ld.d
+       JOIN symbols s ON sp.symbol = s.symbol
+       WHERE sp.phase IN (1, 2)
          AND sp.rs_score >= 20
          AND s.market_cap::numeric >= $1
      )
