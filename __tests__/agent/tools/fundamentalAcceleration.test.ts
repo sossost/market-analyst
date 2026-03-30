@@ -1,8 +1,29 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   computeYoYGrowths,
   isAccelerating,
 } from "@/tools/getFundamentalAcceleration";
+
+const { mockQuery } = vi.hoisted(() => ({
+  mockQuery: vi.fn(),
+}));
+
+vi.mock("@/db/client", () => ({
+  pool: {
+    query: mockQuery,
+  },
+}));
+
+vi.mock("@/etl/utils/retry", () => ({
+  retryDatabaseOperation: vi.fn((fn: () => unknown) => fn()),
+}));
+
+vi.mock("@/etl/utils/common", () => ({
+  toNum: (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  },
+}));
 
 function makeQuarter(
   symbol: string,
@@ -180,5 +201,35 @@ describe("isAccelerating", () => {
     ];
 
     expect(isAccelerating(growths)).toBe(true);
+  });
+});
+
+describe("findFundamentalAcceleration market cap filter", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  it("SQL includes market_cap filter", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const { findFundamentalAcceleration } = await import(
+      "@/db/repositories/fundamentalRepository"
+    );
+    await findFundamentalAcceleration();
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    expect(sqlArg).toMatch(/s\.market_cap::numeric\s*>=\s*\$\d/);
+  });
+
+  it("passes MIN_MARKET_CAP (300M) as query parameter", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const { findFundamentalAcceleration } = await import(
+      "@/db/repositories/fundamentalRepository"
+    );
+    await findFundamentalAcceleration();
+
+    const queryArgs = mockQuery.mock.calls[0][1];
+    expect(queryArgs).toContain(300_000_000);
   });
 });
