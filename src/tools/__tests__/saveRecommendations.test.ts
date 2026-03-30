@@ -38,6 +38,16 @@ vi.mock("../bearExceptionGate", () => ({
   BEAR_EXCEPTION_TAG: "[Bear 예외]",
 }));
 
+vi.mock("../lateBullGate", () => ({
+  evaluateLateBullGate: vi.fn(),
+  tagLateBullReason: vi.fn((reason: string | null) => {
+    const base = reason ?? "";
+    if (base.startsWith("[Late Bull 감쇠]")) return base;
+    return `[Late Bull 감쇠] ${base}`.trim();
+  }),
+  LATE_BULL_TAG: "[Late Bull 감쇠]",
+}));
+
 vi.mock("@/lib/logger", () => ({
   logger: {
     info: vi.fn(),
@@ -53,6 +63,7 @@ import { pool } from "@/db/client";
 import { db } from "@/db/client";
 import { loadConfirmedRegime, loadPendingRegimes } from "@/debate/regimeStore";
 import { evaluateBearException } from "../bearExceptionGate";
+import { evaluateLateBullGate } from "../lateBullGate";
 import { logger } from "@/lib/logger";
 
 const mockPool = pool as unknown as { query: ReturnType<typeof vi.fn> };
@@ -60,6 +71,7 @@ const mockDb = db as unknown as { insert: ReturnType<typeof vi.fn> };
 const mockLoadConfirmedRegime = loadConfirmedRegime as ReturnType<typeof vi.fn>;
 const mockLoadPendingRegimes = loadPendingRegimes as ReturnType<typeof vi.fn>;
 const mockEvaluateBearException = evaluateBearException as ReturnType<typeof vi.fn>;
+const mockEvaluateLateBullGate = evaluateLateBullGate as ReturnType<typeof vi.fn>;
 const mockLogger = logger as unknown as {
   warn: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
@@ -1200,5 +1212,180 @@ describe("Phase 4: 펀더멘탈 하드 게이트", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.savedCount).toBe(1);
     expect(parsed.blockedByFundamental).toBe(2);
+  });
+});
+
+// =============================================================================
+// Phase 1.6: Late Bull 감쇠 게이트 (#508)
+// =============================================================================
+
+describe("Phase 1.6: Late Bull 감쇠 게이트", () => {
+  it("LATE_BULL 레짐에서 감쇠 미충족 종목은 blockedByLateBull로 차단한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "LATE_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "과열 후기",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+
+    setupDefaultPoolMocks();
+
+    mockEvaluateLateBullGate.mockResolvedValue({
+      passed: false,
+      reason: "Late Bull 감쇠 미충족: RS 65 (기준: ≥70)",
+      details: { rsScore: 65, fundamentalGrade: "B", phase2Count: 3 },
+    });
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" }), makeRec({ symbol: "MSFT" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(0);
+    expect(parsed.blockedByLateBull).toBe(2);
+    expect(parsed.lateBullPassCount).toBe(0);
+    expect(mockEvaluateLateBullGate).toHaveBeenCalledTimes(2);
+    // Bear 예외는 호출되지 않아야 한다 (LATE_BULL은 Bear 레짐이 아님)
+    expect(mockEvaluateBearException).not.toHaveBeenCalled();
+  });
+
+  it("LATE_BULL 레짐에서 감쇠 통과 종목은 [Late Bull 감쇠] 태그와 함께 저장한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "LATE_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "과열 후기",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockEvaluateLateBullGate.mockResolvedValue({
+      passed: true,
+      reason: "Late Bull 감쇠 통과: RS 85, SEPA A, Phase2 5일",
+      details: { rsScore: 85, fundamentalGrade: "A", phase2Count: 5 },
+    });
+
+    let capturedReason: string | undefined;
+    let firstInsertCalled = false;
+    mockDb.insert.mockImplementation(() => ({
+      values: vi.fn((data: Record<string, unknown>) => {
+        if (!firstInsertCalled) {
+          firstInsertCalled = true;
+          capturedReason = data.reason as string | undefined;
+        }
+        return {
+          onConflictDoNothing: vi.fn().mockResolvedValue({ rowCount: 1 }),
+        };
+      }),
+    }));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "LMT", rs_score: 85, reason: "방산 섹터 강세" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByLateBull).toBe(0);
+    expect(parsed.lateBullPassCount).toBe(1);
+    expect(capturedReason).toContain("[Late Bull 감쇠]");
+  });
+
+  it("LATE_BULL 레짐에서 2종목 중 1개만 감쇠 통과 시 혼합 결과를 반환한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "LATE_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "과열 후기",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })  // activeRows
+      .mockResolvedValueOnce({ rows: [] })  // cooldownRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT", phase2_count: "5" }] })  // persistenceRows
+      .mockResolvedValueOnce({ rows: [{ symbol: "LMT" }] })  // stabilityRows
+      .mockResolvedValueOnce({ rows: [] })  // fundamentalGradeRows
+      .mockResolvedValueOnce({ rows: [] })  // priceRows
+      // saveFactorSnapshot (LMT만 저장됨)
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockEvaluateLateBullGate
+      .mockResolvedValueOnce({
+        passed: true,
+        reason: "Late Bull 감쇠 통과",
+        details: { rsScore: 85, fundamentalGrade: "A", phase2Count: 5 },
+      })
+      .mockResolvedValueOnce({
+        passed: false,
+        reason: "Late Bull 감쇠 미충족",
+        details: { rsScore: 55, fundamentalGrade: "C", phase2Count: 1 },
+      });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [
+        makeRec({ symbol: "LMT", rs_score: 85 }),
+        makeRec({ symbol: "AAPL", rs_score: 55 }),
+      ],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByLateBull).toBe(1);
+    expect(parsed.lateBullPassCount).toBe(1);
+  });
+
+  it("MID_BULL 레짐이면 Late Bull 감쇠 평가 없이 정상 저장을 진행한다", async () => {
+    mockLoadConfirmedRegime.mockResolvedValue({
+      regime: "MID_BULL",
+      regimeDate: "2026-03-10",
+      rationale: "중기 강세",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-03-10",
+    });
+
+    setupDefaultPoolMocks();
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    mockDb.insert.mockReturnValue(makeInsertChain(1));
+
+    const result = await saveRecommendations.execute({
+      date: "2026-03-10",
+      recommendations: [makeRec({ symbol: "AAPL" })],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.savedCount).toBe(1);
+    expect(parsed.blockedByLateBull).toBe(0);
+    expect(mockEvaluateLateBullGate).not.toHaveBeenCalled();
   });
 });

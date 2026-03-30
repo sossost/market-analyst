@@ -184,6 +184,7 @@
 | 정량 목표주가 | DCF + P/E 피어 멀티플 가중 평균 기반 목표주가 산출 |
 | 컨센서스 교차 검증 | 월가 컨센서스 대비 ALIGNED/DIVERGENT/LARGE_DIVERGENT 판정 |
 | 시장 레짐 분류 | EARLY_BULL/MID_BULL/LATE_BULL/EARLY_BEAR/BEAR 5단계 + 히스테리시스 (#270) |
+| LATE_BULL 진입 감쇠 | LATE_BULL 레짐 진입 조건 강화 — RS 70+, SEPA A+, Phase 2 지속 5일+ 모두 충족 시만 진입 허용 (#508) |
 
 ### Layer 14: 학습 루프 안정화 — Done (PR #322~#332)
 학습 루프와 피드백 파이프라인의 근본 수리 및 견고화.
