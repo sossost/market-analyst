@@ -6,6 +6,7 @@ import type {
   SectorRsNewEntrantRow,
   SectorPhase1to2SurgeRow,
   IndustryRsRow,
+  IndustryRsGlobalRow,
   MarketRegimeRow,
   SectorSepaStatsRow,
   PrevWeekDateRow,
@@ -57,6 +58,32 @@ export async function findTopIndustries(
      WHERE date = $1 AND sector = ANY($2)
      ORDER BY sector, avg_rs::numeric DESC`,
     [date, sectors],
+  );
+
+  return rows;
+}
+
+/**
+ * 섹터 필터 없이 전체 업종 RS 랭킹 상위 N개를 조회한다 (mode: 'industry' 전용).
+ * sector_rs_daily와 LEFT JOIN하여 소속 섹터 RS 정보를 함께 반환한다.
+ */
+export async function findTopIndustriesGlobal(
+  date: string,
+  limit: number,
+): Promise<IndustryRsGlobalRow[]> {
+  const { rows } = await pool.query<IndustryRsGlobalRow>(
+    `SELECT
+       i.date, i.sector, i.industry,
+       i.avg_rs::text, i.rs_rank, i.group_phase, i.phase2_ratio::text,
+       i.change_4w::text, i.change_8w::text, i.change_12w::text,
+       s.avg_rs::text AS sector_avg_rs,
+       s.rs_rank AS sector_rs_rank
+     FROM industry_rs_daily i
+     LEFT JOIN sector_rs_daily s ON i.sector = s.sector AND i.date = s.date
+     WHERE i.date = $1
+     ORDER BY i.avg_rs::numeric DESC
+     LIMIT $2`,
+    [date, limit],
   );
 
   return rows;

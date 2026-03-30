@@ -2,12 +2,17 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import {
   findTopSectors,
   findTopIndustries,
+  findTopIndustriesGlobal,
   findPrevWeekDate,
   findPrevDayDate,
   findSectorsByDate,
   findSectorsByDateAndNames,
 } from "@/db/repositories/index.js";
-import type { SectorRsRow, IndustryRsRow } from "@/db/repositories/index.js";
+import type {
+  SectorRsRow,
+  IndustryRsRow,
+  IndustryRsGlobalRow,
+} from "@/db/repositories/index.js";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { clampPercent, validateDate, validateNumber } from "./validation";
@@ -91,9 +96,9 @@ export const getLeadingSectors: AgentTool = {
         },
         mode: {
           type: "string",
-          enum: ["daily", "weekly"],
+          enum: ["daily", "weekly", "industry"],
           description:
-            "조회 모드. daily(기본): 당일 스냅샷, weekly: 전주 대비 순위 변동 포함",
+            "조회 모드. daily(기본): 당일 섹터 스냅샷, weekly: 전주 대비 순위 변동 포함, industry: 섹터 종속 없는 전체 업종 RS 상위 랭킹 (소속 섹터 RS·divergence 포함)",
         },
       },
       required: ["date"],
@@ -106,7 +111,45 @@ export const getLeadingSectors: AgentTool = {
       return JSON.stringify({ error: "Invalid or missing date parameter" });
     }
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
-    const mode = input.mode === "weekly" ? "weekly" : "daily";
+    const mode =
+      input.mode === "industry"
+        ? "industry"
+        : input.mode === "weekly"
+          ? "weekly"
+          : "daily";
+
+    if (mode === "industry") {
+      const rows = await retryDatabaseOperation(() =>
+        findTopIndustriesGlobal(date, limit),
+      );
+
+      const industries = rows.map((i: IndustryRsGlobalRow) => ({
+        industry: i.industry,
+        sector: i.sector,
+        avgRs: toNum(i.avg_rs),
+        rsRank: i.rs_rank,
+        groupPhase: i.group_phase,
+        phase2Ratio: clampPercent(
+          Number((toNum(i.phase2_ratio) * 100).toFixed(1)),
+          `industry:${i.industry}:phase2Ratio`,
+        ),
+        change4w: i.change_4w != null ? toNum(i.change_4w) : null,
+        sectorAvgRs: i.sector_avg_rs != null ? toNum(i.sector_avg_rs) : null,
+        sectorRsRank: i.sector_rs_rank,
+        divergence:
+          i.sector_avg_rs != null
+            ? Number((toNum(i.avg_rs) - toNum(i.sector_avg_rs)).toFixed(2))
+            : null,
+      }));
+
+      return JSON.stringify({
+        _note:
+          "phase2Ratio는 이미 퍼센트(0~100). divergence = 업종RS - 섹터RS (양수 = 섹터 대비 업종 초과 강세)",
+        date,
+        mode: "industry",
+        industries,
+      });
+    }
 
     // 섹터 RS 랭킹
     const sectorRows = await retryDatabaseOperation(() =>

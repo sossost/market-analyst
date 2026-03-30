@@ -71,6 +71,25 @@ export interface IndustryRsRow {
   phase2_ratio: string;
 }
 
+/**
+ * 섹터 필터 없는 전체 업종 RS 랭킹 조회 결과 (mode: 'industry' 전용).
+ * sector_rs_daily와 LEFT JOIN하여 소속 섹터 RS 정보를 함께 반환한다.
+ */
+export interface IndustryRsGlobalRow {
+  date: string;
+  sector: string;
+  industry: string;
+  avg_rs: string;
+  rs_rank: number;
+  group_phase: number;
+  phase2_ratio: string;
+  change_4w: string | null;
+  change_8w: string | null;
+  change_12w: string | null;
+  sector_avg_rs: string | null;
+  sector_rs_rank: number | null;
+}
+
 // ─── market_regimes ──────────────────────────────────────────────────────────
 
 export interface MarketRegimeRow {
