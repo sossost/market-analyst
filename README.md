@@ -177,7 +177,7 @@ yarn db:push                # 스키마 적용
 |------|:----:|:----:|------|
 | `getIndexReturns` | O | O | 4대 지수 + VIX + 공포탐욕지수 — FMP 데이터 기반, DB 우선 조회 (주간: 누적 + 고저 위치) |
 | `getMarketBreadth` | O | O | Phase 분포, Phase 2 비율, A/D ratio (주간: 5일 추이 + Phase 1→2 전환) |
-| `getLeadingSectors` | O | O | RS 상위 섹터/업종 (주간: 전주 대비 순위 변동 + 신규 진입/이탈) |
+| `getLeadingSectors` | O | O | RS 상위 섹터/업종 (주간: 전주 대비 순위 변동 + 신규 진입/이탈; industry 모드: 섹터 종속 없는 전체 업종 RS 랭킹 + divergence) |
 | `getPhase2Stocks` | | O | Phase 2 초입 종목 리스트 (RS 필터링) |
 | `getPhase1LateStocks` | O | O | Phase 1 후기 종목 — Phase 2 진입 1~3개월 선행 포착 |
 | `getRisingRS` | O | O | RS 30~60 상승 가속 종목 — 초기 모멘텀 포착 |
