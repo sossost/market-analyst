@@ -34,6 +34,7 @@ export const stockPhases = pgTable(
     pctFromLow52w: numeric("pct_from_low_52w"),
     conditionsMet: text("conditions_met"), // JSON array of condition strings
     volRatio: numeric("vol_ratio"), // today volume / vol_ma30
+    vduRatio: numeric("vdu_ratio"), // Volume Dry-Up: 5-day avg volume / 50-day avg volume
     volumeConfirmed: boolean("volume_confirmed"), // sticky: true if vol >= 2x at Phase 1→2 entry
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

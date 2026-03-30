@@ -14,7 +14,7 @@ export const getPhase1LateStocks: AgentTool = {
   definition: {
     name: "get_phase1_late_stocks",
     description:
-      "Phase 1 후기(Phase 2 진입 직전) 종목을 조회합니다. MA150 기울기가 양전환 조짐을 보이고, 거래량이 증가하는 종목을 반환합니다. Phase 2 전환 1~3개월 선행 포착 목적.",
+      "Phase 1 후기(Phase 2 진입 직전) 종목을 조회합니다. MA150 기울기 양전환 + 거래량 증가 + 최근 20거래일 내 Volume Dry-Up(VDU ratio ≤ 0.5) 3일+ 조건. dry-up→surge 패턴으로 Phase 2 전환 1~3개월 선행 포착.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -39,7 +39,8 @@ export const getPhase1LateStocks: AgentTool = {
     const limit = validateNumber(input.limit, DEFAULT_LIMIT);
 
     // Phase 1 종목 중 MA150 기울기가 안정화/양전환 (기울기 >= 0)
-    // + 거래량 비율 1.5x 이상 (의미 있는 거래량 증가는 1.5배 이상)
+    // + 거래량 비율 1.0x 이상 (VDU dry-up 필터 도입으로 임계값 완화)
+    // + 최근 20거래일 내 VDU ratio ≤ 0.5 (dry-up) 3일 이상
     // + RS 30 이상 (false positive 감소: 20은 너무 관대)
     const rows = await retryDatabaseOperation(() =>
       findPhase1LateStocks(date, limit),
@@ -64,6 +65,7 @@ export const getPhase1LateStocks: AgentTool = {
         isExtremePctFromLow: pctFromLowRaw != null ? pctFromLowRaw > 500 : false,
         conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
         volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
+        vduRatio: r.vdu_ratio != null ? Number(toNum(r.vdu_ratio).toFixed(2)) : null,
         sector: r.sector,
         industry: r.industry,
         sectorGroupPhase: r.sector_group_phase,
@@ -74,7 +76,7 @@ export const getPhase1LateStocks: AgentTool = {
     return JSON.stringify({
       date,
       totalFound: stocks.length,
-      description: "Phase 1 후기 — MA150 기울기 안정화/양전환(>=0) + 거래량 증가(1.5x+) + RS 30+",
+      description: "Phase 1 후기 — MA150 기울기 안정화/양전환(>=0) + 거래량 증가(1.0x+) + 최근 20일 내 VDU dry-up(≤0.5) 3일+ + RS 30+",
       stocks,
     });
   },

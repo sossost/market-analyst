@@ -15,6 +15,7 @@ import {
   findClosePricesForBatch,
   findMaDataForBatch,
   findVolumeForBatch,
+  findVolumeHistoryForBatch,
   findRsScoresForBatch,
   findHighLowForBatch,
   findPrevPhasesForBatch,
@@ -25,6 +26,8 @@ const TAG = "BUILD_STOCK_PHASES";
 const BATCH_SIZE = 200;
 const CLOSE_DAYS_NEEDED = 170; // 150 for MA150 + 20 for slope
 const HIGH_LOW_DAYS = 252; // ~1 year trading days
+const VDU_SHORT_PERIOD = 5; // VDU ratio: short-term average window
+const VDU_LONG_PERIOD = 50; // VDU ratio: long-term average window
 
 async function main() {
   assertValidEnvironment();
@@ -91,6 +94,18 @@ async function main() {
       if (row.volume != null) {
         volBySymbol.set(row.symbol, toNum(row.volume));
       }
+    }
+
+    // 2c. Fetch volume history for VDU ratio (5-day avg / 50-day avg)
+    const volHistRows = await retryDatabaseOperation(() =>
+      findVolumeHistoryForBatch(batchSymbols, targetDate, VDU_LONG_PERIOD),
+    );
+    const volHistBySymbol = new Map<string, number[]>();
+    for (const row of volHistRows) {
+      if (row.volume == null) continue;
+      const arr = volHistBySymbol.get(row.symbol) ?? [];
+      arr.push(toNum(row.volume));
+      volHistBySymbol.set(row.symbol, arr);
     }
 
     // 3. Fetch RS scores (today)
@@ -168,6 +183,10 @@ async function main() {
           ? volume / volMa30
           : null;
 
+      // VDU ratio: 5-day avg volume / 50-day avg volume
+      const volHist = volHistBySymbol.get(sym.symbol) ?? [];
+      const vduRatio = calculateVduRatio(volHist, VDU_SHORT_PERIOD, VDU_LONG_PERIOD);
+
       const prevVolConfirmed =
         prevVolConfirmedBySymbol.get(sym.symbol) ?? null;
       const volumeConfirmed = resolveVolumeConfirmed(
@@ -193,6 +212,7 @@ async function main() {
           highLow.low > 0 ? (price - highLow.low) / highLow.low : null,
         conditionsMet: JSON.stringify(result.detail.conditionsMet),
         volRatio,
+        vduRatio,
         volumeConfirmed,
       });
     }
@@ -223,6 +243,28 @@ function calculateMa150(
   return sum / period;
 }
 
+/**
+ * Calculate VDU (Volume Dry-Up) ratio: short-term avg volume / long-term avg volume.
+ * Uses overlapping windows (long period includes short period) — this is intentional:
+ * with 5/50 ratio the overlap is only 10%, and the simplicity is worth the minor compression.
+ * Returns null if insufficient data.
+ */
+export function calculateVduRatio(
+  volumes: number[],
+  shortPeriod: number,
+  longPeriod: number,
+): number | null {
+  if (volumes.length < longPeriod) return null;
+
+  const shortAvg =
+    volumes.slice(0, shortPeriod).reduce((sum, v) => sum + v, 0) / shortPeriod;
+  const longAvg =
+    volumes.slice(0, longPeriod).reduce((sum, v) => sum + v, 0) / longPeriod;
+
+  if (longAvg === 0) return null;
+  return shortAvg / longAvg;
+}
+
 type UpsertRow = {
   symbol: string;
   date: string;
@@ -235,6 +277,7 @@ type UpsertRow = {
   pctFromLow52w: number | null;
   conditionsMet: string | null;
   volRatio: number | null;
+  vduRatio: number | null;
   volumeConfirmed: boolean | null;
 };
 
@@ -257,6 +300,7 @@ async function batchUpsert(rows: UpsertRow[]) {
         r.pctFromLow52w != null ? String(r.pctFromLow52w) : null,
       conditionsMet: r.conditionsMet,
       volRatio: r.volRatio != null ? String(r.volRatio) : null,
+      vduRatio: r.vduRatio != null ? String(r.vduRatio) : null,
       volumeConfirmed: r.volumeConfirmed,
     }));
 
@@ -275,6 +319,7 @@ async function batchUpsert(rows: UpsertRow[]) {
           pctFromLow52w: sql`EXCLUDED.pct_from_low_52w`,
           conditionsMet: sql`EXCLUDED.conditions_met`,
           volRatio: sql`EXCLUDED.vol_ratio`,
+          vduRatio: sql`EXCLUDED.vdu_ratio`,
           volumeConfirmed: sql`EXCLUDED.volume_confirmed`,
         },
       });

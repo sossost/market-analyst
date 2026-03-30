@@ -16,6 +16,7 @@ import type {
   EtlCloseRow,
   EtlMaRow,
   EtlVolumeRow,
+  EtlVolumeHistoryRow,
   EtlRsScoreRow,
   EtlHighLowRow,
   EtlPrevPhaseRow,
@@ -298,10 +299,17 @@ export async function findPhase1LateStocks(
   limit: number,
 ): Promise<Phase1LateStockRow[]> {
   const { rows } = await pool.query<Phase1LateStockRow>(
-    `SELECT
+    `WITH trading_boundary AS (
+       SELECT MIN(d.date) AS min_date FROM (
+         SELECT DISTINCT date FROM stock_phases
+         WHERE date <= $1
+         ORDER BY date DESC LIMIT 20
+       ) d
+     )
+     SELECT
        sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
-       sp.conditions_met, sp.vol_ratio::text,
+       sp.conditions_met, sp.vol_ratio::text, sp.vdu_ratio::text,
        s.sector, s.industry,
        srd.group_phase AS sector_group_phase,
        srd.avg_rs::text AS sector_avg_rs
@@ -313,8 +321,17 @@ export async function findPhase1LateStocks(
        AND (sp.prev_phase IS NULL OR sp.prev_phase = 1)
        AND sp.ma150_slope::numeric >= 0
        AND sp.rs_score >= 30
-       AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.5
+       AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.0
        AND s.market_cap::numeric >= $3
+       AND (
+         SELECT COUNT(*)
+         FROM stock_phases sp2
+         WHERE sp2.symbol = sp.symbol
+           AND sp2.date >= (SELECT min_date FROM trading_boundary)
+           AND sp2.date <= $1
+           AND sp2.vdu_ratio IS NOT NULL
+           AND sp2.vdu_ratio::numeric <= 0.5
+       ) >= 3
      ORDER BY sp.ma150_slope::numeric DESC, sp.rs_score DESC
      LIMIT $2`,
     [date, limit, MIN_MARKET_CAP],
@@ -399,6 +416,29 @@ export async function findVolumeForBatch(
     `SELECT symbol, volume::text FROM daily_prices
      WHERE symbol = ANY($1) AND date = $2`,
     [symbols, targetDate],
+  );
+  return rows;
+}
+
+/**
+ * 배치 종목의 최근 N거래일 거래량 이력을 조회한다 (VDU ratio 계산용).
+ */
+export async function findVolumeHistoryForBatch(
+  symbols: string[],
+  targetDate: string,
+  days: number = 50,
+): Promise<EtlVolumeHistoryRow[]> {
+  const { rows } = await pool.query<EtlVolumeHistoryRow>(
+    `SELECT symbol, date, volume::text
+     FROM (
+       SELECT symbol, date, volume,
+              ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+       FROM daily_prices
+       WHERE symbol = ANY($1) AND date <= $2
+     ) sub
+     WHERE rn <= $3
+     ORDER BY symbol, date DESC`,
+    [symbols, targetDate, days],
   );
   return rows;
 }

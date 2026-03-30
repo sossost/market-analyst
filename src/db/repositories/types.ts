@@ -387,10 +387,17 @@ export interface Phase1LateStockRow {
   pct_from_low_52w: string | null;
   conditions_met: string | null;
   vol_ratio: string | null;
+  vdu_ratio: string | null;
   sector: string | null;
   industry: string | null;
   sector_group_phase: number | null;
   sector_avg_rs: string | null;
+}
+
+export interface EtlVolumeHistoryRow {
+  symbol: string;
+  date: string;
+  volume: string | null;
 }
 
 // ─── sectorRepository (Phase 3 추가) ──────────────────────────────────────────

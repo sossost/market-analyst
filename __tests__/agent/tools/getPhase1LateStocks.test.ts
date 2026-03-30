@@ -33,6 +33,7 @@ const makeRow = (overrides: Record<string, unknown> = {}) => ({
   pct_from_low_52w: "0.12",
   conditions_met: null,
   vol_ratio: "1.5",
+  vdu_ratio: "0.35",
   sector: "Technology",
   industry: "Software",
   sector_group_phase: 2,
@@ -107,6 +108,35 @@ describe("getPhase1LateStocks", () => {
     expect(sqlArg).toMatch(/sp\.prev_phase\s*=\s*1/i);
   });
 
+  it("SQL에 vol_ratio >= 1.0 조건이 포함된다 (dry-up 도입으로 임계값 완화)", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await getPhase1LateStocks.execute({ date: "2026-03-07" });
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    expect(sqlArg).toMatch(/vol_ratio::numeric.*>=\s*1\.0/);
+  });
+
+  it("SQL에 vdu_ratio dry-up 서브쿼리가 포함된다 (최근 20일 내 VDU <= 0.5 3일+)", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await getPhase1LateStocks.execute({ date: "2026-03-07" });
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    expect(sqlArg).toMatch(/vdu_ratio/);
+    expect(sqlArg).toMatch(/<=\s*0\.5/);
+    expect(sqlArg).toMatch(/>=\s*3/);
+  });
+
+  it("SELECT에 vdu_ratio 컬럼이 포함된다", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await getPhase1LateStocks.execute({ date: "2026-03-07" });
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    expect(sqlArg).toMatch(/sp\.vdu_ratio/);
+  });
+
   it("SQL에 ma150_slope >= 0 조건이 포함된다 (음수 slope 차단)", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
 
@@ -161,6 +191,7 @@ describe("getPhase1LateStocks", () => {
           pct_from_low_52w: "0.08",
           conditions_met: '["vol_surge"]',
           vol_ratio: "1.8",
+          vdu_ratio: "0.42",
           sector: "Technology",
           industry: "Semiconductors",
           sector_group_phase: 1,
@@ -182,6 +213,7 @@ describe("getPhase1LateStocks", () => {
     expect(stock.pctFromLow52w).toBe(8);
     expect(stock.conditionsMet).toEqual(["vol_surge"]);
     expect(stock.volRatio).toBeCloseTo(1.8);
+    expect(stock.vduRatio).toBe(0.42);
     expect(stock.sector).toBe("Technology");
     expect(stock.industry).toBe("Semiconductors");
     expect(stock.sectorGroupPhase).toBe(1);
