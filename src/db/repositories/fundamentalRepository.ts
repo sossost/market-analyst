@@ -1,4 +1,5 @@
 import { pool } from "@/db/client";
+import { MIN_MARKET_CAP } from "@/lib/constants";
 import type {
   FundamentalGradeRow,
   FundamentalAccelerationRow,
@@ -62,10 +63,13 @@ export async function findFundamentalAcceleration(): Promise<FundamentalAccelera
      ),
      target_symbols AS (
        SELECT sp.symbol
-       FROM stock_phases sp, latest_date ld
+       FROM stock_phases sp
+       JOIN symbols s ON sp.symbol = s.symbol,
+       latest_date ld
        WHERE sp.date = ld.d
          AND sp.phase IN (1, 2)
          AND sp.rs_score >= 20
+         AND s.market_cap::numeric >= $1
      )
      SELECT
        qf.symbol,
@@ -80,6 +84,7 @@ export async function findFundamentalAcceleration(): Promise<FundamentalAccelera
      JOIN symbols s ON qf.symbol = s.symbol
      WHERE qf.period_end_date >= (CURRENT_DATE - INTERVAL '2 years')::text
      ORDER BY qf.symbol, qf.period_end_date DESC`,
+    [MIN_MARKET_CAP],
   );
 
   return rows;
