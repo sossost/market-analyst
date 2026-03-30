@@ -278,6 +278,69 @@ describe('parseTriageOutput', () => {
       comment: '참고 예시: {"type": "fix", "scope": {"module": "parser"}} 형태의 구조',
     })
   })
+
+  it('comment에 마크다운 코드블록(```sql)이 포함된 JSON을 파싱한다', () => {
+    const output =
+      '```json\n' +
+      JSON.stringify({
+        verdict: 'PROCEED',
+        goalAlignment: 'SUPPORT',
+        invalidation: null,
+        feasibility: true,
+        comment:
+          '수정 방향:\n\n```sql\nSELECT * FROM stock_phases\nWHERE phase IN (1, 2)\n```\n\n위 쿼리에 market_cap 필터 추가',
+      }) +
+      '\n```'
+
+    const result = parseTriageOutput(output)
+
+    expect(result).toEqual({
+      verdict: 'PROCEED',
+      comment:
+        '수정 방향:\n\n```sql\nSELECT * FROM stock_phases\nWHERE phase IN (1, 2)\n```\n\n위 쿼리에 market_cap 필터 추가',
+    })
+  })
+
+  it('comment에 중괄호를 포함한 코드블록(```typescript)이 있는 JSON을 파싱한다', () => {
+    const output =
+      '분석 완료:\n\n```json\n' +
+      JSON.stringify({
+        verdict: 'PROCEED',
+        comment: '예시:\n\n```typescript\nconst config = { timeout: 5000 }\n```\n\n위 패턴 적용',
+      }) +
+      '\n```'
+
+    const result = parseTriageOutput(output)
+
+    expect(result).toEqual({
+      verdict: 'PROCEED',
+      comment: '예시:\n\n```typescript\nconst config = { timeout: 5000 }\n```\n\n위 패턴 적용',
+    })
+  })
+
+  it('comment에 escaped quote가 포함된 JSON을 파싱한다', () => {
+    const json = '{"verdict":"PROCEED","comment":"변수명을 \\"userId\\"로 변경"}'
+    const output = '```json\n' + json + '\n```'
+
+    const result = parseTriageOutput(output)
+
+    expect(result).toEqual({
+      verdict: 'PROCEED',
+      comment: '변수명을 "userId"로 변경',
+    })
+  })
+
+  it('comment에 escaped backslash가 포함된 JSON을 파싱한다', () => {
+    const json = '{"verdict":"PROCEED","comment":"경로: C:\\\\Users\\\\mini"}'
+    const output = '```json\n' + json + '\n```'
+
+    const result = parseTriageOutput(output)
+
+    expect(result).toEqual({
+      verdict: 'PROCEED',
+      comment: '경로: C:\\Users\\mini',
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
