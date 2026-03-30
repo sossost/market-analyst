@@ -299,7 +299,14 @@ export async function findPhase1LateStocks(
   limit: number,
 ): Promise<Phase1LateStockRow[]> {
   const { rows } = await pool.query<Phase1LateStockRow>(
-    `SELECT
+    `WITH trading_boundary AS (
+       SELECT MIN(d.date) AS min_date FROM (
+         SELECT DISTINCT date FROM stock_phases
+         WHERE date <= $1
+         ORDER BY date DESC LIMIT 20
+       ) d
+     )
+     SELECT
        sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met, sp.vol_ratio::text, sp.vdu_ratio::text,
@@ -320,13 +327,7 @@ export async function findPhase1LateStocks(
          SELECT COUNT(*)
          FROM stock_phases sp2
          WHERE sp2.symbol = sp.symbol
-           AND sp2.date >= (
-             SELECT MIN(d.date) FROM (
-               SELECT DISTINCT date FROM stock_phases
-               WHERE date <= $1
-               ORDER BY date DESC LIMIT 20
-             ) d
-           )
+           AND sp2.date >= (SELECT min_date FROM trading_boundary)
            AND sp2.date <= $1
            AND sp2.vdu_ratio IS NOT NULL
            AND sp2.vdu_ratio::numeric <= 0.5
