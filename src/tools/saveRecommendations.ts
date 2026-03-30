@@ -6,6 +6,7 @@ import type { AgentTool } from "./types";
 import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE, MAX_RS_SCORE, MIN_PRICE } from "./validation";
 import { loadConfirmedRegime, loadPendingRegimes } from "@/debate/regimeStore";
 import { evaluateBearException, tagBearExceptionReason, BEAR_EXCEPTION_TAG } from "./bearExceptionGate";
+import { evaluateLateBullGate, tagLateBullReason, LATE_BULL_TAG } from "./lateBullGate";
 import { logger } from "@/lib/logger";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
 import {
@@ -223,6 +224,7 @@ export const saveRecommendations: AgentTool = {
     }
 
     const isBearRegime = regimeForGate != null && BEAR_REGIMES.has(regimeForGate);
+    const isLateBullRegime = regimeForGate === "LATE_BULL";
 
     const symbols = recs
       .map((r) => validateSymbol(r.symbol))
@@ -274,6 +276,8 @@ export const saveRecommendations: AgentTool = {
     let blockedByLowPrice = 0;
     let blockedByPersistence = 0;
     let blockedByStability = 0;
+    let blockedByLateBull = 0;
+    let lateBullPassCount = 0;
     let blockedByFundamental = 0;
 
     for (const rec of recs) {
@@ -323,6 +327,32 @@ export const saveRecommendations: AgentTool = {
         logger.info(
           "QualityGate",
           `${symbol}: 레짐 ${regimeForGate} Bear 예외 통과 — ${exceptionResult.reason}`,
+        );
+      }
+
+      // Phase 1.6: Late Bull 감쇠 게이트 — LATE_BULL 레짐에서 진입 조건 강화 (#508)
+      let lateBullPassed = false;
+      if (isLateBullRegime) {
+        const gateResult = await evaluateLateBullGate({
+          symbol,
+          rsScore: rec.rs_score ?? 0,
+          date,
+        });
+
+        if (!gateResult.passed) {
+          logger.warn(
+            "QualityGate",
+            `${symbol}: 레짐 ${regimeForGate} Late Bull 감쇠 차단 — ${gateResult.reason}`,
+          );
+          blockedByLateBull++;
+          continue;
+        }
+
+        lateBullPassed = true;
+        lateBullPassCount++;
+        logger.info(
+          "QualityGate",
+          `${symbol}: 레짐 ${regimeForGate} Late Bull 감쇠 통과 — ${gateResult.reason}`,
         );
       }
 
@@ -394,10 +424,13 @@ export const saveRecommendations: AgentTool = {
         }
       }
 
-      // Bear 예외 태깅
+      // Bear 예외 / Late Bull 감쇠 태깅
       let taggedReason: string | null = rec.reason ?? null;
       if (bearExceptionPassed) {
         taggedReason = tagBearExceptionReason(taggedReason);
+      }
+      if (lateBullPassed) {
+        taggedReason = tagLateBullReason(taggedReason);
       }
 
       // Phase 3: Phase 2 지속성 하드 블록 — 최소 3일 Phase 2 유지 필수
@@ -497,6 +530,8 @@ export const saveRecommendations: AgentTool = {
       skippedCount,
       blockedByRegime,
       bearExceptionCount,
+      blockedByLateBull,
+      lateBullPassCount,
       blockedByCooldown,
       blockedByPhase,
       blockedByLowRS,
@@ -505,7 +540,7 @@ export const saveRecommendations: AgentTool = {
       blockedByPersistence,
       blockedByStability,
       blockedByFundamental,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단, ${blockedByStability}개 안정성 차단, ${blockedByFundamental}개 펀더멘탈 차단`,
+      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByLateBull}개 Late Bull 차단, ${lateBullPassCount}개 Late Bull 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단, ${blockedByStability}개 안정성 차단, ${blockedByFundamental}개 펀더멘탈 차단`,
     });
   },
 };
