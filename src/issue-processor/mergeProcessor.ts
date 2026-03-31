@@ -107,24 +107,48 @@ async function fetchMergedFiles(prNumber: number): Promise<string[] | null> {
   }
 }
 
+const ERROR_LINE_PATTERN = /^\s*error:/im
+
 /**
  * DB 마이그레이션을 적용한다 (yarn db:push --force).
- * 실패 시 스레드에 에러 알림 후 조용히 종료 — processMerge 흐름을 막지 않는다.
+ * exit code가 0이어도 stdout/stderr에 error: 패턴이 있으면 throw한다.
+ * 실패 시 caller(runPostMergeInfra)가 에러를 처리한다.
  */
 async function applyDbMigration(threadId: string): Promise<void> {
-  try {
-    await sendThreadMessage(threadId, '🗄️ DB 스키마 변경 감지 — drizzle-kit push 실행 중...')
-    await execFileP('yarn', ['db:push', '--force'], {
-      timeout: DB_PUSH_TIMEOUT_MS,
-      cwd: process.cwd(),
-    })
-    logger.info(TAG, 'DB 마이그레이션 완료')
-    await sendThreadMessage(threadId, '✅ DB 마이그레이션 완료')
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
-    logger.error(TAG, `DB 마이그레이션 실패: ${reason}`)
-    await sendThreadMessage(threadId, `❌ DB 마이그레이션 실패: ${reason.slice(0, 300)}`)
+  await sendThreadMessage(threadId, '🗄️ DB 스키마 변경 감지 — drizzle-kit push 실행 중...')
+
+  const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      execFile(
+        'yarn',
+        ['db:push', '--force'],
+        { timeout: DB_PUSH_TIMEOUT_MS, cwd: process.cwd() },
+        (error, stdout, stderr) => {
+          if (error != null) {
+            const detail = stderr?.trim()
+            if (detail) {
+              error.message = `${error.message}\n${detail}`
+            }
+            reject(error)
+            return
+          }
+          resolve({ stdout: stdout.trim(), stderr: stderr.trim() })
+        },
+      )
+    },
+  )
+
+  const combinedOutput = `${stdout}\n${stderr}`
+  if (ERROR_LINE_PATTERN.test(combinedOutput)) {
+    const errorLines = combinedOutput
+      .split('\n')
+      .filter(line => ERROR_LINE_PATTERN.test(line))
+      .join('\n')
+    throw new Error(`drizzle-kit push 오류 감지:\n${errorLines}`)
   }
+
+  logger.info(TAG, 'DB 마이그레이션 완료')
+  await sendThreadMessage(threadId, '✅ DB 마이그레이션 완료')
 }
 
 /**
@@ -509,7 +533,17 @@ export async function processMerge(mapping: PrThreadMapping): Promise<void> {
   }
 
   // 3.5. Post-merge 인프라 반영
-  await runPostMergeInfra(prNumber, threadId)
+  try {
+    await runPostMergeInfra(prNumber, threadId)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `PR #${prNumber} 인프라 반영 실패: ${reason}`)
+    await sendThreadMessage(
+      threadId,
+      `❌ 인프라 반영 실패 (수동 확인 필요): ${reason.slice(0, 300)}\nPR 머지는 완료됐습니다.`,
+    )
+    return // 매핑 삭제 안 함 — CEO가 수동 확인 후 처리
+  }
 
   // 4. 로컬 브랜치 정리
   await deleteLocalBranchIfExists(branchName)
