@@ -433,6 +433,19 @@ describe("extractStockReturns", () => {
     expect(result.has("Phase")).toBe(false);
   });
 
+  it("역방향 패턴(±XX.X% ... TICKER)도 추출", () => {
+    const content = "• +17.34% EEIQ 강세\n• -5.0% UGRO 약세";
+    const result = extractStockReturns(content);
+    expect(result.get("EEIQ")).toBe("+17.34%");
+    expect(result.get("UGRO")).toBe("-5.0%");
+  });
+
+  it("점 포함 티커(BRK.B) 추출", () => {
+    const content = "• BRK.B (Berkshire) — +3.2% (일간)";
+    const result = extractStockReturns(content);
+    expect(result.get("BRK.B")).toBe("+3.2%");
+  });
+
   it("첫 번째 매칭만 저장 (중복 방지)", () => {
     const content = "• EEIQ +17.34% 강세\n• EEIQ -5.0% 약세";
     const result = extractStockReturns(content);
@@ -458,6 +471,20 @@ describe("formatPreviousReportContext — stock count summary", () => {
     const result = formatPreviousReportContext(logWithContent);
 
     expect(result).toContain("총 2건");
+    expect(result).toContain("강세 1");
+    expect(result).toContain("약세 1");
+  });
+
+  it("bullCount/bearCount는 reportedSymbols 기준으로 집계 (classification 전체가 아님)", () => {
+    // classification에 NVDA가 강세로 있지만 reportedSymbols에는 없는 경우
+    const logWithExtra: DailyReportLog = {
+      ...SAMPLE_LOG,
+      fullContent: "🔥 강세 특이종목\n• AXTI +10%\n• NVDA +8.5%\n\n⚠️ 약세 경고\n• XOM -5%\n• UGRO -22%\n\n🌱 예비군",
+    };
+
+    const result = formatPreviousReportContext(logWithExtra);
+
+    // reportedSymbols에는 AXTI, XOM만 있으므로 강세 1(AXTI), 약세 1(XOM)
     expect(result).toContain("강세 1");
     expect(result).toContain("약세 1");
   });

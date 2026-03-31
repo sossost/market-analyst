@@ -69,8 +69,12 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
   const stockCount = reportedSymbols.length > 0
     ? reportedSymbols.length
     : countFallbackStocks(fallbackLines);
-  const bullCount = classification.bullish.length;
-  const bearCount = classification.bearish.length;
+  const bullCount = reportedSymbols.length > 0
+    ? reportedSymbols.filter((s) => bullSet.has(s.symbol)).length
+    : classification.bullish.length;
+  const bearCount = reportedSymbols.length > 0
+    ? reportedSymbols.filter((s) => bearSet.has(s.symbol)).length
+    : classification.bearish.length;
 
   const reserveStocks = extractReserveStocks(log.fullContent ?? null);
   const reserveLines =
@@ -155,13 +159,13 @@ export function extractStockReturns(
     "NASDAQ", "HOLD", "BUY", "SELL", "MD", "AI", "CEO", "IPO",
   ]);
 
-  // 패턴 1: TICKER ... ±XX.X% (같은 줄 내에서)
-  const linePattern = /\b([A-Z]{2,5})\b[^|\n]*?([+-]\d+\.?\d*%)/g;
+  // 패턴: TICKER ... ±XX.X% 또는 ±XX.X% ... TICKER (같은 줄 내에서)
+  const linePattern = /\b([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\b[^|\n]*?([+-]\d+\.?\d*%)|([+-]\d+\.?\d*%)[^|\n]*?\b([A-Z]{2,5}(?:\.[A-Z]{1,2})?)\b/g;
   let match: RegExpExecArray | null;
   while ((match = linePattern.exec(fullContent)) !== null) {
-    const ticker = match[1];
-    const pct = match[2];
-    if (!COMMON_WORDS.has(ticker) && !returns.has(ticker)) {
+    const ticker = match[1] ?? match[4];
+    const pct = match[2] ?? match[3];
+    if (ticker != null && pct != null && !COMMON_WORDS.has(ticker) && !returns.has(ticker)) {
       returns.set(ticker, pct);
     }
   }
