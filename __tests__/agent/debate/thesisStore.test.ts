@@ -71,10 +71,14 @@ vi.mock("../../../src/db/client.js", () => ({
               }
               return {
                 groupBy: (...gArgs: unknown[]) => {
-                  mockGroupBy(...gArgs);
-                  return {
-                    orderBy: (...oArgs: unknown[]) => mockOrderBy(...oArgs),
-                  };
+                  const groupResult = mockGroupBy(...gArgs);
+                  // thenable이면 직접 await 가능 (enforceActiveThesisCap),
+                  // 아니면 빈 배열로 resolve — orderBy 체인도 지원
+                  const promise = (groupResult != null && typeof (groupResult as any).then === "function")
+                    ? groupResult
+                    : Promise.resolve(groupResult ?? []);
+                  (promise as any).orderBy = (...oArgs: unknown[]) => mockOrderBy(...oArgs);
+                  return promise;
                 },
               };
             },
