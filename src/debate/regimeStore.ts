@@ -287,10 +287,12 @@ export async function applyHysteresis(
     pendingRows.map((r) => r.regimeDate),
   );
 
-  // confidence-scaled confirmation: pending 윈도우 내 모든 행이 high일 때만 5일, 아니면 7일
-  const allHighConfidence = pendingRows.every(
-    (r) => r.confidence === "high",
-  );
+  // confidence-scaled confirmation: 최신 5개 행이 모두 high일 때만 5일, 아니면 7일
+  // 전체 pendingRows(최대 7개)가 아닌 최신 5개만 검사하여,
+  // 6-7일 전 medium confidence가 5일 확정 규칙을 차단하지 않도록 한다.
+  const allHighConfidence = pendingRows
+    .slice(0, CONFIRMATION_DAYS_HIGH)
+    .every((r) => r.confidence === "high");
   const requiredDays = getRequiredConfirmationDays(allHighConfidence);
   const hasEnoughPending = pendingRows.length >= requiredDays;
 
@@ -438,7 +440,7 @@ export async function loadRecentRegimes(
  * 주간 에이전트가 pending 맥락을 프롬프트에 포함하기 위해 사용.
  */
 export async function loadPendingRegimes(
-  limit = 5,
+  limit = MAX_CONFIRMATION_DAYS,
 ): Promise<MarketRegimeRow[]> {
   return db
     .select({
@@ -545,7 +547,9 @@ export function formatRegimeForPrompt(
     const datesAreConsecutive = areDatesConsecutive(
       pendingRows.map((r) => r.regimeDate),
     );
-    const pendingAllHigh = pendingRows.every((r) => r.confidence === "high");
+    const pendingAllHigh = pendingRows
+      .slice(0, CONFIRMATION_DAYS_HIGH)
+      .every((r) => r.confidence === "high");
     const pendingRequiredDays = getRequiredConfirmationDays(pendingAllHigh);
     const hasEnoughPending = pendingRows.length >= pendingRequiredDays;
 
