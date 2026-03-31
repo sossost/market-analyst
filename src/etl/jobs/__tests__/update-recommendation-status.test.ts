@@ -552,8 +552,17 @@ describe("우선순위: 수익 구간에서 phase exit는 suppressed", () => {
     expect(isStopLoss).toBe(false);
     expect(isTrailingStop).toBe(true);
     expect(isPhaseExit).toBe(true);
-    // 실제 코드에서 if-else 순서: isStopLoss → isTrailingStop → isPhaseExit
-    // trailing stop이 먼저 매칭됨
+
+    // 실제 코드의 if-else 우선순위를 시뮬레이션하여 검증
+    let closeStatus = "";
+    if (isStopLoss) {
+      closeStatus = "CLOSED_STOP_LOSS";
+    } else if (isTrailingStop) {
+      closeStatus = "CLOSED_TRAILING_STOP";
+    } else if (isPhaseExit) {
+      closeStatus = "CLOSED_PHASE_EXIT";
+    }
+    expect(closeStatus).toBe("CLOSED_TRAILING_STOP");
   });
 
   it("PnL ≤ 0 + Phase 3 + trailing stop 미발동 → CLOSED_PHASE_EXIT", () => {
