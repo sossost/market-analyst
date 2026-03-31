@@ -96,6 +96,26 @@ export function shouldTriggerTrailingStop(params: {
 }
 
 /**
+ * Phase Exit 발동 여부를 판정하는 순수 함수.
+ *
+ * - currentPhase == null: ETL 미완료를 의미하므로 미발동
+ * - currentPhase === 2: Phase 2 유지 중이므로 미발동
+ * - pnlPercent > 0: 수익 구간에서는 trailing stop이 수익 보호 담당. Phase Exit 미발동.
+ * - pnlPercent ≤ 0 && currentPhase !== 2: 손실/손익분기 구간에서 Phase 2 이탈 시 발동.
+ *
+ * 근거: #518 — Phase Exit가 trailing stop보다 먼저 발동하여
+ * 수익 종목이 손실로 청산되는 구조적 문제.
+ */
+export function shouldTriggerPhaseExit(params: {
+  currentPhase: number | null;
+  pnlPercent: number;
+}): boolean {
+  if (params.currentPhase == null) return false;
+  if (params.currentPhase === 2) return false;
+  return params.pnlPercent <= 0;
+}
+
+/**
  * 트레일링 스탑 발동 시 closeReason에 포함할 설명 문자열 생성.
  */
 export function formatTrailingStopReason(params: {
@@ -186,8 +206,8 @@ async function main() {
     const maxPnlPercent = Math.max(prevMaxPnl, pnlPercent);
     const daysHeld = (rec.daysHeld ?? 0) + 1;
 
-    // Phase 2 이탈 체크
-    const isPhaseExit = currentPhase != null && currentPhase !== 2;
+    // Phase 2 이탈 체크 — 수익 구간(PnL > 0)에서는 trailing stop이 수익 보호 담당
+    const isPhaseExit = shouldTriggerPhaseExit({ currentPhase, pnlPercent });
 
     // Hard stop-loss 체크 (최우선 — 무한 손실 방지)
     const isStopLoss = shouldTriggerStopLoss({ currentPhase, pnlPercent });
