@@ -242,9 +242,10 @@ describe('runPostMergeInfra (processMerge 내부)', () => {
 describe('applyDbMigration (processMerge 내부)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
-  it('실패 시 예외를 throw하지 않고 에러 메시지를 스레드에 전송한다', async () => {
+  it('실패 시 인프라 반영 실패 알림을 보내고 머지 흐름을 중단한다 (매핑 유지)', async () => {
     // fetchPrState
     mockExecFileCall(JSON.stringify({ state: 'OPEN' }))
     // fetchReviewComments
@@ -257,24 +258,43 @@ describe('applyDbMigration (processMerge 내부)', () => {
     mockExecFileCall(JSON.stringify({ files: [{ path: 'src/db/schema/analyst.ts' }] }))
     // applyDbMigration — yarn db:push --force 실패
     mockExecFileError(new Error('drizzle-kit push failed: connection timeout'))
-    // deleteLocalBranchIfExists — git checkout main, pull, branch
-    mockExecFileCall('')
-    mockExecFileCall('')
-    mockExecFileCall('  main\n')
+    // processMerge는 인프라 실패 시 return하므로 cleanup mock 불필요
 
     // processMerge가 예외 없이 완료돼야 함
     await expect(processMerge(sampleMapping)).resolves.toBeUndefined()
 
     const messages = mockSendThreadMessage.mock.calls.map(c => c[1])
-    expect(messages.some(msg => msg.includes('❌ DB 마이그레이션 실패'))).toBe(true)
-    // 완료 알림도 정상 발송돼야 함
-    expect(messages.some(msg => msg.includes('머지되었습니다'))).toBe(true)
+    expect(messages.some(msg => msg.includes('인프라 반영 실패'))).toBe(true)
+    // 머지 완료 알림은 보내지 않는다 (return으로 중단)
+    expect(messages.some(msg => msg.includes('머지되었습니다'))).toBe(false)
+  })
+
+  it('exit 0 + stderr error: 패턴 → 인프라 반영 실패로 처리한다', async () => {
+    // fetchPrState
+    mockExecFileCall(JSON.stringify({ state: 'OPEN' }))
+    // fetchReviewComments
+    mockExecFileCall('')
+    // hasChangesRequested
+    mockExecFileCall(JSON.stringify({ reviews: [] }))
+    // gh pr merge
+    mockExecFileCall('')
+    // fetchMergedFiles
+    mockExecFileCall(JSON.stringify({ files: [{ path: 'src/db/schema/analyst.ts' }] }))
+    // applyDbMigration — exit 0이지만 stderr에 error: 포함
+    mockExecFileCall('', 'error: relation "analyst" already exists')
+
+    await expect(processMerge(sampleMapping)).resolves.toBeUndefined()
+
+    const messages = mockSendThreadMessage.mock.calls.map(c => c[1])
+    expect(messages.some(msg => msg.includes('인프라 반영 실패'))).toBe(true)
+    expect(messages.some(msg => msg.includes('머지되었습니다'))).toBe(false)
   })
 })
 
 describe('reloadLaunchd (processMerge 내부)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it('실패 시 예외를 throw하지 않고 에러 메시지를 스레드에 전송한다', async () => {
