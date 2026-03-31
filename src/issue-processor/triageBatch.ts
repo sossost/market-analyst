@@ -75,6 +75,7 @@ export async function runTriageBatch(): Promise<void> {
 
     const isLastIssue = issue === issues.at(-1)
     if (!isLastIssue) {
+      // 이슈 처리 성공/실패 여부와 무관하게 딜레이 적용 — Claude CLI 세션 리소스 경합 방지
       log(`  ⏱ 다음 이슈 처리 전 ${INTER_ISSUE_DELAY_MS / 1_000}초 대기`)
       await new Promise((resolve) => setTimeout(resolve, INTER_ISSUE_DELAY_MS))
     }

@@ -241,7 +241,7 @@ describe('runTriageBatch', () => {
 
     // 이슈 2건 → 딜레이 1회
     const delayCallCount = setTimeoutSpy.mock.calls.filter(
-      ([, delay]) => delay === 10_000,
+      ([, delay]) => delay === 10_000, // INTER_ISSUE_DELAY_MS
     ).length
     expect(delayCallCount).toBe(1)
   })
@@ -259,7 +259,7 @@ describe('runTriageBatch', () => {
     await runTriageBatch()
 
     const delayCallCount = setTimeoutSpy.mock.calls.filter(
-      ([, delay]) => delay === 10_000,
+      ([, delay]) => delay === 10_000, // INTER_ISSUE_DELAY_MS
     ).length
     expect(delayCallCount).toBe(0)
   })
