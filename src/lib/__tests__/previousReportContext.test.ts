@@ -15,6 +15,7 @@ import {
   extractReserveStocks,
   extractKeyInsights,
   extractBullBearClassification,
+  extractStockReturns,
   formatSectorRsLines,
 } from "../previousReportContext";
 import type { DailyReportLog } from "@/types";
@@ -397,5 +398,119 @@ describe("formatSectorRsLines", () => {
 
   it("빈 배열이면 빈 문자열 반환", () => {
     expect(formatSectorRsLines([])).toBe("");
+  });
+});
+
+describe("extractStockReturns", () => {
+  it("fullContent에서 종목별 등락률 추출", () => {
+    const content = "🔥 강세 특이종목\n• EEIQ (Edutainment) — +17.34% (일간)\n• TBN (TechBio) — +25.6% (일간)\n\n⚠️ 약세 경고\n• UGRO (UGrow) — -37.1% (일간)";
+    const result = extractStockReturns(content);
+    expect(result.get("EEIQ")).toBe("+17.34%");
+    expect(result.get("TBN")).toBe("+25.6%");
+    expect(result.get("UGRO")).toBe("-37.1%");
+  });
+
+  it("null 입력 시 빈 Map", () => {
+    const result = extractStockReturns(null);
+    expect(result.size).toBe(0);
+  });
+
+  it("빈 문자열 입력 시 빈 Map", () => {
+    const result = extractStockReturns("");
+    expect(result.size).toBe(0);
+  });
+
+  it("퍼센트 수치 없는 줄은 무시", () => {
+    const content = "🔥 강세 특이종목\n• NVDA RS 90 Phase 2\n\n⚠️ 약세";
+    const result = extractStockReturns(content);
+    expect(result.has("NVDA")).toBe(false);
+  });
+
+  it("일반 키워드(RS, Phase 등)는 제외", () => {
+    const content = "RS +5% 상승\nPhase +10% 전환";
+    const result = extractStockReturns(content);
+    expect(result.has("RS")).toBe(false);
+    expect(result.has("Phase")).toBe(false);
+  });
+
+  it("첫 번째 매칭만 저장 (중복 방지)", () => {
+    const content = "• EEIQ +17.34% 강세\n• EEIQ -5.0% 약세";
+    const result = extractStockReturns(content);
+    expect(result.get("EEIQ")).toBe("+17.34%");
+  });
+});
+
+describe("formatPreviousReportContext — stock count summary", () => {
+  it("특이종목이 있으면 총 N건 카운트와 경고 문구 포함", () => {
+    const result = formatPreviousReportContext(SAMPLE_LOG);
+
+    expect(result).toContain("총 2건");
+    expect(result).toContain("전일 특이종목 없음");
+    expect(result).toContain("서술하지 마세요");
+  });
+
+  it("fullContent에 강세/약세 분류가 있으면 카운트에 강세/약세 수 포함", () => {
+    const logWithContent: DailyReportLog = {
+      ...SAMPLE_LOG,
+      fullContent: "🔥 강세 특이종목\n• AXTI +10%\n\n⚠️ 약세 경고\n• XOM -5%\n\n🌱 예비군",
+    };
+
+    const result = formatPreviousReportContext(logWithContent);
+
+    expect(result).toContain("총 2건");
+    expect(result).toContain("강세 1");
+    expect(result).toContain("약세 1");
+  });
+});
+
+describe("formatPreviousReportContext — daily return in symbol lines", () => {
+  it("fullContent에 등락률이 있으면 종목 라인에 전일 등락률 포함", () => {
+    const logWithContent: DailyReportLog = {
+      ...SAMPLE_LOG,
+      fullContent: "🔥 강세 특이종목\n• AXTI (AXT Inc) — +10.5% (일간)\n\n⚠️ 약세 경고\n• XOM (Exxon) — -5.2% (일간)\n\n🌱 예비군",
+    };
+
+    const result = formatPreviousReportContext(logWithContent);
+
+    expect(result).toContain("AXTI (Phase 2, RS 85, Technology) [강세] | 전일 +10.5%");
+    expect(result).toContain("XOM (Phase 2, RS 78, Energy) [약세] | 전일 -5.2%");
+  });
+
+  it("fullContent에 등락률이 없으면 등락률 미포함", () => {
+    const result = formatPreviousReportContext(SAMPLE_LOG);
+
+    expect(result).not.toContain("| 전일");
+  });
+});
+
+describe("formatPreviousReportContext — fullContent fallback", () => {
+  it("reportedSymbols가 비어있어도 fullContent에서 종목 추출 시 fallback 목록 생성", () => {
+    const logEmptySymbols: DailyReportLog = {
+      ...SAMPLE_LOG,
+      reportedSymbols: [],
+      fullContent: "🔥 강세 특이종목\n• NVDA +8.5%\n• AAPL +5.2%\n\n⚠️ 약세 경고\n• UGRO -22.84%\n\n🌱 예비군",
+    };
+
+    const result = formatPreviousReportContext(logEmptySymbols);
+
+    expect(result).toContain("총 3건");
+    expect(result).toContain("NVDA [강세]");
+    expect(result).toContain("AAPL [강세]");
+    expect(result).toContain("UGRO [약세]");
+    // 특이종목 섹션 내에서는 "없음"이 없어야 함 (예비군 섹션의 "없음"은 별개)
+    const notableSection = result.split("### 직전 예비군")[0];
+    expect(notableSection).not.toContain("- 없음");
+  });
+
+  it("reportedSymbols와 fullContent 모두 비어있으면 '없음' 표기", () => {
+    const logEmpty: DailyReportLog = {
+      ...SAMPLE_LOG,
+      reportedSymbols: [],
+      fullContent: undefined,
+    };
+
+    const result = formatPreviousReportContext(logEmpty);
+
+    expect(result).toContain("- 없음");
   });
 });

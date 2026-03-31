@@ -40,6 +40,9 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
   const bullSet = new Set(classification.bullish);
   const bearSet = new Set(classification.bearish);
 
+  // fullContent에서 종목별 등락률 추출
+  const returnMap = extractStockReturns(log.fullContent ?? null);
+
   const symbolLines = reportedSymbols
     .map((s) => {
       const tag = bullSet.has(s.symbol)
@@ -47,9 +50,27 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
         : bearSet.has(s.symbol)
           ? " [약세]"
           : "";
-      return `- ${s.symbol} (Phase ${s.phase}, RS ${s.rsScore}, ${s.sector})${tag}`;
+      const returnStr = returnMap.get(s.symbol);
+      const returnSuffix = returnStr != null ? ` | 전일 ${returnStr}` : "";
+      return `- ${s.symbol} (Phase ${s.phase}, RS ${s.rsScore}, ${s.sector})${tag}${returnSuffix}`;
     })
     .join("\n");
+
+  // reportedSymbols가 비어있으나 fullContent에서 종목 추출 가능 시 fallback
+  const fallbackLines =
+    reportedSymbols.length === 0
+      ? buildFallbackSymbolLines(log.fullContent ?? null)
+      : "";
+
+  const effectiveSymbolLines =
+    symbolLines !== "" ? symbolLines : fallbackLines;
+
+  // 특이종목 카운트 요약 — LLM이 "없음"으로 할루시네이션하는 것을 방지
+  const stockCount = reportedSymbols.length > 0
+    ? reportedSymbols.length
+    : countFallbackStocks(fallbackLines);
+  const bullCount = classification.bullish.length;
+  const bearCount = classification.bearish.length;
 
   const reserveStocks = extractReserveStocks(log.fullContent ?? null);
   const reserveLines =
@@ -82,10 +103,25 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
     lines.push(fearGreedLine);
   }
 
+  lines.push("");
+
+  if (stockCount > 0) {
+    const countDetail = bullCount > 0 || bearCount > 0
+      ? ` (강세 ${bullCount}, 약세 ${bearCount})`
+      : "";
+    lines.push(
+      `### 직전 리포트 특이종목 — 총 ${stockCount}건${countDetail}`,
+      `> ⚠️ 아래 ${stockCount}건의 종목이 전일 리포트에 존재합니다. "전일 특이종목 없음"으로 서술하지 마세요.`,
+      effectiveSymbolLines,
+    );
+  } else {
+    lines.push(
+      "### 직전 리포트 특이종목",
+      "- 없음",
+    );
+  }
+
   lines.push(
-    "",
-    "### 직전 리포트 특이종목",
-    symbolLines === "" ? "- 없음" : symbolLines,
     "",
     "### 직전 예비군 종목 (🌱)",
     reserveLines,
@@ -100,6 +136,70 @@ export function formatPreviousReportContext(log: DailyReportLog): string {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * fullContent 마크다운에서 각 종목의 등락률을 추출한다.
+ * 패턴: "TICKER (Company) — +XX.X%" 또는 "TICKER(+XX.X%)" 등
+ * 추출 불가 시 빈 Map 반환 (fail-open).
+ */
+export function extractStockReturns(
+  fullContent: string | null,
+): Map<string, string> {
+  const returns = new Map<string, string>();
+  if (fullContent == null || fullContent === "") return returns;
+
+  const COMMON_WORDS = new Set([
+    "RS", "MA", "EPS", "PE", "PB", "ETF", "VIX", "DOW", "QQQ", "SPY",
+    "IWM", "WTI", "DXY", "Phase", "ACTIVE", "HIGH", "LOW", "USD",
+    "NASDAQ", "HOLD", "BUY", "SELL", "MD", "AI", "CEO", "IPO",
+  ]);
+
+  // 패턴 1: TICKER ... ±XX.X% (같은 줄 내에서)
+  const linePattern = /\b([A-Z]{2,5})\b[^|\n]*?([+-]\d+\.?\d*%)/g;
+  let match: RegExpExecArray | null;
+  while ((match = linePattern.exec(fullContent)) !== null) {
+    const ticker = match[1];
+    const pct = match[2];
+    if (!COMMON_WORDS.has(ticker) && !returns.has(ticker)) {
+      returns.set(ticker, pct);
+    }
+  }
+
+  return returns;
+}
+
+/**
+ * reportedSymbols가 비어있을 때 fullContent에서 특이종목 목록을 fallback 생성한다.
+ * 강세/약세 섹션의 종목을 추출하여 간략한 라인으로 구성.
+ */
+function buildFallbackSymbolLines(fullContent: string | null): string {
+  if (fullContent == null || fullContent === "") return "";
+
+  const classification = extractBullBearClassification(fullContent);
+  const returnMap = extractStockReturns(fullContent);
+  const allTickers = [
+    ...classification.bullish.map((t) => ({ symbol: t, tag: " [강세]" })),
+    ...classification.bearish.map((t) => ({ symbol: t, tag: " [약세]" })),
+  ];
+
+  if (allTickers.length === 0) return "";
+
+  return allTickers
+    .map((s) => {
+      const returnStr = returnMap.get(s.symbol);
+      const returnSuffix = returnStr != null ? ` | 전일 ${returnStr}` : "";
+      return `- ${s.symbol}${s.tag}${returnSuffix}`;
+    })
+    .join("\n");
+}
+
+/**
+ * fallback 라인에서 종목 수를 카운트한다.
+ */
+function countFallbackStocks(fallbackLines: string): number {
+  if (fallbackLines === "") return 0;
+  return fallbackLines.split("\n").filter((line) => line.startsWith("- ")).length;
 }
 
 /**
