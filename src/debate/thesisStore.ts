@@ -1,12 +1,18 @@
 import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, asc } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import type { Thesis, ThesisCategory, Confidence, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "@/types/debate";
 import { recordNarrativeChain } from "./narrativeChainService.js";
 import { tryQuantitativeVerification, parseQuantitativeCondition } from "./quantitativeVerifier.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { AgentPersona } from "@/types/debate";
+
+/**
+ * 에이전트당 ACTIVE thesis 상한.
+ * 초과 시 가장 오래된 thesis를 EXPIRED 처리하여 학습 루프 적체를 방지한다.
+ */
+export const MAX_ACTIVE_THESES_PER_AGENT = 10;
 
 function parseConsensusScore(level: ConsensusLevel): number {
   const score = parseInt(level.split("/")[0], 10);
@@ -76,7 +82,71 @@ export async function saveTheses(
     }
   }
 
+  // 에이전트별 ACTIVE 상한 적용 — 새 thesis 삽입 후 초과분 만료
+  await enforceActiveThesisCap(debateDate);
+
   return result.length;
+}
+
+/**
+ * 에이전트별 ACTIVE thesis 상한을 적용한다.
+ *
+ * 상한(MAX_ACTIVE_THESES_PER_AGENT) 초과 에이전트의 가장 오래된 ACTIVE thesis를
+ * EXPIRED 처리하여 학습 루프 적체를 방지한다.
+ *
+ * Returns: 만료 처리된 thesis 수
+ */
+export async function enforceActiveThesisCap(today: string): Promise<number> {
+  const counts = await db
+    .select({
+      agentPersona: theses.agentPersona,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(theses)
+    .where(eq(theses.status, "ACTIVE"))
+    .groupBy(theses.agentPersona);
+
+  let totalExpired = 0;
+
+  for (const { agentPersona, count } of counts) {
+    const excess = count - MAX_ACTIVE_THESES_PER_AGENT;
+    if (excess <= 0) continue;
+
+    // 가장 오래된 ACTIVE thesis를 초과분만큼 조회
+    const oldestTheses = await db
+      .select({ id: theses.id })
+      .from(theses)
+      .where(and(eq(theses.status, "ACTIVE"), eq(theses.agentPersona, agentPersona)))
+      .orderBy(asc(theses.createdAt))
+      .limit(excess);
+
+    if (oldestTheses.length === 0) continue;
+
+    const ids = oldestTheses.map((t) => t.id);
+
+    const result = await db
+      .update(theses)
+      .set({
+        status: "EXPIRED",
+        verificationDate: today,
+        verificationResult: `ACTIVE 상한 초과 (${count}/${MAX_ACTIVE_THESES_PER_AGENT}) — 가장 오래된 thesis 만료`,
+        closeReason: "cap_exceeded",
+      })
+      .where(and(inArray(theses.id, ids), eq(theses.status, "ACTIVE")))
+      .returning({ id: theses.id });
+
+    totalExpired += result.length;
+    logger.info(
+      "ThesisStore",
+      `[CAP] ${agentPersona}: ${result.length}개 thesis 만료 (${count} → ${count - result.length})`,
+    );
+  }
+
+  if (totalExpired > 0) {
+    logger.info("ThesisStore", `ACTIVE 상한 적용 완료: ${totalExpired}개 만료`);
+  }
+
+  return totalExpired;
 }
 
 /**

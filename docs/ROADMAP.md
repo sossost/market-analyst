@@ -89,6 +89,7 @@
 | Thesis 저장 | 토론에서 추출된 전망 → `theses` 테이블 |
 | LLM 자동 검증 | 시장 데이터 기반 CONFIRMED/INVALIDATED/HOLD 판정 |
 | 만료 자동화 | timeframe 초과 thesis → EXPIRED |
+| ACTIVE 상한 | 에이전트당 ACTIVE 10건 상한 — 초과 시 가장 오래된 thesis 만료 (#519) |
 | 학습 승격 | 3회+ 적중 패턴 → `agent_learnings` 승격 (이항 검정 유의성 필터) |
 | 기억 주입 | 학습 + 검증 결과를 토론 프롬프트에 반영 |
 | 편향 감지 | bull-bias 80% 초과 경고, 정량 검증 비율 모니터링 |

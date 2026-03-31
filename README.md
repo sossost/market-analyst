@@ -208,7 +208,7 @@ yarn db:push                # 스키마 적용
 
 | 구성 요소 | 파일 | 역할 |
 |-----------|------|------|
-| Thesis Store | `thesisStore.ts` | thesis 저장, 만료, 통계, 카테고리별 관리 |
+| Thesis Store | `thesisStore.ts` | thesis 저장, 만료, 에이전트별 ACTIVE 상한(10건), 통계, 카테고리별 관리 |
 | Thesis Verifier | `thesisVerifier.ts` | LLM 기반 자동 검증 |
 | Causal Analyzer | `causalAnalyzer.ts` | 검증 결과 원인 분석, 패턴 추출 |
 | Session Store | `sessionStore.ts` | 토론 세션 저장, 유사 세션 검색 |
