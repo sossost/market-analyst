@@ -18,11 +18,31 @@ const VALID_REGIMES = new Set<string>([
 const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
 
 /**
- * 동일 레짐이 연속으로 판정되어야 확정되는 일수.
+ * high confidence 판정 시 확정에 필요한 연속 일수.
  * 5거래일 연속 동일 시그널을 요구하여 노이즈 전환을 차단한다.
  * 근거: 3일 기준에서 15일간 5회 전환 발생 (#464)
  */
-const CONFIRMATION_DAYS = 5;
+const CONFIRMATION_DAYS_HIGH = 5;
+
+/**
+ * medium/low confidence 판정 시 확정에 필요한 연속 일수.
+ * 7거래일 연속을 요구하여 확신 없는 전환(medium)의 진동을 억제한다.
+ * 근거: EARLY_BULL↔EARLY_BEAR 평균 2.5일 진동, 전부 medium (#520)
+ */
+const CONFIRMATION_DAYS_MEDIUM = 7;
+
+/**
+ * 최대 확정 필요 일수 — pending 윈도우 사이징 및 조회 limit에 사용.
+ */
+const MAX_CONFIRMATION_DAYS = CONFIRMATION_DAYS_MEDIUM;
+
+/**
+ * confidence별 확정 필요 일수를 반환한다.
+ * pending 윈도우 내 최소 confidence를 기준으로 호출한다.
+ */
+function getRequiredConfirmationDays(allHighConfidence: boolean): number {
+  return allHighConfidence ? CONFIRMATION_DAYS_HIGH : CONFIRMATION_DAYS_MEDIUM;
+}
 
 /**
  * 레짐 전환 확정 후 다른 레짐으로의 전환을 차단하는 최소 유지 기간 (달력일).
@@ -35,7 +55,7 @@ const MIN_HOLD_CALENDAR_DAYS = 14;
 /**
  * 허용된 레짐 전환 맵.
  * 확정된 레짐(confirmed)에서 전환 가능한 레짐 목록을 정의한다.
- * 이 맵에 없는 전환은 CONFIRMATION_DAYS를 채워도 확정되지 않는다.
+ * 이 맵에 없는 전환은 확정 일수를 채워도 확정되지 않는다.
  *
  * 설계 원칙:
  * - EARLY_BULL ↔ MID_BULL: 강세장 내 인접 단계 전환만 허용
@@ -227,8 +247,9 @@ export async function applyHysteresis(
   const confirmedRegime = await loadConfirmedRegime();
 
   // date 기준 윈도우로 pending 조회 (과거 오래된 pending 오염 방지).
-  // 주말/공휴일 간격을 고려해 (CONFIRMATION_DAYS - 1) * MAX_GAP_DAYS일 이전까지 조회한다.
-  const windowDays = (CONFIRMATION_DAYS - 1) * MAX_GAP_DAYS + 1;
+  // 주말/공휴일 간격을 고려해 (MAX_CONFIRMATION_DAYS - 1) * MAX_GAP_DAYS일 이전까지 조회한다.
+  // MAX_CONFIRMATION_DAYS를 사용하여 medium confidence 시 필요한 7일치도 조회 가능.
+  const windowDays = (MAX_CONFIRMATION_DAYS - 1) * MAX_GAP_DAYS + 1;
   const windowStart = getWindowStart(date, windowDays);
 
   const pendingRows = await db
@@ -249,7 +270,7 @@ export async function applyHysteresis(
       ),
     )
     .orderBy(desc(marketRegimes.regimeDate))
-    .limit(CONFIRMATION_DAYS);
+    .limit(MAX_CONFIRMATION_DAYS);
 
   if (pendingRows.length === 0) {
     return confirmedRegime;
@@ -265,7 +286,13 @@ export async function applyHysteresis(
   const datesConsecutive = areDatesConsecutive(
     pendingRows.map((r) => r.regimeDate),
   );
-  const hasEnoughPending = pendingRows.length >= CONFIRMATION_DAYS;
+
+  // confidence-scaled confirmation: pending 윈도우 내 모든 행이 high일 때만 5일, 아니면 7일
+  const allHighConfidence = pendingRows.every(
+    (r) => r.confidence === "high",
+  );
+  const requiredDays = getRequiredConfirmationDays(allHighConfidence);
+  const hasEnoughPending = pendingRows.length >= requiredDays;
 
   // 전환 허용 여부 검증 — 초기 상태(confirmed 없음)이면 제약 미적용
   const latestPendingRegime = pendingRows[0].regime;
@@ -315,7 +342,7 @@ export async function applyHysteresis(
       : "";
     logger.info(
       "RegimeStore",
-      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${CONFIRMATION_DAYS}${transitionNote}${cooldownNote}${stressNote}). 확정 대기 중.`,
+      `Regime pending — 확정 조건 미충족 (regimes: ${pendingRows.map((r) => r.regime).join(", ")}, consecutive: ${datesConsecutive}, count: ${pendingRows.length}/${requiredDays}, confidence: ${allHighConfidence ? "all-high" : "mixed/medium"}${transitionNote}${cooldownNote}${stressNote}). 확정 대기 중.`,
     );
     return confirmedRegime;
   }
@@ -518,13 +545,15 @@ export function formatRegimeForPrompt(
     const datesAreConsecutive = areDatesConsecutive(
       pendingRows.map((r) => r.regimeDate),
     );
-    const hasEnoughPending = pendingRows.length >= CONFIRMATION_DAYS;
+    const pendingAllHigh = pendingRows.every((r) => r.confidence === "high");
+    const pendingRequiredDays = getRequiredConfirmationDays(pendingAllHigh);
+    const hasEnoughPending = pendingRows.length >= pendingRequiredDays;
 
     const confirmNote =
       allSameRegime && datesAreConsecutive && hasEnoughPending
         ? "오늘 확정 예정"
         : allSameRegime && datesAreConsecutive
-          ? `${CONFIRMATION_DAYS - pendingRows.length}일 더 연속되면 확정`
+          ? `${pendingRequiredDays - pendingRows.length}일 더 연속되면 확정 (${pendingAllHigh ? "high" : "medium"} 기준 ${pendingRequiredDays}일)`
           : "판정 불일치 또는 비연속으로 확정 대기";
 
     lines.push(
