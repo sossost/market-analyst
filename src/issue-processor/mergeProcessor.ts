@@ -145,8 +145,11 @@ async function applyDbMigration(threadId: string): Promise<void> {
     cwd: process.cwd(),
   })
 
-  if (DB_OUTPUT_ERROR_PATTERN.test(stdout) || DB_OUTPUT_ERROR_PATTERN.test(stderr)) {
-    const detail = stderr || stdout
+  const stdoutHasError = DB_OUTPUT_ERROR_PATTERN.test(stdout)
+  const stderrHasError = DB_OUTPUT_ERROR_PATTERN.test(stderr)
+
+  if (stdoutHasError || stderrHasError) {
+    const detail = stderrHasError ? stderr : stdout
     throw new Error(`DB push exited 0 but output contains error: ${detail.slice(0, 300)}`)
   }
 
