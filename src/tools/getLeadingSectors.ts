@@ -109,7 +109,7 @@ export function buildPhaseTransitionDrilldown(
       .slice(0, MAX_RS_CHANGE_INDUSTRIES)
       .map((r) => ({
         industry: r.industry,
-        avgRs: toNum(r.avg_rs),
+        avgRs: Number(toNum(r.avg_rs).toFixed(2)),
         rsChange: Number(Number(r.rs_change!).toFixed(2)),
         groupPhase: r.group_phase,
       }));
