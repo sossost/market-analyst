@@ -57,6 +57,30 @@ function execFileP(
 }
 
 /**
+ * execFile을 Promise로 래핑하되, 성공 시 stdout과 stderr 모두 반환.
+ * exit code 0이어도 stderr를 검사해야 하는 경우(DB 마이그레이션 등)에 사용.
+ */
+function execFileDetailed(
+  command: string,
+  args: string[],
+  options: { timeout: number; env?: NodeJS.ProcessEnv; cwd?: string },
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, options, (error, stdout, stderr) => {
+      if (error != null) {
+        const detail = stderr?.trim()
+        if (detail) {
+          error.message = `${error.message}\n${detail}`
+        }
+        reject(error)
+        return
+      }
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim() })
+    })
+  })
+}
+
+/**
  * gh CLI 실행 헬퍼
  */
 async function gh(args: string[]): Promise<string> {
@@ -107,24 +131,30 @@ async function fetchMergedFiles(prNumber: number): Promise<string[] | null> {
   }
 }
 
+const DB_OUTPUT_ERROR_PATTERN = /error:/i
+
 /**
  * DB 마이그레이션을 적용한다 (yarn db:push --force).
- * 실패 시 스레드에 에러 알림 후 조용히 종료 — processMerge 흐름을 막지 않는다.
+ * exit code 0이어도 stdout/stderr에 `error:` 패턴이 있으면 실패로 처리한다.
+ * 실패 시 throw — 호출자(runPostMergeInfra → processMerge)에서 처리.
  */
 async function applyDbMigration(threadId: string): Promise<void> {
-  try {
-    await sendThreadMessage(threadId, '🗄️ DB 스키마 변경 감지 — drizzle-kit push 실행 중...')
-    await execFileP('yarn', ['db:push', '--force'], {
-      timeout: DB_PUSH_TIMEOUT_MS,
-      cwd: process.cwd(),
-    })
-    logger.info(TAG, 'DB 마이그레이션 완료')
-    await sendThreadMessage(threadId, '✅ DB 마이그레이션 완료')
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
-    logger.error(TAG, `DB 마이그레이션 실패: ${reason}`)
-    await sendThreadMessage(threadId, `❌ DB 마이그레이션 실패: ${reason.slice(0, 300)}`)
+  await sendThreadMessage(threadId, '🗄️ DB 스키마 변경 감지 — drizzle-kit push 실행 중...')
+  const { stdout, stderr } = await execFileDetailed('yarn', ['db:push', '--force'], {
+    timeout: DB_PUSH_TIMEOUT_MS,
+    cwd: process.cwd(),
+  })
+
+  const stdoutHasError = DB_OUTPUT_ERROR_PATTERN.test(stdout)
+  const stderrHasError = DB_OUTPUT_ERROR_PATTERN.test(stderr)
+
+  if (stdoutHasError || stderrHasError) {
+    const detail = stderrHasError ? stderr : stdout
+    throw new Error(`DB push exited 0 but output contains error: ${detail.slice(0, 300)}`)
   }
+
+  logger.info(TAG, 'DB 마이그레이션 완료')
+  await sendThreadMessage(threadId, '✅ DB 마이그레이션 완료')
 }
 
 /**
@@ -508,8 +538,18 @@ export async function processMerge(mapping: PrThreadMapping): Promise<void> {
     return
   }
 
-  // 3.5. Post-merge 인프라 반영
-  await runPostMergeInfra(prNumber, threadId)
+  // 3.5. Post-merge 인프라 반영 (DB 마이그레이션 실패 시 머지 흐름 중단)
+  try {
+    await runPostMergeInfra(prNumber, threadId)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `PR #${prNumber} 인프라 반영 실패: ${reason}`)
+    await sendThreadMessage(
+      threadId,
+      `❌ 머지 완료, 인프라 반영 실패: ${reason.slice(0, 300)}\n수동 확인이 필요합니다.`,
+    )
+    return
+  }
 
   // 4. 로컬 브랜치 정리
   await deleteLocalBranchIfExists(branchName)

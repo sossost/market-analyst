@@ -46,7 +46,7 @@ type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) =>
 
 function mockExecSequence(
   mockFn: ReturnType<typeof vi.fn>,
-  responses: Array<{ error?: Error; stdout?: string }>,
+  responses: Array<{ error?: Error; stdout?: string; stderr?: string }>,
 ) {
   let callIndex = 0
   mockFn.mockImplementation(
@@ -57,9 +57,9 @@ function mockExecSequence(
         return { stdin: null }
       }
       if (response.error != null) {
-        callback(response.error, '', '')
+        callback(response.error, '', response.stderr ?? '')
       } else {
-        callback(null, response.stdout ?? '', '')
+        callback(null, response.stdout ?? '', response.stderr ?? '')
       }
       return { stdin: null }
     },
@@ -267,5 +267,87 @@ describe('processMerge', () => {
       return args.includes('-d') && args.includes(branchName)
     })
     expect(deleteBranchCall).toBeDefined()
+  })
+
+  it('DB 마이그레이션: exit 0 + stderr error: 패턴 → 실패 처리 (매핑 유지)', async () => {
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { removePrThreadMapping } = await import('../prThreadStore.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    mockExecSequence(vi.mocked(execFile), [
+      ...openPrNoReviewCheckSequence(),
+      // gh pr merge — 성공
+      { stdout: '' },
+      // gh pr view --json files — DB 스키마 변경 포함
+      { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/users.ts' }] }) },
+      // yarn db:push --force — exit 0이지만 stderr에 error: 포함
+      { stdout: '', stderr: 'error: relation "users" already exists' },
+    ])
+
+    await processMerge(makeMapping(42))
+
+    // 인프라 반영 실패 알림
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('인프라 반영 실패'),
+    )
+    // 매핑 삭제하지 않음
+    expect(removePrThreadMapping).not.toHaveBeenCalled()
+  })
+
+  it('DB 마이그레이션: exit 0 + stdout error: 패턴 → 실패 처리 (매핑 유지)', async () => {
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { removePrThreadMapping } = await import('../prThreadStore.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    mockExecSequence(vi.mocked(execFile), [
+      ...openPrNoReviewCheckSequence(),
+      // gh pr merge — 성공
+      { stdout: '' },
+      // gh pr view --json files — DB 스키마 변경 포함
+      { stdout: JSON.stringify({ files: [{ path: 'db/migrations/0001.sql' }] }) },
+      // yarn db:push --force — exit 0이지만 stdout에 error: 포함
+      { stdout: 'error: type mismatch on column "amount"', stderr: '' },
+    ])
+
+    await processMerge(makeMapping(42))
+
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('인프라 반영 실패'),
+    )
+    expect(removePrThreadMapping).not.toHaveBeenCalled()
+  })
+
+  it('인프라 반영 실패 시 스레드 알림 후 return — 머지 완료 알림은 보내지 않는다', async () => {
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    mockExecSequence(vi.mocked(execFile), [
+      ...openPrNoReviewCheckSequence(),
+      // gh pr merge — 성공
+      { stdout: '' },
+      // gh pr view --json files — DB 스키마 변경 포함
+      { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/foo.ts' }] }) },
+      // yarn db:push --force — 프로세스 에러 (exit code != 0)
+      { error: new Error('Command failed: yarn db:push') },
+    ])
+
+    await processMerge(makeMapping(42))
+
+    // 인프라 실패 알림은 있어야 함
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('인프라 반영 실패'),
+    )
+    // "머지되었습니다" 완료 알림은 없어야 함 (return으로 중단)
+    const allCalls = vi.mocked(sendThreadMessage).mock.calls
+    const completionCall = allCalls.find(
+      ([, msg]) => typeof msg === 'string' && msg.includes('머지되었습니다'),
+    )
+    expect(completionCall).toBeUndefined()
   })
 })
