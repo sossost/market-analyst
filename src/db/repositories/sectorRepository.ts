@@ -15,6 +15,7 @@ import type {
   SectorRsDetailContextRow,
   SectorRsRankWithTotalRow,
   EtlSectorPhaseTransitionRow,
+  IndustryDrilldownRow,
 } from "./types.js";
 
 /**
@@ -411,5 +412,35 @@ export async function findIndustryPhaseTransitions(
   const { rows } = await pool.query<EtlSectorPhaseTransitionRow>(
     `${baseQuery} ORDER BY date`,
   );
+  return rows;
+}
+
+/**
+ * Phase 전환이 발생한 섹터의 업종 드릴다운을 조회한다.
+ * 현재일 + 전일 LEFT JOIN으로 RS 일간 변화를 계산한다.
+ */
+export async function findIndustryDrilldown(
+  date: string,
+  prevDate: string,
+  sectors: string[],
+): Promise<IndustryDrilldownRow[]> {
+  if (sectors.length === 0) return [];
+
+  const { rows } = await pool.query<IndustryDrilldownRow>(
+    `SELECT
+       curr.sector,
+       curr.industry,
+       curr.avg_rs::text,
+       curr.group_phase,
+       curr.prev_group_phase,
+       (curr.avg_rs - COALESCE(prev.avg_rs, curr.avg_rs))::text AS rs_change
+     FROM industry_rs_daily curr
+     LEFT JOIN industry_rs_daily prev
+       ON curr.industry = prev.industry AND prev.date = $2
+     WHERE curr.date = $1 AND curr.sector = ANY($3)
+     ORDER BY curr.sector, (curr.avg_rs - COALESCE(prev.avg_rs, curr.avg_rs))::numeric DESC NULLS LAST`,
+    [date, prevDate, sectors],
+  );
+
   return rows;
 }

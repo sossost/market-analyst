@@ -90,6 +90,19 @@ export interface IndustryRsGlobalRow {
   sector_rs_rank: number | null;
 }
 
+/**
+ * 섹터 Phase 전환 시 업종 드릴다운 조회 결과.
+ * 현재일 + 전일 LEFT JOIN으로 RS 변화를 계산한다.
+ */
+export interface IndustryDrilldownRow {
+  sector: string;
+  industry: string;
+  avg_rs: string;
+  group_phase: number;
+  prev_group_phase: number | null;
+  rs_change: string | null;
+}
+
 // ─── market_regimes ──────────────────────────────────────────────────────────
 
 export interface MarketRegimeRow {

@@ -65,7 +65,7 @@ describe("getLeadingSectors", () => {
   });
 
   it("mode 미지정 시 daily 동작 + 전일 RS 비교 포함", async () => {
-    // 1st: sector query, 2nd: industry query, 3rd: prevDayDate, 4th: prevDay sectors
+    // 1st: sector query, 2nd: industry query, 3rd: prevDayDate, 4th: prevDay sectors, 5th: drilldown (Phase 전환)
     mockQuery
       .mockResolvedValueOnce({
         rows: [makeSectorRow({ sector: "Technology", rs_rank: 1 })],
@@ -78,7 +78,8 @@ describe("getLeadingSectors", () => {
       })
       .mockResolvedValueOnce({
         rows: [{ sector: "Technology", avg_rs: "60.0", rs_rank: 2 }],
-      });
+      })
+      .mockResolvedValueOnce({ rows: [] }); // findIndustryDrilldown (Phase 1→2 전환)
 
     const result = await getLeadingSectors.execute({ date: "2026-03-07" });
     const parsed = JSON.parse(result);
