@@ -13,7 +13,10 @@ import {
   findMarketBreadthAdvanceDecline,
   findMarketBreadthNewHighLow,
   findLatestDataDate,
+  findPrevDayDate,
+  findIndustryDrilldown,
 } from "@/db/repositories/index.js";
+import { buildPhaseTransitionDrilldown } from "@/tools/getLeadingSectors";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -81,6 +84,8 @@ export interface MarketSnapshot {
   breadth: MarketBreadthSnapshot | null;
   indices: IndexQuote[];
   fearGreed: FearGreedSnapshot | null;
+  /** Phase 전환 섹터의 업종 드릴다운 (전환 섹터가 없으면 undefined) */
+  phaseTransitionDrilldown?: ReturnType<typeof buildPhaseTransitionDrilldown>;
 }
 
 function toNum(val: string | null | undefined): number {
@@ -354,6 +359,24 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
     logger.warn("MarketData", `No DB data found for ${date} — debate will run without market data`);
   }
 
+  // Phase 전환 섹터 드릴다운 조건부 로딩
+  const phaseTransitionSectors = sectors.filter(
+    (s) => s.prevGroupPhase != null && s.prevGroupPhase !== s.groupPhase,
+  );
+  let phaseTransitionDrilldown: ReturnType<typeof buildPhaseTransitionDrilldown> | undefined;
+  if (phaseTransitionSectors.length > 0) {
+    const prevDayDateRow = await findPrevDayDate(date);
+    const prevDate = prevDayDateRow.prev_day_date;
+    if (prevDate != null) {
+      const drilldownRows = await findIndustryDrilldown(
+        date,
+        prevDate,
+        phaseTransitionSectors.map((s) => s.sector),
+      );
+      phaseTransitionDrilldown = buildPhaseTransitionDrilldown(drilldownRows);
+    }
+  }
+
   logger.info("MarketData", `Loaded: ${sectors.length} sectors, ${phase2.newEntries.length} new Phase 2, ${indices.length} indices`);
 
   return {
@@ -364,6 +387,7 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
     breadth,
     indices,
     fearGreed,
+    phaseTransitionDrilldown,
   };
 }
 
@@ -447,6 +471,52 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
     sections.push(
       `### 섹터 RS 하위 3개\n${bottomLines.join("\n")}`,
     );
+  }
+
+  // 3-1. Phase 전환 섹터 업종 드릴다운
+  if (snapshot.phaseTransitionDrilldown != null) {
+    for (const [sector, drilldown] of Object.entries(snapshot.phaseTransitionDrilldown)) {
+      const sectorInfo = snapshot.sectors.find((s) => s.sector === sector);
+      if (sectorInfo == null) continue;
+
+      const lines: string[] = [
+        `### 📊 ${sector} Phase ${sectorInfo.prevGroupPhase}→${sectorInfo.groupPhase} 전환 업종 드릴다운`,
+      ];
+
+      // RS 변화 상위 업종
+      if (drilldown.topRsChange.length > 0) {
+        lines.push(
+          "",
+          "**RS 변화 상위 업종 (전환 드라이버)**",
+          "| 업종 | RS | RS 변화 | Phase |",
+          "|------|-----|---------|-------|",
+        );
+        for (const ind of drilldown.topRsChange) {
+          const sign = ind.rsChange >= 0 ? "+" : "";
+          lines.push(`| ${ind.industry} | ${ind.avgRs} | ${sign}${ind.rsChange} | ${ind.groupPhase} |`);
+        }
+      }
+
+      // Phase 이상 업종 (불안정 신호)
+      if (drilldown.phaseAnomalies.length > 0) {
+        lines.push(
+          "",
+          "**⚠️ Phase 역행 업종 (불안정 신호)** — RS 높지만 Phase 악화",
+        );
+        for (const ind of drilldown.phaseAnomalies) {
+          lines.push(`- ${ind.industry}: RS ${ind.avgRs}, Phase ${ind.prevGroupPhase}→${ind.groupPhase}`);
+        }
+      }
+
+      // Phase2 업종 비율
+      const p2 = drilldown.phase2Ratio;
+      lines.push(
+        "",
+        `**Phase 2 업종 비율**: ${p2.count}/${p2.total} (${p2.percent}%) — 전환 견고성 판단 근거`,
+      );
+
+      sections.push(lines.join("\n"));
+    }
   }
 
   // 4. New Phase 2 entries — split by volume confirmation

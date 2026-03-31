@@ -208,7 +208,7 @@ describe("mode: 'industry'", () => {
 
 describe("기존 daily 모드 회귀", () => {
   it("mode: 'daily'일 때 findTopSectors를 호출한다 (findTopIndustriesGlobal 미호출)", async () => {
-    // daily 모드: findTopSectors → findTopIndustries → findPrevDayDate → findSectorsByDateAndNames
+    // daily 모드: findTopSectors → findTopIndustries → findPrevDayDate → findSectorsByDateAndNames → findIndustryDrilldown (Phase 전환 시)
     mockQuery
       .mockResolvedValueOnce({
         rows: [
@@ -232,7 +232,8 @@ describe("기존 daily 모드 회귀", () => {
       .mockResolvedValueOnce({
         rows: [{ prev_day_date: "2026-03-27" }],
       } as never) // findPrevDayDate
-      .mockResolvedValueOnce({ rows: [] } as never); // findSectorsByDateAndNames
+      .mockResolvedValueOnce({ rows: [] } as never) // findSectorsByDateAndNames
+      .mockResolvedValueOnce({ rows: [] } as never); // findIndustryDrilldown (Phase 1→2 전환)
 
     const result = await getLeadingSectors.execute({
       date: "2026-03-28",

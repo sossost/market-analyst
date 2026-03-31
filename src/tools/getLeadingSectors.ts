@@ -7,11 +7,13 @@ import {
   findPrevDayDate,
   findSectorsByDate,
   findSectorsByDateAndNames,
+  findIndustryDrilldown,
 } from "@/db/repositories/index.js";
 import type {
   SectorRsRow,
   IndustryRsRow,
   IndustryRsGlobalRow,
+  IndustryDrilldownRow,
 } from "@/db/repositories/index.js";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
@@ -72,6 +74,74 @@ async function fetchTopIndustries(
     industryBySector.set(row.sector, arr);
   }
   return industryBySector;
+}
+
+const MAX_RS_CHANGE_INDUSTRIES = 5;
+
+/**
+ * Phase 전환 섹터의 업종 드릴다운을 조립한다.
+ * RS 변화 상위 업종, Phase 이상 업종, Phase2 비율을 포함.
+ */
+export function buildPhaseTransitionDrilldown(
+  drilldownRows: IndustryDrilldownRow[],
+): Record<string, {
+  topRsChange: { industry: string; avgRs: number; rsChange: number; groupPhase: number }[];
+  phaseAnomalies: { industry: string; avgRs: number; groupPhase: number; prevGroupPhase: number }[];
+  phase2Ratio: { count: number; total: number; percent: number };
+}> {
+  const bySector = new Map<string, IndustryDrilldownRow[]>();
+  for (const row of drilldownRows) {
+    const arr = bySector.get(row.sector) ?? [];
+    arr.push(row);
+    bySector.set(row.sector, arr);
+  }
+
+  const result: Record<string, {
+    topRsChange: { industry: string; avgRs: number; rsChange: number; groupPhase: number }[];
+    phaseAnomalies: { industry: string; avgRs: number; groupPhase: number; prevGroupPhase: number }[];
+    phase2Ratio: { count: number; total: number; percent: number };
+  }> = {};
+
+  for (const [sector, rows] of bySector) {
+    // RS 변화 상위 업종 (이미 rs_change DESC로 정렬됨)
+    const topRsChange = rows
+      .filter((r) => r.rs_change != null)
+      .slice(0, MAX_RS_CHANGE_INDUSTRIES)
+      .map((r) => ({
+        industry: r.industry,
+        avgRs: toNum(r.avg_rs),
+        rsChange: Number(Number(r.rs_change!).toFixed(2)),
+        groupPhase: r.group_phase,
+      }));
+
+    // Phase 이상 업종: RS 높지만 Phase가 악화 (prev < curr, 즉 숫자가 커짐)
+    const phaseAnomalies = rows
+      .filter(
+        (r) =>
+          r.prev_group_phase != null &&
+          r.prev_group_phase !== r.group_phase &&
+          r.group_phase > r.prev_group_phase,
+      )
+      .map((r) => ({
+        industry: r.industry,
+        avgRs: toNum(r.avg_rs),
+        groupPhase: r.group_phase,
+        prevGroupPhase: r.prev_group_phase!,
+      }));
+
+    // Phase2 업종 비율
+    const phase2Count = rows.filter((r) => r.group_phase === 2).length;
+    const total = rows.length;
+    const percent = total > 0 ? Number(((phase2Count / total) * 100).toFixed(1)) : 0;
+
+    result[sector] = {
+      topRsChange,
+      phaseAnomalies,
+      phase2Ratio: { count: phase2Count, total, percent },
+    };
+  }
+
+  return result;
 }
 
 /**
@@ -208,11 +278,33 @@ export const getLeadingSectors: AgentTool = {
         };
       });
 
+      // Phase 전환 섹터 드릴다운: 전환 발생 섹터만 조건부 조회
+      const phaseTransitionSectors = sectorRows.filter(
+        (s) =>
+          s.prev_group_phase != null &&
+          s.prev_group_phase !== s.group_phase,
+      );
+
+      let phaseTransitionDrilldown: ReturnType<typeof buildPhaseTransitionDrilldown> | undefined;
+      if (phaseTransitionSectors.length > 0) {
+        const drilldownRows = await retryDatabaseOperation(() =>
+          findIndustryDrilldown(
+            date,
+            prevDayDate,
+            phaseTransitionSectors.map((s) => s.sector),
+          ),
+        );
+        phaseTransitionDrilldown = buildPhaseTransitionDrilldown(drilldownRows);
+      }
+
       return JSON.stringify({
         _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
         date,
         prevDayDate,
         sectors,
+        ...(phaseTransitionDrilldown != null
+          ? { phaseTransitionDrilldown }
+          : {}),
       });
     }
 
