@@ -423,7 +423,7 @@ ${commentsSummary}
           // execFile의 error.message는 "Command failed: ..."만 포함.
           // 실제 원인(인증 만료, PATH 문제 등)은 stderr에 있으므로 병합.
           const detail = stderr?.trim()
-          if (detail) {
+          if (detail !== '') {
             error.message = `${error.message}\n${detail}`
           }
           reject(error)
