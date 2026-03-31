@@ -45,13 +45,39 @@ function execFileP(
     execFile(command, args, options, (error, stdout, stderr) => {
       if (error != null) {
         const detail = stderr?.trim()
-        if (detail) {
+        if (detail !== '') {
           error.message = `${error.message}\n${detail}`
         }
         reject(error)
         return
       }
       resolve(stdout.trim())
+    })
+  })
+}
+
+type ExecFileOptions = { timeout: number; env?: NodeJS.ProcessEnv; cwd?: string }
+
+/**
+ * stdout + stderr 모두 반환하는 execFile 래퍼.
+ * exit code가 0이어도 stderr를 확인해야 하는 경우에 사용한다.
+ */
+function execFilePFull(
+  cmd: string,
+  args: string[],
+  options?: ExecFileOptions,
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, options ?? { timeout: GH_TIMEOUT_MS }, (error, stdout, stderr) => {
+      if (error != null) {
+        const detail = stderr?.trim()
+        if (detail !== '') {
+          error.message = `${error.message}\n${detail}`
+        }
+        reject(error)
+        return
+      }
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim() })
     })
   })
 }
@@ -117,25 +143,10 @@ const ERROR_LINE_PATTERN = /^\s*error:/im
 async function applyDbMigration(threadId: string): Promise<void> {
   await sendThreadMessage(threadId, '🗄️ DB 스키마 변경 감지 — drizzle-kit push 실행 중...')
 
-  const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>(
-    (resolve, reject) => {
-      execFile(
-        'yarn',
-        ['db:push', '--force'],
-        { timeout: DB_PUSH_TIMEOUT_MS, cwd: process.cwd() },
-        (error, stdout, stderr) => {
-          if (error != null) {
-            const detail = stderr?.trim()
-            if (detail) {
-              error.message = `${error.message}\n${detail}`
-            }
-            reject(error)
-            return
-          }
-          resolve({ stdout: stdout.trim(), stderr: stderr.trim() })
-        },
-      )
-    },
+  const { stdout, stderr } = await execFilePFull(
+    'yarn',
+    ['db:push', '--force'],
+    { timeout: DB_PUSH_TIMEOUT_MS, cwd: process.cwd() },
   )
 
   const combinedOutput = `${stdout}\n${stderr}`
@@ -240,6 +251,7 @@ async function runPostMergeInfra(prNumber: number, threadId: string): Promise<vo
     return
   }
 
+  // DB 마이그레이션 실패 시 launchd 재로드는 건너뜀 (의도적: DB 불일치 상태에서 launchd 재로드는 의미 없음)
   if (needsDbMigration) {
     await applyDbMigration(threadId)
   }

@@ -337,6 +337,50 @@ describe('processMerge', () => {
     expect(removePrThreadMapping).not.toHaveBeenCalled()
   })
 
+  it('DB 마이그레이션 실패 시 launchd 재로드가 실행되지 않는다', async () => {
+    // DB 불일치 상태에서 launchd를 재로드하는 것은 의미 없으므로
+    // applyDbMigration이 throw하면 reloadLaunchd는 호출되지 않아야 한다
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    mockExecSequence(vi.mocked(execFile), [
+      // 1. gh pr view — OPEN
+      { stdout: JSON.stringify({ state: 'OPEN' }) },
+      // 2. gh api (리뷰 코멘트) — 없음
+      { stdout: '' },
+      // 3. gh pr view --json reviews — 없음
+      { stdout: JSON.stringify({ reviews: [] }) },
+      // 4. gh pr merge
+      { stdout: '' },
+      // 5. gh pr view --json files — DB 스키마 + plist 모두 포함
+      {
+        stdout: JSON.stringify({
+          files: [
+            { path: 'db/migrations/0002_add_column.sql' },
+            { path: 'scripts/launchd/com.market-analyst.daily-agent.plist' },
+          ],
+        }),
+      },
+      // 6. yarn db:push --force — 실패
+      { error: new Error('Command failed: yarn db:push --force\nconnection refused') },
+      // launchctl 관련 호출이 여기 등장하면 테스트가 예상치 못한 호출 에러를 낸다
+    ])
+
+    await processMerge(makeMapping(42))
+
+    // launchctl은 한 번도 호출되지 않아야 한다
+    const calls = vi.mocked(execFile).mock.calls
+    const launchctlCalled = calls.some(call => call[0] === 'launchctl')
+    expect(launchctlCalled).toBe(false)
+
+    // 인프라 반영 실패 알림은 발송되어야 한다
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('인프라 반영 실패'),
+    )
+  })
+
   it('인프라 실패 후 로컬 브랜치 정리와 매핑 삭제가 실행되지 않는다', async () => {
     const { execFile } = await import('node:child_process')
     const { removePrThreadMapping } = await import('../prThreadStore.js')
