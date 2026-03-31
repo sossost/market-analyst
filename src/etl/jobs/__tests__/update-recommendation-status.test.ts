@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   shouldTriggerStopLoss,
   shouldTriggerTrailingStop,
+  shouldTriggerPhaseExit,
   findProfitTier,
   formatTrailingStopReason,
   HARD_STOP_LOSS_PERCENT,
@@ -413,7 +414,76 @@ describe("formatTrailingStopReason", () => {
 });
 
 // =============================================================================
-// 우선순위 테스트: stop-loss > trailing stop > phase exit
+// shouldTriggerPhaseExit — Phase Exit 순수 함수 테스트
+// =============================================================================
+
+describe("shouldTriggerPhaseExit", () => {
+  it("PnL > 0이면 Phase 3이어도 미발동 (수익 구간 보호)", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 3, pnlPercent: 5 }),
+    ).toBe(false);
+  });
+
+  it("PnL > 0이면 Phase 4이어도 미발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 4, pnlPercent: 0.1 }),
+    ).toBe(false);
+  });
+
+  it("PnL = 0이면 Phase 3에서 발동 (손익분기)", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 3, pnlPercent: 0 }),
+    ).toBe(true);
+  });
+
+  it("PnL < 0이면 Phase 3에서 발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 3, pnlPercent: -2 }),
+    ).toBe(true);
+  });
+
+  it("PnL < 0이면 Phase 1에서 발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 1, pnlPercent: -1 }),
+    ).toBe(true);
+  });
+
+  it("PnL < 0이면 Phase 4에서 발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 4, pnlPercent: -5 }),
+    ).toBe(true);
+  });
+
+  it("Phase 2이면 PnL 무관 미발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 2, pnlPercent: -10 }),
+    ).toBe(false);
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 2, pnlPercent: 5 }),
+    ).toBe(false);
+  });
+
+  it("currentPhase가 null이면 미발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: null, pnlPercent: -10 }),
+    ).toBe(false);
+  });
+
+  it("AAOI 사례: Phase 3 + PnL -5.7% → 발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 3, pnlPercent: -5.7 }),
+    ).toBe(true);
+  });
+
+  it("수익 구간에서 phase 전환: Phase 3 + PnL +4% → 미발동", () => {
+    expect(
+      shouldTriggerPhaseExit({ currentPhase: 3, pnlPercent: 4 }),
+    ).toBe(false);
+  });
+});
+
+// =============================================================================
+// 우선순위 테스트: stop-loss > trailing stop > phase exit(손실 구간)
 // =============================================================================
 
 describe("우선순위: hard stop-loss는 trailing stop보다 우선", () => {
@@ -430,5 +500,84 @@ describe("우선순위: hard stop-loss는 trailing stop보다 우선", () => {
 
     expect(isStopLoss).toBe(true);
     expect(isTrailingStop).toBe(false);
+  });
+});
+
+describe("우선순위: 수익 구간에서 phase exit는 suppressed", () => {
+  it("PnL > 0 + Phase 3 + trailing stop 미발동 → 포지션 유지", () => {
+    // maxPnl 5%, pnl 4% → trailingLevel 3.5, 4 > 3.5 → trailing stop 미발동
+    // Phase 3 + PnL 4% → phase exit 미발동 (수익 구간 보호)
+    const currentPhase = 3;
+    const pnlPercent = 4;
+    const maxPnlPercent = 5;
+
+    const isStopLoss = shouldTriggerStopLoss({ currentPhase, pnlPercent });
+    const isTrailingStop = !isStopLoss && shouldTriggerTrailingStop({ currentPhase, maxPnlPercent, pnlPercent });
+    const isPhaseExit = shouldTriggerPhaseExit({ currentPhase, pnlPercent });
+
+    expect(isStopLoss).toBe(false);
+    expect(isTrailingStop).toBe(false);
+    expect(isPhaseExit).toBe(false);
+    // 포지션 유지: shouldClose = false
+    expect(isStopLoss || isTrailingStop || isPhaseExit).toBe(false);
+  });
+
+  it("PnL > 0 + Phase 3 + trailing stop 발동 → CLOSED_TRAILING_STOP", () => {
+    // maxPnl 10%, pnl 3% → trailingLevel 7.5, 3 < 7.5 → trailing stop 발동
+    const currentPhase = 3;
+    const pnlPercent = 3;
+    const maxPnlPercent = 10;
+
+    const isStopLoss = shouldTriggerStopLoss({ currentPhase, pnlPercent });
+    const isTrailingStop = !isStopLoss && shouldTriggerTrailingStop({ currentPhase, maxPnlPercent, pnlPercent });
+    const isPhaseExit = shouldTriggerPhaseExit({ currentPhase, pnlPercent });
+
+    expect(isStopLoss).toBe(false);
+    expect(isTrailingStop).toBe(true);
+    expect(isPhaseExit).toBe(false);
+  });
+
+  it("PnL ≤ 0 + Phase 3 + trailing stop 발동 → trailing stop 우선", () => {
+    // maxPnl 20%, pnl -3% → trailingLevel 15, -3 < 15 → trailing stop 발동
+    // Phase 3 + PnL -3% → phase exit도 발동 가능
+    // 실제 로직: trailing stop이 if-else에서 먼저 평가됨
+    const currentPhase = 3;
+    const pnlPercent = -3;
+    const maxPnlPercent = 20;
+
+    const isStopLoss = shouldTriggerStopLoss({ currentPhase, pnlPercent });
+    const isTrailingStop = !isStopLoss && shouldTriggerTrailingStop({ currentPhase, maxPnlPercent, pnlPercent });
+    const isPhaseExit = shouldTriggerPhaseExit({ currentPhase, pnlPercent });
+
+    expect(isStopLoss).toBe(false);
+    expect(isTrailingStop).toBe(true);
+    expect(isPhaseExit).toBe(true);
+
+    // 실제 코드의 if-else 우선순위를 시뮬레이션하여 검증
+    let closeStatus = "";
+    if (isStopLoss) {
+      closeStatus = "CLOSED_STOP_LOSS";
+    } else if (isTrailingStop) {
+      closeStatus = "CLOSED_TRAILING_STOP";
+    } else if (isPhaseExit) {
+      closeStatus = "CLOSED_PHASE_EXIT";
+    }
+    expect(closeStatus).toBe("CLOSED_TRAILING_STOP");
+  });
+
+  it("PnL ≤ 0 + Phase 3 + trailing stop 미발동 → CLOSED_PHASE_EXIT", () => {
+    // maxPnl 1% (tier 없음), pnl -2% → trailing stop 미발동
+    // Phase 3 + PnL -2% → phase exit 발동
+    const currentPhase = 3;
+    const pnlPercent = -2;
+    const maxPnlPercent = 1;
+
+    const isStopLoss = shouldTriggerStopLoss({ currentPhase, pnlPercent });
+    const isTrailingStop = !isStopLoss && shouldTriggerTrailingStop({ currentPhase, maxPnlPercent, pnlPercent });
+    const isPhaseExit = shouldTriggerPhaseExit({ currentPhase, pnlPercent });
+
+    expect(isStopLoss).toBe(false);
+    expect(isTrailingStop).toBe(false);
+    expect(isPhaseExit).toBe(true);
   });
 });
