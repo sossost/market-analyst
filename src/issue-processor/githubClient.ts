@@ -38,9 +38,10 @@ export function getPriorityScore(labels: string[]): number {
 }
 
 /**
- * 열린 이슈 중 auto: 라벨이 없는 미처리 이슈 조회 (P 라벨 우선순위순)
+ * 내부 헬퍼 — GitHub에서 열린 이슈를 조회하고 작성자·auto: 라벨 기준으로 필터링한다.
+ * triaged 라벨은 여기서 체크하지 않는다 — 호출자가 목적에 맞게 필터링한다.
  */
-export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
+async function fetchCandidateIssues(): Promise<GitHubIssue[]> {
   const raw = await gh([
     'issue',
     'list',
@@ -82,18 +83,28 @@ export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
       labels: issue.labels.map((l) => l.name),
       author: issue.author?.login ?? '',
     }))
+}
+
+/**
+ * 이슈 프로세서용 — triaged 라벨이 있고 auto: 라벨이 없는 이슈 조회 (P 라벨 우선순위순)
+ *
+ * triaged = triageBatch가 PROCEED 판정을 내린 이슈.
+ * triaged 없는 이슈는 아직 triage 대기 중이므로 착수 불가.
+ */
+export async function fetchUnprocessedIssues(): Promise<GitHubIssue[]> {
+  const issues = await fetchCandidateIssues()
+  return issues
+    .filter((issue) => issue.labels.includes(TRIAGED_LABEL))
     .sort((a, b) => getPriorityScore(a.labels) - getPriorityScore(b.labels))
 }
 
 /**
  * 트리아지 배치 전용 — triaged 라벨이 없는 미처리 이슈 조회
  *
- * fetchUnprocessedIssues() 결과에서 triaged 라벨이 있는 이슈를 추가 제외한다.
- * 배치 재실행 시 이미 트리아지된 이슈를 중복 처리하지 않도록 방지한다.
- * (이슈 프로세서는 triaged 라벨이 있어도 정상 처리하므로 fetchUnprocessedIssues를 사용한다.)
+ * triageBatch 재실행 시 이미 트리아지된 이슈를 중복 처리하지 않도록 방지한다.
  */
 export async function fetchUntriagedIssues(): Promise<GitHubIssue[]> {
-  const issues = await fetchUnprocessedIssues()
+  const issues = await fetchCandidateIssues()
   return issues.filter((issue) => !issue.labels.includes(TRIAGED_LABEL))
 }
 
