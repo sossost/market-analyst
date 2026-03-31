@@ -16,7 +16,7 @@ import { buildSandboxedEnv, classifyCliError } from './cliUtils.js'
 
 const TAG = 'TRIAGE'
 
-const TRIAGE_TIMEOUT_MS = 5 * 60 * 1_000 // 5분
+const TRIAGE_TIMEOUT_MS = 8 * 60 * 1_000 // 8분
 const MAX_BUFFER = 10 * 1024 * 1024 // 10MB
 const MAX_STDOUT_LOG_LENGTH = 2_000
 
