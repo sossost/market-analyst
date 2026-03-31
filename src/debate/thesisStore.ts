@@ -117,7 +117,7 @@ export async function enforceActiveThesisCap(today: string): Promise<number> {
       .select({ id: theses.id })
       .from(theses)
       .where(and(eq(theses.status, "ACTIVE"), eq(theses.agentPersona, agentPersona)))
-      .orderBy(asc(theses.createdAt))
+      .orderBy(asc(theses.createdAt), asc(theses.id))
       .limit(excess);
 
     if (oldestTheses.length === 0) continue;
