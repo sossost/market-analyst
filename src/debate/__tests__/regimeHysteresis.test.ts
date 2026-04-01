@@ -511,6 +511,67 @@ describe("applyHysteresis", () => {
     expect(db.update).not.toHaveBeenCalled();
   });
 
+  it("허용 전환(EARLY_BEAR → EARLY_BULL) high confidence 5일 연속 → 확정됨", async () => {
+    // EARLY_BEAR → EARLY_BULL은 약세 회복 경로 — ALLOWED_TRANSITIONS에 포함
+    const day1 = makeRow({ regimeDate: "2026-03-20", regime: "EARLY_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day2 = makeRow({ regimeDate: "2026-03-21", regime: "EARLY_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day3 = makeRow({ regimeDate: "2026-03-24", regime: "EARLY_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day4 = makeRow({ regimeDate: "2026-03-25", regime: "EARLY_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day5 = makeRow({ regimeDate: "2026-03-26", regime: "EARLY_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const earlyBearConfirmed = makeRow({ regimeDate: "2026-03-01", regime: "EARLY_BEAR", isConfirmed: true, confirmedAt: "2026-03-01" });
+
+    const selectCallbacks = [
+      [earlyBearConfirmed],                       // 1st: loadConfirmedRegime → EARLY_BEAR confirmed
+      [day5, day4, day3, day2, day1],             // 2nd: pending 5건 — EARLY_BULL 연속 (허용 전환)
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.update).mockReturnValue(makeUpdateChain() as any);
+
+    const result = await applyHysteresis("2026-03-26");
+
+    expect(result?.regime).toBe("EARLY_BULL");
+    expect(result?.isConfirmed).toBe(true);
+    expect(db.update).toHaveBeenCalled();
+  });
+
+  it("금지 전환(EARLY_BEAR → LATE_BULL) high confidence 5일 연속 → 확정 거부", async () => {
+    // EARLY_BEAR → LATE_BULL은 2단계 건너뛰기 — ALLOWED_TRANSITIONS에서 제거됨
+    const day1 = makeRow({ regimeDate: "2026-03-20", regime: "LATE_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day2 = makeRow({ regimeDate: "2026-03-21", regime: "LATE_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day3 = makeRow({ regimeDate: "2026-03-24", regime: "LATE_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day4 = makeRow({ regimeDate: "2026-03-25", regime: "LATE_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const day5 = makeRow({ regimeDate: "2026-03-26", regime: "LATE_BULL", confidence: "high", isConfirmed: false, confirmedAt: null });
+    const earlyBearConfirmed = makeRow({ regimeDate: "2026-03-01", regime: "EARLY_BEAR", isConfirmed: true, confirmedAt: "2026-03-01" });
+
+    const selectCallbacks = [
+      [earlyBearConfirmed],                       // 1st: loadConfirmedRegime → EARLY_BEAR confirmed
+      [day5, day4, day3, day2, day1],             // 2nd: pending 5건 — LATE_BULL 연속 (금지 전환)
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    const result = await applyHysteresis("2026-03-26");
+
+    // 금지 전환이므로 확정 거부 — 이전 confirmed(EARLY_BEAR) 반환
+    expect(result?.regime).toBe("EARLY_BEAR");
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it("초기 상태에서 금지 전환도 허용 — confirmed 없으면 제약 미적용", async () => {
     // confirmed가 없으면 ALLOWED_TRANSITIONS 제약 없이 첫 확정 허용
     const day1 = makeRow({ regimeDate: "2026-03-12", regime: "EARLY_BULL", isConfirmed: false, confirmedAt: null });
