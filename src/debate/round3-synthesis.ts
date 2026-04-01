@@ -453,7 +453,7 @@ function normalizeThesisFields(
   }
 
   // 저적중 에이전트 confidence 자동 하향
-  let confidence = obj.confidence as string;
+  let confidence = (obj.confidence as string) ?? "low";
   if (
     persona != null &&
     CONFIDENCE_DOWNGRADE_PERSONAS.has(persona) &&
