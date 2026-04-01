@@ -61,14 +61,14 @@ const MIN_HOLD_CALENDAR_DAYS = 14;
  * - EARLY_BULL ↔ MID_BULL: 강세장 내 인접 단계 전환만 허용
  * - 강세 → 약세 진입점: *_BULL → EARLY_BEAR
  * - 약세 심화: EARLY_BEAR → BEAR
- * - 약세 회복: BEAR → EARLY_BEAR (단계적)
- * - LATE_BULL → EARLY_BULL 건너뜀: 실제로 발생 불가능한 경로 차단
+ * - 약세 회복: BEAR → EARLY_BEAR → EARLY_BULL (단계적)
+ * - 건너뜀 차단: LATE_BULL → EARLY_BULL, EARLY_BEAR → LATE_BULL 불가
  */
 const ALLOWED_TRANSITIONS: Readonly<Record<MarketRegimeType, ReadonlySet<MarketRegimeType>>> = {
   EARLY_BULL: new Set<MarketRegimeType>(["MID_BULL", "EARLY_BEAR"]),
   MID_BULL: new Set<MarketRegimeType>(["LATE_BULL", "EARLY_BULL", "EARLY_BEAR"]),
   LATE_BULL: new Set<MarketRegimeType>(["MID_BULL", "EARLY_BEAR"]),
-  EARLY_BEAR: new Set<MarketRegimeType>(["BEAR", "LATE_BULL"]),
+  EARLY_BEAR: new Set<MarketRegimeType>(["BEAR", "EARLY_BULL"]),
   BEAR: new Set<MarketRegimeType>(["EARLY_BEAR"]),
 };
 
