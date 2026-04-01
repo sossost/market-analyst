@@ -823,3 +823,15 @@ export interface WeeklyQaBiasMetricsRow {
   verification_path: string | null;
   cnt: number;
 }
+
+// ─── sectorClusterRepository ────────────────────────────────────────────────
+
+export interface SectorClusterRow {
+  sector: string;
+  sector_avg_rs: string;
+  phase2_ratio: string;
+  group_phase: number;
+  symbol: string | null;
+  rs_score: number | null;
+  industry: string | null;
+}
