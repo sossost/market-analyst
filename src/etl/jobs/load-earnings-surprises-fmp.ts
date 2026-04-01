@@ -14,11 +14,9 @@ import { logger } from "@/lib/logger";
 
 const TAG = "LOAD_EARNINGS_SURPRISES_FMP";
 
-const CONCURRENCY = 8;
-const PAUSE_MS = 100;
-const LIMIT_QUARTERS = 4;
-const MIN_RS_SCORE = 70;
-const MIN_VOL_RATIO = 1.5;
+const CONCURRENCY = 4;
+const PAUSE_MS = 150;
+const LIMIT_QUARTERS = 8;
 
 
 interface FmpEarningsSurpriseRow {
@@ -29,8 +27,8 @@ interface FmpEarningsSurpriseRow {
 }
 
 /**
- * 대상 종목 조회: Phase 2 (RS>=70 OR vol_ratio>=1.5) + watchlist ACTIVE.
- * load-stock-news와 동일 대상.
+ * 대상 종목 조회: Phase 2 전체 + watchlist ACTIVE.
+ * SEPA 스코어러가 Non-GAAP EPS를 사용하므로 Phase 2 전 종목에 대해 적재.
  */
 async function fetchTargetSymbols(): Promise<string[]> {
   const result = await db.execute(sql`
@@ -39,10 +37,6 @@ async function fetchTargetSymbols(): Promise<string[]> {
       FROM stock_phases sp
       WHERE sp.date = (SELECT MAX(date) FROM stock_phases)
         AND sp.phase = 2
-        AND (
-          sp.rs_score >= ${MIN_RS_SCORE}
-          OR (sp.vol_ratio IS NOT NULL AND CAST(sp.vol_ratio AS float) >= ${MIN_VOL_RATIO})
-        )
       UNION
       SELECT symbol
       FROM watchlist_stocks
@@ -127,7 +121,7 @@ async function main() {
 
   logger.info(
     TAG,
-    `Processing ${symbols.length} symbols (Phase 2 RS>=${MIN_RS_SCORE}/vol>=${MIN_VOL_RATIO} + watchlist ACTIVE)`,
+    `Processing ${symbols.length} symbols (Phase 2 전체 + watchlist ACTIVE)`,
   );
 
   const limit = pLimit(CONCURRENCY);

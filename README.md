@@ -255,6 +255,8 @@ yarn db:push                # 스키마 적용
 
 Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
+- **Non-GAAP EPS 우선**: `eps_surprises.actual_eps`(Non-GAAP) 우선, `quarterly_financials.eps_diluted`(GAAP) 폴백 — 시장이 실제 반응하는 EPS 기준 (#557)
+
 | 등급 | 조건 | 액션 |
 |------|------|------|
 | **S** | A등급 상위 Top 3 (rankScore) | 개별 종목 심층 리포트 (Discord + Gist) |

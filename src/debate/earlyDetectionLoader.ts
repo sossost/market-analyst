@@ -145,6 +145,7 @@ async function loadAccelerating(): Promise<AcceleratingStock[]> {
         netIncome: q.net_income != null ? toNumForScorer(q.net_income) : null,
         epsDiluted: q.eps_diluted != null ? toNumForScorer(q.eps_diluted) : null,
         netMargin: null, // ratio 데이터 미포함 — scorer 내부에서 optional 처리
+        actualEps: null,
       }));
       const sepaScore = scoreFundamentals({ symbol, quarters: quarterlyData });
 

@@ -105,6 +105,7 @@
 | 구성 요소 | 설명 |
 |-----------|------|
 | SEPA 스코어링 | Minervini 기준 (EPS/매출 YoY, 가속, 마진) |
+| Non-GAAP EPS | `eps_surprises.actual_eps` 우선, GAAP 폴백 (#557) |
 | 등급 | S → A → B → C → F |
 | LLM 리포트 | S등급 종목 개별 분석 리포트 |
 

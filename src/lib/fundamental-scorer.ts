@@ -21,6 +21,12 @@ const MIN_QUARTERS_REQUIRED = 5; // 최소 5분기 (YoY 비교 위해)
 const MIN_QUARTERS_FOR_ACCELERATION = 3;
 const MIN_QUARTERS_FOR_MARGIN = 3;
 const TURNAROUND_SCORE = 200; // 적자→흑자 전환 시 고정 점수
+
+/** Non-GAAP EPS 우선, GAAP 폴백. preferNonGaap=false이면 항상 GAAP 사용 */
+export function getEps(q: QuarterlyData, preferNonGaap: boolean = true): number | null {
+  return preferNonGaap ? (q.actualEps ?? q.epsDiluted) : q.epsDiluted;
+}
+
 // ─── Public API ─────────────────────────────────────────────────────
 
 export function scoreFundamentals(input: FundamentalInput): FundamentalScore {
@@ -127,22 +133,27 @@ function evaluateEpsGrowth(quarters: QuarterlyData[]): CriteriaResult {
     return { passed: false, value: null, detail: "데이터 부족: YoY 비교 대상 없음" };
   }
 
-  const growth = calcEpsGrowthYoY(current.epsDiluted, priorYear.epsDiluted);
+  const isNonGaap = current.actualEps != null && priorYear.actualEps != null;
+  const currentEps = getEps(current, isNonGaap);
+  const priorEps = getEps(priorYear, isNonGaap);
+  const epsLabel = isNonGaap ? "EPS(Non-GAAP)" : "EPS";
+
+  const growth = calcEpsGrowthYoY(currentEps, priorEps);
 
   if (growth == null) {
     // 적자→흑자 전환 감지
-    const turnaround = calcTurnaroundScore(current.epsDiluted, priorYear.epsDiluted);
+    const turnaround = calcTurnaroundScore(currentEps, priorEps);
     if (turnaround != null) {
       return {
         passed: true,
         value: turnaround,
-        detail: `EPS 흑자 전환: ${priorYear.epsDiluted} → ${current.epsDiluted} (turnaround +${turnaround})`,
+        detail: `${epsLabel} 흑자 전환: ${priorEps} → ${currentEps} (turnaround +${turnaround})`,
       };
     }
     const detail =
-      current.epsDiluted == null || priorYear.epsDiluted == null
+      currentEps == null || priorEps == null
         ? "EPS 데이터 부족"
-        : `성장률 계산 불가 (이전 EPS: ${priorYear.epsDiluted})`;
+        : `성장률 계산 불가 (이전 EPS: ${priorEps})`;
     return { passed: false, value: null, detail };
   }
 
@@ -150,7 +161,7 @@ function evaluateEpsGrowth(quarters: QuarterlyData[]): CriteriaResult {
   return {
     passed,
     value: growth,
-    detail: `EPS YoY ${growth > 0 ? "+" : ""}${growth}% (기준: >${EPS_GROWTH_THRESHOLD}%)`,
+    detail: `${epsLabel} YoY ${growth > 0 ? "+" : ""}${growth}% (기준: >${EPS_GROWTH_THRESHOLD}%)`,
   };
 }
 
@@ -184,9 +195,10 @@ function evaluateEpsAcceleration(quarters: QuarterlyData[]): CriteriaResult {
     const priorYear = findYoYQuarter(quarters, i);
     if (priorYear == null) break;
 
+    const useNonGaap = quarters[i].actualEps != null && priorYear.actualEps != null;
     const growth = calcEpsGrowthYoY(
-      quarters[i].epsDiluted,
-      priorYear.epsDiluted,
+      getEps(quarters[i], useNonGaap),
+      getEps(priorYear, useNonGaap),
     );
     if (growth == null) break;
 

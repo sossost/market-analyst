@@ -7,7 +7,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import type { FundamentalInput, QuarterlyData } from "../types/fundamental.js";
-import { parseQuarterStr } from "./quarter-utils.js";
+import { parseQuarterStr, reportDateToAsOfQ } from "./quarter-utils.js";
 
 const QUARTERS_TO_LOAD = 8;
 const MAX_SYMBOLS_PER_QUERY = 500;
@@ -45,7 +45,15 @@ export async function loadFundamentalData(
     ORDER BY symbol, period_end_date DESC
   `);
 
-  return groupBySymbol(rows.rows as unknown as RawRow[], symbols);
+  const results = groupBySymbol(rows.rows as unknown as RawRow[], symbols);
+
+  // eps_surprises에서 Non-GAAP EPS 병합
+  const surpriseRows = await loadEpsSurprises(symbols);
+  if (surpriseRows.length > 0) {
+    mergeEpsSurprises(results, surpriseRows);
+  }
+
+  return results;
 }
 
 /** @internal — 테스트용 export */
@@ -80,6 +88,7 @@ export function groupBySymbol(rows: RawRow[], symbols: string[]): FundamentalInp
       revenue: toNumber(row.revenue),
       netIncome: toNumber(row.net_income),
       epsDiluted: toNumber(row.eps_diluted),
+      actualEps: null, // eps_surprises에서 별도 병합
       netMargin: normalizeMargin(toNumber(row.net_margin)),
     });
   }
@@ -125,4 +134,75 @@ function normalizeMargin(val: number | null): number | null {
   if (val == null) return null;
   if (Math.abs(val) <= MARGIN_DECIMAL_THRESHOLD) return val * 100;
   return val;
+}
+
+// ─── eps_surprises 병합 ─────────────────────────────────────────────
+
+/** @internal — 테스트용 export */
+export interface EpsSurpriseRow {
+  symbol: string;
+  actual_date: string; // YYYY-MM-DD (어닝 발표일)
+  actual_eps: string | null;
+}
+
+async function loadEpsSurprises(symbols: string[]): Promise<EpsSurpriseRow[]> {
+  if (symbols.length === 0) return [];
+
+  const rows = await db.execute(sql`
+    SELECT symbol, actual_date, actual_eps
+    FROM eps_surprises
+    WHERE symbol IN (${sql.join(symbols.map((s) => sql`${s}`), sql`, `)})
+    ORDER BY symbol, actual_date DESC
+  `);
+
+  return rows.rows as unknown as EpsSurpriseRow[];
+}
+
+/**
+ * eps_surprises의 actual_eps를 QuarterlyData에 병합.
+ * reportDateToAsOfQ로 발표일→분기 매핑 후, 같은 종목+분기에 매칭.
+ *
+ * @internal — 테스트용 export
+ */
+export function mergeEpsSurprises(
+  inputs: FundamentalInput[],
+  surpriseRows: EpsSurpriseRow[],
+): void {
+  // symbol → asOfQ → actualEps 맵 구축
+  const epsMap = new Map<string, Map<string, number>>();
+
+  for (const row of surpriseRows) {
+    if (row.actual_eps == null) continue;
+    const eps = Number(row.actual_eps);
+    if (!Number.isFinite(eps)) continue;
+
+    const asOfQ = reportDateToAsOfQ(row.actual_date);
+    if (asOfQ == null) continue;
+
+    if (!epsMap.has(row.symbol)) {
+      epsMap.set(row.symbol, new Map());
+    }
+    const symbolMap = epsMap.get(row.symbol)!;
+    // 같은 분기에 여러 행이 있으면 최신(먼저 나온) 것 유지 (ORDER BY actual_date DESC)
+    if (!symbolMap.has(asOfQ)) {
+      symbolMap.set(asOfQ, eps);
+    }
+  }
+
+  // FundamentalInput에 병합
+  for (const input of inputs) {
+    const symbolMap = epsMap.get(input.symbol);
+    if (symbolMap == null) continue;
+
+    for (const q of input.quarters) {
+      const parsed = parseQuarterStr(q.asOfQ);
+      if (parsed == null) continue;
+
+      const normalizedKey = `Q${parsed.quarter} ${parsed.year}`;
+      const eps = symbolMap.get(normalizedKey);
+      if (eps != null) {
+        q.actualEps = eps;
+      }
+    }
+  }
 }
