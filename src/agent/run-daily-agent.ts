@@ -37,6 +37,7 @@ import {
 import { formatChainsForDailyPrompt } from "@/lib/narrativeChainStats";
 import { loadTodayDebateInsight } from "@/debate/sessionStore";
 import { loadPreviousReportContext } from "@/lib/previousReportContext";
+import { loadSectorClusterContext } from "@/lib/sectorClusterContext";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
@@ -158,6 +159,18 @@ async function main() {
   }
   logger.step("[4/9] Narrative chains loaded");
 
+  // 4-B. 업종 클러스터 컨텍스트 로드 (fail-open — 없으면 빈 문자열)
+  let sectorClusterContext = "";
+  try {
+    sectorClusterContext = await loadSectorClusterContext(targetDate);
+    if (sectorClusterContext !== "") {
+      logger.info("SectorCluster", "업종 클러스터 컨텍스트 로드 완료");
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("SectorCluster", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+  }
+
   // 5. 오늘의 토론 인사이트 로드 (fail-open — 없으면 빈 문자열)
   const debateInsight = await loadTodayDebateInsight(targetDate);
   if (debateInsight !== "") {
@@ -183,7 +196,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext }),
+    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext, sectorClusterContext }),
     tools: [
       getIndexReturns,
       getMarketBreadth,

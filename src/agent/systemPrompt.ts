@@ -80,8 +80,9 @@ export function buildDailySystemPrompt(options?: {
   narrativeChainsContext?: string;
   debateInsight?: string;
   previousReportContext?: string;
+  sectorClusterContext?: string;
 }): string {
-  const { targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext } = options ?? {};
+  const { targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext, sectorClusterContext } = options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 매일 3단 구조의 통합 브리핑을 작성합니다:
 - [상단] 시장 온도 — 지수·VIX·Phase2 비율·섹터 RS 팩트 기반
@@ -371,6 +372,21 @@ ${sanitizedChains}
 </narrative-chains>`;
   }
 
+  // 업종 클러스터 컨텍스트 주입 — thesis 유무와 무관한 섹터 단위 강세 가시화
+  if (sectorClusterContext != null && sectorClusterContext !== "") {
+    const sanitizedClusters = sanitizeXml(sectorClusterContext);
+    prompt += `
+
+<sector-clusters trust="internal">
+${sanitizedClusters}
+</sector-clusters>
+
+**업종 클러스터 분석 규칙**:
+- 위 클러스터에 포함된 종목이 \`get_unusual_stocks\` 결과에도 등장하면, 개별 종목이 아니라 **업종 클러스터 단위**로 분석하세요.
+- thesis가 없는 종목이라도 업종 클러스터 내 고RS 종목이 3개 이상이면 "📊 업종 클러스터 동향" 형태로 메시지와 MD 파일에 포함하세요.
+- 클러스터 내 종목이 동시 급락하면 "업종 전반 조정 — 개별 악재보다 섹터 수급 이탈 가능성" 관점으로 분석하세요.`;
+  }
+
   // 직전 리포트 컨텍스트 주입 — "전일 대비 변화 요약" 섹션 작성의 근거
   if (previousReportContext != null && previousReportContext !== "") {
     const sanitizedPrev = sanitizeXml(previousReportContext);
@@ -426,6 +442,7 @@ export function buildWeeklySystemPrompt(options?: {
   sectorLagContext?: string;
   regimeContext?: string;
   watchlistContext?: string;
+  sectorClusterContext?: string;
 }): string {
   const {
     fundamentalSupplement,
@@ -435,6 +452,7 @@ export function buildWeeklySystemPrompt(options?: {
     sectorLagContext,
     regimeContext,
     watchlistContext,
+    sectorClusterContext,
   } = options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 주간 단위로 "이번 주 시장 구조가 어떻게 바뀌었는가"를 분석하고,
@@ -731,6 +749,22 @@ ${sanitized}
 - ACTIVE 서사 체인의 수혜 종목이 5중 게이트를 충족하면 관심종목 등록의 thesis 근거로 인용
 - RESOLVING 상태 체인의 수혜 종목은 관심종목 해제 검토
 - N+1 병목이 존재하면 해당 병목 해소 시 수혜 섹터/종목을 서사 기반 예비 워치리스트로 추적`;
+  }
+
+  // 업종 클러스터 컨텍스트 주입 — thesis 유무와 무관한 섹터 단위 강세 가시화
+  if (sectorClusterContext != null && sectorClusterContext !== "") {
+    const sanitizedClusters = sanitizeXml(sectorClusterContext);
+    prompt += `
+
+<sector-clusters trust="internal">
+${sanitizedClusters}
+</sector-clusters>
+
+**업종 클러스터 활용법**:
+- 위 클러스터에 포함된 고RS 종목이 5중 게이트를 통과하면 관심종목 등록 후보로 우선 검토
+- thesis가 없더라도 업종 클러스터 내 고RS 종목이 3개 이상이면, 섹션 1 "주간 시장 구조 변화"에서 업종 클러스터 동향으로 별도 서술
+- 클러스터 내 종목이 Phase 2를 유지하면서 동시 조정이면 "업종 전반 조정 — 개별 악재보다 섹터 수급 변동" 관점으로 분석
+- thesis 부재 클러스터는 🌱 예비 워치리스트 섹션에 "업종 클러스터 기반" 태그와 함께 표기`;
   }
 
   if (sectorLagContext != null && sectorLagContext !== "") {

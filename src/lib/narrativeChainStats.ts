@@ -130,20 +130,27 @@ export async function formatChainsForDailyPrompt(): Promise<string> {
 
   const lines: string[] = [
     "## 현재 추적 중인 서사 체인 (종목 태그 참조용)\n",
-    "| 체인명 | 메가트렌드 | 상태 | Alpha Gate | 경과일 |",
-    "|--------|----------|------|-----------|--------|",
+    "| 체인명 | 메가트렌드 | 상태 | Alpha Gate | 경과일 | 수혜 섹터 | 수혜 종목 |",
+    "|--------|----------|------|-----------|--------|----------|----------|",
   ];
 
   for (const chain of chains) {
     const alphaTag = formatAlphaTag(chain.alphaCompatible);
+    const sectors = chain.beneficiarySectors.length > 0
+      ? chain.beneficiarySectors.join(", ")
+      : "—";
+    const tickers = chain.beneficiaryTickers.length > 0
+      ? chain.beneficiaryTickers.join(", ")
+      : "—";
     lines.push(
-      `| ${chain.bottleneck} | ${chain.megatrend} | ${chain.status} | ${alphaTag} | ${chain.daysSinceIdentified}일 |`,
+      `| ${chain.bottleneck} | ${chain.megatrend} | ${chain.status} | ${alphaTag} | ${chain.daysSinceIdentified}일 | ${sectors} | ${tickers} |`,
     );
   }
 
   lines.push(
     "",
     "리포트 작성 시 위 체인과 관련된 섹터/종목에 [체인명 / 상태] 태그를 추가하세요.",
+    "수혜 종목이 당일 특이종목(get_unusual_stocks)에 포함되면 반드시 서사 체인과 연결하여 분석하세요.",
     "Alpha Gate \"구조적 관찰\" 체인의 수혜 종목은 종목 추천에서 제외하되, 거시 분석 참고용으로 언급할 수 있습니다.",
   );
 

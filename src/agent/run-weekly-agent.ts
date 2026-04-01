@@ -41,6 +41,7 @@ import {
 import { loadSignalPerformanceSummary } from "./signalPerformance";
 import { formatChainsSummaryForPrompt } from "@/lib/narrativeChainStats";
 import { formatLeadingSectorsForPrompt } from "@/lib/sectorLagStats";
+import { loadSectorClusterContext } from "@/lib/sectorClusterContext";
 import {
   loadRecentRegimes,
   loadPendingRegimes,
@@ -150,6 +151,18 @@ async function main() {
     logger.error("SectorLag", `로드 실패 (에이전트는 계속 진행): ${reason}`);
   }
 
+  // 3.7-B. 업종 클러스터 컨텍스트 로드 (fail-open — 없으면 빈 문자열)
+  let sectorClusterContext = "";
+  try {
+    sectorClusterContext = await loadSectorClusterContext(targetDate);
+    if (sectorClusterContext !== "") {
+      logger.info("SectorCluster", "업종 클러스터 컨텍스트 로드 완료");
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("SectorCluster", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+  }
+
   // 3.8. 시장 레짐 히스토리 로드 (confirmed + pending)
   let regimeContext = "";
   try {
@@ -211,6 +224,7 @@ async function main() {
       sectorLagContext,
       regimeContext,
       watchlistContext,
+      sectorClusterContext,
     }),
     tools: [
       getIndexReturns,
