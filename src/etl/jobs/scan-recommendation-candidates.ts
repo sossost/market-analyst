@@ -179,8 +179,10 @@ async function main() {
   let blockedByPersistence = 0;
   let blockedByStability = 0;
   let blockedByFundamental = 0;
+  const corporateAnalystPromises: Promise<void>[] = [];
 
   for (const stock of phase2Stocks) {
+    // Phase 게이트 생략: findAllPhase2Stocks가 WHERE phase = 2를 보장하므로 불필요
     const { symbol, phase, rs_score, sector, industry } = stock;
 
     // 중복 추천 방지: ACTIVE 상태인 symbol 스킵
@@ -350,16 +352,23 @@ async function main() {
     await saveFactorSnapshot(symbol, targetDate);
     savedCount++;
 
-    // 기업 분석 리포트 fire-and-forget
-    runCorporateAnalyst(symbol, targetDate, pool)
-      .then((result) => {
-        if (!result.success) {
-          logger.warn(TAG, `${symbol} 리포트 생성 실패: ${result.error}`);
-        }
-      })
-      .catch((err) =>
-        logger.error(TAG, `${symbol} CorporateAnalyst 에러: ${String(err)}`),
-      );
+    // 기업 분석 리포트 — pool.end() 전에 완료 보장
+    corporateAnalystPromises.push(
+      runCorporateAnalyst(symbol, targetDate, pool)
+        .then((result) => {
+          if (!result.success) {
+            logger.warn(TAG, `${symbol} 리포트 생성 실패: ${result.error}`);
+          }
+        })
+        .catch((err) =>
+          logger.error(TAG, `${symbol} CorporateAnalyst 에러: ${String(err)}`),
+        ),
+    );
+  }
+
+  if (corporateAnalystPromises.length > 0) {
+    logger.info(TAG, `CorporateAnalyst ${corporateAnalystPromises.length}건 대기 중...`);
+    await Promise.allSettled(corporateAnalystPromises);
   }
 
   logger.info(
