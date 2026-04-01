@@ -21,6 +21,16 @@ export interface AgentConfig {
 }
 
 /**
+ * A tool error captured during agent execution.
+ */
+export interface ToolError {
+  toolName: string;
+  error: string;
+  input: Record<string, unknown>;
+  timestamp: string;
+}
+
+/**
  * Result of a single agent run.
  */
 export interface AgentResult {
@@ -35,4 +45,5 @@ export interface AgentResult {
   toolCalls: number;
   executionTimeMs: number;
   iterationCount: number;
+  toolErrors?: ToolError[];
 }
