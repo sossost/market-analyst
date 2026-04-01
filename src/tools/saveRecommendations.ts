@@ -3,7 +3,28 @@ import { recommendations, recommendationFactors } from "@/db/schema/analyst";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE, MAX_RS_SCORE, MIN_PRICE } from "./validation";
+import { validateDate, validateString, validateSymbol, validateNumber } from "./validation";
+import {
+  BEAR_REGIMES,
+  COOLDOWN_CALENDAR_DAYS,
+  PHASE2_PERSISTENCE_DAYS,
+  MIN_PHASE2_PERSISTENCE_COUNT,
+  PHASE2_STABILITY_DAYS,
+  BLOCKED_FUNDAMENTAL_GRADE,
+  PRICE_DIVERGENCE_THRESHOLD,
+  MIN_PHASE,
+  MIN_RS_SCORE,
+  MAX_RS_SCORE,
+  MIN_PRICE,
+  getDateOffset,
+  evaluatePhaseGate,
+  evaluateLowRsGate,
+  evaluateOverheatedRsGate,
+  evaluateLowPriceGate,
+  evaluatePersistenceGate,
+  evaluateStabilityGate,
+  evaluateFundamentalGate,
+} from "./recommendationGates.js";
 import { loadConfirmedRegime, loadPendingRegimes } from "@/debate/regimeStore";
 import { evaluateBearException, tagBearExceptionReason, BEAR_EXCEPTION_TAG } from "./bearExceptionGate";
 import { evaluateLateBullGate, tagLateBullReason, LATE_BULL_TAG } from "./lateBullGate";
@@ -46,42 +67,6 @@ interface RecommendationInput {
 
 const SUBSTANDARD_TAG = "[기준 미달]";
 const PERSISTENCE_TAG = "[지속성 미확인]";
-
-/** LLM 진입가와 DB 종가의 허용 괴리 비율 (10%) */
-const PRICE_DIVERGENCE_THRESHOLD = 0.1;
-
-/** EARLY_BEAR / BEAR 레짐에서 신규 추천을 전면 차단하는 레짐 집합 */
-const BEAR_REGIMES = new Set(["EARLY_BEAR", "BEAR"]);
-
-/** 동일 symbol의 재추천을 막는 쿨다운 기간 (캘린더일) */
-const COOLDOWN_CALENDAR_DAYS = 7;
-
-/** Phase 2 지속성 판단 기준 기간 (캘린더일) */
-const PHASE2_PERSISTENCE_DAYS = 5;
-
-/**
- * Phase 2 지속성을 충족하는 최소 데이터 포인트 수.
- * 변경 이력:
- * - 2: Phase Exit 6건 발생, 승률 17% (#366)
- * - 3: 지속성 기준 강화로 불안정 Phase 2 진입 차단
- */
-const MIN_PHASE2_PERSISTENCE_COUNT = 3;
-
-/**
- * Phase 2 안정성 판단: 최근 N 거래일 연속 Phase 2 필수.
- * 근거: 90일 추천 중 50%가 진입 1-2일 만에 Phase 3 전환 (#436).
- * 7/8 경계 종목이 하루 만에 조건 깨지는 패턴을 차단한다.
- */
-const PHASE2_STABILITY_DAYS = 3;
-
-/**
- * 펀더멘탈 하드 게이트: SEPA F등급 종목 추천 차단.
- * 근거: 90일 추천 중 Phase Exit 6건(avg 2일), Stop Loss 3건(max PnL -0.28%) —
- * 기술적 Phase 2만으로는 생존율 14%. 최소한의 펀더멘탈 뒷받침 필수 (#449).
- * F = SEPA 기준 전부 미충족. C 이상(기준 1개라도 충족)이면 통과.
- * 등급 없음(데이터 미확보)은 fail-open으로 통과.
- */
-const BLOCKED_FUNDAMENTAL_GRADE = "F";
 
 /**
  * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
@@ -358,32 +343,26 @@ export const saveRecommendations: AgentTool = {
 
       // Phase 2.5a: Phase 하드 게이트 — Phase 2 미만 종목 추천 차단
       const phase = rec.phase ?? null;
-      if (phase != null && phase < MIN_PHASE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: Phase ${phase} < ${MIN_PHASE}, 추천 차단`,
-        );
+      const phaseGate = evaluatePhaseGate(phase);
+      if (!phaseGate.passed) {
+        logger.warn("QualityGate", `${symbol}: ${phaseGate.reason}, 추천 차단`);
         blockedByPhase++;
         continue;
       }
 
       // Phase 2.5b: RS 하한 하드 게이트 — RS < 60 종목 추천 차단
       const rsScore = rec.rs_score ?? null;
-      if (rsScore != null && rsScore < MIN_RS_SCORE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: RS ${rsScore} < ${MIN_RS_SCORE}, 추천 차단`,
-        );
+      const lowRsGate = evaluateLowRsGate(rsScore);
+      if (!lowRsGate.passed) {
+        logger.warn("QualityGate", `${symbol}: ${lowRsGate.reason}, 추천 차단`);
         blockedByLowRS++;
         continue;
       }
 
       // Phase 2.5c: RS 과열 게이트 — RS > 95 종목은 Phase 2 "말기"로 판단, 추천 차단
-      if (rsScore != null && rsScore > MAX_RS_SCORE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: RS ${rsScore} > ${MAX_RS_SCORE} 과열, 추천 차단`,
-        );
+      const overheatedRsGate = evaluateOverheatedRsGate(rsScore);
+      if (!overheatedRsGate.passed) {
+        logger.warn("QualityGate", `${symbol}: ${overheatedRsGate.reason}, 추천 차단`);
         blockedByOverheatedRS++;
         continue;
       }
@@ -395,11 +374,9 @@ export const saveRecommendations: AgentTool = {
       }
 
       // Phase 2.7: 저가주 하드 게이트 — $5 미만 penny stock 추천 차단
-      if (llmPrice < MIN_PRICE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: 진입가 $${llmPrice} < $${MIN_PRICE} 저가주, 추천 차단`,
-        );
+      const lowPriceGate = evaluateLowPriceGate(llmPrice);
+      if (!lowPriceGate.passed) {
+        logger.warn("QualityGate", `${symbol}: ${lowPriceGate.reason}, 추천 차단`);
         blockedByLowPrice++;
         continue;
       }
@@ -435,32 +412,26 @@ export const saveRecommendations: AgentTool = {
 
       // Phase 3: Phase 2 지속성 하드 블록 — 최소 3일 Phase 2 유지 필수
       const phase2Count = persistenceMap.get(symbol) ?? 0;
-      if (phase2Count < MIN_PHASE2_PERSISTENCE_COUNT) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: Phase 2 지속성 ${phase2Count}일 < 기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일, 추천 차단`,
-        );
+      const persistenceGate = evaluatePersistenceGate(phase2Count);
+      if (!persistenceGate.passed) {
+        logger.warn("QualityGate", `${symbol}: ${persistenceGate.reason}, 추천 차단`);
         blockedByPersistence++;
         continue;
       }
 
       // Phase 3.5: Phase 2 안정성 하드 블록 — 최근 N 거래일 연속 Phase 2 필수 (#436)
-      if (!stableSymbols.has(symbol)) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: 최근 ${PHASE2_STABILITY_DAYS}거래일 연속 Phase 2 미충족, 추천 차단`,
-        );
+      const stabilityGate = evaluateStabilityGate(stableSymbols.has(symbol));
+      if (!stabilityGate.passed) {
+        logger.warn("QualityGate", `${symbol}: ${stabilityGate.reason}, 추천 차단`);
         blockedByStability++;
         continue;
       }
 
       // Phase 4: 펀더멘탈 하드 게이트 — SEPA F등급 종목 추천 차단 (#449)
       const fundamentalGrade = fundamentalGradeMap.get(symbol) ?? null;
-      if (fundamentalGrade === BLOCKED_FUNDAMENTAL_GRADE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: SEPA 등급 ${fundamentalGrade} — 펀더멘탈 기준 전부 미충족, 추천 차단`,
-        );
+      const fundamentalGate = evaluateFundamentalGate(fundamentalGrade);
+      if (!fundamentalGate.passed) {
+        logger.warn("QualityGate", `${symbol}: ${fundamentalGate.reason}, 추천 차단`);
         blockedByFundamental++;
         continue;
       }
@@ -544,16 +515,6 @@ export const saveRecommendations: AgentTool = {
     });
   },
 };
-
-/**
- * date에서 days만큼 이전 날짜를 계산한다.
- * YYYY-MM-DD 형식으로 반환. 쿨다운·지속성 기간 계산 공용.
- */
-function getDateOffset(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
 
 /**
  * stock_phases, sector_rs_daily, industry_rs_daily에서 팩터 스냅샷을 가져와 저장.
