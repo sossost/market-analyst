@@ -217,7 +217,7 @@ export async function findNewHighLow(
      FROM daily_prices dp
      JOIN yearly_range yr ON dp.symbol = yr.symbol
      JOIN symbols s ON dp.symbol = s.symbol
-     WHERE dp.date = $1
+     WHERE dp.date = $1::text
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false`,
@@ -344,7 +344,7 @@ export async function findMarketBreadthNewHighLow(
      FROM daily_prices dp
      JOIN yearly_range yr ON dp.symbol = yr.symbol
      JOIN symbols s ON dp.symbol = s.symbol
-     WHERE dp.date = $1
+     WHERE dp.date = $1::text
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false`,
