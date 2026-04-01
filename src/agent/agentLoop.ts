@@ -3,7 +3,23 @@ import { getAnthropicClient } from "@/lib/anthropic-client";
 import { executeTool } from "@/tools/index";
 import { callWithRetry } from "@/debate/callAgent.js";
 import { logger } from "@/lib/logger";
-import type { AgentConfig, AgentResult } from "@/tools/types";
+import type { AgentConfig, AgentResult, ToolError } from "@/tools/types";
+
+/**
+ * Parse a tool result string for an error JSON pattern.
+ * Returns the error message if found, null otherwise.
+ */
+function parseToolError(result: string): string | null {
+  try {
+    const parsed = JSON.parse(result) as Record<string, unknown>;
+    if (typeof parsed.error === "string") {
+      return parsed.error;
+    }
+  } catch {
+    // Not JSON — not an error pattern
+  }
+  return null;
+}
 
 /**
  * Run the Tool-use Agent loop.
@@ -44,11 +60,18 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
       : t,
   );
 
+  const CRITICAL_TOOLS = new Set([
+    "get_market_breadth",
+    "get_leading_sectors",
+    "get_index_returns",
+  ]);
+
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let cacheCreationTokens = 0;
   let cacheReadTokens = 0;
   let toolCallCount = 0;
+  const collectedToolErrors: ToolError[] = [];
 
   for (
     let iteration = 0;
@@ -83,6 +106,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
         toolCalls: toolCallCount,
         executionTimeMs: Date.now() - startTime,
         iterationCount: iteration + 1,
+        ...(collectedToolErrors.length > 0 && { toolErrors: collectedToolErrors }),
       };
     }
 
@@ -100,6 +124,7 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
         toolCalls: toolCallCount,
         executionTimeMs: Date.now() - startTime,
         iterationCount: iteration + 1,
+        ...(collectedToolErrors.length > 0 && { toolErrors: collectedToolErrors }),
       };
     }
 
@@ -114,6 +139,22 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
         block.name,
         block.input as Record<string, unknown>,
       );
+
+      // Detect tool errors from JSON response
+      const toolError = parseToolError(result);
+      if (toolError != null) {
+        const isCritical = CRITICAL_TOOLS.has(block.name);
+        const severity = isCritical ? "CRITICAL" : "WARN";
+        logger.warn("Agent", `[${severity}] Tool error from ${block.name}: ${toolError}`);
+
+        collectedToolErrors.push({
+          toolName: block.name,
+          error: toolError,
+          input: block.input as Record<string, unknown>,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       return {
         type: "tool_result" as const,
         tool_use_id: block.id,
@@ -138,5 +179,6 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
     toolCalls: toolCallCount,
     executionTimeMs: Date.now() - startTime,
     iterationCount: config.maxIterations,
+    ...(collectedToolErrors.length > 0 && { toolErrors: collectedToolErrors }),
   };
 }
