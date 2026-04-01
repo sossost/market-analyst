@@ -1,27 +1,11 @@
 /**
  * Tests for agentLoop tool error detection and collection.
  *
- * Since agentLoop depends on the Anthropic API client, we test the
- * parseToolError function and tool error collection logic directly.
- * The parseToolError function is extracted from agentLoop.ts.
+ * parseToolError and CRITICAL_TOOLS are exported from agentLoop.ts
+ * and tested directly here.
  */
 import { describe, it, expect } from "vitest";
-
-/**
- * Reimplementation of parseToolError for isolated unit testing.
- * This mirrors the logic in agentLoop.ts.
- */
-function parseToolError(result: string): string | null {
-  try {
-    const parsed = JSON.parse(result) as Record<string, unknown>;
-    if (typeof parsed.error === "string") {
-      return parsed.error;
-    }
-  } catch {
-    // Not JSON — not an error pattern
-  }
-  return null;
-}
+import { parseToolError, CRITICAL_TOOLS } from "../agentLoop";
 
 describe("parseToolError", () => {
   it("returns error string from error JSON pattern", () => {
@@ -62,12 +46,6 @@ describe("parseToolError", () => {
 });
 
 describe("CRITICAL_TOOLS constant", () => {
-  const CRITICAL_TOOLS = new Set([
-    "get_market_breadth",
-    "get_leading_sectors",
-    "get_index_returns",
-  ]);
-
   it("includes market breadth tool", () => {
     expect(CRITICAL_TOOLS.has("get_market_breadth")).toBe(true);
   });

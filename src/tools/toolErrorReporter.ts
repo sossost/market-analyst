@@ -86,7 +86,8 @@ async function findExistingIssue(
   config: { token: string; owner: string; repo: string },
   title: string,
 ): Promise<number | null> {
-  const query = encodeURIComponent(`repo:${config.owner}/${config.repo} is:issue is:open in:title "${title}"`);
+  const escapedTitle = title.replace(/"/g, '\\"');
+  const query = encodeURIComponent(`repo:${config.owner}/${config.repo} is:issue is:open in:title "${escapedTitle}"`);
   const url = `${GITHUB_API_BASE}/search/issues?q=${query}&per_page=1`;
 
   const response = await fetch(url, {

@@ -4,12 +4,19 @@ import { executeTool } from "@/tools/index";
 import { callWithRetry } from "@/debate/callAgent.js";
 import { logger } from "@/lib/logger";
 import type { AgentConfig, AgentResult, ToolError } from "@/tools/types";
+import { reportToolError } from "@/tools/toolErrorReporter";
+
+export const CRITICAL_TOOLS = new Set([
+  "get_market_breadth",
+  "get_leading_sectors",
+  "get_index_returns",
+]);
 
 /**
  * Parse a tool result string for an error JSON pattern.
  * Returns the error message if found, null otherwise.
  */
-function parseToolError(result: string): string | null {
+export function parseToolError(result: string): string | null {
   try {
     const parsed = JSON.parse(result) as Record<string, unknown>;
     if (typeof parsed.error === "string") {
@@ -59,12 +66,6 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
       ? { ...t, cache_control: { type: "ephemeral" as const } }
       : t,
   );
-
-  const CRITICAL_TOOLS = new Set([
-    "get_market_breadth",
-    "get_leading_sectors",
-    "get_index_returns",
-  ]);
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -153,6 +154,9 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
           input: block.input as Record<string, unknown>,
           timestamp: new Date().toISOString(),
         });
+
+        // Fire-and-forget: report to Discord + GitHub for returned error JSONs
+        reportToolError(block.name, toolError, block.input as Record<string, unknown>).catch(() => {});
       }
 
       return {
