@@ -1,6 +1,7 @@
 import { findSectorClusters } from "@/db/repositories/sectorClusterRepository.js";
 import type { SectorClusterRow } from "@/db/repositories/index.js";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
+import { toNum } from "@/lib/utils.js";
 
 /**
  * 업종 클러스터 — 프롬프트 주입용 포맷.
@@ -33,8 +34,8 @@ export function groupSectorClusters(rows: SectorClusterRow[]): SectorCluster[] {
     if (cluster == null) {
       cluster = {
         sector: row.sector,
-        sectorAvgRs: Math.round(parseFloat(row.sector_avg_rs) * 10) / 10,
-        phase2Ratio: Math.round(parseFloat(row.phase2_ratio) * 1000) / 10,
+        sectorAvgRs: Math.round(toNum(row.sector_avg_rs) * 10) / 10,
+        phase2Ratio: Math.round(toNum(row.phase2_ratio) * 1000) / 10,
         stocks: [],
       };
       sectorMap.set(row.sector, cluster);
