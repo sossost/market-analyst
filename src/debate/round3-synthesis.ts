@@ -1,6 +1,6 @@
 import type { LLMProvider } from "./llm/index.js";
 import { logger } from "@/lib/logger";
-import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, MinorityViewPosition, AgentPersona } from "@/types/debate";
+import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, MinorityViewPosition, AgentPersona, Confidence } from "@/types/debate";
 import type { FundamentalScore } from "@/types/fundamental";
 
 const MODERATOR_MAX_TOKENS = 8192;
@@ -411,6 +411,22 @@ function normalizeMinorityView(raw: unknown): MinorityView | null {
 }
 
 /**
+ * sentiment 에이전트의 confidence를 1단계 하향한다.
+ * 적중률 40% 반영 — high→medium, medium→low, low는 유지.
+ */
+const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
+  high: "medium",
+  medium: "low",
+  low: "low",
+};
+
+/**
+ * confidence 자동 하향 대상 페르소나.
+ * 적중률 50% 미만 에이전트를 등록한다.
+ */
+const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
+
+/**
  * thesis 객체의 optional/category 필드를 정규화.
  * 순수 함수 — 원본을 변경하지 않고 새 객체를 반환.
  */
@@ -436,9 +452,27 @@ function normalizeThesisFields(
     }
   }
 
+  // 저적중 에이전트 confidence 자동 하향
+  let confidence = (obj.confidence as string) ?? "low";
+  if (
+    persona != null &&
+    CONFIDENCE_DOWNGRADE_PERSONAS.has(persona) &&
+    VALID_CONFIDENCE.has(confidence)
+  ) {
+    const downgraded = CONFIDENCE_DOWNGRADE[confidence];
+    if (downgraded != null && downgraded !== confidence) {
+      logger.info(
+        "Round3",
+        `${persona}의 thesis confidence 하향: ${confidence} → ${downgraded} (적중률 보정)`,
+      );
+      confidence = downgraded;
+    }
+  }
+
   return {
     ...obj,
     category,
+    confidence,
     nextBottleneck: obj.nextBottleneck ?? null,
     dissentReason: obj.dissentReason ?? null,
     beneficiarySectors: Array.isArray(obj.beneficiarySectors) ? obj.beneficiarySectors : [],
