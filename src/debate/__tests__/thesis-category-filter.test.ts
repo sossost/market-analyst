@@ -180,3 +180,160 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
     expect(result.theses.find((t) => t.agentPersona === "tech")!.category).toBe("structural_narrative");
   });
 });
+
+// ─── sentiment confidence 자동 하향 ─────────────────────────────────────────
+
+describe("sentiment confidence 자동 하향", () => {
+  it("sentiment의 high confidence를 medium으로 하향한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "포지셔닝 과밀 분석",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("medium");
+  });
+
+  it("sentiment의 medium confidence를 low로 하향한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        confidence: "medium",
+        thesis: "자금 로테이션 분석",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("low");
+  });
+
+  it("sentiment의 low confidence는 low를 유지한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        confidence: "low",
+        thesis: "약한 확신 분석",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("low");
+  });
+
+  it("macro의 confidence는 하향하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "macro",
+        category: "short_term_outlook",
+        confidence: "high",
+        thesis: "금리 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("tech의 confidence는 하향하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "AI 인프라 서사",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("geopolitics의 confidence는 하향하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "geopolitics",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "관세 영향 분석",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("confidence 하향 시 로그를 남긴다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "포지셔닝 분석",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    extractThesesFromText(text);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Round3",
+      expect.stringContaining("sentiment의 thesis confidence 하향"),
+    );
+  });
+
+  it("여러 thesis에서 sentiment만 confidence 하향한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "macro",
+        confidence: "high",
+        thesis: "매크로 전망",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        confidence: "high",
+        thesis: "심리 전망",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        confidence: "high",
+        category: "structural_narrative",
+        thesis: "AI 인프라 서사",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(3);
+    expect(result.theses.find((t) => t.agentPersona === "macro")!.confidence).toBe("high");
+    expect(result.theses.find((t) => t.agentPersona === "sentiment")!.confidence).toBe("medium");
+    expect(result.theses.find((t) => t.agentPersona === "tech")!.confidence).toBe("high");
+  });
+});
