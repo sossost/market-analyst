@@ -1,87 +1,15 @@
-import { db, pool } from "@/db/client";
-import { recommendations, recommendationFactors } from "@/db/schema/analyst";
+import { pool } from "@/db/client";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
-import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
-import { validateDate, validateString, validateSymbol, validateNumber, MIN_PHASE, MIN_RS_SCORE, MAX_RS_SCORE, MIN_PRICE } from "./validation";
-import { loadConfirmedRegime, loadPendingRegimes } from "@/debate/regimeStore";
-import { evaluateBearException, tagBearExceptionReason, BEAR_EXCEPTION_TAG } from "./bearExceptionGate";
-import { evaluateLateBullGate, tagLateBullReason, LATE_BULL_TAG } from "./lateBullGate";
+import { validateDate, validateSymbol } from "./validation";
+import {
+  MIN_PHASE,
+  MIN_RS_SCORE,
+} from "./recommendationGates.js";
 import { logger } from "@/lib/logger";
-import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
-import {
-  findActiveRecommendations,
-  findRecentlyClosed,
-  findPhase2Persistence,
-  findPhase2Stability,
-} from "@/db/repositories/recommendationRepository.js";
-import {
-  findFundamentalGrades,
-} from "@/db/repositories/fundamentalRepository.js";
-import {
-  findStockPhaseDetail,
-  findMarketPhase2Ratio,
-} from "@/db/repositories/stockPhaseRepository.js";
-import {
-  findSymbolMeta,
-} from "@/db/repositories/symbolRepository.js";
-import {
-  findSectorRsByName,
-  findIndustryRsByName,
-} from "@/db/repositories/sectorRepository.js";
-import {
-  findLatestClose,
-} from "@/db/repositories/priceRepository.js";
-
-interface RecommendationInput {
-  symbol: string;
-  entry_price: number;
-  phase: number;
-  prev_phase?: number;
-  rs_score: number;
-  sector: string;
-  industry: string;
-  reason: string;
-}
 
 const SUBSTANDARD_TAG = "[기준 미달]";
 const PERSISTENCE_TAG = "[지속성 미확인]";
-
-/** LLM 진입가와 DB 종가의 허용 괴리 비율 (10%) */
-const PRICE_DIVERGENCE_THRESHOLD = 0.1;
-
-/** EARLY_BEAR / BEAR 레짐에서 신규 추천을 전면 차단하는 레짐 집합 */
-const BEAR_REGIMES = new Set(["EARLY_BEAR", "BEAR"]);
-
-/** 동일 symbol의 재추천을 막는 쿨다운 기간 (캘린더일) */
-const COOLDOWN_CALENDAR_DAYS = 7;
-
-/** Phase 2 지속성 판단 기준 기간 (캘린더일) */
-const PHASE2_PERSISTENCE_DAYS = 5;
-
-/**
- * Phase 2 지속성을 충족하는 최소 데이터 포인트 수.
- * 변경 이력:
- * - 2: Phase Exit 6건 발생, 승률 17% (#366)
- * - 3: 지속성 기준 강화로 불안정 Phase 2 진입 차단
- */
-const MIN_PHASE2_PERSISTENCE_COUNT = 3;
-
-/**
- * Phase 2 안정성 판단: 최근 N 거래일 연속 Phase 2 필수.
- * 근거: 90일 추천 중 50%가 진입 1-2일 만에 Phase 3 전환 (#436).
- * 7/8 경계 종목이 하루 만에 조건 깨지는 패턴을 차단한다.
- */
-const PHASE2_STABILITY_DAYS = 3;
-
-/**
- * 펀더멘탈 하드 게이트: SEPA F등급 종목 추천 차단.
- * 근거: 90일 추천 중 Phase Exit 6건(avg 2일), Stop Loss 3건(max PnL -0.28%) —
- * 기술적 Phase 2만으로는 생존율 14%. 최소한의 펀더멘탈 뒷받침 필수 (#449).
- * F = SEPA 기준 전부 미충족. C 이상(기준 1개라도 충족)이면 통과.
- * 등급 없음(데이터 미확보)은 fail-open으로 통과.
- */
-const BLOCKED_FUNDAMENTAL_GRADE = "F";
 
 /**
  * Phase < 2 또는 RS < 60인 종목의 reason에 [기준 미달] 접두사를 추가한다.
@@ -125,53 +53,43 @@ export function tagPersistenceReason(reason: string | null | undefined): string 
   return `${PERSISTENCE_TAG} ${base}`.trim();
 }
 
+interface TodayRecommendationRow {
+  symbol: string;
+  recommendation_date: string;
+  entry_price: string;
+  entry_rs_score: number | null;
+  entry_phase: number;
+  sector: string | null;
+  industry: string | null;
+  reason: string | null;
+  status: string;
+  market_regime: string | null;
+}
 
 /**
- * 에이전트가 추천 종목을 DB에 저장하는 도구.
- * 멱등: 동일 (symbol, date)는 onConflictDoNothing.
+ * ETL이 자동 저장한 오늘의 추천 종목을 조회하는 도구.
+ * scan-recommendation-candidates ETL job이 매일 Phase 2 종목을 자동 스캔하여 저장하므로,
+ * 에이전트는 이 도구로 오늘 저장된 결과를 확인하고 리포트에 활용한다.
  */
 export const saveRecommendations: AgentTool = {
   definition: {
     name: "save_recommendations",
     description:
-      "이번 분석에서 선정한 추천 종목을 DB에 저장합니다. 추천 종목의 성과를 자동 트래킹하기 위해 반드시 호출하세요.",
+      "오늘 ETL이 자동 저장한 추천 종목을 조회합니다. 지정한 symbols가 오늘 관심종목으로 등록됐는지 확인하고 그 결과를 반환합니다. ETL 자동화로 별도 저장 호출 없이 매 거래일 추천이 생성됩니다.",
     input_schema: {
       type: "object" as const,
       properties: {
         date: {
           type: "string",
-          description: "추천일 (YYYY-MM-DD)",
+          description: "조회 기준일 (YYYY-MM-DD)",
         },
-        recommendations: {
+        symbols: {
           type: "array",
-          items: {
-            type: "object",
-            properties: {
-              symbol: { type: "string" },
-              entry_price: {
-                type: "number",
-                description: "진입가 (당일 종가)",
-              },
-              phase: { type: "number" },
-              prev_phase: { type: "number" },
-              rs_score: { type: "number" },
-              sector: { type: "string" },
-              industry: { type: "string" },
-              reason: { type: "string" },
-            },
-            required: [
-              "symbol",
-              "entry_price",
-              "phase",
-              "rs_score",
-              "sector",
-              "industry",
-              "reason",
-            ],
-          },
+          items: { type: "string" },
+          description: "조회할 종목 심볼 목록. 비어 있으면 오늘 저장된 전체 추천을 반환한다.",
         },
       },
-      required: ["date", "recommendations"],
+      required: ["date"],
     },
   },
 
@@ -181,459 +99,68 @@ export const saveRecommendations: AgentTool = {
       return JSON.stringify({ error: "Invalid or missing date" });
     }
 
-    const recs = input.recommendations as RecommendationInput[] | undefined;
-    if (!Array.isArray(recs) || recs.length === 0) {
-      return JSON.stringify({ error: "recommendations must be a non-empty array" });
-    }
+    const rawSymbols = input.symbols as unknown[] | undefined;
+    const symbols: string[] = Array.isArray(rawSymbols)
+      ? rawSymbols
+          .map((s) => validateSymbol(s))
+          .filter((s): s is string => s != null)
+      : [];
 
-    // Phase 1: 레짐 하드 게이트 — confirmed 우선, 없으면 pending fallback
-    // marketRegimeForRecord: 추천 레코드 market_regime 컬럼 저장용 (confirmed + pending fallback)
-    // regimeForGate: Bear Gate 판정 전용 (confirmed만 사용, 미확정 pending으로 추천 차단 금지)
-    let marketRegimeForRecord: string | null = null;
-    let regimeForGate: string | null = null;
-    try {
-      const confirmed = await loadConfirmedRegime();
+    let rows: TodayRecommendationRow[];
 
-      if (confirmed != null) {
-        marketRegimeForRecord = confirmed.regime;
-        regimeForGate = confirmed.regime;
-      } else {
-        // confirmed 레짐 없음 — 가장 최근 pending으로 fallback
-        const pendingRows = await loadPendingRegimes(1);
-        const latestPending = pendingRows[0] ?? null;
-
-        if (latestPending != null) {
-          marketRegimeForRecord = latestPending.regime;
-          // regimeForGate는 null 유지 — 미확정 레짐으로 Bear Gate 발동 금지
-          logger.warn(
-            "Regime",
-            `확정 레짐 없음 — pending 레짐 fallback 적용: ${latestPending.regime} (${latestPending.regimeDate})`,
-          );
-        } else {
-          logger.warn(
-            "Regime",
-            "확정·pending 레짐 모두 없음 — market_regime=null로 저장 (레짐 시스템 초기화 상태)",
-          );
-        }
-      }
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      // 의도적 fail-open: 레짐 조회 실패 시 Bear Gate를 적용하지 않고 진행.
-      // 레짐 DB 장애가 추천 저장 전체를 막지 않도록 설계.
-      logger.error("Regime", `레짐 조회 실패, Bear Gate 미적용: ${reason}`);
-    }
-
-    const isBearRegime = regimeForGate != null && BEAR_REGIMES.has(regimeForGate);
-    const isLateBullRegime = regimeForGate === "LATE_BULL";
-
-    const symbols = recs
-      .map((r) => validateSymbol(r.symbol))
-      .filter((s): s is string => s != null);
-
-    // Phase 2 + Phase 3: 쿨다운·중복 방지·지속성·안정성 4가지 쿼리 병렬 조회
-    const cooldownStart = getDateOffset(date, COOLDOWN_CALENDAR_DAYS);
-    const persistenceStart = getDateOffset(date, PHASE2_PERSISTENCE_DAYS);
-
-    const [
-      activeRows,
-      cooldownRows,
-      persistenceRows,
-      stabilityRows,
-      fundamentalGradeRows,
-    ] = await Promise.all([
-      retryDatabaseOperation(() => findActiveRecommendations(symbols)),
-      retryDatabaseOperation(() => findRecentlyClosed(cooldownStart, symbols)),
-      retryDatabaseOperation(() => findPhase2Persistence(symbols, persistenceStart, date)),
-      retryDatabaseOperation(() => findPhase2Stability(symbols, date, PHASE2_STABILITY_DAYS)),
-      retryDatabaseOperation(() => findFundamentalGrades(symbols, date)),
-    ]);
-    const activeSymbols = new Set(activeRows.map((r) => r.symbol));
-    const cooldownSymbols = new Set(cooldownRows.map((r) => r.symbol));
-    const persistenceMap = new Map(
-      persistenceRows.map((r) => [r.symbol, Number(r.phase2_count)]),
-    );
-    const stableSymbols = new Set(stabilityRows.map((r) => r.symbol));
-    const fundamentalGradeMap = new Map(
-      fundamentalGradeRows.map((r) => [r.symbol, r.grade]),
-    );
-
-    // 진입가 검증: 추천일 종가 사전 일괄 조회
-    const priceRows = await retryDatabaseOperation(() =>
-      findLatestClose(symbols, date),
-    );
-    const dbPriceMap = new Map(
-      priceRows.map((r) => [r.symbol, toNum(r.close)]),
-    );
-
-    let savedCount = 0;
-    let skippedCount = 0;
-    let blockedByRegime = 0;
-    let bearExceptionCount = 0;
-    let blockedByCooldown = 0;
-    let blockedByPhase = 0;
-    let blockedByLowRS = 0;
-    let blockedByOverheatedRS = 0;
-    let blockedByLowPrice = 0;
-    let blockedByPersistence = 0;
-    let blockedByStability = 0;
-    let blockedByLateBull = 0;
-    let lateBullPassCount = 0;
-    let blockedByFundamental = 0;
-
-    for (const rec of recs) {
-      const symbol = validateSymbol(rec.symbol);
-      if (symbol == null) {
-        skippedCount++;
-        continue;
-      }
-
-      // 중복 추천 방지: ACTIVE 상태인 symbol 스킵
-      if (activeSymbols.has(symbol)) {
-        logger.warn("Duplicate", `${symbol}: 이미 ACTIVE 추천 존재, 스킵`);
-        skippedCount++;
-        continue;
-      }
-
-      // Phase 2: 쿨다운 게이트
-      if (cooldownSymbols.has(symbol)) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: 쿨다운 기간(${COOLDOWN_CALENDAR_DAYS}일) 내 CLOSED 이력, 스킵`,
-        );
-        blockedByCooldown++;
-        continue;
-      }
-
-      // Phase 1.5: Bear 레짐 게이트 — 개별 종목 예외 심사
-      let bearExceptionPassed = false;
-      if (isBearRegime) {
-        const exceptionResult = await evaluateBearException({
-          symbol,
-          sector: rec.sector ?? "",
-          date,
-        });
-
-        if (!exceptionResult.passed) {
-          logger.warn(
-            "QualityGate",
-            `${symbol}: 레짐 ${regimeForGate} 차단 — ${exceptionResult.reason}`,
-          );
-          blockedByRegime++;
-          continue;
-        }
-
-        bearExceptionPassed = true;
-        bearExceptionCount++;
-        logger.info(
-          "QualityGate",
-          `${symbol}: 레짐 ${regimeForGate} Bear 예외 통과 — ${exceptionResult.reason}`,
-        );
-      }
-
-      // Phase 1.6: Late Bull 감쇠 게이트 — LATE_BULL 레짐에서 진입 조건 강화 (#508)
-      let lateBullPassed = false;
-      if (isLateBullRegime) {
-        const gateResult = await evaluateLateBullGate({
-          symbol,
-          rsScore: rec.rs_score ?? 0,
-          date,
-        });
-
-        if (!gateResult.passed) {
-          logger.warn(
-            "QualityGate",
-            `${symbol}: 레짐 ${regimeForGate} Late Bull 감쇠 차단 — ${gateResult.reason}`,
-          );
-          blockedByLateBull++;
-          continue;
-        }
-
-        lateBullPassed = true;
-        lateBullPassCount++;
-        logger.info(
-          "QualityGate",
-          `${symbol}: 레짐 ${regimeForGate} Late Bull 감쇠 통과 — ${gateResult.reason}`,
-        );
-      }
-
-      // Phase 2.5a: Phase 하드 게이트 — Phase 2 미만 종목 추천 차단
-      const phase = rec.phase ?? null;
-      if (phase != null && phase < MIN_PHASE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: Phase ${phase} < ${MIN_PHASE}, 추천 차단`,
-        );
-        blockedByPhase++;
-        continue;
-      }
-
-      // Phase 2.5b: RS 하한 하드 게이트 — RS < 60 종목 추천 차단
-      const rsScore = rec.rs_score ?? null;
-      if (rsScore != null && rsScore < MIN_RS_SCORE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: RS ${rsScore} < ${MIN_RS_SCORE}, 추천 차단`,
-        );
-        blockedByLowRS++;
-        continue;
-      }
-
-      // Phase 2.5c: RS 과열 게이트 — RS > 95 종목은 Phase 2 "말기"로 판단, 추천 차단
-      if (rsScore != null && rsScore > MAX_RS_SCORE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: RS ${rsScore} > ${MAX_RS_SCORE} 과열, 추천 차단`,
-        );
-        blockedByOverheatedRS++;
-        continue;
-      }
-
-      const llmPrice = toNum(rec.entry_price);
-      if (llmPrice === 0) {
-        skippedCount++;
-        continue;
-      }
-
-      // Phase 2.7: 저가주 하드 게이트 — $5 미만 penny stock 추천 차단
-      if (llmPrice < MIN_PRICE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: 진입가 $${llmPrice} < $${MIN_PRICE} 저가주, 추천 차단`,
-        );
-        blockedByLowPrice++;
-        continue;
-      }
-
-      // 진입가 2중 방어: DB 종가와 비교 후 교정
-      let entryPrice = llmPrice;
-      const dbPrice = dbPriceMap.get(symbol);
-
-      if (dbPrice == null || dbPrice === 0) {
-        logger.warn(
-          "Price",
-          `${symbol}: daily_prices에 ${date} 종가 없음, LLM 값 ${llmPrice} 사용`,
-        );
-      } else {
-        const divergence = Math.abs(llmPrice - dbPrice) / dbPrice;
-        if (divergence >= PRICE_DIVERGENCE_THRESHOLD) {
-          logger.warn(
-            "Price",
-            `${symbol}: LLM 진입가 ${llmPrice} → DB 종가 ${dbPrice}로 교정`,
-          );
-          entryPrice = dbPrice;
-        }
-      }
-
-      // Bear 예외 / Late Bull 감쇠 태깅
-      let taggedReason: string | null = rec.reason ?? null;
-      if (bearExceptionPassed) {
-        taggedReason = tagBearExceptionReason(taggedReason);
-      }
-      if (lateBullPassed) {
-        taggedReason = tagLateBullReason(taggedReason);
-      }
-
-      // Phase 3: Phase 2 지속성 하드 블록 — 최소 3일 Phase 2 유지 필수
-      const phase2Count = persistenceMap.get(symbol) ?? 0;
-      if (phase2Count < MIN_PHASE2_PERSISTENCE_COUNT) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: Phase 2 지속성 ${phase2Count}일 < 기준 ${MIN_PHASE2_PERSISTENCE_COUNT}일, 추천 차단`,
-        );
-        blockedByPersistence++;
-        continue;
-      }
-
-      // Phase 3.5: Phase 2 안정성 하드 블록 — 최근 N 거래일 연속 Phase 2 필수 (#436)
-      if (!stableSymbols.has(symbol)) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: 최근 ${PHASE2_STABILITY_DAYS}거래일 연속 Phase 2 미충족, 추천 차단`,
-        );
-        blockedByStability++;
-        continue;
-      }
-
-      // Phase 4: 펀더멘탈 하드 게이트 — SEPA F등급 종목 추천 차단 (#449)
-      const fundamentalGrade = fundamentalGradeMap.get(symbol) ?? null;
-      if (fundamentalGrade === BLOCKED_FUNDAMENTAL_GRADE) {
-        logger.warn(
-          "QualityGate",
-          `${symbol}: SEPA 등급 ${fundamentalGrade} — 펀더멘탈 기준 전부 미충족, 추천 차단`,
-        );
-        blockedByFundamental++;
-        continue;
-      }
-
-      // 1. recommendations 테이블 INSERT
-      const insertResult = await retryDatabaseOperation(() =>
-        db
-          .insert(recommendations)
-          .values({
-            symbol,
-            recommendationDate: date,
-            entryPrice: String(entryPrice),
-            entryRsScore: rec.rs_score ?? null,
-            entryPhase: rec.phase ?? 2,
-            entryPrevPhase: rec.prev_phase ?? null,
-            sector: rec.sector ?? null,
-            industry: rec.industry ?? null,
-            reason: taggedReason,
-            marketRegime: marketRegimeForRecord,
-            status: "ACTIVE",
-            currentPrice: String(entryPrice),
-            currentPhase: rec.phase ?? 2,
-            currentRsScore: rec.rs_score ?? null,
-            pnlPercent: "0",
-            maxPnlPercent: "0",
-            daysHeld: 0,
-            lastUpdated: date,
-          })
-          .onConflictDoNothing({
-            target: [recommendations.symbol, recommendations.recommendationDate],
-          }),
+    if (symbols.length > 0) {
+      // 지정 symbols에 대해 오늘 날짜 레코드 조회
+      const result = await retryDatabaseOperation(() =>
+        pool.query<TodayRecommendationRow>(
+          `SELECT symbol, recommendation_date, entry_price::text,
+                  entry_rs_score, entry_phase, sector, industry, reason, status, market_regime
+           FROM recommendations
+           WHERE recommendation_date = $1
+             AND symbol = ANY($2)
+           ORDER BY entry_rs_score DESC NULLS LAST`,
+          [date, symbols],
+        ),
       );
-
-      // onConflictDoNothing returns rowCount 0 when skipped
-      const rowCount = (insertResult as unknown as { rowCount: number }).rowCount ?? 1;
-      if (rowCount === 0) {
-        skippedCount++;
-        continue;
-      }
-
-      // 2. 팩터 스냅샷 저장
-      await saveFactorSnapshot(symbol, date);
-      savedCount++;
-
-      // 3. 기업 분석 리포트 생성 (fire-and-forget)
-      // 리포트 생성 실패가 추천 저장 성공에 영향을 주지 않도록 await 없이 실행
-      runCorporateAnalyst(symbol, date, pool)
-        .then((result) => {
-          if (!result.success) {
-            logger.warn(
-              "CorporateAnalyst",
-              `${symbol} 리포트 생성 실패: ${result.error}`,
-            );
-          }
-        })
-        .catch((err) =>
-          logger.error(
-            "CorporateAnalyst",
-            `${symbol} 예상치 못한 에러: ${String(err)}`,
-          ),
-        );
+      rows = result.rows;
+    } else {
+      // symbols 미지정 — 오늘 저장된 전체 추천 반환
+      const result = await retryDatabaseOperation(() =>
+        pool.query<TodayRecommendationRow>(
+          `SELECT symbol, recommendation_date, entry_price::text,
+                  entry_rs_score, entry_phase, sector, industry, reason, status, market_regime
+           FROM recommendations
+           WHERE recommendation_date = $1
+           ORDER BY entry_rs_score DESC NULLS LAST`,
+          [date],
+        ),
+      );
+      rows = result.rows;
     }
+
+    const found = rows.map((r) => ({
+      symbol: r.symbol,
+      date: r.recommendation_date,
+      entryPrice: r.entry_price,
+      rsScore: r.entry_rs_score,
+      phase: r.entry_phase,
+      sector: r.sector,
+      industry: r.industry,
+      reason: r.reason,
+      status: r.status,
+      marketRegime: r.market_regime,
+    }));
+
+    logger.info(
+      "save_recommendations",
+      `${date} 추천 조회: ${found.length}건 (요청 symbols: ${symbols.length > 0 ? symbols.join(", ") : "전체"})`,
+    );
 
     return JSON.stringify({
       success: true,
-      savedCount,
-      skippedCount,
-      blockedByRegime,
-      bearExceptionCount,
-      blockedByLateBull,
-      lateBullPassCount,
-      blockedByCooldown,
-      blockedByPhase,
-      blockedByLowRS,
-      blockedByOverheatedRS,
-      blockedByLowPrice,
-      blockedByPersistence,
-      blockedByStability,
-      blockedByFundamental,
-      message: `${savedCount}개 저장, ${skippedCount}개 스킵, ${blockedByRegime}개 레짐 차단, ${bearExceptionCount}개 Bear 예외 통과, ${blockedByLateBull}개 Late Bull 차단, ${lateBullPassCount}개 Late Bull 통과, ${blockedByCooldown}개 쿨다운 차단, ${blockedByPhase}개 Phase 미달 차단, ${blockedByLowRS}개 RS 하한 차단, ${blockedByOverheatedRS}개 RS 과열 차단, ${blockedByLowPrice}개 저가주 차단, ${blockedByPersistence}개 지속성 차단, ${blockedByStability}개 안정성 차단, ${blockedByFundamental}개 펀더멘탈 차단`,
+      date,
+      count: found.length,
+      recommendations: found,
+      message: `${date} 기준 ETL 자동 추천 ${found.length}건`,
     });
   },
 };
-
-/**
- * date에서 days만큼 이전 날짜를 계산한다.
- * YYYY-MM-DD 형식으로 반환. 쿨다운·지속성 기간 계산 공용.
- */
-function getDateOffset(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * stock_phases, sector_rs_daily, industry_rs_daily에서 팩터 스냅샷을 가져와 저장.
- */
-async function saveFactorSnapshot(
-  symbol: string,
-  date: string,
-): Promise<void> {
-  // 독립 쿼리 3개 병렬 실행
-  const [stockFactor, symbolInfo, breadthRow] = await Promise.all([
-    retryDatabaseOperation(() => findStockPhaseDetail(symbol, date)),
-    retryDatabaseOperation(() => findSymbolMeta(symbol)),
-    retryDatabaseOperation(() => findMarketPhase2Ratio(date)),
-  ]);
-
-  const marketPhase2Ratio =
-    breadthRow.phase2_ratio != null ? toNum(breadthRow.phase2_ratio) : null;
-
-  // 섹터/업종 팩터 병렬 조회 (symbolInfo 의존)
-  let sectorRs: number | null = null;
-  let sectorGroupPhase: number | null = null;
-  let industryRs: number | null = null;
-  let industryGroupPhase: number | null = null;
-
-  const groupQueries: Promise<void>[] = [];
-
-  if (symbolInfo?.sector != null) {
-    groupQueries.push(
-      retryDatabaseOperation(() =>
-        findSectorRsByName(symbolInfo.sector!, date),
-      ).then((row) => {
-        if (row != null) {
-          sectorRs = toNum(row.avg_rs);
-          sectorGroupPhase = row.group_phase;
-        }
-      }),
-    );
-  }
-
-  if (symbolInfo?.industry != null) {
-    groupQueries.push(
-      retryDatabaseOperation(() =>
-        findIndustryRsByName(symbolInfo.industry!, date),
-      ).then((row) => {
-        if (row != null) {
-          industryRs = toNum(row.avg_rs);
-          industryGroupPhase = row.group_phase;
-        }
-      }),
-    );
-  }
-
-  await Promise.all(groupQueries);
-
-  await retryDatabaseOperation(() =>
-    db
-      .insert(recommendationFactors)
-      .values({
-        symbol,
-        recommendationDate: date,
-        rsScore: stockFactor?.rs_score ?? null,
-        phase: stockFactor?.phase ?? null,
-        ma150Slope: stockFactor?.ma150_slope ?? null,
-        volRatio: stockFactor?.vol_ratio ?? null,
-        volumeConfirmed: stockFactor?.volume_confirmed ?? null,
-        pctFromHigh52w: stockFactor?.pct_from_high_52w ?? null,
-        pctFromLow52w: stockFactor?.pct_from_low_52w ?? null,
-        conditionsMet: stockFactor?.conditions_met ?? null,
-        sectorRs: sectorRs != null ? String(sectorRs) : null,
-        sectorGroupPhase,
-        industryRs: industryRs != null ? String(industryRs) : null,
-        industryGroupPhase,
-        marketPhase2Ratio:
-          marketPhase2Ratio != null ? String(marketPhase2Ratio) : null,
-      })
-      .onConflictDoNothing({
-        target: [
-          recommendationFactors.symbol,
-          recommendationFactors.recommendationDate,
-        ],
-      }),
-  );
-}

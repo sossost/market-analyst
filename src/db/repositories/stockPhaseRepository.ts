@@ -90,6 +90,30 @@ export async function findPhase2Stocks(params: {
 }
 
 /**
+ * 오늘 날짜 Phase 2 종목 전수를 조회한다 (ETL 자동 스캔 전용).
+ * RS/시가총액 필터 없이 순수 Phase 2 전체를 반환한다.
+ * 게이트 로직은 호출부(scan-recommendation-candidates)에서 적용한다.
+ */
+export async function findAllPhase2Stocks(date: string): Promise<StockPhaseRow[]> {
+  const { rows } = await pool.query<StockPhaseRow>(
+    `SELECT
+       sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
+       sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
+       sp.conditions_met,
+       sp.vol_ratio::text, sp.volume_confirmed,
+       s.sector, s.industry
+     FROM stock_phases sp
+     JOIN symbols s ON sp.symbol = s.symbol
+     WHERE sp.date = $1
+       AND sp.phase = 2
+     ORDER BY sp.rs_score DESC`,
+    [date],
+  );
+
+  return rows;
+}
+
+/**
  * Phase 1→2 전환 + 거래량 급증 종목 수를 조회한다.
  */
 export async function countUnusualPhaseStocks(

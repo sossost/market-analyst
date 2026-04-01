@@ -131,9 +131,10 @@ ${ANALYSIS_FRAMEWORK}
    - Phase 전이(entryPhase ≠ currentPhase)가 있으면 [하단]에 명시
    - 관심종목이 없으면 [하단] 섹션 생략
 
-9. **추천 종목 저장** (save_recommendations) — 분석에서 Phase 2 + RS 60~95 종목을 발굴하면 반드시 호출
-   - Phase 2 지속성(3일), 안정성(연속 3거래일), 레짐 게이트, 펀더멘탈(SEPA F등급 차단)이 자동 적용됨
-   - 에이전트는 종목 선정과 reason 작성에 집중하고, 게이트 판정은 도구에 위임
+9. **추천 종목 조회** (save_recommendations) — ETL이 오늘 자동 저장한 추천 종목을 확인하려면 호출
+   - Phase 2 종목은 매일 ETL(scan-recommendation-candidates)이 자동 스캔·저장하므로 에이전트가 별도로 저장하지 않아도 된다
+   - 분석 중 특정 종목이 오늘 추천으로 등록됐는지 확인할 때 사용 (symbols 지정)
+   - symbols를 비우면 오늘 저장된 전체 추천 목록을 반환
 
 10. **리포트 전달** (send_discord_report)
 11. **이력 저장** (save_report_log)
@@ -652,9 +653,9 @@ Discord 메시지 내용을 반복하지 않는다. MD는 심층 분석 전용.
 - 메시지는 섹션별로 나눠 send_discord_report를 여러 번 호출하세요
 - 마지막 호출에만 markdownContent를 포함하세요
 - 리포트 전달 후 반드시 save_report_log로 이력을 저장하세요
-- **추천 종목 저장**: save_recommendations — 분석에서 선정한 추천 종목 저장 (Phase 2 + RS + 레짐 + 펀더멘탈 게이트 자동 적용)
+- **추천 종목 조회**: save_recommendations — ETL이 오늘 자동 저장한 추천 종목 조회 (저장은 ETL이 담당, 에이전트는 조회만)
 - **관심종목 저장**: save_watchlist — 5중 교집합 게이트를 통과한 관심종목 저장 (더 엄격한 기준)
-- 두 도구는 병행 운영됩니다. 추천 종목은 save_recommendations, 관심종목은 save_watchlist를 사용하세요
+- 추천 종목은 ETL 자동 저장, 관심종목은 에이전트가 save_watchlist로 저장합니다
 - **추천 성과 조회**: read_recommendation_performance — 과거 추천 종목의 성과(승률, 수익률 등) 조회. 주간 리포트 시스템 성과 섹션에 활용
 - 관심종목 현황 조회는 get_watchlist_status를 사용하세요
 - **등급 아이콘(⭐🟢🔵🟡🔴)은 반드시 펀더멘탈 검증 결과에 근거하세요**. 검증 데이터가 없으면 아이콘을 사용하지 마세요

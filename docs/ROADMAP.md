@@ -45,6 +45,7 @@
 | 돌파/노이즈 신호 | 기술적 시그널 필터링 (breakout_signals, noise_signals) |
 | 지수 가격 ETL | S&P 500, NASDAQ, DOW, Russell 2000, VIX 일간 가격 (FMP API → `index_prices` 테이블) — #420 |
 | 종목 촉매 데이터 | stock_news(종목 뉴스), earning_calendar(실적 일정), eps_surprises(어닝 서프라이즈) — Phase 2/관심종목 대상, ETL Phase 3.9 병렬 실행 — #456 |
+| 추천 자동화 | scan-recommendation-candidates — Phase 2 전수 스캔 → 7개 게이트 통과 종목을 ETL Phase 3.8에서 자동 저장. 에이전트 호출 누락으로 인한 0건 리스크 제거 (#547) |
 
 **파이프라인:** GitHub Actions + 맥미니 launchd, 일~금 UTC 23:30 (KST 08:30), ~50분 소요.
 
@@ -64,6 +65,9 @@
 
 | 구성 요소 | 설명 |
 |-----------|------|
+| ETL 자동 추천 저장 | `scan-recommendation-candidates` ETL job — Phase 2 전수 스캔 → 게이트 통과 종목 자동 저장 (ETL Phase 3.8) |
+| 게이트 로직 분리 | `recommendationGates.ts` — Phase/RS/가격/지속성/안정성/펀더멘탈 게이트 순수 함수로 추출 (ETL + 도구 공용) |
+| 에이전트 조회 모드 | `save_recommendations` 도구가 저장 → 조회 전환 — ETL 저장 결과를 에이전트가 확인하는 구조 |
 | 추천 기록 | `recommendations` 테이블에 저장 |
 | 성과 추적 | Phase 변화, 가격 변동 자동 업데이트 |
 | 리포트 반영 | 주간 에이전트에 과거 성과 주입 |
