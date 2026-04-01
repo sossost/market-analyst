@@ -19,7 +19,13 @@ import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { clampPercent, validateDate, validateNumber } from "./validation";
 
-const DEFAULT_LIMIT = 10;
+const DEFAULT_INDUSTRY_LIMIT = 10;
+
+/**
+ * 섹터 쿼리 상한. GICS 11개 섹터를 모두 포함하는 안전 상한.
+ * 섹터는 업종과 달리 전체 수가 적으므로 항상 전체를 반환한다.
+ */
+const SECTOR_QUERY_LIMIT = 50;
 
 function mapSectorRow(
   s: SectorRsRow,
@@ -162,7 +168,8 @@ export const getLeadingSectors: AgentTool = {
         },
         limit: {
           type: "number",
-          description: "반환할 섹터 수 (기본 10)",
+          description:
+            "반환할 항목 수. 섹터 모드(daily/weekly)에서는 전체 섹터를 반환하므로 무시됨. 업종 모드(industry)에서만 적용 (기본 10)",
         },
         mode: {
           type: "string",
@@ -180,7 +187,7 @@ export const getLeadingSectors: AgentTool = {
     if (date == null) {
       return JSON.stringify({ error: "Invalid or missing date parameter" });
     }
-    const limit = validateNumber(input.limit, DEFAULT_LIMIT);
+    const industryLimit = validateNumber(input.limit, DEFAULT_INDUSTRY_LIMIT);
     const mode =
       input.mode === "industry"
         ? "industry"
@@ -190,7 +197,7 @@ export const getLeadingSectors: AgentTool = {
 
     if (mode === "industry") {
       const rows = await retryDatabaseOperation(() =>
-        findTopIndustriesGlobal(date, limit),
+        findTopIndustriesGlobal(date, industryLimit),
       );
 
       const industries = rows.map((i: IndustryRsGlobalRow) => ({
@@ -223,9 +230,9 @@ export const getLeadingSectors: AgentTool = {
       });
     }
 
-    // 섹터 RS 랭킹
+    // 섹터 RS 랭킹 — 전체 섹터를 반환 (GICS 11개 섹터 모두 포함)
     const sectorRows = await retryDatabaseOperation(() =>
-      findTopSectors(date, limit),
+      findTopSectors(date, SECTOR_QUERY_LIMIT),
     );
 
     // 각 상위 섹터의 상위 3개 업종
@@ -334,7 +341,7 @@ export const getLeadingSectors: AgentTool = {
     // 전주 섹터 랭킹 조회 — 현재 상위 섹터 + 전주 상위 섹터 모두 포함
     const currentSectorNames = sectorRows.map((s) => s.sector);
     const prevTopRows = await retryDatabaseOperation(() =>
-      findSectorsByDate(prevWeekDate, limit),
+      findSectorsByDate(prevWeekDate, SECTOR_QUERY_LIMIT),
     );
     const allSectorNames = [
       ...new Set([

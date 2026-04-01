@@ -273,6 +273,37 @@ describe("getLeadingSectors", () => {
     expect(parsed.sectors).toHaveLength(1);
   });
 
+  it("daily 모드에서 섹터 쿼리는 LIMIT 50으로 전체 섹터를 조회한다", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [makeSectorRow()] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ prev_day_date: null }] });
+
+    await getLeadingSectors.execute({ date: "2026-03-07" });
+
+    // 첫 번째 쿼리 (findTopSectors)의 두 번째 파라미터가 50이어야 함
+    const firstCallParams = mockQuery.mock.calls[0][1];
+    expect(firstCallParams[1]).toBe(50);
+  });
+
+  it("industry 모드에서 limit 미지정 시 기본 10을 사용한다", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry" });
+
+    const firstCallParams = mockQuery.mock.calls[0][1];
+    expect(firstCallParams[1]).toBe(10);
+  });
+
+  it("industry 모드에서 사용자 지정 limit을 사용한다", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry", limit: 5 });
+
+    const firstCallParams = mockQuery.mock.calls[0][1];
+    expect(firstCallParams[1]).toBe(5);
+  });
+
   it("weekly 모드에서 전주에 없던 신규 섹터는 prevWeekRank가 null", async () => {
     mockQuery
       .mockResolvedValueOnce({
