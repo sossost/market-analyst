@@ -26,8 +26,8 @@ function makeInput(symbol: string = "NVDA"): FundamentalInput {
   return {
     symbol,
     quarters: [
-      { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 35_100_000_000, netIncome: 20_000_000_000, epsDiluted: 1.89, netMargin: 57.0 },
-      { periodEndDate: "2025-09-30", asOfQ: "Q3 2025", revenue: 30_000_000_000, netIncome: 16_000_000_000, epsDiluted: 1.27, netMargin: 53.0 },
+      { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 35_100_000_000, netIncome: 20_000_000_000, epsDiluted: 1.89, netMargin: 57.0, actualEps: null },
+      { periodEndDate: "2025-09-30", asOfQ: "Q3 2025", revenue: 30_000_000_000, netIncome: 16_000_000_000, epsDiluted: 1.27, netMargin: 53.0, actualEps: null },
     ],
   };
 }
@@ -119,7 +119,7 @@ describe("generateStockReport", () => {
       input: {
         symbol: "NVDA",
         quarters: [
-          { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 1_000_000, netIncome: 150_000, epsDiluted: 1.0, netMargin: 15.0 },
+          { periodEndDate: "2025-12-31", asOfQ: "Q4 2025", revenue: 1_000_000, netIncome: 150_000, epsDiluted: 1.0, netMargin: 15.0, actualEps: null },
         ],
       },
       narrative: "분석",

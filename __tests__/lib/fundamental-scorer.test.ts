@@ -11,6 +11,7 @@ import {
   determineGrade,
   calcRankScore,
   promoteTopToS,
+  getEps,
 } from "../../src/lib/fundamental-scorer.js";
 import type {
   QuarterlyData,
@@ -32,6 +33,7 @@ function q(
     revenue: null,
     netIncome: null,
     epsDiluted: null,
+    actualEps: null,
     netMargin: null,
     ...overrides,
   };
@@ -593,6 +595,93 @@ describe("promoteTopToS", () => {
     const result = promoteTopToS(scores);
 
     expect(result).toEqual(scores);
+  });
+});
+
+// ─── getEps — Non-GAAP 우선 ─────────────────────────────────────────
+
+describe("getEps", () => {
+  it("returns actualEps when available (Non-GAAP preferred)", () => {
+    const quarter = q("Q4 2025", "2025-12-31", { epsDiluted: -0.10, actualEps: 0.14 });
+    expect(getEps(quarter)).toBe(0.14);
+  });
+
+  it("falls back to epsDiluted when actualEps is null", () => {
+    const quarter = q("Q4 2025", "2025-12-31", { epsDiluted: 1.50, actualEps: null });
+    expect(getEps(quarter)).toBe(1.50);
+  });
+
+  it("returns null when both are null", () => {
+    const quarter = q("Q4 2025", "2025-12-31", { epsDiluted: null, actualEps: null });
+    expect(getEps(quarter)).toBeNull();
+  });
+});
+
+// ─── Non-GAAP EPS scoring ────────────────────────────────────────────
+
+describe("scoreFundamentals — Non-GAAP EPS", () => {
+  it("LASR: GAAP 적자 but Non-GAAP 흑자 → turnaround 감지", () => {
+    // LASR 사례: GAAP -$0.10 vs Non-GAAP +$0.14
+    const input = makeInput("LASR", [
+      q("Q4 2025", "2025-12-31", { epsDiluted: -0.10, actualEps: 0.14, revenue: 80_000_000, netMargin: 5.0 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: -0.05, actualEps: 0.08, revenue: 75_000_000, netMargin: 4.0 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: -0.12, actualEps: 0.05, revenue: 70_000_000, netMargin: 3.0 }),
+      q("Q1 2025", "2025-03-31", { epsDiluted: -0.15, actualEps: 0.02, revenue: 65_000_000, netMargin: 2.0 }),
+      q("Q4 2024", "2024-12-31", { epsDiluted: -0.25, actualEps: -0.05, revenue: 55_000_000, netMargin: -1.0 }),
+      q("Q3 2024", "2024-09-30", { epsDiluted: -0.30, actualEps: -0.10, revenue: 50_000_000, netMargin: -2.0 }),
+      q("Q2 2024", "2024-06-30", { epsDiluted: -0.35, actualEps: -0.15, revenue: 45_000_000, netMargin: -3.0 }),
+      q("Q1 2024", "2024-03-31", { epsDiluted: -0.40, actualEps: -0.20, revenue: 40_000_000, netMargin: -4.0 }),
+    ]);
+
+    const score = scoreFundamentals(input);
+
+    // Non-GAAP 기준: -0.05 → 0.14 흑자 전환 → EPS 성장 pass
+    expect(score.criteria.epsGrowth.passed).toBe(true);
+    expect(score.criteria.epsGrowth.detail).toContain("Non-GAAP");
+    expect(score.criteria.epsGrowth.detail).toContain("흑자 전환");
+  });
+
+  it("uses GAAP when actualEps is null (backward compatible)", () => {
+    const input = makeInput("AAPL", [
+      q("Q4 2025", "2025-12-31", { epsDiluted: 2.0, revenue: 100_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: 1.8, revenue: 90_000_000_000 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: 1.6, revenue: 85_000_000_000 }),
+      q("Q1 2025", "2025-03-31", { epsDiluted: 1.5, revenue: 80_000_000_000 }),
+      q("Q4 2024", "2024-12-31", { epsDiluted: 1.5, revenue: 78_000_000_000 }),
+      q("Q3 2024", "2024-09-30", { epsDiluted: 1.3, revenue: 70_000_000_000 }),
+      q("Q2 2024", "2024-06-30", { epsDiluted: 1.1, revenue: 65_000_000_000 }),
+      q("Q1 2024", "2024-03-31", { epsDiluted: 1.0, revenue: 60_000_000_000 }),
+    ]);
+
+    const score = scoreFundamentals(input);
+
+    // actualEps가 모두 null이므로 GAAP(epsDiluted) 사용
+    expect(score.criteria.epsGrowth.passed).toBe(true);
+    expect(score.criteria.epsGrowth.detail).not.toContain("Non-GAAP");
+    expect(score.criteria.epsGrowth.detail).toContain("EPS YoY");
+  });
+
+  it("Non-GAAP EPS carries through to acceleration calculation", () => {
+    const input = makeInput("GROW", [
+      // Non-GAAP EPS shows accelerating growth, GAAP is all negative
+      q("Q4 2025", "2025-12-31", { epsDiluted: -0.50, actualEps: 1.50, revenue: 5_000_000_000 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: -0.60, actualEps: 1.20, revenue: 4_500_000_000 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: -0.70, actualEps: 1.00, revenue: 4_200_000_000 }),
+      q("Q1 2025", "2025-03-31", { epsDiluted: -0.80, actualEps: 0.80, revenue: 3_900_000_000 }),
+      q("Q4 2024", "2024-12-31", { epsDiluted: -1.00, actualEps: 0.80, revenue: 3_800_000_000 }),
+      q("Q3 2024", "2024-09-30", { epsDiluted: -1.10, actualEps: 0.70, revenue: 3_500_000_000 }),
+      q("Q2 2024", "2024-06-30", { epsDiluted: -1.20, actualEps: 0.60, revenue: 3_200_000_000 }),
+      q("Q1 2024", "2024-03-31", { epsDiluted: -1.30, actualEps: 0.50, revenue: 3_000_000_000 }),
+    ]);
+
+    const score = scoreFundamentals(input);
+
+    // Non-GAAP: 0.80→1.50 = 87.5% growth → EPS pass
+    expect(score.criteria.epsGrowth.passed).toBe(true);
+    expect(score.criteria.epsGrowth.value).toBeCloseTo(87.5);
+    // acceleration도 Non-GAAP 기준
+    // Q4: 87.5%, Q3: 71.43%, Q2: 66.67% → 87.5 > avg(71.43, 66.67)=69.05 → pass
+    expect(score.criteria.epsAcceleration.passed).toBe(true);
   });
 });
 

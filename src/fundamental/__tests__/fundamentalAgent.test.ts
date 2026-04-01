@@ -36,6 +36,7 @@ const baseInput: FundamentalInput = {
       netIncome: 24_000_000_000,
       epsDiluted: 1.53,
       netMargin: 25.3,
+      actualEps: null,
     },
     {
       periodEndDate: "2024-12-31",
@@ -44,6 +45,7 @@ const baseInput: FundamentalInput = {
       netIncome: 36_330_000_000,
       epsDiluted: 2.4,
       netMargin: 29.2,
+      actualEps: null,
     },
   ],
 };

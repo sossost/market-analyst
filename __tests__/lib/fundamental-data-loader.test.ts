@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { groupBySymbol, type RawRow } from "../../src/lib/fundamental-data-loader.js";
+import { groupBySymbol, mergeEpsSurprises, type RawRow, type EpsSurpriseRow } from "../../src/lib/fundamental-data-loader.js";
 import { scoreFundamentals } from "../../src/lib/fundamental-scorer.js";
+import type { FundamentalInput } from "../../src/types/fundamental.js";
 
 function makeRow(overrides: Partial<RawRow> = {}): RawRow {
   return {
@@ -199,5 +200,85 @@ describe("통합 경로: DB 마진값 → normalizeMargin → scoreFundamentals 
 
     // 소수(0.57)와 퍼센트(57) 모두 normalizeMargin 후 동일한 값이 되어야 함
     expect(decimalScore.rankScore).toBeCloseTo(percentScore.rankScore, 1);
+  });
+});
+
+// ─── mergeEpsSurprises ──────────────────────────────────────────────
+
+describe("mergeEpsSurprises", () => {
+  function makeInputs(symbol: string, asOfQs: string[]): FundamentalInput[] {
+    return [{
+      symbol,
+      quarters: asOfQs.map((asOfQ) => ({
+        periodEndDate: "2025-12-31",
+        asOfQ,
+        revenue: null,
+        netIncome: null,
+        epsDiluted: -0.10,
+        actualEps: null,
+        netMargin: null,
+      })),
+    }];
+  }
+
+  it("merges actualEps by mapping earnings date to fiscal quarter", () => {
+    const inputs = makeInputs("LASR", ["Q4 2025", "Q3 2025", "Q2 2025", "Q1 2025"]);
+    const surprises: EpsSurpriseRow[] = [
+      { symbol: "LASR", actual_date: "2026-02-15", actual_eps: "0.14" },  // → Q4 2025
+      { symbol: "LASR", actual_date: "2025-10-20", actual_eps: "0.08" },  // → Q3 2025
+      { symbol: "LASR", actual_date: "2025-08-05", actual_eps: "0.05" },  // → Q2 2025
+      { symbol: "LASR", actual_date: "2025-05-10", actual_eps: "0.02" },  // → Q1 2025
+    ];
+
+    mergeEpsSurprises(inputs, surprises);
+
+    expect(inputs[0].quarters[0].actualEps).toBe(0.14);
+    expect(inputs[0].quarters[1].actualEps).toBe(0.08);
+    expect(inputs[0].quarters[2].actualEps).toBe(0.05);
+    expect(inputs[0].quarters[3].actualEps).toBe(0.02);
+  });
+
+  it("leaves actualEps null when no matching surprise data", () => {
+    const inputs = makeInputs("AAPL", ["Q4 2025"]);
+    const surprises: EpsSurpriseRow[] = [
+      { symbol: "NVDA", actual_date: "2026-02-15", actual_eps: "1.89" },
+    ];
+
+    mergeEpsSurprises(inputs, surprises);
+
+    expect(inputs[0].quarters[0].actualEps).toBeNull();
+  });
+
+  it("handles null actual_eps rows gracefully", () => {
+    const inputs = makeInputs("LASR", ["Q4 2025"]);
+    const surprises: EpsSurpriseRow[] = [
+      { symbol: "LASR", actual_date: "2026-02-15", actual_eps: null },
+    ];
+
+    mergeEpsSurprises(inputs, surprises);
+
+    expect(inputs[0].quarters[0].actualEps).toBeNull();
+  });
+
+  it("matches FMP DB quarter format (2025Q4)", () => {
+    const inputs: FundamentalInput[] = [{
+      symbol: "LASR",
+      quarters: [{
+        periodEndDate: "2025-12-31",
+        asOfQ: "2025Q4",
+        revenue: null,
+        netIncome: null,
+        epsDiluted: -0.10,
+        actualEps: null,
+        netMargin: null,
+      }],
+    }];
+    const surprises: EpsSurpriseRow[] = [
+      { symbol: "LASR", actual_date: "2026-01-28", actual_eps: "0.14" },
+    ];
+
+    mergeEpsSurprises(inputs, surprises);
+
+    expect(inputs[0].quarters[0].actualEps).toBe(0.14);
   });
 });

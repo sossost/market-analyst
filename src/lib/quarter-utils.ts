@@ -31,3 +31,30 @@ export function periodEndDateToAsOfQ(periodEndDate: string): string {
   const quarter = Math.ceil(month / 3);
   return `Q${quarter} ${yearStr}`;
 }
+
+/**
+ * 어닝 발표일(actualDate) → 보고 분기(asOfQ) 매핑.
+ *
+ * 어닝은 분기 종료 후 1~2개월 뒤에 발표되므로,
+ * 발표월이 속한 분기의 **직전 분기**가 보고 대상이다.
+ *
+ * 발표월 → 보고 분기:
+ *   1~3월 → Q4 전년도
+ *   4~6월 → Q1 당해
+ *   7~9월 → Q2 당해
+ *  10~12월 → Q3 당해
+ */
+export function reportDateToAsOfQ(actualDate: string): string | null {
+  const [yearStr, monthStr] = actualDate.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  if (month <= 3) return `Q4 ${year - 1}`;
+  if (month <= 6) return `Q1 ${year}`;
+  if (month <= 9) return `Q2 ${year}`;
+  return `Q3 ${year}`;
+}

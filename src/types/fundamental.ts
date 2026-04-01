@@ -52,6 +52,9 @@ export interface QuarterlyData {
   netIncome: number | null;
   epsDiluted: number | null;
 
+  // eps_surprises (Non-GAAP) — 있으면 epsDiluted보다 우선
+  actualEps: number | null;
+
   // quarterly_ratios
   netMargin: number | null;
 }
