@@ -202,4 +202,17 @@ describe("buildSynthesisPrompt", () => {
     const earlyIdx = result.indexOf("<early-detection>");
     expect(fundIdx).toBeLessThan(earlyIdx);
   });
+
+  it("short_term_outlook 범위 제한 규칙이 프롬프트에 포함된다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined);
+
+    // 범위 제한 섹션 존재
+    expect(result).toContain("short_term_outlook 범위 제한");
+    // 금지 패턴 예시
+    expect(result).toContain("30일 내 VIX 20 하회");
+    expect(result).toContain("공포탐욕지수 25 이상 회복");
+    // 허용 패턴 예시
+    expect(result).toContain("어떤 조건이 충족되면");
+    expect(result).toContain("조건부 형식");
+  });
 });
