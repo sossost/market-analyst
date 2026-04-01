@@ -648,7 +648,9 @@ Discord 메시지 내용을 반복하지 않는다. MD는 심층 분석 전용.
 - 메시지는 섹션별로 나눠 send_discord_report를 여러 번 호출하세요
 - 마지막 호출에만 markdownContent를 포함하세요
 - 리포트 전달 후 반드시 save_report_log로 이력을 저장하세요
-- 관심종목 저장은 반드시 save_watchlist를 사용하세요 (save_recommendations 아님)
+- **추천 종목 저장**: save_recommendations — 분석에서 선정한 추천 종목 저장 (Phase 2 + RS + 레짐 + 펀더멘탈 게이트 자동 적용)
+- **관심종목 저장**: save_watchlist — 5중 교집합 게이트를 통과한 관심종목 저장 (더 엄격한 기준)
+- 두 도구는 병행 운영됩니다. 추천 종목은 save_recommendations, 관심종목은 save_watchlist를 사용하세요
 - 관심종목 현황 조회는 get_watchlist_status를 사용하세요
 - **등급 아이콘(⭐🟢🔵🟡🔴)은 반드시 펀더멘탈 검증 결과에 근거하세요**. 검증 데이터가 없으면 아이콘을 사용하지 마세요
 - **주간 리포트에서 일간 수치(전일 대비 등락률)를 사용하지 마세요** — 반드시 주간 누적/추이 데이터를 사용하세요

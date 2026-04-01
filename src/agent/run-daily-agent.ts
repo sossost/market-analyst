@@ -17,6 +17,7 @@ import { getPhase1LateStocks } from "@/tools/getPhase1LateStocks";
 import { getRisingRS } from "@/tools/getRisingRS";
 import { searchCatalyst } from "@/tools/searchCatalyst";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
+import { saveRecommendations } from "@/tools/saveRecommendations";
 import { saveReportLogTool } from "@/tools/saveReportLog";
 import {
   createDraftCaptureTool,
@@ -193,6 +194,7 @@ async function main() {
       searchCatalyst,
       getStockDetail,
       getWatchlistStatus,
+      saveRecommendations,
       createDraftCaptureTool(reportDrafts),
       createReportLogCaptureTool(capturedReport),
     ],

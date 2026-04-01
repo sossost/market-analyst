@@ -19,8 +19,8 @@ import { getStockDetail } from "@/tools/getStockDetail";
 import { searchCatalyst } from "@/tools/searchCatalyst";
 import { readReportHistory } from "@/tools/readReportHistory";
 import { saveReportLogTool } from "@/tools/saveReportLog";
-// saveRecommendations, readRecommendationPerformance: 주간 에이전트 도구에서 제거됨.
-// 코드 파일은 ETL 의존성이 있으므로 유지.
+import { saveRecommendations } from "@/tools/saveRecommendations";
+import { readRecommendationPerformance } from "@/tools/readRecommendationPerformance";
 import { saveWatchlist } from "@/tools/saveWatchlist";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
 import { readRegimePerformance } from "@/tools/readRegimePerformance";
@@ -226,6 +226,8 @@ async function main() {
       readRegimePerformance,
       getWatchlistStatus,
       saveWatchlist,
+      saveRecommendations,
+      readRecommendationPerformance,
       createDraftCaptureTool(reportDrafts),
       saveReportLogTool,
     ],
