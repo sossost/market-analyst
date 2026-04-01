@@ -22,9 +22,9 @@ const MIN_QUARTERS_FOR_ACCELERATION = 3;
 const MIN_QUARTERS_FOR_MARGIN = 3;
 const TURNAROUND_SCORE = 200; // 적자→흑자 전환 시 고정 점수
 
-/** Non-GAAP EPS 우선, GAAP 폴백 */
-export function getEps(q: QuarterlyData): number | null {
-  return q.actualEps ?? q.epsDiluted;
+/** Non-GAAP EPS 우선, GAAP 폴백. preferNonGaap=false이면 항상 GAAP 사용 */
+export function getEps(q: QuarterlyData, preferNonGaap: boolean = true): number | null {
+  return preferNonGaap ? (q.actualEps ?? q.epsDiluted) : q.epsDiluted;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────
@@ -133,9 +133,9 @@ function evaluateEpsGrowth(quarters: QuarterlyData[]): CriteriaResult {
     return { passed: false, value: null, detail: "데이터 부족: YoY 비교 대상 없음" };
   }
 
-  const currentEps = getEps(current);
-  const priorEps = getEps(priorYear);
-  const isNonGaap = current.actualEps != null || priorYear.actualEps != null;
+  const isNonGaap = current.actualEps != null && priorYear.actualEps != null;
+  const currentEps = getEps(current, isNonGaap);
+  const priorEps = getEps(priorYear, isNonGaap);
   const epsLabel = isNonGaap ? "EPS(Non-GAAP)" : "EPS";
 
   const growth = calcEpsGrowthYoY(currentEps, priorEps);
@@ -195,9 +195,10 @@ function evaluateEpsAcceleration(quarters: QuarterlyData[]): CriteriaResult {
     const priorYear = findYoYQuarter(quarters, i);
     if (priorYear == null) break;
 
+    const useNonGaap = quarters[i].actualEps != null && priorYear.actualEps != null;
     const growth = calcEpsGrowthYoY(
-      getEps(quarters[i]),
-      getEps(priorYear),
+      getEps(quarters[i], useNonGaap),
+      getEps(priorYear, useNonGaap),
     );
     if (growth == null) break;
 

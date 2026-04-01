@@ -16,7 +16,7 @@ const TAG = "LOAD_EARNINGS_SURPRISES_FMP";
 
 const CONCURRENCY = 4;
 const PAUSE_MS = 150;
-const LIMIT_QUARTERS = 4;
+const LIMIT_QUARTERS = 8;
 
 
 interface FmpEarningsSurpriseRow {
