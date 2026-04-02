@@ -282,6 +282,10 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── daily_reports          → 일간 리포트 (파일→DB 마이그레이션)
 ├── news_archive           → 뉴스 아카이브
 ├── signal_log             → 시그널 로그
+├── market_breadth_daily   → 시장 브레드스 일별 스냅샷 (Phase 분포, A/D ratio, 신고가/신저가, VIX, Fear&Greed)
+├── index_prices           → 주요 지수 일별 가격 (S&P500, NASDAQ, DOW, RUT, VIX)
+├── earning_calendar       → 실적 발표 일정 (FMP)
+├── stock_news             → 종목별 뉴스 (FMP)
 ├── company_profiles       → 기업 프로필 (FMP)
 ├── annual_financials      → 연간 실적 (FMP)
 ├── analyst_estimates      → 애널리스트 추정치 (FMP)
