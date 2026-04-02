@@ -49,6 +49,7 @@ interface NewHighLowResult {
 
 interface VixResult {
   close: number | null;
+  high: number | null;
 }
 
 interface FearGreedResult {
@@ -223,18 +224,21 @@ async function fetchNewHighLow(date: string): Promise<NewHighLowResult> {
   };
 }
 
-async function fetchVixClose(date: string): Promise<VixResult> {
-  const { rows } = await pool.query<{ close: string | null }>(
-    `SELECT close::text FROM index_prices WHERE symbol = '^VIX' AND date = $1 LIMIT 1`,
+async function fetchVixData(date: string): Promise<VixResult> {
+  const { rows } = await pool.query<{ close: string | null; high: string | null }>(
+    `SELECT close::text, high::text FROM index_prices WHERE symbol = '^VIX' AND date = $1 LIMIT 1`,
     [date],
   );
 
   const row = rows[0];
-  if (row == null || row.close == null) {
-    return { close: null };
+  if (row == null) {
+    return { close: null, high: null };
   }
 
-  return { close: toNum(row.close) };
+  return {
+    close: row.close != null ? toNum(row.close) : null,
+    high: row.high != null ? toNum(row.high) : null,
+  };
 }
 
 const FEAR_GREED_FETCH_TIMEOUT_MS = 10_000;
@@ -312,10 +316,10 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
       ? Number((hlData.newHighs / hlData.newLows).toFixed(2))
       : null;
 
-  // 6. VIX 종가 (index_prices에서 조회 — 주말/공휴일이면 null)
+  // 6. VIX 종가 + 고가 (index_prices에서 조회 — 주말/공휴일이면 null)
   const vixData = await retryDatabaseOperation(() =>
-    fetchVixClose(targetDate),
-  ).catch(() => ({ close: null }));
+    fetchVixData(targetDate),
+  ).catch(() => ({ close: null, high: null }));
 
   // 7. Fear & Greed (CNN 비공식 API — 실패 시 null)
   const fearGreedData = await fetchFearGreed();
@@ -340,6 +344,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     newLows: hlData.newLows,
     hlRatio: hlRatio != null ? String(hlRatio) : null,
     vixClose: vixData.close != null ? String(vixData.close) : null,
+    vixHigh: vixData.high != null ? String(vixData.high) : null,
     fearGreedScore: fearGreedData.score,
     fearGreedRating: fearGreedData.rating,
   };
@@ -368,6 +373,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
           newLows: sql`EXCLUDED.new_lows`,
           hlRatio: sql`EXCLUDED.hl_ratio`,
           vixClose: sql`EXCLUDED.vix_close`,
+          vixHigh: sql`EXCLUDED.vix_high`,
           fearGreedScore: sql`EXCLUDED.fear_greed_score`,
           fearGreedRating: sql`EXCLUDED.fear_greed_rating`,
         },
@@ -376,7 +382,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
 
   logger.info(
     TAG,
-    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% vix=${vixData.close ?? "null"} fg=${fearGreedData.score ?? "null"}`,
+    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% vixClose=${vixData.close ?? "null"} vixHigh=${vixData.high ?? "null"} fg=${fearGreedData.score ?? "null"}`,
   );
 }
 

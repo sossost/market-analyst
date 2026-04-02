@@ -1198,6 +1198,7 @@ export const marketBreadthDaily = pgTable("market_breadth_daily", {
   newLows:             integer("new_lows"),
   hlRatio:             numeric("hl_ratio", { precision: 6, scale: 2 }),
   vixClose:            numeric("vix_close", { precision: 6, scale: 2 }),
+  vixHigh:             numeric("vix_high",  { precision: 6, scale: 2 }),
   fearGreedScore:      integer("fear_greed_score"),
   fearGreedRating:     varchar("fear_greed_rating", { length: 30 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

@@ -1,0 +1,1 @@
+ALTER TABLE "market_breadth_daily" ADD COLUMN "vix_high" numeric(6, 2);
