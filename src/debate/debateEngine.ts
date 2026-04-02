@@ -26,6 +26,8 @@ interface DebateConfig {
   agentPerformanceContext?: string;
   /** 조기포착 도구 결과 (Phase1Late, RisingRS, 펀더멘탈가속) — pre-Phase 2 후보 */
   earlyDetectionContext?: string;
+  /** 촉매 데이터 (종목 뉴스, 실적 서프라이즈 비트율, 임박 실적 발표) */
+  catalystContext?: string;
 }
 
 /**
@@ -49,6 +51,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     calibrationContext = {},
     agentPerformanceContext,
     earlyDetectionContext,
+    catalystContext,
   } = config;
   const startTime = Date.now();
 
@@ -85,6 +88,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     calibrationContext,
     fundamentalContext,
     earlyDetectionContext,
+    catalystContext,
   });
 
   const failedInRound1 = experts
@@ -103,6 +107,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     question,
     fundamentalContext,
     earlyDetectionContext,
+    catalystContext,
   });
 
   const activeInRound1 = round1Result.round.outputs.map((o) => o.persona);
@@ -125,6 +130,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     fundamentalContext,
     agentPerformanceContext,
     earlyDetectionContext,
+    catalystContext,
   });
 
   const totalDurationMs = Date.now() - startTime;

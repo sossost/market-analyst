@@ -14,6 +14,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 매크로(GPT-4o)/테크(Gemini 2.5 Flash)/지정학(Claude)/심리(Claude) 4명이 3라운드 토론
    → 멀티 모델 다양성으로 확증편향 구조적 완화 + 외부 API 장애 시 Claude 자동 폴백
    → 조기포착 도구 3종(Phase1Late/RisingRS/펀더멘탈가속) 결과를 Round 1·3에 주입
+   → 촉매 데이터(종목 뉴스/실적 서프라이즈 비트율/임박 실적 발표) 주입 — "왜 지금 이 섹터가 강한가" 근거 강화
    → 수요-공급-병목 프레임으로 구조적 서사 도출
    → N+1 병목 예측: "현재 병목 해소 후 다음 제약은?"
    → 공급 과잉 전환 감지: 병목 해소 → 과잉 전환 조기 포착
@@ -230,6 +231,7 @@ yarn db:studio              # Drizzle Studio UI
 | Causal Analyzer | `causalAnalyzer.ts` | 검증 결과 원인 분석, 패턴 추출 |
 | Session Store | `sessionStore.ts` | 토론 세션 저장, 유사 세션 검색 |
 | Memory Loader | `memoryLoader.ts` | 학습 + 검증 결과 프롬프트 주입 |
+| Catalyst Loader | `catalystLoader.ts` | 종목 뉴스/실적 서프라이즈/임박 실적 발표 → 촉매 컨텍스트 |
 | Promote Learnings | `promote-learnings.ts` | 반복 적중 패턴 → 장기 기억 승격 |
 | Failure Tracker | `collect-failure-patterns.ts` | Phase 2 실패 조건 자동 기록 + 패턴 축적 |
 | Narrative Chain | `narrativeChainService.ts` | 병목 생애주기 추적 (식별→해소→다음 병목) |
