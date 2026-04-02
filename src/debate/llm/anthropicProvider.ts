@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicClient } from "@/lib/anthropic-client";
+import { logger } from "@/lib/logger";
 import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { ConfigurationError, LLMProviderError } from "./types.js";
 import { callWithRetry } from "./retry.js";
@@ -20,13 +21,21 @@ export class AnthropicProvider implements LLMProvider {
   async call(options: LLMCallOptions): Promise<LLMCallResult> {
     const { systemPrompt, userMessage, maxTokens = 4096 } = options;
 
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+
     try {
       const response = await callWithRetry(
         () =>
           this.client.messages.create({
             model: this.model,
             max_tokens: maxTokens,
-            system: systemPrompt,
+            system: systemBlocks,
             messages: [{ role: "user", content: userMessage }],
           }),
         "AnthropicProvider",
@@ -36,11 +45,21 @@ export class AnthropicProvider implements LLMProvider {
         (block): block is Anthropic.TextBlock => block.type === "text",
       );
 
+      const usage = response.usage as unknown as Record<string, number>;
+      const cacheCreation = usage.cache_creation_input_tokens ?? 0;
+      const cacheRead = usage.cache_read_input_tokens ?? 0;
+
+      if (cacheCreation > 0 || cacheRead > 0) {
+        logger.info("AnthropicProvider", `Cache — creation: ${cacheCreation}, read: ${cacheRead}`);
+      }
+
       return {
         content: textBlocks.map((b) => b.text).join("\n"),
         tokensUsed: {
           input: response.usage.input_tokens,
           output: response.usage.output_tokens,
+          ...(cacheCreation > 0 && { cacheCreation }),
+          ...(cacheRead > 0 && { cacheRead }),
         },
       };
     } catch (err) {
