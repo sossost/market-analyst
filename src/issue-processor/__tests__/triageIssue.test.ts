@@ -2,7 +2,6 @@
  * triageIssue.ts — 사전 트리아지 단위 테스트
  *
  * 테스트 대상:
- * - isCeoManualIssue: CEO 수동 이슈 판별
  * - buildTriagePrompt: 프롬프트 빌드
  * - parseTriageOutput: JSON 출력 파싱
  * - triageIssue: 전체 트리아지 흐름 (CLI 모킹)
@@ -10,7 +9,6 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  isCeoManualIssue,
   buildTriagePrompt,
   parseTriageOutput,
 } from '../triageIssue.js'
@@ -47,32 +45,6 @@ function createIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
     ...overrides,
   }
 }
-
-// ---------------------------------------------------------------------------
-// isCeoManualIssue
-// ---------------------------------------------------------------------------
-
-describe('isCeoManualIssue', () => {
-  it('라벨이 없는 이슈는 CEO 수동 이슈로 판별한다', () => {
-    expect(isCeoManualIssue([])).toBe(true)
-  })
-
-  it('strategic-review 라벨이 있으면 자동 이슈로 판별한다', () => {
-    expect(isCeoManualIssue(['strategic-review'])).toBe(false)
-  })
-
-  it('report-feedback 라벨이 있으면 자동 이슈로 판별한다', () => {
-    expect(isCeoManualIssue(['report-feedback'])).toBe(false)
-  })
-
-  it('자동 라벨이 아닌 다른 라벨만 있으면 CEO 수동 이슈로 판별한다', () => {
-    expect(isCeoManualIssue(['P1: high', 'enhancement'])).toBe(true)
-  })
-
-  it('자동 라벨과 다른 라벨이 혼재하면 자동 이슈로 판별한다', () => {
-    expect(isCeoManualIssue(['P1: high', 'strategic-review'])).toBe(false)
-  })
-})
 
 // ---------------------------------------------------------------------------
 // buildTriagePrompt
@@ -402,55 +374,7 @@ describe('triageIssue', () => {
     expect(result.comment).toBe('정보 부족')
   })
 
-  it('CEO 수동 이슈는 SKIP 판정이어도 PROCEED로 강제한다', async () => {
-    const { execFile } = await import('node:child_process')
-    const mockExecFile = vi.mocked(execFile)
-
-    const cliOutput = JSON.stringify({
-      verdict: 'SKIP',
-      goalAlignment: 'NEUTRAL',
-      invalidation: null,
-      feasibility: false,
-      comment: 'CEO 이슈 분석',
-    })
-
-    mockExecFile.mockImplementation((_cmd, _args, _options, callback) => {
-      const cb = callback as (error: null, stdout: string, stderr: string) => void
-      cb(null, cliOutput, '')
-      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
-    })
-
-    const { triageIssue } = await import('../triageIssue.js')
-    // labels 비어 있음 → CEO 수동 이슈
-    const result = await triageIssue(createIssue({ labels: [] }))
-
-    expect(result.verdict).toBe('PROCEED')
-    expect(result.comment).toBe('CEO 이슈 분석') // 코멘트는 유지
-  })
-
-  it('CEO 수동 이슈의 ESCALATE도 PROCEED로 강제한다', async () => {
-    const { execFile } = await import('node:child_process')
-    const mockExecFile = vi.mocked(execFile)
-
-    const cliOutput = JSON.stringify({
-      verdict: 'ESCALATE',
-      comment: '판단 불가',
-    })
-
-    mockExecFile.mockImplementation((_cmd, _args, _options, callback) => {
-      const cb = callback as (error: null, stdout: string, stderr: string) => void
-      cb(null, cliOutput, '')
-      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
-    })
-
-    const { triageIssue } = await import('../triageIssue.js')
-    const result = await triageIssue(createIssue({ labels: ['P1: high'] }))
-
-    expect(result.verdict).toBe('PROCEED')
-    expect(result.comment).toBe('판단 불가')
-  })
-
-  it('CEO 수동 이슈의 PROCEED는 그대로 유지한다', async () => {
+  it('라벨 없는 이슈도 PROCEED 판정은 그대로 반환한다', async () => {
     const { execFile } = await import('node:child_process')
     const mockExecFile = vi.mocked(execFile)
 
