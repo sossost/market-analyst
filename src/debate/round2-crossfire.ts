@@ -13,6 +13,8 @@ interface Round2Input {
   fundamentalContext?: string;
   /** 조기포착 도구 결과 — pre-Phase 2 후보의 교차검증용 */
   earlyDetectionContext?: string;
+  /** 촉매 데이터 (종목 뉴스, 실적 서프라이즈, 임박 실적 발표) */
+  catalystContext?: string;
 }
 
 interface Round2Result {
@@ -26,6 +28,7 @@ export function buildCrossfirePrompt(
   question: string,
   fundamentalContext?: string,
   earlyDetectionContext?: string,
+  catalystContext?: string,
 ): string {
   const othersAnalysis = round1Outputs
     .filter((o) => o.persona !== currentPersona)
@@ -84,6 +87,11 @@ ${othersAnalysis}
     prompt += `\n\n---\n\n<early-detection>\n## 조기포착 후보 (pre-Phase 2)\n\n아래는 아직 Phase 2에 진입하지 않았으나, 조기 전환 신호가 감지된 종목입니다.\n다른 애널리스트의 이 종목들에 대한 평가를 검증하고, 펀더멘탈 근거가 부족한 경우 지적하세요.\n\n${earlyDetectionContext}\n</early-detection>`;
   }
 
+  // 촉매 데이터 조건부 추가
+  if (catalystContext != null && catalystContext.length > 0) {
+    prompt += `\n\n---\n\n<catalyst-data>\n## 촉매 데이터 (뉴스/실적)\n\n아래 촉매 데이터를 참조하여 다른 애널리스트의 섹터 강세 판단 근거를 교차검증하세요.\n실적 서프라이즈 비트율과 뉴스 헤드라인이 해당 섹터/종목의 thesis를 뒷받침하는지 확인하세요.\n\n${catalystContext}\n</catalyst-data>`;
+  }
+
   return prompt;
 }
 
@@ -93,7 +101,7 @@ ${othersAnalysis}
  * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound2(input: Round2Input): Promise<Round2Result> {
-  const { getProvider, experts, round1Outputs, question, fundamentalContext, earlyDetectionContext } = input;
+  const { getProvider, experts, round1Outputs, question, fundamentalContext, earlyDetectionContext, catalystContext } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -116,7 +124,7 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
     const results = await Promise.allSettled(
       batch.map(async (expert) => {
         const persona = expert.name as AgentPersona;
-        const userMessage = buildCrossfirePrompt(persona, round1Outputs, question, fundamentalContext, earlyDetectionContext);
+        const userMessage = buildCrossfirePrompt(persona, round1Outputs, question, fundamentalContext, earlyDetectionContext, catalystContext);
         const provider = getProvider(expert.model);
         const result = await provider.call({
           systemPrompt: expert.systemPrompt,

@@ -36,6 +36,7 @@ import { loadFundamentalData } from "@/lib/fundamental-data-loader";
 import { scoreFundamentals, promoteTopToS } from "@/lib/fundamental-scorer";
 import { formatFundamentalContext } from "@/debate/round3-synthesis";
 import { loadEarlyDetectionContext } from "@/debate/earlyDetectionLoader";
+import { loadCatalystContext } from "@/debate/catalystLoader";
 // extractDailyInsight는 insightExtractor에서 관리 — 순환 참조 방지를 위해 분리
 export { extractDailyInsight } from "@/debate/insightExtractor";
 
@@ -456,10 +457,11 @@ async function main() {
   const marketDataContext = formatMarketSnapshot(marketSnapshot);
   logger.info("MarketData", `Loaded ${marketDataContext.length} chars (${marketSnapshot.sectors.length} sectors, ${marketSnapshot.newPhase2Stocks.length} new Phase 2, ${marketSnapshot.indices.length} indices)`);
 
-  // Phase 2 종목 심볼 추출 → 펀더멘탈 데이터 로드 + 조기포착 후보 로드 (병렬)
-  const [fundamentalContext, earlyDetectionContext] = await Promise.all([
+  // Phase 2 종목 심볼 추출 → 펀더멘탈 데이터 + 조기포착 후보 + 촉매 데이터 로드 (병렬)
+  const [fundamentalContext, earlyDetectionContext, catalystContext] = await Promise.all([
     loadFundamentalContextSafely(marketSnapshot),
     loadEarlyDetectionContext(debateDate),
+    loadCatalystContext(marketSnapshot, debateDate),
   ]);
 
   // 2.5. 기존 ACTIVE thesis 검증 (시장 데이터 기반) — 만료 전에 먼저 검증
@@ -633,6 +635,7 @@ async function main() {
     calibrationContext: perAgentCalibration,
     agentPerformanceContext,
     earlyDetectionContext,
+    catalystContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);
