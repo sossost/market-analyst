@@ -20,18 +20,6 @@ const TRIAGE_TIMEOUT_MS = 8 * 60 * 1_000 // 8분
 const MAX_BUFFER = 10 * 1024 * 1024 // 10MB
 const MAX_STDOUT_LOG_LENGTH = 2_000
 
-/** 자동 생성 이슈를 식별하는 라벨. 이 라벨이 없으면 CEO 수동 이슈로 간주. */
-const AUTO_GENERATED_LABELS: readonly string[] = ['strategic-review', 'report-feedback'] as const
-
-/**
- * CEO가 수동으로 만든 이슈인지 판별한다.
- * 자동 시스템이 생성하는 이슈에는 반드시 strategic-review 또는 report-feedback 라벨이 붙어 있다.
- * 이 라벨이 하나도 없으면 CEO 수동 이슈.
- */
-export function isCeoManualIssue(labels: string[]): boolean {
-  return !labels.some((label) => AUTO_GENERATED_LABELS.includes(label))
-}
-
 /**
  * 트리아지 프롬프트를 빌드한다.
  */
@@ -168,13 +156,10 @@ const PROCEED_FALLBACK = {
  * 이슈를 사전 트리아지한다.
  *
  * Claude CLI --print 모드로 이슈를 분석하여 PROCEED / SKIP / ESCALATE 판정을 반환한다.
- * CEO 수동 이슈는 분석 코멘트는 생성하되 항상 PROCEED로 강제한다.
  * 에러 발생 시 PROCEED로 폴백 (기존 동작 보존).
  */
 export async function triageIssue(issue: GitHubIssue): Promise<TriageResult> {
-  const isCeoIssue = isCeoManualIssue(issue.labels)
-
-  logger.info(TAG, `트리아지 시작: #${issue.number} "${issue.title}" (CEO수동=${isCeoIssue})`)
+  logger.info(TAG, `트리아지 시작: #${issue.number} "${issue.title}"`)
 
   try {
     const prompt = buildTriagePrompt(issue)
@@ -213,12 +198,6 @@ export async function triageIssue(issue: GitHubIssue): Promise<TriageResult> {
     if (parsed == null) {
       logger.warn(TAG, `#${issue.number}: 트리아지 출력 파싱 실패 — PROCEED 폴백\nstdout: ${stdout.slice(0, MAX_STDOUT_LOG_LENGTH)}`)
       return PROCEED_FALLBACK
-    }
-
-    // CEO 수동 이슈는 분석 코멘트는 유지하되 항상 PROCEED로 강제
-    if (isCeoIssue && parsed.verdict !== 'PROCEED') {
-      logger.info(TAG, `#${issue.number}: CEO 수동 이슈 — ${parsed.verdict} → PROCEED 강제`)
-      return { verdict: 'PROCEED', comment: parsed.comment }
     }
 
     logger.info(TAG, `#${issue.number}: 트리아지 완료 — ${parsed.verdict}`)
