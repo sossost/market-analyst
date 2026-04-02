@@ -5,6 +5,13 @@ import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { ConfigurationError, LLMProviderError } from "./types.js";
 import { callWithRetry } from "./retry.js";
 
+type CacheableUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
+
 export class AnthropicProvider implements LLMProvider {
   private readonly client: Anthropic;
   private readonly model: string;
@@ -45,7 +52,7 @@ export class AnthropicProvider implements LLMProvider {
         (block): block is Anthropic.TextBlock => block.type === "text",
       );
 
-      const usage = response.usage as unknown as Record<string, number>;
+      const usage = response.usage as unknown as CacheableUsage;
       const cacheCreation = usage.cache_creation_input_tokens ?? 0;
       const cacheRead = usage.cache_read_input_tokens ?? 0;
 
@@ -63,7 +70,7 @@ export class AnthropicProvider implements LLMProvider {
         },
       };
     } catch (err) {
-      if (err instanceof Error && err.name === "ConfigurationError") throw err;
+      if (err instanceof ConfigurationError) throw err;
       throw new LLMProviderError(
         `Anthropic API call failed: ${err instanceof Error ? err.message : String(err)}`,
         err,

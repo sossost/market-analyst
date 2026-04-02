@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AnthropicProvider } from "../anthropicProvider.js";
 import type { LLMCallOptions } from "../types.js";
 
 const CALL_OPTIONS: LLMCallOptions = {
@@ -20,15 +19,22 @@ function makeSuccessResponse(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const createSpy = vi.fn();
+
+vi.mock("@/lib/anthropic-client", () => ({
+  getAnthropicClient: () => ({ messages: { create: createSpy } }),
+}));
+
 describe("AnthropicProvider — 프롬프트 캐싱", () => {
   beforeEach(() => {
     process.env.ANTHROPIC_API_KEY = "test-key";
+    createSpy.mockReset();
   });
 
   it("system 파라미터가 TextBlockParam[] 형태로 전달된다", async () => {
+    const { AnthropicProvider } = await import("../anthropicProvider.js");
     const provider = new AnthropicProvider("claude-sonnet-4-20250514");
-    const createSpy = vi.fn().mockResolvedValue(makeSuccessResponse());
-    (provider as any).client = { messages: { create: createSpy } };
+    createSpy.mockResolvedValue(makeSuccessResponse());
 
     await provider.call(CALL_OPTIONS);
 
@@ -43,11 +49,11 @@ describe("AnthropicProvider — 프롬프트 캐싱", () => {
   });
 
   it("mock response에 cache_creation_input_tokens: 500 포함 시 tokensUsed.cacheCreation === 500", async () => {
+    const { AnthropicProvider } = await import("../anthropicProvider.js");
     const provider = new AnthropicProvider("claude-sonnet-4-20250514");
-    const createSpy = vi.fn().mockResolvedValue(
+    createSpy.mockResolvedValue(
       makeSuccessResponse({ cache_creation_input_tokens: 500 }),
     );
-    (provider as any).client = { messages: { create: createSpy } };
 
     const result = await provider.call(CALL_OPTIONS);
 
@@ -56,11 +62,11 @@ describe("AnthropicProvider — 프롬프트 캐싱", () => {
   });
 
   it("mock response에 cache_read_input_tokens: 300 포함 시 tokensUsed.cacheRead === 300", async () => {
+    const { AnthropicProvider } = await import("../anthropicProvider.js");
     const provider = new AnthropicProvider("claude-sonnet-4-20250514");
-    const createSpy = vi.fn().mockResolvedValue(
+    createSpy.mockResolvedValue(
       makeSuccessResponse({ cache_read_input_tokens: 300 }),
     );
-    (provider as any).client = { messages: { create: createSpy } };
 
     const result = await provider.call(CALL_OPTIONS);
 
@@ -69,9 +75,9 @@ describe("AnthropicProvider — 프롬프트 캐싱", () => {
   });
 
   it("mock response에 캐시 필드 없을 때 cacheCreation/cacheRead 모두 undefined", async () => {
+    const { AnthropicProvider } = await import("../anthropicProvider.js");
     const provider = new AnthropicProvider("claude-sonnet-4-20250514");
-    const createSpy = vi.fn().mockResolvedValue(makeSuccessResponse());
-    (provider as any).client = { messages: { create: createSpy } };
+    createSpy.mockResolvedValue(makeSuccessResponse());
 
     const result = await provider.call(CALL_OPTIONS);
 
@@ -80,11 +86,11 @@ describe("AnthropicProvider — 프롬프트 캐싱", () => {
   });
 
   it("cache_creation_input_tokens: 0 일 때 cacheCreation은 undefined (0 미포함)", async () => {
+    const { AnthropicProvider } = await import("../anthropicProvider.js");
     const provider = new AnthropicProvider("claude-sonnet-4-20250514");
-    const createSpy = vi.fn().mockResolvedValue(
+    createSpy.mockResolvedValue(
       makeSuccessResponse({ cache_creation_input_tokens: 0 }),
     );
-    (provider as any).client = { messages: { create: createSpy } };
 
     const result = await provider.call(CALL_OPTIONS);
 
@@ -92,11 +98,11 @@ describe("AnthropicProvider — 프롬프트 캐싱", () => {
   });
 
   it("input/output 토큰은 항상 반환된다", async () => {
+    const { AnthropicProvider } = await import("../anthropicProvider.js");
     const provider = new AnthropicProvider("claude-sonnet-4-20250514");
-    const createSpy = vi.fn().mockResolvedValue(
+    createSpy.mockResolvedValue(
       makeSuccessResponse({ cache_creation_input_tokens: 500, cache_read_input_tokens: 100 }),
     );
-    (provider as any).client = { messages: { create: createSpy } };
 
     const result = await provider.call(CALL_OPTIONS);
 

@@ -1,14 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { logger } from "@/lib/logger";
 import { DEBATE_TOOLS, executeDebateTool } from "./braveSearch.js";
-
+import { callWithRetry } from "./llm/retry.js";
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
 const MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 const MAX_TOOL_ROUNDS = 3;
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 15_000; // 429 시 15초부터 시작
+
+type CacheableUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
 
 export interface AgentCallResult {
   content: string;
@@ -18,33 +23,6 @@ export interface AgentCallResult {
     cacheCreation?: number;
     cacheRead?: number;
   };
-}
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-/**
- * Rate limit (429) 대응 exponential backoff 재시도.
- * 15s → 30s → 60s 간격으로 최대 3회 재시도.
- */
-export async function callWithRetry(
-  fn: () => Promise<Anthropic.Message>,
-): Promise<Anthropic.Message> {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      const isRateLimit =
-        (err instanceof Error && err.message.includes("429")) ||
-        (err instanceof Error && "status" in err && (err as any).status === 429);
-
-      if (!isRateLimit || attempt === MAX_RETRIES - 1) throw err;
-
-      const delay = BASE_DELAY_MS * 2 ** attempt;
-      logger.warn("CallAgent", `Rate limited, retry ${attempt + 1}/${MAX_RETRIES} after ${(delay / 1000).toFixed(0)}s`);
-      await sleep(delay);
-    }
-  }
-  throw new Error("Unreachable");
 }
 
 /**
@@ -79,19 +57,21 @@ export async function callAgent(
 
   // 도구 없이 단일 호출
   if (!useTools) {
-    const response = await callWithRetry(() =>
-      client.messages.create({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system: systemBlocks,
-        messages,
-      }),
+    const response = await callWithRetry(
+      () =>
+        client.messages.create({
+          model: MODEL,
+          max_tokens: maxTokens,
+          system: systemBlocks,
+          messages,
+        }),
+      "CallAgent",
     );
     const textBlocks = response.content.filter(
       (block): block is Anthropic.TextBlock => block.type === "text",
     );
 
-    const usage = response.usage as unknown as Record<string, number>;
+    const usage = response.usage as unknown as CacheableUsage;
     const cacheCreation = usage.cache_creation_input_tokens ?? 0;
     const cacheRead = usage.cache_read_input_tokens ?? 0;
 
@@ -113,20 +93,22 @@ export async function callAgent(
   let lastTextContent = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await callWithRetry(() =>
-      client.messages.create({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system: systemBlocks,
-        tools: DEBATE_TOOLS,
-        messages,
-      }),
+    const response = await callWithRetry(
+      () =>
+        client.messages.create({
+          model: MODEL,
+          max_tokens: maxTokens,
+          system: systemBlocks,
+          tools: DEBATE_TOOLS,
+          messages,
+        }),
+      "CallAgent",
     );
 
     totalInput += response.usage.input_tokens;
     totalOutput += response.usage.output_tokens;
 
-    const usage = response.usage as unknown as Record<string, number>;
+    const usage = response.usage as unknown as CacheableUsage;
     totalCacheCreation += usage.cache_creation_input_tokens ?? 0;
     totalCacheRead += usage.cache_read_input_tokens ?? 0;
 
