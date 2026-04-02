@@ -101,6 +101,7 @@ function setupDailyMocks(overrides?: {
   };
 
   mockQuery
+    .mockResolvedValueOnce({ rows: [] }) // findMarketBreadthSnapshot → null → 폴백
     .mockResolvedValueOnce(makePhaseRows(o.phaseCounts)) // Phase 분포
     .mockResolvedValueOnce(makePrevPhase2Row(o.prevPhase2, o.prevTotal)) // 전일 Phase2
     .mockResolvedValueOnce(makeRsRow(o.avgRs)) // 평균 RS
@@ -189,12 +190,13 @@ function setupWeeklyMocks(overrides?: {
 
   mockQuery
     .mockResolvedValueOnce(makeWeeklyDateRows(dates)) // 1) 날짜 목록
-    .mockResolvedValueOnce(makeWeeklyTrendRows(trend)) // 2) trend
-    .mockResolvedValueOnce(makeTransitionRow(o.transitions)) // 3) 전환
-    .mockResolvedValueOnce(makePhaseRows(o.phaseCounts)) // 4) phase 분포
-    .mockResolvedValueOnce(makeAdRow(o.adv, o.dec, o.unch)) // 5) A/D
-    .mockResolvedValueOnce(makeHlRow(o.highs, o.lows)) // 6) 신고가/신저가
-    .mockResolvedValueOnce(makeSectorRows(o.sectors)); // 7) 섹터
+    .mockResolvedValueOnce({ rows: [] }) // 2) findMarketBreadthSnapshots → 빈배열 → 폴백
+    .mockResolvedValueOnce(makeWeeklyTrendRows(trend)) // 3) trend (폴백)
+    .mockResolvedValueOnce(makeTransitionRow(o.transitions)) // 4) 전환 (폴백)
+    .mockResolvedValueOnce(makePhaseRows(o.phaseCounts)) // 5) phase 분포 (폴백)
+    .mockResolvedValueOnce(makeAdRow(o.adv, o.dec, o.unch)) // 6) A/D (폴백)
+    .mockResolvedValueOnce(makeHlRow(o.highs, o.lows)) // 7) 신고가/신저가 (폴백)
+    .mockResolvedValueOnce(makeSectorRows(o.sectors)); // 8) 섹터
 }
 
 // --- tests ---

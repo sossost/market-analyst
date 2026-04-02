@@ -231,6 +231,32 @@ export interface DataDateRow {
   date: string | null;
 }
 
+// ─── market_breadth_daily ─────────────────────────────────────────────────────
+
+export interface MarketBreadthDailyRow {
+  date: string;
+  total_stocks: number;
+  phase1_count: number;
+  phase2_count: number;
+  phase3_count: number;
+  phase4_count: number;
+  phase2_ratio: string;
+  phase2_ratio_change: string | null;
+  phase1_to2_count_5d: number | null;
+  market_avg_rs: string | null;
+  advancers: number | null;
+  decliners: number | null;
+  unchanged: number | null;
+  ad_ratio: string | null;
+  new_highs: number | null;
+  new_lows: number | null;
+  hl_ratio: string | null;
+  vix_close: string | null;
+  fear_greed_score: number | null;
+  fear_greed_rating: string | null;
+  created_at: string;
+}
+
 // ─── priceRepository ─────────────────────────────────────────────────────────
 
 export interface PriceRow {

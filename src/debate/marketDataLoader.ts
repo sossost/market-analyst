@@ -14,7 +14,9 @@ import {
   findLatestDataDate,
   findPrevDayDate,
   findIndustryDrilldown,
+  findMarketBreadthSnapshot,
 } from "@/db/repositories/index.js";
+import type { MarketBreadthAdRow, MarketBreadthHlRow } from "@/db/repositories/types.js";
 import { buildPhaseTransitionDrilldown } from "@/tools/getLeadingSectors";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -167,9 +169,39 @@ async function loadPhase2Stocks(date: string): Promise<{
 }
 
 /**
- * Load market breadth from stock_phases.
+ * Load market breadth snapshot.
+ * market_breadth_daily 테이블에서 단일 조회를 먼저 시도하고,
+ * 없으면 기존 집계 쿼리로 폴백한다.
  */
 async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | null> {
+  // 스냅샷 히트: 단순 조회
+  const snapshot = await findMarketBreadthSnapshot(date).catch(() => null);
+
+  if (snapshot != null) {
+    const phaseDistribution: Record<string, number> = {
+      phase1: snapshot.phase1_count,
+      phase2: snapshot.phase2_count,
+      phase3: snapshot.phase3_count,
+      phase4: snapshot.phase4_count,
+    };
+
+    return {
+      totalStocks: snapshot.total_stocks,
+      phaseDistribution,
+      phase2Ratio: clampPercent(toNum(snapshot.phase2_ratio), "breadth:phase2Ratio"),
+      phase2RatioChange: snapshot.phase2_ratio_change != null
+        ? toNum(snapshot.phase2_ratio_change)
+        : 0,
+      marketAvgRs: snapshot.market_avg_rs != null ? toNum(snapshot.market_avg_rs) : 0,
+      advancers: snapshot.advancers,
+      decliners: snapshot.decliners,
+      adRatio: snapshot.ad_ratio != null ? toNum(snapshot.ad_ratio) : null,
+      newHighs: snapshot.new_highs,
+      newLows: snapshot.new_lows,
+    };
+  }
+
+  // 폴백: 기존 집계 쿼리 사용 (스냅샷 없을 때)
   const phaseRows = await findMarketBreadthPhaseDistribution(date);
 
   if (phaseRows.length === 0) return null;
@@ -181,19 +213,15 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   const phase2Count = phaseDistribution.phase2 ?? 0;
   const phase2RatioRaw = total > 0 ? (phase2Count / total) * 100 : 0;
 
-  // Previous day comparison
   const prevRow = await findMarketBreadthPrevPhase2(date);
   const prevTotal = toNum(prevRow.total_count);
   const prevPhase2 = toNum(prevRow.phase2_count);
   const prevPhase2RatioRaw = prevTotal > 0 ? (prevPhase2 / prevTotal) * 100 : 0;
 
-  // Market avg RS
   const rsRow = await findMarketBreadthAvgRs(date);
 
-  // A/D ratio (상승/하락 종목수)
-  // graceful degradation: .catch 패턴 호출부에서 유지
   const adRows = await findMarketBreadthAdvanceDecline(date)
-    .catch(() => [] as { advancers: string; decliners: string }[]);
+    .catch(() => [] as MarketBreadthAdRow[]);
 
   const advancers = adRows.length > 0 ? toNum(adRows[0].advancers) : null;
   const decliners = adRows.length > 0 ? toNum(adRows[0].decliners) : null;
@@ -202,10 +230,8 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
       ? Number((advancers / decliners).toFixed(2))
       : null;
 
-  // 52주 신고가/신저가
-  // graceful degradation: .catch 패턴 호출부에서 유지
   const hlRows = await findMarketBreadthNewHighLow(date)
-    .catch(() => [] as { new_highs: string; new_lows: string }[]);
+    .catch(() => [] as MarketBreadthHlRow[]);
 
   const newHighs = hlRows.length > 0 ? toNum(hlRows[0].new_highs) : null;
   const newLows = hlRows.length > 0 ? toNum(hlRows[0].new_lows) : null;
