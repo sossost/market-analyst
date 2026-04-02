@@ -54,7 +54,7 @@
 
 | 구성 요소 | 설명 |
 |-----------|------|
-| Agent Loop | Claude API + 16개 도구, 일간/주간 분리 |
+| Agent Loop | Claude API + 18개 도구, 일간/주간 분리 |
 | 리뷰 에이전트 | 리포트 품질 검증 파이프라인 (Claude Code CLI 기반 QA) |
 | 조건부 발송 | 품질 미달 시 발송 차단 + bull-bias 감지 |
 | 딜리버리 | Discord + Gist, 일간/주간 스케줄 |
@@ -77,9 +77,9 @@
 
 | 구성 요소 | 설명 |
 |-----------|------|
-| 4 애널리스트 | 매크로(GPT-4o), 테크(Gemini 2.0 Flash), 지정학(Claude), 심리(Claude) |
+| 4 애널리스트 | 매크로(GPT-4o), 테크(Gemini 2.5 Flash), 지정학(Claude), 심리(Claude) |
 | 3라운드 | 독립분석 → 교차검증(반박 필수) → 모더레이터(Claude) 종합 |
-| LLM Provider | 추상화 레이어 (`src/agent/debate/llm/`) + FallbackProvider |
+| LLM Provider | 추상화 레이어 (`src/debate/llm/`) + FallbackProvider |
 | 폴백 | Claude 계열: ClaudeCliProvider(Max 구독, $0) 우선 → AnthropicProvider API 폴백. 외부 API(GPT-4o/Gemini) 장애 시 Claude 자동 폴백 + warn 로그 |
 | 뉴스 사전 수집 | Brave Search로 애널리스트별 뉴스 주입 |
 | 조기포착 주입 | Phase1Late/RisingRS/펀더멘탈가속 결과를 Round 1·3에 주입 (#414) |
@@ -413,7 +413,7 @@ Wave 2a/2b: 서사 확장 — Done (PR #98, #101)
   ├── LLM Provider 추상화 (Anthropic/OpenAI/Gemini) ✓
   ├── FallbackProvider (Claude: CLI→API 폴백, 외부 API: Claude 폴백) ✓
   ├── ClaudeCliProvider 우선 — 토론 엔진 + 리뷰 에이전트 전체 API 비용 $0 (PR #257~Phase2) ✓
-  ├── macro → GPT-4o, tech → Gemini 2.0 Flash ✓
+  ├── macro → GPT-4o, tech → Gemini 2.5 Flash ✓
   └── Claude Sonnet 4.6 업그레이드 (PR #231) ✓
   |
   v
@@ -492,7 +492,7 @@ Phase 1은 "LLM이 추천한 종목의 수익률"을 직접 판정했다. Phase 
 
 | 지표 | 현재 | 3개월 목표 | 측정 방법 | 측정 가능 시점 |
 |------|------|-----------|----------|---------------|
-| 테스트 커버리지 | 1,701 tests / 108 files | 유지 | `yarn test` | 즉시 |
+| 테스트 커버리지 | 2,704 tests / 161 files | 유지 | `yarn test` | 즉시 |
 | 초입 포착 도구 전환율 | Phase1 후기 41.9%, RS상승 20.3% | 교집합 50%+ | 검증 스크립트 | 즉시 |
 | Thesis 적중률 | 4/4 (표본 부족) | 50%+ | CONFIRMED / (CONFIRMED + INVALIDATED) | thesis 20건+ 검증 완료 후 (~4주) |
 | 활성 학습 수 | 0건 | 10개+ | `agent_learnings` 테이블 | thesis 적중 패턴 3회+ 반복 시 (~2개월) |

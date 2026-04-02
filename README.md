@@ -2,7 +2,7 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 207 TS files · **Frontend** 184 TS/TSX files · **Tests** 2,704 · **Open Issues** 17
+> **Backend** 206 TS files · **Frontend** 184 TS/TSX files · **Tests** 2,704 · **Open Issues** 11
 
 ## How It Works
 
@@ -11,7 +11,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석
 
 2. 멀티 모델 애널리스트 토론 (매일 22:00 UTC)
-   → 매크로(GPT-4o)/테크(Gemini)/지정학(Claude)/심리(Claude) 4명이 3라운드 토론
+   → 매크로(GPT-4o)/테크(Gemini 2.5 Flash)/지정학(Claude)/심리(Claude) 4명이 3라운드 토론
    → 멀티 모델 다양성으로 확증편향 구조적 완화 + 외부 API 장애 시 Claude 자동 폴백
    → 조기포착 도구 3종(Phase1Late/RisingRS/펀더멘탈가속) 결과를 Round 1·3에 주입
    → 수요-공급-병목 프레임으로 구조적 서사 도출
@@ -88,7 +88,7 @@ cp .env.example .env  # 환경변수 설정
 DATABASE_URL=postgresql://...               # Supabase 연결
 ANTHROPIC_API_KEY=sk-ant-...                # Claude API
 OPENAI_API_KEY=sk-...                       # GPT-4o (매크로 애널리스트)
-GOOGLE_GENERATIVE_AI_API_KEY=AI...          # Gemini 2.0 Flash (테크 애널리스트)
+GOOGLE_GENERATIVE_AI_API_KEY=AI...          # Gemini 2.5 Flash (테크 애널리스트)
 DISCORD_WEBHOOK_URL=https://...             # 일간 리포트 채널
 DISCORD_WEEKLY_WEBHOOK_URL=https://...      # 주간 리포트 채널
 DISCORD_STOCK_REPORT_WEBHOOK_URL=https://...  # S등급 종목 리포트 채널
@@ -136,7 +136,7 @@ yarn fe:lint                # 프론트엔드 린트
 yarn fe:e2e                 # E2E 테스트 (Playwright)
 
 # 테스트
-yarn test                   # 전체 테스트 (2,704 tests)
+yarn test                   # 전체 테스트 (161 test files)
 yarn test:watch             # 워치 모드
 yarn typecheck              # 타입 체크
 
@@ -203,12 +203,10 @@ yarn db:studio              # Drizzle Studio UI
 | `searchCatalyst` | O | O | Brave Search 뉴스 기반 카탈리스트 |
 | `readReportHistory` | | O | 과거 리포트 이력 (중복 방지) |
 | `readRecommendationPerformance` | | O | 추천 성과 트래킹 (주간: 신규/종료/Phase 이탈 집계) |
-| `readActiveTheses` | O | O | 현재 ACTIVE thesis 목록 (토론 엔진 생성) |
-| `readLearnings` | O | O | 에이전트 장기 기억 (검증된 원칙 + 경계 패턴) |
 | `getWatchlistStatus` | O | O | 관심종목 현황 + Phase 궤적 (일간: 현재 상태, 주간: 90일 궤적) |
 | `saveWatchlist` | | O | 관심종목 DB 저장 |
 | `readRegimePerformance` | | O | 레짐별 신호 성과 통계 (BULL/BEAR/LATE_BULL 등) |
-| `saveRecommendations` | | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
+| `saveRecommendations` | O | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
 | `saveReportLog` | O | O | 리포트 결과 저장 |
 | `sendDiscordReport` | — | — | Discord + Gist 리포트 발송 (리뷰 파이프라인 내부 전용) |
 
@@ -314,7 +312,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Runtime | Node.js 20+ (ESM) |
 | Language | TypeScript (strict) |
 | Package Manager | Yarn (Classic 1.x) |
-| AI | Claude Sonnet 4.6, GPT-4o, Gemini 2.0 Flash (멀티 모델 토론) |
+| AI | Claude Sonnet 4.6, GPT-4o, Gemini 2.5 Flash (멀티 모델 토론) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
 | Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR |
 | Auth | Supabase Auth (Magic Link) |
@@ -380,7 +378,7 @@ src/
 │   └── narrativeChainService.ts  # 병목 체인 추적
 ├── corporate-analyst/       # 기업 애널리스트 (종목 심층 분석 + 정량 목표주가)
 ├── fundamental/             # SEPA 펀더멘탈 검증
-├── tools/                   # 에이전트 도구 (19개)
+├── tools/                   # 에이전트 도구 (18개 + 내부 유틸 2개)
 ├── issue-processor/         # 자율 이슈 처리 (Claude Code CLI)
 ├── pr-reviewer/             # 자동 PR 리뷰 (Strategic + Code 병렬 리뷰어)
 ├── etl/                     # 데이터 파이프라인
