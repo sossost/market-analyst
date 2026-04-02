@@ -54,9 +54,9 @@
 }
 
 판단 기준:
-- hasIssue = true 조건: totalScore ≤ 32 OR factConsistency < 7 OR (bullBias < 5 OR structure < 5 OR novelty < 5)
-- novelty가 null이면 totalScore는 나머지 3항목 합산으로만 판단 (24점 이하면 hasIssue)
-- 모든 점수 ≥ 7이고 totalScore ≥ 33이면 hasIssue = false
+- hasIssue = true 조건: factConsistency < 7 OR bullBias < 7 OR structure < 7 OR novelty < 7
+- novelty가 null이면 나머지 3항목 모두 ≥ 7이면 hasIssue = false (21점 이하면 hasIssue)
+- 모든 점수 ≥ 7이면 hasIssue = false
 
 issueTitle 형식 (반드시 준수):
 - 형식: [일간 QA] YYYY-MM-DD — {핵심 1줄 요약}
@@ -70,10 +70,10 @@ issueBody 형식 (반드시 아래 구조를 준수):
 | 항목 | 점수 | 기준 |
 |------|------|------|
 | 팩트 일관성 | X/10 | 7 미만 시 이슈 |
-| bull-bias | X/10 | 5 미만 시 이슈 |
-| 구조/가독성 | X/10 | 5 미만 시 이슈 |
-| 전일 대비 변화 | X/10 또는 N/A | 5 미만 시 이슈 |
-| **총점** | **X/40** | **32 이하 시 이슈** |
+| bull-bias | X/10 | 7 미만 시 이슈 |
+| 구조/가독성 | X/10 | 7 미만 시 이슈 |
+| 전일 대비 변화 | X/10 또는 N/A | 7 미만 시 이슈 |
+| **총점** | **X/40** | **항목별 기준 적용** |
 
 ## 감점 근거
 
