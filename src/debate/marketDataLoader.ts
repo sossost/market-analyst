@@ -1,6 +1,7 @@
 import { clampPercent } from "@/tools/validation";
 import { logger } from "@/lib/logger";
-import { MIN_MARKET_CAP } from "@/lib/constants";
+import { MIN_MARKET_CAP, CNN_FEAR_GREED_URL, CNN_FEAR_GREED_REFERER } from "@/lib/constants";
+import { toNum } from "@/etl/utils/common";
 import { pool } from "@/db/client";
 import {
   findSectorSnapshot,
@@ -87,12 +88,6 @@ export interface MarketSnapshot {
   fearGreed: FearGreedSnapshot | null;
   /** Phase 전환 섹터의 업종 드릴다운 (전환 섹터가 없으면 undefined) */
   phaseTransitionDrilldown?: ReturnType<typeof buildPhaseTransitionDrilldown>;
-}
-
-function toNum(val: string | null | undefined): number {
-  if (val == null) return 0;
-  const n = Number(val);
-  return Number.isNaN(n) ? 0 : n;
 }
 
 /**
@@ -290,7 +285,7 @@ async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
     if (existing == null) {
       bySymbol.set(row.symbol, { close: Number(row.close), prevClose: null });
     } else if (existing.prevClose == null) {
-      existing.prevClose = Number(row.close);
+      bySymbol.set(row.symbol, { ...existing, prevClose: Number(row.close) });
     }
   }
 
@@ -319,19 +314,16 @@ async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
  */
 async function fetchFearGreed(): Promise<FearGreedSnapshot | null> {
   try {
-    const response = await fetch(
-      "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-          Referer: "https://edition.cnn.com/markets/fear-and-greed",
-          Accept: "application/json",
-        },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    const response = await fetch(CNN_FEAR_GREED_URL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        Referer: CNN_FEAR_GREED_REFERER,
+        Accept: "application/json",
       },
-    );
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
-    if (!response.ok) return null;
+    if (response.ok === false) return null;
 
     const data = await response.json();
     const fg = data?.fear_and_greed;

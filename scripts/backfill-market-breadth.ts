@@ -23,11 +23,12 @@ interface Args {
 }
 
 const DATE_FORMAT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_BACKFILL_LIMIT = 9_999;
 
 function parseArgs(): Args {
   const args = process.argv.slice(2);
   let from: string | null = null;
-  let limit = 9999;
+  let limit = DEFAULT_BACKFILL_LIMIT;
   let dryRun = false;
 
   for (let i = 0; i < args.length; i++) {

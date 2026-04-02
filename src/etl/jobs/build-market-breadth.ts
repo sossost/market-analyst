@@ -8,6 +8,7 @@ import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { CNN_FEAR_GREED_URL, CNN_FEAR_GREED_REFERER } from "@/lib/constants";
 
 const TAG = "BUILD_MARKET_BREADTH";
 
@@ -236,7 +237,6 @@ async function fetchVixClose(date: string): Promise<VixResult> {
   return { close: toNum(row.close) };
 }
 
-const CNN_FEAR_GREED_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata";
 const FEAR_GREED_FETCH_TIMEOUT_MS = 10_000;
 
 async function fetchFearGreed(): Promise<FearGreedResult> {
@@ -244,13 +244,13 @@ async function fetchFearGreed(): Promise<FearGreedResult> {
     const response = await fetch(CNN_FEAR_GREED_URL, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-        Referer: "https://edition.cnn.com/markets/fear-and-greed",
+        Referer: CNN_FEAR_GREED_REFERER,
         Accept: "application/json",
       },
       signal: AbortSignal.timeout(FEAR_GREED_FETCH_TIMEOUT_MS),
     });
 
-    if (!response.ok) return { score: null, rating: null };
+    if (response.ok === false) return { score: null, rating: null };
 
     const data = await response.json();
     const fg = data?.fear_and_greed;
