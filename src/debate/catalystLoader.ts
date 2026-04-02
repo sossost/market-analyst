@@ -84,11 +84,12 @@ function sanitizeForPrompt(text: string): string {
  */
 export async function fetchPhase2News(
   phase2Symbols: string[],
+  baseDate: string,
   lookbackDays: number = NEWS_LOOKBACK_DAYS,
 ): Promise<StockNewsRow[]> {
   if (phase2Symbols.length === 0) return [];
 
-  const cutoffDate = new Date();
+  const cutoffDate = new Date(baseDate);
   cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
   const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
@@ -100,6 +101,7 @@ export async function fetchPhase2News(
       FROM stock_news
       WHERE symbol = ANY(${phase2Symbols})
         AND published_date >= ${cutoffStr}
+        AND published_date <= ${baseDate}
     ) ranked
     WHERE rn <= ${MAX_NEWS_PER_SYMBOL}
     ORDER BY symbol, published_date DESC
@@ -120,11 +122,12 @@ export async function fetchPhase2News(
  */
 export async function fetchSectorBeatRates(
   phase2Symbols: string[],
+  baseDate: string,
   lookbackDays: number = SURPRISE_LOOKBACK_DAYS,
 ): Promise<SectorBeatRate[]> {
   if (phase2Symbols.length === 0) return [];
 
-  const cutoffDate = new Date();
+  const cutoffDate = new Date(baseDate);
   cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
   const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
@@ -139,6 +142,7 @@ export async function fetchSectorBeatRates(
     JOIN symbols s ON s.symbol = e.symbol
     WHERE e.symbol = ANY(${phase2Symbols})
       AND e.actual_date >= ${cutoffStr}
+      AND e.actual_date <= ${baseDate}
       AND e.actual_eps IS NOT NULL
       AND e.estimated_eps IS NOT NULL
       AND e.actual_eps ~ '^-?[0-9]+(\.[0-9]+)?$'
@@ -343,8 +347,8 @@ export async function loadCatalystContext(
 
   try {
     const [news, sectorBeatRates, upcomingEarnings] = await Promise.all([
-      fetchPhase2News(uniqueSymbols),
-      fetchSectorBeatRates(uniqueSymbols),
+      fetchPhase2News(uniqueSymbols, debateDate),
+      fetchSectorBeatRates(uniqueSymbols, debateDate),
       fetchUpcomingEarnings(uniqueSymbols, debateDate),
     ]);
 
