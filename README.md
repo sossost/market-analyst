@@ -2,7 +2,7 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 206 TS files · **Frontend** 184 TS/TSX files · **Tests** 2,704 · **Open Issues** 11
+> **Backend** 206 TS files · **Tests** 2,704 · **Open Issues** 11 · **Frontend** → control-tower 레포로 이관
 
 ## How It Works
 
@@ -128,14 +128,6 @@ yarn agent:qa               # 주간 QA 분석
 yarn agent:corporate-analyst  # 기업 애널리스트 수동 실행
 yarn agent:issue-processor  # 자율 이슈 처리 (Claude Code CLI)
 
-# Frontend
-yarn fe:dev                 # 개발 서버
-yarn fe:build               # 프로덕션 빌드
-yarn fe:test                # 프론트엔드 테스트
-yarn fe:typecheck           # 프론트엔드 타입 체크
-yarn fe:lint                # 프론트엔드 린트
-yarn fe:e2e                 # E2E 테스트 (Playwright)
-
 # 테스트
 yarn test                   # 전체 테스트 (161 test files)
 yarn test:watch             # 워치 모드
@@ -180,12 +172,12 @@ yarn db:studio              # Drizzle Studio UI
                     │ Discord+Gist │
                     └──────┬───────┘
                            │
-               ┌───────────┼───────────┐
-               │           │           │
-        ┌──────▼──┐  ┌─────▼────┐  ┌──▼───────┐
-        │Supabase │  │ Frontend │  │ Auto     │
-        │   (DB)  │  │Dashboard │  │Issue Proc│
-        └─────────┘  └──────────┘  └──────────┘
+               ┌───────────┘
+               │
+        ┌──────▼──┐  ┌──────────┐
+        │Supabase │  │ Auto     │
+        │   (DB)  │  │Issue Proc│
+        └─────────┘  └──────────┘
 ```
 
 ### Agent Tools
