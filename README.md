@@ -290,6 +290,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | 작업 | 스케줄 (KST) | 내용 |
 |------|-------------|------|
 | ETL Daily | 08:30 화~토 | ETL 4단계 → 일간 에이전트 → 리포트 검증 |
+| ETL Weekly | 08:00 일 | quarterly_financials + quarterly_ratios 주간 갱신 |
 | Debate Daily | 07:00 화~금 | 애널리스트 토론 → thesis 저장 |
 | Agent Weekly | 10:00 토 | 주간 에이전트 + 펀더멘탈 검증 |
 | QA Weekly | 12:00 토 | 주간 QA 분석 |
