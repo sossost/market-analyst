@@ -39,8 +39,8 @@ describe("calculateAgentPerformance", () => {
     expect(result[0].invalidated).toBe(1);
     expect(result[0].expired).toBe(1);
     expect(result[0].active).toBe(1);
-    // hitRate = 2 / (2 + 1) = 0.6667
-    expect(result[0].hitRate).toBeCloseTo(0.6667, 3);
+    // hitRate = 2 / (2 + 1 + 1) = 0.5  (EXPIRED included in denominator)
+    expect(result[0].hitRate).toBeCloseTo(0.5, 3);
   });
 
   it("calculates stats for 4 personas mixed", () => {
@@ -99,22 +99,69 @@ describe("calculateAgentPerformance", () => {
     expect(macro.byConfidence["high"]).toEqual({
       total: 3,
       confirmed: 2,
+      invalidated: 1,
+      expired: 0,
       hitRate: 2 / 3,
     });
     expect(macro.byConfidence["low"]).toEqual({
       total: 2,
       confirmed: 0,
+      invalidated: 2,
+      expired: 0,
       hitRate: 0,
     });
   });
 
-  it("returns hitRate 0 when no resolved theses", () => {
+  it("includes EXPIRED in denominator for hitRate", () => {
     const theses: ThesisRow[] = [
-      makeThesis({ status: "ACTIVE" }),
+      makeThesis({ status: "CONFIRMED" }),
+      makeThesis({ status: "CONFIRMED" }),
+      makeThesis({ status: "CONFIRMED" }),
+      makeThesis({ status: "INVALIDATED" }),
+      makeThesis({ status: "EXPIRED" }),
       makeThesis({ status: "EXPIRED" }),
     ];
 
     const result = calculateAgentPerformance(theses);
+
+    // hitRate = 3 / (3 + 1 + 2) = 0.5
+    expect(result[0].hitRate).toBeCloseTo(0.5, 3);
+    expect(result[0].confirmed).toBe(3);
+    expect(result[0].invalidated).toBe(1);
+    expect(result[0].expired).toBe(2);
+  });
+
+  it("includes EXPIRED in byConfidence hitRate", () => {
+    const theses: ThesisRow[] = [
+      makeThesis({ confidence: "high", status: "CONFIRMED" }),
+      makeThesis({ confidence: "high", status: "EXPIRED" }),
+      makeThesis({ confidence: "high", status: "EXPIRED" }),
+    ];
+
+    const result = calculateAgentPerformance(theses);
+    const highConf = result[0].byConfidence["high"];
+
+    // hitRate = 1 / (1 + 0 + 2) = 0.3333
+    expect(highConf.hitRate).toBeCloseTo(0.3333, 3);
+  });
+
+  it("returns hitRate 0 when only ACTIVE theses", () => {
+    const theses: ThesisRow[] = [
+      makeThesis({ status: "ACTIVE" }),
+    ];
+
+    const result = calculateAgentPerformance(theses);
+    expect(result[0].hitRate).toBe(0);
+  });
+
+  it("counts EXPIRED-only as resolved with hitRate 0", () => {
+    const theses: ThesisRow[] = [
+      makeThesis({ status: "EXPIRED" }),
+      makeThesis({ status: "EXPIRED" }),
+    ];
+
+    const result = calculateAgentPerformance(theses);
+    // hitRate = 0 / (0 + 0 + 2) = 0
     expect(result[0].hitRate).toBe(0);
   });
 });
@@ -124,14 +171,23 @@ describe("summarizePerformance", () => {
     expect(summarizePerformance([])).toBe("집계 대상 thesis 없음");
   });
 
-  it("returns message when no resolved theses", () => {
+  it("returns message when no resolved theses (only ACTIVE)", () => {
     const stats = calculateAgentPerformance([
       makeThesis({ status: "ACTIVE" }),
-      makeThesis({ agentPersona: "tech", status: "EXPIRED" }),
     ]);
 
     const summary = summarizePerformance(stats);
     expect(summary).toContain("검증 완료된 thesis 없음");
+  });
+
+  it("includes EXPIRED-only agents in ranking", () => {
+    const stats = calculateAgentPerformance([
+      makeThesis({ agentPersona: "tech", status: "EXPIRED" }),
+    ]);
+
+    const summary = summarizePerformance(stats);
+    // EXPIRED counts as resolved, so tech should appear in the summary
+    expect(summary).toContain("tech");
   });
 
   it("identifies best and worst performers", () => {

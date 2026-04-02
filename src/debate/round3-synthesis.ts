@@ -370,10 +370,13 @@ const VALID_CATEGORIES = new Set<string>([
 /**
  * 페르소나별 허용 카테고리 맵.
  * 맵에 없는 페르소나는 모든 카테고리 허용.
- * sentiment: short_term_outlook 적중률 40% (15건 resolved) — 방향성 예측 차단.
+ * short_term_outlook 적중률 39% (EXPIRED 포함 시 28%) — 전 에이전트 방향성 예측 차단.
+ * #561: sentiment 차단, #563: macro/geopolitics 확대.
  */
 const ALLOWED_CATEGORIES_PER_PERSONA: Partial<Record<AgentPersona, Set<ThesisCategory>>> = {
   sentiment: new Set<ThesisCategory>(["structural_narrative", "sector_rotation"]),
+  macro: new Set<ThesisCategory>(["structural_narrative", "sector_rotation"]),
+  geopolitics: new Set<ThesisCategory>(["structural_narrative", "sector_rotation"]),
 };
 
 const CATEGORY_FALLBACK: Record<ThesisCategory, ThesisCategory> = {
@@ -422,7 +425,9 @@ const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
 
 /**
  * confidence 자동 하향 대상 페르소나.
- * 적중률 50% 미만 에이전트를 등록한다.
+ * 전체 적중률 50% 미만 에이전트를 등록한다.
+ * macro(60%), geopolitics(62.5%)는 전체 적중률이 50% 이상이므로 대상 아님.
+ * 이들은 카테고리 차단(ALLOWED_CATEGORIES_PER_PERSONA)으로 short_term_outlook만 억제.
  */
 const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
 
