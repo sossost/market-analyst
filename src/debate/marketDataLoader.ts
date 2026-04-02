@@ -243,7 +243,7 @@ async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
       SELECT symbol, date, close,
         ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
       FROM index_prices
-      WHERE symbol = ANY($1)
+      WHERE symbol = ANY($1::text[])
         AND date <= $2
     ) t
     WHERE rn <= 2
