@@ -20,6 +20,7 @@ PREFIX="com.market-analyst"
 
 PLISTS=(
   "com.market-analyst.etl-daily"
+  "com.market-analyst.etl-weekly"
   "com.market-analyst.agent-weekly"
   "com.market-analyst.qa-weekly"
   "com.market-analyst.log-cleanup"
@@ -65,6 +66,7 @@ install_agents() {
   echo ""
   echo "launchd 스케줄 등록 완료:"
   echo "  ETL Daily:    KST 07:00 화-토 (ETL → 토론 → 일간보고서)"
+  echo "  ETL Weekly:   KST 08:00 일 (분기재무 + 비율)"
   echo "  Agent Weekly: KST 10:00 토"
   echo "  QA Weekly:    KST 12:00 토"
   echo "  Log Cleanup:  KST 09:00 일"
