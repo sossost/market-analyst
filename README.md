@@ -256,7 +256,7 @@ yarn db:studio              # Drizzle Studio UI
 | Thesis 총 건수 | 축적 중 | 200건+ | 서사 카테고리 분리 적용 |
 | 학습 승격 | 축적 중 | 10건+ | 3회+ 적중 패턴 필요 |
 | 실패 패턴 | 축적 중 | 5건+ | N-1e 배포 완료, 데이터 수집 중 |
-| 프론트엔드 | 리포트/토론 아카이브 | 대시보드 확장 | Next.js 16 + Supabase Auth |
+| 대시보드 | → control-tower 레포 | — | 프론트엔드 분리 완료 |
 | 자동화 스케줄 | 9개 launchd 작업 | 안정 운영 | 매일 36회+ 자동 트리거 |
 
 **핵심 추적 질문:** 서사-기술적 교집합이 기술적 단독 대비 적중률을 높이는가? → N-2 홀드아웃 테스트(3/22 이후)에서 검증 예정.
@@ -308,9 +308,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Package Manager | Yarn (Classic 1.x) |
 | AI | Claude Sonnet 4.6, GPT-4o, Gemini 2.5 Flash (멀티 모델 토론) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
-| Frontend | Next.js 16 (App Router), Tailwind CSS v4, shadcn/ui, Supabase SSR |
-| Auth | Supabase Auth (Magic Link) |
-| Testing | Vitest (Backend + Frontend), Playwright (E2E) |
+| Testing | Vitest (Backend) |
 | Scheduling | macOS launchd (맥미니 서버) |
 | Delivery | Discord Webhook + GitHub Gist |
 | Search | Brave Search API |
@@ -327,7 +325,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **F5** Report & Delivery — Discord 발송, Gist MD, 리뷰 파이프라인
 - [x] **F6** Debate & Evolution — 멀티 모델(GPT-4o/Gemini/Claude) 4명 토론 + thesis 저장 + 학습 루프
 - [x] **F7** Fundamental Validation — Minervini SEPA 스코어링 + 전체 종목 확장
-- [x] **F8** Report/Debate Archive Dashboard — Next.js 16 + Supabase Auth + 리포트/토론 아카이브 UI + 학습 루프 현황 + 서사 체인 시각화 (#403, #402)
+- [x] **F8** Report/Debate Archive Dashboard — → control-tower 레포 분리 (#587)
 - [x] **F9** Strategic Auto-Review — 매일 시스템 분석 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거)
 - [x] **F10** Corporate Analyst — 종목별 심층 분석 리포트 + 정량 목표주가 산출 (피어 멀티플 + 컨센서스 교차 검증)
 - [x] **F11** Insight Briefing Pivot — 추천 시스템 → 관심종목 + 인사이트 브리핑 중심 전환 (KPI: thesis 적중률 + 포착 선행성) (#390)
@@ -379,12 +377,6 @@ src/
 ├── lib/                     # 유틸리티 (스코어링, 분석, 시차 통계)
 └── db/schema/               # Drizzle ORM 스키마
 
-frontend/
-├── src/
-│   ├── app/                 # Next.js App Router (라우트만)
-│   ├── features/            # 피쳐 기반 모듈 (auth, reports, debates, narrative-chains)
-│   └── shared/              # 공통 컴포넌트, 훅, 유틸
-└── e2e/                     # Playwright E2E 테스트
 
 docs/
 ├── ROADMAP.md               # 전체 로드맵
