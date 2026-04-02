@@ -252,6 +252,7 @@ export interface MarketBreadthDailyRow {
   new_lows: number | null;
   hl_ratio: string | null;
   vix_close: string | null;
+  vix_high: string | null;
   fear_greed_score: number | null;
   fear_greed_rating: string | null;
   created_at: string;
