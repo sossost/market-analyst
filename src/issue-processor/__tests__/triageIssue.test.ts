@@ -374,6 +374,31 @@ describe('triageIssue', () => {
     expect(result.comment).toBe('정보 부족')
   })
 
+  it('ESCALATE 판정 시 그대로 반환한다', async () => {
+    const { execFile } = await import('node:child_process')
+    const mockExecFile = vi.mocked(execFile)
+
+    const cliOutput = JSON.stringify({
+      verdict: 'ESCALATE',
+      goalAlignment: 'ALIGNED',
+      invalidation: null,
+      feasibility: false,
+      comment: 'CEO 판단 필요',
+    })
+
+    mockExecFile.mockImplementation((_cmd, _args, _options, callback) => {
+      const cb = callback as (error: null, stdout: string, stderr: string) => void
+      cb(null, cliOutput, '')
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
+    })
+
+    const { triageIssue } = await import('../triageIssue.js')
+    const result = await triageIssue(createIssue({ labels: [] }))
+
+    expect(result.verdict).toBe('ESCALATE')
+    expect(result.comment).toBe('CEO 판단 필요')
+  })
+
   it('라벨 없는 이슈도 PROCEED 판정은 그대로 반환한다', async () => {
     const { execFile } = await import('node:child_process')
     const mockExecFile = vi.mocked(execFile)
