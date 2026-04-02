@@ -56,6 +56,11 @@ const MIN_PERSONA_RESOLVED = 5;
 /**
  * confidence별 CONFIRMED/INVALIDATED 수를 집계한다.
  * thesisStore.getConfidenceHitRates()와 유사하지만 CalibrationBin 형태로 반환.
+ *
+ * NOTE: EXPIRED는 의도적으로 제외한다. 캘리브레이션은 "이 confidence 수준에서
+ * 예측이 얼마나 정확했는가?"를 측정하며, EXPIRED는 검증 판정(CONFIRMED/INVALIDATED)을
+ * 받지 못한 상태이므로 confidence 보정 근거로 부적합하다.
+ * 적중률 계산(getPerAgentHitRates 등)에서는 EXPIRED를 분모에 포함한다.
  */
 export async function calcCalibrationBins(): Promise<CalibrationBin[]> {
   const rows = await db
@@ -446,6 +451,7 @@ export interface PersonaHitRate {
   persona: AgentPersona;
   confirmed: number;
   invalidated: number;
+  expired: number;
   hitRate: number | null;
 }
 
@@ -458,17 +464,19 @@ export async function getPerAgentHitRates(): Promise<PersonaHitRate[]> {
       agentPersona: theses.agentPersona,
       confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
       invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
     })
     .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]))
     .groupBy(theses.agentPersona);
 
   return rows.map((r) => {
-    const total = r.confirmed + r.invalidated;
+    const total = r.confirmed + r.invalidated + r.expired;
     return {
       persona: r.agentPersona as AgentPersona,
       confirmed: r.confirmed,
       invalidated: r.invalidated,
+      expired: r.expired,
       hitRate: total > 0 ? r.confirmed / total : null,
     };
   });
@@ -517,23 +525,23 @@ export function formatModeratorPerformanceContext(
   const lines: string[] = [
     "## 에이전트별 Thesis 적중률",
     "",
-    "아래는 각 분석가의 과거 thesis 적중률(CONFIRMED / (CONFIRMED + INVALIDATED))입니다.",
+    "아래는 각 분석가의 과거 thesis 적중률(CONFIRMED / (CONFIRMED + INVALIDATED + EXPIRED))입니다.",
     "**합의 도출 시 적중률이 높은 분석가의 의견에 더 큰 비중을 두세요.**",
     "적중률 50% 미만 분석가의 단독 의견은 다른 분석가의 근거로 보강되지 않는 한 합의에 반영하지 마세요.",
     "",
-    "| 분석가 | 적중 | 기각 | 적중률 | 신뢰도 |",
-    "|--------|------|------|--------|--------|",
+    "| 분석가 | 적중 | 기각 | 만료 | 적중률 | 신뢰도 |",
+    "|--------|------|------|------|--------|--------|",
   ];
 
   for (const hr of sorted) {
     const label = PERSONA_LABEL_KR[hr.persona] ?? hr.persona;
-    const total = hr.confirmed + hr.invalidated;
+    const total = hr.confirmed + hr.invalidated + hr.expired;
     const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
     let reliability: string;
     if (total < 3) reliability = "데이터 부족";
     else if (hr.hitRate != null && hr.hitRate < LOW_HIT_RATE_THRESHOLD) reliability = "⚠️ 저신뢰";
     else reliability = "정상";
-    lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${rateStr} | ${reliability} |`);
+    lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${hr.expired} | ${rateStr} | ${reliability} |`);
   }
 
   return lines.join("\n");
@@ -545,6 +553,7 @@ export interface CategoryHitRate {
   category: ThesisCategory;
   confirmed: number;
   invalidated: number;
+  expired: number;
   hitRate: number | null;
 }
 
@@ -565,17 +574,19 @@ export async function getCategoryHitRates(): Promise<CategoryHitRate[]> {
       category: theses.category,
       confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
       invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
     })
     .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]))
     .groupBy(theses.category);
 
   return rows.map((r) => {
-    const total = r.confirmed + r.invalidated;
+    const total = r.confirmed + r.invalidated + r.expired;
     return {
       category: r.category as ThesisCategory,
       confirmed: r.confirmed,
       invalidated: r.invalidated,
+      expired: r.expired,
       hitRate: total > 0 ? r.confirmed / total : null,
     };
   });
@@ -598,15 +609,15 @@ export function formatCategoryHitRateContext(
     "",
     "아래는 thesis 카테고리별 과거 적중률입니다.",
     "",
-    "| 카테고리 | 적중 | 기각 | 적중률 | 신뢰도 |",
-    "|----------|------|------|--------|--------|",
+    "| 카테고리 | 적중 | 기각 | 만료 | 적중률 | 신뢰도 |",
+    "|----------|------|------|------|--------|--------|",
   ];
 
   const lowCategories: string[] = [];
 
   for (const hr of sorted) {
     const label = CATEGORY_LABEL_KR[hr.category] ?? hr.category;
-    const total = hr.confirmed + hr.invalidated;
+    const total = hr.confirmed + hr.invalidated + hr.expired;
     const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
     let reliability: string;
     if (total < 3) {
@@ -617,7 +628,7 @@ export function formatCategoryHitRateContext(
     } else {
       reliability = "정상";
     }
-    lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${rateStr} | ${reliability} |`);
+    lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${hr.expired} | ${rateStr} | ${reliability} |`);
   }
 
   if (lowCategories.length > 0) {
@@ -658,6 +669,7 @@ export interface PersonaCategoryHitRate {
   category: ThesisCategory;
   confirmed: number;
   invalidated: number;
+  expired: number;
   hitRate: number | null;
 }
 
@@ -672,23 +684,25 @@ export async function getPersonaCategoryHitRates(
       category: theses.category,
       confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
       invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
     })
     .from(theses)
     .where(
       and(
         eq(theses.agentPersona, persona),
-        inArray(theses.status, ["CONFIRMED", "INVALIDATED"]),
+        inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]),
       ),
     )
     .groupBy(theses.category);
 
   return rows.map((r) => {
-    const total = r.confirmed + r.invalidated;
+    const total = r.confirmed + r.invalidated + r.expired;
     return {
       persona,
       category: r.category as ThesisCategory,
       confirmed: r.confirmed,
       invalidated: r.invalidated,
+      expired: r.expired,
       hitRate: total > 0 ? r.confirmed / total : null,
     };
   });
@@ -702,14 +716,14 @@ export function formatPersonaCategoryHitRates(
   rates: PersonaCategoryHitRate[],
 ): string {
   // 유효 데이터(3건 이상)가 있는 항목만 필터
-  const valid = rates.filter((r) => r.confirmed + r.invalidated >= 3);
+  const valid = rates.filter((r) => r.confirmed + r.invalidated + r.expired >= 3);
   if (valid.length === 0) return "";
 
   const lines: string[] = [
     "### 카테고리별 적중률",
     "",
-    "| 카테고리 | 적중 | 기각 | 적중률 |",
-    "|----------|------|------|--------|",
+    "| 카테고리 | 적중 | 기각 | 만료 | 적중률 |",
+    "|----------|------|------|------|--------|",
   ];
 
   const warnings: string[] = [];
@@ -717,7 +731,7 @@ export function formatPersonaCategoryHitRates(
   for (const r of valid.sort((a, b) => (b.hitRate ?? 0) - (a.hitRate ?? 0))) {
     const label = CATEGORY_LABEL_KR[r.category] ?? r.category;
     const rateStr = r.hitRate != null ? `${(r.hitRate * 100).toFixed(0)}%` : "-";
-    lines.push(`| ${label} | ${r.confirmed} | ${r.invalidated} | ${rateStr} |`);
+    lines.push(`| ${label} | ${r.confirmed} | ${r.invalidated} | ${r.expired} | ${rateStr} |`);
 
     if (r.hitRate != null && r.hitRate < CATEGORY_LOW_HIT_RATE_THRESHOLD) {
       warnings.push(`**${label}** 카테고리 적중률 ${(r.hitRate * 100).toFixed(0)}% — 이 카테고리에서 방향성 예측을 자제하고 조건부 형식을 사용하세요.`);

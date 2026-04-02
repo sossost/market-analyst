@@ -15,6 +15,8 @@ export interface ThesisRow {
 export interface ConfidenceBreakdown {
   total: number;
   confirmed: number;
+  invalidated: number;
+  expired: number;
   hitRate: number;
 }
 
@@ -25,7 +27,7 @@ export interface AgentStats {
   invalidated: number;
   expired: number;
   active: number;
-  hitRate: number; // confirmed / (confirmed + invalidated)
+  hitRate: number; // confirmed / (confirmed + invalidated + expired)
   byConfidence: Record<string, ConfidenceBreakdown>;
 }
 
@@ -58,7 +60,7 @@ export function calculateAgentPerformance(
     const invalidated = rows.filter((r) => r.status === "INVALIDATED").length;
     const expired = rows.filter((r) => r.status === "EXPIRED").length;
     const active = rows.filter((r) => r.status === "ACTIVE").length;
-    const resolved = confirmed + invalidated;
+    const resolved = confirmed + invalidated + expired;
     const hitRate = resolved > 0 ? confirmed / resolved : 0;
 
     // Confidence breakdown
@@ -82,11 +84,16 @@ export function calculateAgentPerformance(
       const confInvalidated = confRows.filter(
         (r) => r.status === "INVALIDATED",
       ).length;
-      const confResolved = confConfirmed + confInvalidated;
+      const confExpired = confRows.filter(
+        (r) => r.status === "EXPIRED",
+      ).length;
+      const confResolved = confConfirmed + confInvalidated + confExpired;
 
       byConfidence[conf] = {
         total: confRows.length,
         confirmed: confConfirmed,
+        invalidated: confInvalidated,
+        expired: confExpired,
         hitRate: confResolved > 0 ? confConfirmed / confResolved : 0,
       };
     }
@@ -111,13 +118,13 @@ export function calculateAgentPerformance(
 
 /**
  * 전체 성과 요약 (한 줄).
- * resolved (confirmed + invalidated)가 있는 애널리스트만 비교.
+ * resolved (confirmed + invalidated + expired)가 있는 애널리스트만 비교.
  */
 export function summarizePerformance(stats: AgentStats[]): string {
   if (stats.length === 0) return "집계 대상 thesis 없음";
 
   const withResolved = stats.filter(
-    (s) => s.confirmed + s.invalidated > 0,
+    (s) => s.confirmed + s.invalidated + s.expired > 0,
   );
 
   if (withResolved.length === 0) {

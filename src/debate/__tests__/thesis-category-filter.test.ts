@@ -84,7 +84,7 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
     expect(result.theses[0].category).toBe("sector_rotation");
   });
 
-  it("macro의 short_term_outlook은 변경하지 않는다", () => {
+  it("macro의 short_term_outlook을 sector_rotation으로 재분류한다", () => {
     const text = wrapThesesInText([
       makeThesis({
         agentPersona: "macro",
@@ -97,7 +97,7 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
     const result = extractThesesFromText(text);
 
     expect(result.theses).toHaveLength(1);
-    expect(result.theses[0].category).toBe("short_term_outlook");
+    expect(result.theses[0].category).toBe("sector_rotation");
   });
 
   it("tech의 short_term_outlook은 ��경하지 않는다", () => {
@@ -116,7 +116,7 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
     expect(result.theses[0].category).toBe("short_term_outlook");
   });
 
-  it("geopolitics의 short_term_outlook은 변경하지 않는다", () => {
+  it("geopolitics의 short_term_outlook을 sector_rotation으로 재분류한다", () => {
     const text = wrapThesesInText([
       makeThesis({
         agentPersona: "geopolitics",
@@ -129,7 +129,7 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
     const result = extractThesesFromText(text);
 
     expect(result.theses).toHaveLength(1);
-    expect(result.theses[0].category).toBe("short_term_outlook");
+    expect(result.theses[0].category).toBe("sector_rotation");
   });
 
   it("재분류 시 로그를 남긴다", () => {
@@ -150,7 +150,7 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
     );
   });
 
-  it("여러 thesis 중 sentiment만 재분류한다", () => {
+  it("여러 thesis 중 macro와 sentiment를 재분류한다", () => {
     const text = wrapThesesInText([
       makeThesis({
         agentPersona: "macro",
@@ -175,7 +175,7 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
     const result = extractThesesFromText(text);
 
     expect(result.theses).toHaveLength(3);
-    expect(result.theses.find((t) => t.agentPersona === "macro")!.category).toBe("short_term_outlook");
+    expect(result.theses.find((t) => t.agentPersona === "macro")!.category).toBe("sector_rotation");
     expect(result.theses.find((t) => t.agentPersona === "sentiment")!.category).toBe("sector_rotation");
     expect(result.theses.find((t) => t.agentPersona === "tech")!.category).toBe("structural_narrative");
   });
