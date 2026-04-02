@@ -1,8 +1,7 @@
 import { clampPercent } from "@/tools/validation";
 import { logger } from "@/lib/logger";
 import { MIN_MARKET_CAP } from "@/lib/constants";
-import { db } from "@/db/client";
-import { sql } from "drizzle-orm";
+import { pool } from "@/db/client";
 import {
   findSectorSnapshot,
   findNewPhase2Stocks,
@@ -239,19 +238,20 @@ const INDEX_SYMBOL_NAMES: Record<string, string> = {
  */
 async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
   const symbolList = Object.keys(INDEX_SYMBOL_NAMES);
-  const rows = await db.execute(sql`
-    SELECT symbol, date, close FROM (
+  const { rows: rawRows } = await pool.query<{ symbol: string; date: string; close: string }>(
+    `SELECT symbol, date::text, close::text FROM (
       SELECT symbol, date, close,
         ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
       FROM index_prices
-      WHERE symbol = ANY(${symbolList})
-        AND date <= ${targetDate}
+      WHERE symbol = ANY($1::text[])
+        AND date <= $2
     ) t
     WHERE rn <= 2
-    ORDER BY symbol, rn
-  `);
+    ORDER BY symbol, rn`,
+    [symbolList, targetDate],
+  );
 
-  const typed = (rows.rows as Record<string, unknown>[]).map((r) => ({
+  const typed = rawRows.map((r) => ({
     symbol: String(r.symbol ?? ""),
     date: String(r.date ?? ""),
     close: String(r.close ?? "0"),
@@ -351,7 +351,10 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
     loadSectorSnapshot(date),
     loadPhase2Stocks(date),
     loadMarketBreadth(date),
-    fetchIndexQuotes(date).catch(() => [] as IndexQuote[]),
+    fetchIndexQuotes(date).catch((e) => {
+      logger.warn("MarketData", `fetchIndexQuotes 실패: ${e instanceof Error ? e.message : String(e)}`);
+      return [] as IndexQuote[];
+    }),
     fetchFearGreed().catch(() => null),
   ]);
 
