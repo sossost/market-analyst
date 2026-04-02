@@ -1,6 +1,7 @@
 import { clampPercent } from "@/tools/validation";
 import { logger } from "@/lib/logger";
-import { MIN_MARKET_CAP } from "@/lib/constants";
+import { MIN_MARKET_CAP, CNN_FEAR_GREED_URL, CNN_FEAR_GREED_REFERER } from "@/lib/constants";
+import { toNum } from "@/etl/utils/common";
 import { pool } from "@/db/client";
 import {
   findSectorSnapshot,
@@ -14,7 +15,9 @@ import {
   findLatestDataDate,
   findPrevDayDate,
   findIndustryDrilldown,
+  findMarketBreadthSnapshot,
 } from "@/db/repositories/index.js";
+import type { MarketBreadthAdRow, MarketBreadthHlRow } from "@/db/repositories/types.js";
 import { buildPhaseTransitionDrilldown } from "@/tools/getLeadingSectors";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -85,12 +88,6 @@ export interface MarketSnapshot {
   fearGreed: FearGreedSnapshot | null;
   /** Phase 전환 섹터의 업종 드릴다운 (전환 섹터가 없으면 undefined) */
   phaseTransitionDrilldown?: ReturnType<typeof buildPhaseTransitionDrilldown>;
-}
-
-function toNum(val: string | null | undefined): number {
-  if (val == null) return 0;
-  const n = Number(val);
-  return Number.isNaN(n) ? 0 : n;
 }
 
 /**
@@ -167,9 +164,39 @@ async function loadPhase2Stocks(date: string): Promise<{
 }
 
 /**
- * Load market breadth from stock_phases.
+ * Load market breadth snapshot.
+ * market_breadth_daily 테이블에서 단일 조회를 먼저 시도하고,
+ * 없으면 기존 집계 쿼리로 폴백한다.
  */
 async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | null> {
+  // 스냅샷 히트: 단순 조회
+  const snapshot = await findMarketBreadthSnapshot(date).catch(() => null);
+
+  if (snapshot != null) {
+    const phaseDistribution: Record<string, number> = {
+      phase1: snapshot.phase1_count,
+      phase2: snapshot.phase2_count,
+      phase3: snapshot.phase3_count,
+      phase4: snapshot.phase4_count,
+    };
+
+    return {
+      totalStocks: snapshot.total_stocks,
+      phaseDistribution,
+      phase2Ratio: clampPercent(toNum(snapshot.phase2_ratio), "breadth:phase2Ratio"),
+      phase2RatioChange: snapshot.phase2_ratio_change != null
+        ? toNum(snapshot.phase2_ratio_change)
+        : 0,
+      marketAvgRs: snapshot.market_avg_rs != null ? toNum(snapshot.market_avg_rs) : 0,
+      advancers: snapshot.advancers,
+      decliners: snapshot.decliners,
+      adRatio: snapshot.ad_ratio != null ? toNum(snapshot.ad_ratio) : null,
+      newHighs: snapshot.new_highs,
+      newLows: snapshot.new_lows,
+    };
+  }
+
+  // 폴백: 기존 집계 쿼리 사용 (스냅샷 없을 때)
   const phaseRows = await findMarketBreadthPhaseDistribution(date);
 
   if (phaseRows.length === 0) return null;
@@ -181,19 +208,15 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
   const phase2Count = phaseDistribution.phase2 ?? 0;
   const phase2RatioRaw = total > 0 ? (phase2Count / total) * 100 : 0;
 
-  // Previous day comparison
   const prevRow = await findMarketBreadthPrevPhase2(date);
   const prevTotal = toNum(prevRow.total_count);
   const prevPhase2 = toNum(prevRow.phase2_count);
   const prevPhase2RatioRaw = prevTotal > 0 ? (prevPhase2 / prevTotal) * 100 : 0;
 
-  // Market avg RS
   const rsRow = await findMarketBreadthAvgRs(date);
 
-  // A/D ratio (상승/하락 종목수)
-  // graceful degradation: .catch 패턴 호출부에서 유지
   const adRows = await findMarketBreadthAdvanceDecline(date)
-    .catch(() => [] as { advancers: string; decliners: string }[]);
+    .catch(() => [] as MarketBreadthAdRow[]);
 
   const advancers = adRows.length > 0 ? toNum(adRows[0].advancers) : null;
   const decliners = adRows.length > 0 ? toNum(adRows[0].decliners) : null;
@@ -202,10 +225,8 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
       ? Number((advancers / decliners).toFixed(2))
       : null;
 
-  // 52주 신고가/신저가
-  // graceful degradation: .catch 패턴 호출부에서 유지
   const hlRows = await findMarketBreadthNewHighLow(date)
-    .catch(() => [] as { new_highs: string; new_lows: string }[]);
+    .catch(() => [] as MarketBreadthHlRow[]);
 
   const newHighs = hlRows.length > 0 ? toNum(hlRows[0].new_highs) : null;
   const newLows = hlRows.length > 0 ? toNum(hlRows[0].new_lows) : null;
@@ -264,7 +285,7 @@ async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
     if (existing == null) {
       bySymbol.set(row.symbol, { close: Number(row.close), prevClose: null });
     } else if (existing.prevClose == null) {
-      existing.prevClose = Number(row.close);
+      bySymbol.set(row.symbol, { ...existing, prevClose: Number(row.close) });
     }
   }
 
@@ -293,19 +314,16 @@ async function fetchIndexQuotes(targetDate: string): Promise<IndexQuote[]> {
  */
 async function fetchFearGreed(): Promise<FearGreedSnapshot | null> {
   try {
-    const response = await fetch(
-      "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-          Referer: "https://edition.cnn.com/markets/fear-and-greed",
-          Accept: "application/json",
-        },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    const response = await fetch(CNN_FEAR_GREED_URL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        Referer: CNN_FEAR_GREED_REFERER,
+        Accept: "application/json",
       },
-    );
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
-    if (!response.ok) return null;
+    if (response.ok === false) return null;
 
     const data = await response.json();
     const fg = data?.fear_and_greed;

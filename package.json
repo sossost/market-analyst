@@ -18,6 +18,7 @@
     "etl:noise-signals": "tsx src/etl/jobs/build-noise-signals.ts",
     "etl:cleanup": "tsx src/etl/jobs/cleanup-invalid-symbols.ts",
     "etl:stock-phases": "tsx src/etl/jobs/build-stock-phases.ts",
+    "etl:market-breadth": "tsx src/etl/jobs/build-market-breadth.ts",
     "etl:sector-rs": "tsx src/etl/jobs/build-sector-rs.ts",
     "etl:industry-rs": "tsx src/etl/jobs/build-industry-rs.ts",
     "etl:index-prices": "tsx src/etl/jobs/load-index-prices.ts",
@@ -48,6 +49,7 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "backfill:etl": "tsx scripts/backfill-etl.ts",
+    "backfill:market-breadth": "tsx scripts/backfill-market-breadth.ts",
     "backtest:debate": "tsx scripts/backtest-debate.ts",
     "report:ceo": "tsx src/etl/jobs/generate-ceo-report.ts"
   },

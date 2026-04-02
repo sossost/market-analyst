@@ -32,6 +32,11 @@ function makeEmptyQueryMock() {
   return { rows: [] };
 }
 
+/**
+ * daily 모드 mock setup.
+ * 첫 번째 쿼리: findMarketBreadthSnapshot → null (스냅샷 없음 → 폴백 경로)
+ * 이후: 기존 집계 쿼리 순서대로.
+ */
 function setupDailyMocks({
   phaseRows = [{ phase: 2, count: "30" }],
   prevRows = [{ phase2_count: "25", total_count: "100" }],
@@ -48,6 +53,9 @@ function setupDailyMocks({
   sectorRows?: { sector: string; avg_rs: string; group_phase: number }[];
 } = {}) {
   mockQuery
+    // findMarketBreadthSnapshot → 스냅샷 없음 → 폴백
+    .mockResolvedValueOnce({ rows: [] } as never)
+    // 폴백 집계 쿼리
     .mockResolvedValueOnce({ rows: phaseRows } as never)
     .mockResolvedValueOnce({ rows: prevRows } as never)
     .mockResolvedValueOnce({ rows: rsRows } as never)
@@ -56,6 +64,18 @@ function setupDailyMocks({
     .mockResolvedValueOnce({ rows: sectorRows } as never);
 }
 
+/**
+ * weekly 모드 mock setup.
+ * 쿼리 순서:
+ *   1. findTradingDates → dateRows
+ *   2. findMarketBreadthSnapshots → [] (스냅샷 없음 → 폴백)
+ *   3. findWeeklyTrend → trendRows
+ *   4. findWeeklyPhase1to2Transitions → transRows
+ *   5. findPhaseDistribution → phaseRows
+ *   6. findAdvanceDecline → adRows
+ *   7. findNewHighLow → hlRows
+ *   8. findBreadthTopSectors → sectorRows
+ */
 function setupWeeklyMocks({
   dateRows = [
     { date: "2025-03-10" },
@@ -91,7 +111,11 @@ function setupWeeklyMocks({
   sectorRows?: { sector: string; avg_rs: string; group_phase: number }[];
 } = {}) {
   mockQuery
+    // findTradingDates
     .mockResolvedValueOnce({ rows: dateRows } as never)
+    // findMarketBreadthSnapshots → 스냅샷 없음 → 폴백
+    .mockResolvedValueOnce({ rows: [] } as never)
+    // 폴백 집계 쿼리
     .mockResolvedValueOnce({ rows: trendRows } as never)
     .mockResolvedValueOnce({ rows: transRows } as never)
     .mockResolvedValueOnce({ rows: phaseRows } as never)
@@ -143,8 +167,9 @@ describe("getMarketBreadth", () => {
       await getMarketBreadth.execute({ date: TARGET_DATE });
 
       const queries = getCapturedQueries();
-      // 첫 번째 쿼리: Phase 분포
-      const phaseQuery = queries[0];
+      // queries[0]: findMarketBreadthSnapshot (스냅샷 조회 → null)
+      // queries[1]: Phase 분포 (폴백)
+      const phaseQuery = queries[1];
       expect(phaseQuery).toContain("JOIN symbols s ON sp.symbol = s.symbol");
       expect(phaseQuery).toContain("s.is_actively_trading = true");
       expect(phaseQuery).toContain("s.is_etf = false");
@@ -157,8 +182,8 @@ describe("getMarketBreadth", () => {
       await getMarketBreadth.execute({ date: TARGET_DATE });
 
       const queries = getCapturedQueries();
-      // 두 번째 쿼리: 전일 Phase 2 비율
-      const prevQuery = queries[1];
+      // queries[2]: 전일 Phase 2 비율 (폴백)
+      const prevQuery = queries[2];
       expect(prevQuery).toContain("JOIN symbols s ON sp.symbol = s.symbol");
       expect(prevQuery).toContain("s.is_actively_trading = true");
       expect(prevQuery).toContain("s.is_etf = false");
@@ -171,8 +196,8 @@ describe("getMarketBreadth", () => {
       await getMarketBreadth.execute({ date: TARGET_DATE });
 
       const queries = getCapturedQueries();
-      // 세 번째 쿼리: 시장 평균 RS
-      const rsQuery = queries[2];
+      // queries[3]: 시장 평균 RS (폴백)
+      const rsQuery = queries[3];
       expect(rsQuery).toContain("JOIN symbols s ON sp.symbol = s.symbol");
       expect(rsQuery).toContain("s.is_actively_trading = true");
       expect(rsQuery).toContain("s.is_etf = false");
@@ -237,8 +262,9 @@ describe("getMarketBreadth", () => {
       await getMarketBreadth.execute({ date: TARGET_DATE, mode: "weekly" });
 
       const queries = getCapturedQueries();
-      // 두 번째 쿼리: trendRows (첫 번째는 날짜 목록)
-      const trendQuery = queries[1];
+      // queries[0]: findTradingDates, queries[1]: findMarketBreadthSnapshots(빈배열→폴백)
+      // queries[2]: findWeeklyTrend (폴백)
+      const trendQuery = queries[2];
       expect(trendQuery).toContain("JOIN symbols s ON sp.symbol = s.symbol");
       expect(trendQuery).toContain("s.is_actively_trading = true");
       expect(trendQuery).toContain("s.is_etf = false");
@@ -251,8 +277,8 @@ describe("getMarketBreadth", () => {
       await getMarketBreadth.execute({ date: TARGET_DATE, mode: "weekly" });
 
       const queries = getCapturedQueries();
-      // 세 번째 쿼리: transRows
-      const transQuery = queries[2];
+      // queries[3]: findWeeklyPhase1to2Transitions (폴백)
+      const transQuery = queries[3];
       expect(transQuery).toContain("JOIN symbols s ON sp.symbol = s.symbol");
       expect(transQuery).toContain("s.is_actively_trading = true");
       expect(transQuery).toContain("s.is_etf = false");
@@ -265,8 +291,8 @@ describe("getMarketBreadth", () => {
       await getMarketBreadth.execute({ date: TARGET_DATE, mode: "weekly" });
 
       const queries = getCapturedQueries();
-      // 네 번째 쿼리: phaseRows (최신 날짜)
-      const phaseQuery = queries[3];
+      // queries[4]: findPhaseDistribution (폴백, 최신 날짜)
+      const phaseQuery = queries[4];
       expect(phaseQuery).toContain("JOIN symbols s ON sp.symbol = s.symbol");
       expect(phaseQuery).toContain("s.is_actively_trading = true");
       expect(phaseQuery).toContain("s.is_etf = false");

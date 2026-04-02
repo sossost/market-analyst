@@ -4,8 +4,10 @@
  */
 import {
   pgTable,
+  primaryKey,
   serial,
   text,
+  varchar,
   numeric,
   integer,
   smallint,
@@ -1172,3 +1174,33 @@ export const dailyReports = pgTable(
     idxType: index("idx_daily_reports_type").on(t.type),
   }),
 );
+
+/**
+ * market_breadth_daily — 일별 시장 브레드스 스냅샷.
+ * ETL이 일 1회 집계하여 저장. 소비자는 단순 SELECT 조회.
+ */
+export const marketBreadthDaily = pgTable("market_breadth_daily", {
+  date: text("date").notNull(),
+  totalStocks:         integer("total_stocks").notNull(),
+  phase1Count:         integer("phase1_count").notNull(),
+  phase2Count:         integer("phase2_count").notNull(),
+  phase3Count:         integer("phase3_count").notNull(),
+  phase4Count:         integer("phase4_count").notNull(),
+  phase2Ratio:         numeric("phase2_ratio", { precision: 5, scale: 2 }).notNull(),
+  phase2RatioChange:   numeric("phase2_ratio_change", { precision: 5, scale: 2 }),
+  phase1To2Count5d:    integer("phase1_to2_count_5d"),
+  marketAvgRs:         numeric("market_avg_rs", { precision: 5, scale: 2 }),
+  advancers:           integer("advancers"),
+  decliners:           integer("decliners"),
+  unchanged:           integer("unchanged"),
+  adRatio:             numeric("ad_ratio", { precision: 6, scale: 2 }),
+  newHighs:            integer("new_highs"),
+  newLows:             integer("new_lows"),
+  hlRatio:             numeric("hl_ratio", { precision: 6, scale: 2 }),
+  vixClose:            numeric("vix_close", { precision: 6, scale: 2 }),
+  fearGreedScore:      integer("fear_greed_score"),
+  fearGreedRating:     varchar("fear_greed_rating", { length: 30 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.date] }),
+}));

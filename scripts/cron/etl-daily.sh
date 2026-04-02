@@ -50,6 +50,7 @@ run_parallel \
 run_step "Build Breakout Signals" "src/etl/jobs/build-breakout-signals.ts"
 run_step "Build Noise Signals" "src/etl/jobs/build-noise-signals.ts"
 run_step "Build Stock Phases" "src/etl/jobs/build-stock-phases.ts"
+run_step "Build Market Breadth" "src/etl/jobs/build-market-breadth.ts"
 
 # Phase 3.5 (stock_phases 완료 후)
 run_parallel \

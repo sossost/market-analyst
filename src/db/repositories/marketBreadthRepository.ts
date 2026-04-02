@@ -17,6 +17,7 @@ import type {
   SectorSnapshotRow,
   Phase2StockRow,
   DataDateRow,
+  MarketBreadthDailyRow,
 } from "./types.js";
 
 /**
@@ -246,6 +247,31 @@ export async function findBreadthTopSectors(
   return rows;
 }
 
+// ─── Phase 2 종목 조회 공유 상수 ─────────────────────────────────────────────
+
+/**
+ * 5일/20일 가격 변화율을 계산하는 LATERAL JOIN 절.
+ * findNewPhase2Stocks, findTopPhase2Stocks 에서 공유.
+ */
+const MOMENTUM_JOIN = `
+  LEFT JOIN LATERAL (
+    SELECT
+      (dp_now.close - dp_5d.close) / NULLIF(dp_5d.close, 0) AS change_5d,
+      (dp_now.close - dp_20d.close) / NULLIF(dp_20d.close, 0) AS change_20d
+    FROM daily_prices dp_now
+    LEFT JOIN LATERAL (
+      SELECT close FROM daily_prices
+      WHERE symbol = sp.symbol AND date < $1
+      ORDER BY date DESC OFFSET 4 LIMIT 1
+    ) dp_5d ON true
+    LEFT JOIN LATERAL (
+      SELECT close FROM daily_prices
+      WHERE symbol = sp.symbol AND date < $1
+      ORDER BY date DESC OFFSET 19 LIMIT 1
+    ) dp_20d ON true
+    WHERE dp_now.symbol = sp.symbol AND dp_now.date = $1
+  ) momentum ON true`;
+
 // ─── marketDataLoader.ts 전용 (symbols JOIN 없는 버전) ───────────────────────
 
 /**
@@ -380,24 +406,6 @@ export async function findNewPhase2Stocks(
   date: string,
   minMarketCap: number,
 ): Promise<Phase2StockRow[]> {
-  const MOMENTUM_JOIN = `
-    LEFT JOIN LATERAL (
-      SELECT
-        (dp_now.close - dp_5d.close) / NULLIF(dp_5d.close, 0) AS change_5d,
-        (dp_now.close - dp_20d.close) / NULLIF(dp_20d.close, 0) AS change_20d
-      FROM daily_prices dp_now
-      LEFT JOIN LATERAL (
-        SELECT close FROM daily_prices
-        WHERE symbol = sp.symbol AND date < $1
-        ORDER BY date DESC OFFSET 4 LIMIT 1
-      ) dp_5d ON true
-      LEFT JOIN LATERAL (
-        SELECT close FROM daily_prices
-        WHERE symbol = sp.symbol AND date < $1
-        ORDER BY date DESC OFFSET 19 LIMIT 1
-      ) dp_20d ON true
-      WHERE dp_now.symbol = sp.symbol AND dp_now.date = $1
-    ) momentum ON true`;
 
   const { rows } = await pool.query<Phase2StockRow>(
     `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
@@ -427,24 +435,6 @@ export async function findTopPhase2Stocks(
   date: string,
   minMarketCap: number,
 ): Promise<Phase2StockRow[]> {
-  const MOMENTUM_JOIN = `
-    LEFT JOIN LATERAL (
-      SELECT
-        (dp_now.close - dp_5d.close) / NULLIF(dp_5d.close, 0) AS change_5d,
-        (dp_now.close - dp_20d.close) / NULLIF(dp_20d.close, 0) AS change_20d
-      FROM daily_prices dp_now
-      LEFT JOIN LATERAL (
-        SELECT close FROM daily_prices
-        WHERE symbol = sp.symbol AND date < $1
-        ORDER BY date DESC OFFSET 4 LIMIT 1
-      ) dp_5d ON true
-      LEFT JOIN LATERAL (
-        SELECT close FROM daily_prices
-        WHERE symbol = sp.symbol AND date < $1
-        ORDER BY date DESC OFFSET 19 LIMIT 1
-      ) dp_20d ON true
-      WHERE dp_now.symbol = sp.symbol AND dp_now.date = $1
-    ) momentum ON true`;
 
   const { rows } = await pool.query<Phase2StockRow>(
     `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
@@ -478,4 +468,85 @@ export async function findLatestDataDate(
   );
 
   return rows[0] ?? { date: requestedDate };
+}
+
+// ─── market_breadth_daily 스냅샷 조회 ─────────────────────────────────────────
+
+/**
+ * 단일 날짜의 시장 브레드스 스냅샷을 조회한다.
+ * 해당 날짜 데이터가 없으면 null을 반환한다 (throw 아님).
+ */
+export async function findMarketBreadthSnapshot(
+  date: string,
+): Promise<MarketBreadthDailyRow | null> {
+  const { rows } = await pool.query<MarketBreadthDailyRow>(
+    `SELECT
+       date::text,
+       total_stocks,
+       phase1_count,
+       phase2_count,
+       phase3_count,
+       phase4_count,
+       phase2_ratio::text,
+       phase2_ratio_change::text,
+       phase1_to2_count_5d,
+       market_avg_rs::text,
+       advancers,
+       decliners,
+       unchanged,
+       ad_ratio::text,
+       new_highs,
+       new_lows,
+       hl_ratio::text,
+       vix_close::text,
+       fear_greed_score,
+       fear_greed_rating,
+       created_at::text
+     FROM market_breadth_daily
+     WHERE date = $1`,
+    [date],
+  );
+
+  return rows[0] ?? null;
+}
+
+/**
+ * 복수 날짜에 대한 시장 브레드스 스냅샷을 일괄 조회한다 (weekly 모드용).
+ * 날짜 오름차순 정렬.
+ */
+export async function findMarketBreadthSnapshots(
+  dates: string[],
+): Promise<MarketBreadthDailyRow[]> {
+  if (dates.length === 0) return [];
+
+  const { rows } = await pool.query<MarketBreadthDailyRow>(
+    `SELECT
+       date::text,
+       total_stocks,
+       phase1_count,
+       phase2_count,
+       phase3_count,
+       phase4_count,
+       phase2_ratio::text,
+       phase2_ratio_change::text,
+       phase1_to2_count_5d,
+       market_avg_rs::text,
+       advancers,
+       decliners,
+       unchanged,
+       ad_ratio::text,
+       new_highs,
+       new_lows,
+       hl_ratio::text,
+       vix_close::text,
+       fear_greed_score,
+       fear_greed_rating,
+       created_at::text
+     FROM market_breadth_daily
+     WHERE date = ANY($1::text[])
+     ORDER BY date ASC`,
+    [dates],
+  );
+
+  return rows;
 }
