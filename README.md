@@ -2,7 +2,7 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 160 TS files · **Frontend** 145 TS/TSX files · **Tests** 1,701 · **Open Issues** 17
+> **Backend** 207 TS files · **Frontend** 184 TS/TSX files · **Tests** 2,704 · **Open Issues** 17
 
 ## How It Works
 
@@ -109,26 +109,41 @@ yarn etl:stock-news         # 종목 뉴스 수집 (Phase 2 + 관심종목)
 yarn etl:earning-calendar   # 실적 발표 일정 수집 (-7일 ~ +30일)
 yarn etl:earnings-surprises-fmp  # EPS 서프라이즈 수집 (최근 4분기)
 yarn etl:validate           # 데이터 검증
+yarn etl:update-watchlist   # 관심종목 Phase 궤적 업데이트
+yarn etl:verify-theses      # thesis 시장 데이터 검증
+yarn etl:failure-patterns   # Phase 2 실패 패턴 수집
+yarn etl:promote-learnings  # 반복 적중 패턴 → 장기 기억 승격
+
+# 신호 성과 추적
+yarn signal:record          # 신규 신호 기록
+yarn signal:update          # 신호 수익률 업데이트
+yarn signal:track-exits     # Phase 이탈 추적
 
 # Agent 실행
 yarn agent:daily            # 일간 시장 브리핑
 yarn agent:weekly           # 주간 종목 분석
 yarn agent:debate           # 애널리스트 토론 (매크로/테크/지정학/심리)
+yarn agent:qa               # 주간 QA 분석
+yarn agent:corporate-analyst  # 기업 애널리스트 수동 실행
 yarn agent:issue-processor  # 자율 이슈 처리 (Claude Code CLI)
 
 # Frontend
 yarn fe:dev                 # 개발 서버
 yarn fe:build               # 프로덕션 빌드
 yarn fe:test                # 프론트엔드 테스트
+yarn fe:typecheck           # 프론트엔드 타입 체크
+yarn fe:lint                # 프론트엔드 린트
+yarn fe:e2e                 # E2E 테스트 (Playwright)
 
 # 테스트
-yarn test                   # 전체 테스트 (1,701 tests)
+yarn test                   # 전체 테스트 (2,704 tests)
 yarn test:watch             # 워치 모드
 yarn typecheck              # 타입 체크
 
 # DB
 yarn db:generate            # 마이그레이션 생성
 yarn db:push                # 스키마 적용
+yarn db:studio              # Drizzle Studio UI
 ```
 
 ## Architecture
@@ -138,7 +153,7 @@ yarn db:push                # 스키마 적용
 │     ETL      │    │Multi-Model   │    │    Agent     │
 │              │    │   Debate     │    │              │
 │ Stock Phases │───▶│GPT-4o/Gemini│───▶│Claude Sonnet │
-│ Sector RS    │    │/Claude 4명   │    │ + 16 Tools   │
+│ Sector RS    │    │/Claude 4명   │    │ + 19 Tools   │
 │ Industry RS  │    │ + 서사 프레임 │    │ + Fundamental│
 │ Breakout/    │    └──────┬───────┘    └──────┬───────┘
 │ Noise Signal │           │                   │
@@ -190,6 +205,9 @@ yarn db:push                # 스키마 적용
 | `readRecommendationPerformance` | | O | 추천 성과 트래킹 (주간: 신규/종료/Phase 이탈 집계) |
 | `readActiveTheses` | O | O | 현재 ACTIVE thesis 목록 (토론 엔진 생성) |
 | `readLearnings` | O | O | 에이전트 장기 기억 (검증된 원칙 + 경계 패턴) |
+| `getWatchlistStatus` | O | O | 관심종목 현황 + Phase 궤적 (일간: 현재 상태, 주간: 90일 궤적) |
+| `saveWatchlist` | | O | 관심종목 DB 저장 |
+| `readRegimePerformance` | | O | 레짐별 신호 성과 통계 (BULL/BEAR/LATE_BULL 등) |
 | `saveRecommendations` | | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
 | `saveReportLog` | O | O | 리포트 결과 저장 |
 | `sendDiscordReport` | — | — | Discord + Gist 리포트 발송 (리뷰 파이프라인 내부 전용) |
@@ -241,7 +259,7 @@ yarn db:push                # 스키마 적용
 
 | 지표 | 현재 | 목표 (6개월) | 비고 |
 |------|------|-------------|------|
-| 테스트 | 1,701 (108 files) | 유지 | Backend + Frontend |
+| 테스트 | 2,704 (160 files) | 유지 | Backend + Frontend |
 | 토론 세션 | 운영 중 | — | 평일 매일 자동 실행 |
 | Thesis 총 건수 | 축적 중 | 200건+ | 서사 카테고리 분리 적용 |
 | 학습 승격 | 축적 중 | 10건+ | 3회+ 적중 패턴 필요 |
@@ -255,7 +273,7 @@ yarn db:push                # 스키마 적용
 
 Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
-- **Non-GAAP EPS 우선**: `eps_surprises.actual_eps`(Non-GAAP) 우선, `quarterly_financials.eps_diluted`(GAAP) 폴백 — 시장이 실제 반응하는 EPS 기준 (#557)
+- **Non-GAAP EPS 우선**: `eps_surprises.actual_eps`(Non-GAAP) 우선, `quarterly_financials.eps_diluted`(GAAP) 폴백 — 시장이 실제 반응하는 EPS 기준 (#559)
 
 | 등급 | 조건 | 액션 |
 |------|------|------|
@@ -319,7 +337,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **F8** Report/Debate Archive Dashboard — Next.js 16 + Supabase Auth + 리포트/토론 아카이브 UI + 학습 루프 현황 + 서사 체인 시각화 (#403, #402)
 - [x] **F9** Strategic Auto-Review — 매일 시스템 분석 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거)
 - [x] **F10** Corporate Analyst — 종목별 심층 분석 리포트 + 정량 목표주가 산출 (피어 멀티플 + 컨센서스 교차 검증)
-- [ ] **F11** Insight Briefing Pivot — 추천 시스템 → 관심종목 + 인사이트 브리핑 중심 전환 (KPI: thesis 적중률 + 포착 선행성)
+- [x] **F11** Insight Briefing Pivot — 추천 시스템 → 관심종목 + 인사이트 브리핑 중심 전환 (KPI: thesis 적중률 + 포착 선행성) (#390)
 
 ### Enhancement Phases (완료)
 
@@ -347,18 +365,21 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 ```
 src/
 ├── agent/
-│   ├── debate/              # 멀티 모델 토론 엔진 + 학습 루프
-│   │   ├── debateEngine.ts  # 3라운드 토론 오케스트레이터
-│   │   ├── llm/             # LLM Provider 추상화 (Anthropic/OpenAI/Gemini + 폴백)
-│   │   ├── causalAnalyzer.ts # 원인 분석 (왜 맞았는지/틀렸는지)
-│   │   ├── thesisVerifier.ts # thesis 자동 검증
-│   │   ├── sessionStore.ts  # 세션 저장 + 유사 세션 검색
-│   │   ├── memoryLoader.ts  # 학습 → 프롬프트 주입
-│   │   └── narrativeChainService.ts  # 병목 체인 추적
-│   ├── corporateAnalyst/    # 기업 애널리스트 (종목 심층 분석 + 정량 목표주가)
-│   ├── fundamental/         # SEPA 펀더멘탈 검증
-│   ├── tools/               # 에이전트 도구 (16개 + 내부 유틸 1개)
+│   ├── agentLoop.ts         # 메인 에이전트 루프
+│   ├── run-daily-agent.ts   # 일간 에이전트 실행
+│   ├── run-weekly-agent.ts  # 주간 에이전트 실행
 │   └── reviewAgent.ts       # 리포트 품질 검증 + 조건부 발송
+├── debate/                  # 멀티 모델 토론 엔진 + 학습 루프
+│   ├── debateEngine.ts      # 3라운드 토론 오케스트레이터
+│   ├── llm/                 # LLM Provider 추상화 (Anthropic/OpenAI/Gemini + 폴백)
+│   ├── causalAnalyzer.ts    # 원인 분석 (왜 맞았는지/틀렸는지)
+│   ├── thesisVerifier.ts    # thesis 자동 검증
+│   ├── sessionStore.ts      # 세션 저장 + 유사 세션 검색
+│   ├── memoryLoader.ts      # 학습 → 프롬프트 주입
+│   └── narrativeChainService.ts  # 병목 체인 추적
+├── corporate-analyst/       # 기업 애널리스트 (종목 심층 분석 + 정량 목표주가)
+├── fundamental/             # SEPA 펀더멘탈 검증
+├── tools/                   # 에이전트 도구 (19개)
 ├── issue-processor/         # 자율 이슈 처리 (Claude Code CLI)
 ├── pr-reviewer/             # 자동 PR 리뷰 (Strategic + Code 병렬 리뷰어)
 ├── etl/                     # 데이터 파이프라인
