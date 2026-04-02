@@ -503,7 +503,7 @@ export async function findMarketBreadthSnapshot(
        fear_greed_rating,
        created_at::text
      FROM market_breadth_daily
-     WHERE date = $1::date`,
+     WHERE date = $1`,
     [date],
   );
 
@@ -543,7 +543,7 @@ export async function findMarketBreadthSnapshots(
        fear_greed_rating,
        created_at::text
      FROM market_breadth_daily
-     WHERE date = ANY($1::date[])
+     WHERE date = ANY($1::text[])
      ORDER BY date ASC`,
     [dates],
   );

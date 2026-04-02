@@ -4,6 +4,7 @@
  */
 import {
   pgTable,
+  primaryKey,
   serial,
   text,
   varchar,
@@ -1179,7 +1180,7 @@ export const dailyReports = pgTable(
  * ETL이 일 1회 집계하여 저장. 소비자는 단순 SELECT 조회.
  */
 export const marketBreadthDaily = pgTable("market_breadth_daily", {
-  date: date("date").primaryKey(),
+  date: text("date").notNull(),
   totalStocks:         integer("total_stocks").notNull(),
   phase1Count:         integer("phase1_count").notNull(),
   phase2Count:         integer("phase2_count").notNull(),
@@ -1200,4 +1201,6 @@ export const marketBreadthDaily = pgTable("market_breadth_daily", {
   fearGreedScore:      integer("fear_greed_score"),
   fearGreedRating:     varchar("fear_greed_rating", { length: 30 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => ({
+  pk: primaryKey({ columns: [t.date] }),
+}));
