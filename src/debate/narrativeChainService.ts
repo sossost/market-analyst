@@ -5,6 +5,7 @@ import {
 } from "@/db/schema/analyst";
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { sendDiscordMessage } from "@/lib/discord";
 import type { Thesis } from "@/types/debate";
 import {
   runSectorAlphaGate,
@@ -269,5 +270,10 @@ export async function recordNarrativeChain(
       "NarrativeChain",
       `Chain recording failed for thesis #${thesisId} (thesis saved successfully): ${reason}`,
     );
+    await sendDiscordMessage(
+      `⚠️ **[NarrativeChain 장애]** thesis #${thesisId} chain 연결 실패\n\`\`\`${reason}\`\`\``,
+    ).catch(() => {
+      // Discord 발송 실패는 무시 — 원본 오류 은폐 방지
+    });
   }
 }

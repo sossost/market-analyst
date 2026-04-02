@@ -691,8 +691,12 @@ async function main() {
   }
 
   // 6.5. 토론 데이터 완전성 검증 (저장 후)
-  const allTickersEmpty = result.round3.theses.length > 0 &&
-    result.round3.theses.every((t) => (t.beneficiaryTickers ?? []).length === 0);
+  // structural_narrative 카테고리만 체크 — sector_rotation/short_term_outlook은 빈 배열이 정상 설계
+  const structuralTheses = result.round3.theses.filter(
+    (t) => t.category === "structural_narrative",
+  );
+  const allTickersEmpty = structuralTheses.length > 0 &&
+    structuralTheses.every((t) => (t.beneficiaryTickers ?? []).length === 0);
   if (allTickersEmpty) {
     logger.warn("DebateIntegrity", "모든 thesis의 beneficiaryTickers가 빈 배열 — 종목 추출 실패 가능성");
     await sendDiscordMessage(
