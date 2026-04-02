@@ -6,7 +6,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    exclude: ["frontend/**", "node_modules/**", ".claude/worktrees/**"],
+    exclude: ["node_modules/**", ".claude/worktrees/**"],
     setupFiles: ["./src/test-setup.ts"],
   },
 });

@@ -60,8 +60,8 @@
                ┌───────────┼───────────┐
                │           │           │
         ┌──────▼──┐  ┌─────▼────┐  ┌──▼───────┐
-        │Supabase │  │ Frontend │  │ Auto     │
-        │   (DB)  │  │Dashboard │  │Issue Proc│
+        │Supabase │  │control-  │  │ Auto     │
+        │   (DB)  │  │tower(FE) │  │Issue Proc│
         └─────────┘  └──────────┘  └──────────┘
 ```
 
@@ -116,7 +116,7 @@ PR 리뷰어:       KST 09:15~02:15 매 :15분 (18회/일)
 | Phase N-1 | Narrative Layer | **완료** | 수요-공급-병목 서사 프레임 + 실패 패턴 + 합의도 추적 |
 | Wave 2a/2b | 서사 확장 | **완료** | N+1 병목 예측 + 공급 과잉 전환 + narrative_chains 병목 추적 |
 | Sector Lag | 섹터 시차 패턴 | **완료** | Phase 전이 시차 축적 + 선행 경보 → 주간 에이전트 연동 |
-| F8 | Report/Debate Dashboard | **완료** | Next.js 16 + Supabase Auth + 리포트/토론 아카이브 |
+| F8 | Report/Debate Dashboard | **→ control-tower 이관** | Next.js 대시보드 → control-tower 레포 분리 |
 | F9 | Strategic Auto-Review | **완료** | Claude Code CLI 기반 전략 참모 자동 리뷰 (#266) |
 | F10 | Corporate Analyst | **완료** | 종목 심층 분석 + 정량 목표주가 (#277) |
 | F11 | Insight Briefing Pivot | **완료** | 추천→관심종목, 5중 교집합 게이트, 리포트 4→3개, 90일 트래킹, KPI 전환 (#390) |
@@ -333,10 +333,6 @@ market-analyst/
 │   ├── reports/            # 리포트 이력 JSON
 │   ├── qa-reports/         # QA 분석 결과 MD
 │   └── review-feedback/    # 도구 유효성 검증 JSON
-├── frontend/               # Next.js 16 대시보드 (App Router)
-│   ├── src/app/            # 라우트
-│   ├── src/features/       # 피쳐 기반 모듈 (auth, reports, debates, narrative-chains)
-│   └── e2e/                # Playwright E2E 테스트
 ├── docs/features/          # 기능별 스펙/결정/플랜
 └── scripts/launchd/        # 맥미니 launchd 스케줄 설정 (9개 작업)
 ```
