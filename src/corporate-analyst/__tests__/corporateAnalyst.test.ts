@@ -20,7 +20,7 @@ vi.mock("@anthropic-ai/sdk", () => {
 });
 
 // callWithRetry mock — 실제 retry 없이 fn()을 바로 실행
-vi.mock("../../debate/callAgent.js", () => ({
+vi.mock("../../debate/llm/retry.js", () => ({
   callWithRetry: vi.fn((fn: () => unknown) => fn()),
 }));
 

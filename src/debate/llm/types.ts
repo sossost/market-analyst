@@ -6,7 +6,12 @@ export interface LLMCallOptions {
 
 export interface LLMCallResult {
   content: string;
-  tokensUsed: { input: number; output: number };
+  tokensUsed: {
+    input: number;
+    output: number;
+    cacheCreation?: number;
+    cacheRead?: number;
+  };
 }
 
 export interface LLMProvider {

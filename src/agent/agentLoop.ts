@@ -1,10 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getAnthropicClient } from "@/lib/anthropic-client";
 import { executeTool } from "@/tools/index";
-import { callWithRetry } from "@/debate/callAgent.js";
+import { callWithRetry } from "@/debate/llm/retry.js";
 import { logger } from "@/lib/logger";
 import type { AgentConfig, AgentResult, ToolError } from "@/tools/types";
 import { reportToolError } from "@/tools/toolErrorReporter";
+
+type CacheableUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
 
 export const CRITICAL_TOOLS = new Set([
   "get_market_breadth",
@@ -81,20 +88,22 @@ export async function runAgentLoop(config: AgentConfig): Promise<AgentResult> {
   ) {
     logger.info("Agent", `Iteration ${iteration + 1}/${config.maxIterations}`);
 
-    const response = await callWithRetry(() =>
-      client.messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: 0,
-        system: systemBlocks,
-        tools: cachedTools,
-        messages,
-      }),
+    const response = await callWithRetry(
+      () =>
+        client.messages.create({
+          model: config.model,
+          max_tokens: config.maxTokens,
+          temperature: 0,
+          system: systemBlocks,
+          tools: cachedTools,
+          messages,
+        }),
+      "AgentLoop",
     );
 
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
-    const usage = response.usage as unknown as Record<string, number>;
+    const usage = response.usage as unknown as CacheableUsage;
     cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
     cacheReadTokens += usage.cache_read_input_tokens ?? 0;
 

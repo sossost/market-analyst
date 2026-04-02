@@ -6,7 +6,7 @@
  * reviewAgent.ts의 단일 LLM 호출 패턴을 따른다.
  */
 import { getAnthropicClient } from "@/lib/anthropic-client";
-import { callWithRetry } from "@/debate/callAgent.js";
+import { callWithRetry } from "@/debate/llm/retry.js";
 import { logger } from "@/lib/logger.js";
 import type { AnalysisInputs } from "./loadAnalysisInputs.js";
 import { computePriceTarget, type PriceTargetResult, type CompanyMetrics, type PeerMultiples } from "./pricingModel.js";
@@ -465,13 +465,15 @@ export async function generateAnalysisReport(
 
   logger.info("CorporateAnalyst", `${symbol} 리포트 생성 시작`);
 
-  const response = await callWithRetry(() =>
-    getAnthropicClient().messages.create({
-      model: CORPORATE_ANALYST_MODEL,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
+  const response = await callWithRetry(
+    () =>
+      getAnthropicClient().messages.create({
+        model: CORPORATE_ANALYST_MODEL,
+        max_tokens: MAX_TOKENS,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    "CorporateAnalyst",
   );
 
   const tokensInput = response.usage.input_tokens;

@@ -1,45 +1,28 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { logger } from "@/lib/logger";
 import { DEBATE_TOOLS, executeDebateTool } from "./braveSearch.js";
-
+import { callWithRetry } from "./llm/retry.js";
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
 const MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 const MAX_TOOL_ROUNDS = 3;
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 15_000; // 429 시 15초부터 시작
+
+type CacheableUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
 
 export interface AgentCallResult {
   content: string;
-  tokensUsed: { input: number; output: number };
-}
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-/**
- * Rate limit (429) 대응 exponential backoff 재시도.
- * 15s → 30s → 60s 간격으로 최대 3회 재시도.
- */
-export async function callWithRetry(
-  fn: () => Promise<Anthropic.Message>,
-): Promise<Anthropic.Message> {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      const isRateLimit =
-        (err instanceof Error && err.message.includes("429")) ||
-        (err instanceof Error && "status" in err && (err as any).status === 429);
-
-      if (!isRateLimit || attempt === MAX_RETRIES - 1) throw err;
-
-      const delay = BASE_DELAY_MS * 2 ** attempt;
-      logger.warn("CallAgent", `Rate limited, retry ${attempt + 1}/${MAX_RETRIES} after ${(delay / 1000).toFixed(0)}s`);
-      await sleep(delay);
-    }
-  }
-  throw new Error("Unreachable");
+  tokensUsed: {
+    input: number;
+    output: number;
+    cacheCreation?: number;
+    cacheRead?: number;
+  };
 }
 
 /**
@@ -59,27 +42,50 @@ export async function callAgent(
     { role: "user", content: userMessage },
   ];
 
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: systemPrompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
   let totalInput = 0;
   let totalOutput = 0;
+  let totalCacheCreation = 0;
+  let totalCacheRead = 0;
 
   // 도구 없이 단일 호출
   if (!useTools) {
-    const response = await callWithRetry(() =>
-      client.messages.create({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages,
-      }),
+    const response = await callWithRetry(
+      () =>
+        client.messages.create({
+          model: MODEL,
+          max_tokens: maxTokens,
+          system: systemBlocks,
+          messages,
+        }),
+      "CallAgent",
     );
     const textBlocks = response.content.filter(
       (block): block is Anthropic.TextBlock => block.type === "text",
     );
+
+    const usage = response.usage as unknown as CacheableUsage;
+    const cacheCreation = usage.cache_creation_input_tokens ?? 0;
+    const cacheRead = usage.cache_read_input_tokens ?? 0;
+
+    if (cacheCreation > 0 || cacheRead > 0) {
+      logger.info("CallAgent", `Cache — creation: ${cacheCreation}, read: ${cacheRead}`);
+    }
+
     return {
       content: textBlocks.map((b) => b.text).join("\n"),
       tokensUsed: {
         input: response.usage.input_tokens,
         output: response.usage.output_tokens,
+        ...(cacheCreation > 0 && { cacheCreation }),
+        ...(cacheRead > 0 && { cacheRead }),
       },
     };
   }
@@ -87,27 +93,43 @@ export async function callAgent(
   let lastTextContent = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await callWithRetry(() =>
-      client.messages.create({
-        model: MODEL,
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        tools: DEBATE_TOOLS,
-        messages,
-      }),
+    const response = await callWithRetry(
+      () =>
+        client.messages.create({
+          model: MODEL,
+          max_tokens: maxTokens,
+          system: systemBlocks,
+          tools: DEBATE_TOOLS,
+          messages,
+        }),
+      "CallAgent",
     );
 
     totalInput += response.usage.input_tokens;
     totalOutput += response.usage.output_tokens;
+
+    const usage = response.usage as unknown as CacheableUsage;
+    totalCacheCreation += usage.cache_creation_input_tokens ?? 0;
+    totalCacheRead += usage.cache_read_input_tokens ?? 0;
 
     // If no tool use, extract text and return
     if (response.stop_reason === "end_turn") {
       const textBlocks = response.content.filter(
         (block): block is Anthropic.TextBlock => block.type === "text",
       );
+
+      if (totalCacheCreation > 0 || totalCacheRead > 0) {
+        logger.info("CallAgent", `Cache — creation: ${totalCacheCreation}, read: ${totalCacheRead}`);
+      }
+
       return {
         content: textBlocks.map((b) => b.text).join("\n"),
-        tokensUsed: { input: totalInput, output: totalOutput },
+        tokensUsed: {
+          input: totalInput,
+          output: totalOutput,
+          ...(totalCacheCreation > 0 && { cacheCreation: totalCacheCreation }),
+          ...(totalCacheRead > 0 && { cacheRead: totalCacheRead }),
+        },
       };
     }
 
@@ -125,9 +147,17 @@ export async function callAgent(
     }
 
     if (toolUseBlocks.length === 0) {
+      if (totalCacheCreation > 0 || totalCacheRead > 0) {
+        logger.info("CallAgent", `Cache — creation: ${totalCacheCreation}, read: ${totalCacheRead}`);
+      }
       return {
         content: lastTextContent,
-        tokensUsed: { input: totalInput, output: totalOutput },
+        tokensUsed: {
+          input: totalInput,
+          output: totalOutput,
+          ...(totalCacheCreation > 0 && { cacheCreation: totalCacheCreation }),
+          ...(totalCacheRead > 0 && { cacheRead: totalCacheRead }),
+        },
       };
     }
 
@@ -156,9 +186,17 @@ export async function callAgent(
   // Max rounds reached — use accumulated text or throw
   logger.warn("CallAgent", `Max tool rounds (${MAX_TOOL_ROUNDS}) reached`);
   if (lastTextContent.length > 0) {
+    if (totalCacheCreation > 0 || totalCacheRead > 0) {
+      logger.info("CallAgent", `Cache — creation: ${totalCacheCreation}, read: ${totalCacheRead}`);
+    }
     return {
       content: lastTextContent,
-      tokensUsed: { input: totalInput, output: totalOutput },
+      tokensUsed: {
+        input: totalInput,
+        output: totalOutput,
+        ...(totalCacheCreation > 0 && { cacheCreation: totalCacheCreation }),
+        ...(totalCacheRead > 0 && { cacheRead: totalCacheRead }),
+      },
     };
   }
   throw new Error("Max tool rounds reached with no text output");
