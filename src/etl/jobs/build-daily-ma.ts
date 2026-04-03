@@ -206,23 +206,14 @@ async function main() {
     process.exit(1);
   }
 
-  const args = process.argv.slice(2);
-  const isBackfill = args.includes("backfill");
+  const isBackfill = process.argv.slice(2).includes("backfill");
 
   if (isBackfill) {
-    const fromArgIdx = args.indexOf("--from");
-    const fromArg = fromArgIdx !== -1 ? args[fromArgIdx + 1] : null;
+    logger.info(TAG, "Backfill mode — calculating MA for last 30 days");
 
-    let dateStr: string;
-    if (fromArg != null && /^\d{4}-\d{2}-\d{2}$/.test(fromArg)) {
-      dateStr = fromArg;
-      logger.info(TAG, `Backfill mode — calculating MA from ${dateStr}`);
-    } else {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      dateStr = thirtyDaysAgo.toISOString().split("T")[0];
-      logger.info(TAG, "Backfill mode — calculating MA for last 30 days");
-    }
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateStr = thirtyDaysAgo.toISOString().split("T")[0];
 
     const result = await retryDatabaseOperation(
       () =>

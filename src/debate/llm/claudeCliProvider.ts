@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, type ChildProcess } from "node:child_process";
 import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { LLMProviderError } from "./types.js";
 
@@ -73,12 +73,35 @@ export class ClaudeCliProvider implements LLMProvider {
   private readonly model: string;
   private readonly timeoutMs: number;
 
+  /** 현재 실행 중인 child process 추적 — 에러/종료 시 일괄 정리용 */
+  private readonly activeChildren = new Set<ChildProcess>();
+
+  /** 전역 인스턴스 추적 — process exit 시 모든 인스턴스의 child 일괄 정리 */
+  private static readonly instances = new Set<ClaudeCliProvider>();
+
   constructor(
     model: string = DEFAULT_MODEL,
     timeoutMs: number = TIMEOUT_MS,
   ) {
     this.model = model;
     this.timeoutMs = timeoutMs;
+    ClaudeCliProvider.instances.add(this);
+  }
+
+  /** 이 인스턴스의 활성 child process를 모두 종료한다. */
+  dispose(): void {
+    for (const child of this.activeChildren) {
+      try { child.kill("SIGTERM"); } catch { /* 이미 종료된 프로세스 무시 */ }
+    }
+    this.activeChildren.clear();
+    ClaudeCliProvider.instances.delete(this);
+  }
+
+  /** 모든 ClaudeCliProvider 인스턴스의 활성 child process를 종료한다. */
+  static killAll(): void {
+    for (const instance of Array.from(ClaudeCliProvider.instances)) {
+      instance.dispose();
+    }
   }
 
   async call(options: LLMCallOptions): Promise<LLMCallResult> {
@@ -110,7 +133,9 @@ export class ClaudeCliProvider implements LLMProvider {
         args,
         { timeout: this.timeoutMs, maxBuffer: 10 * 1024 * 1024, env: cleanEnv },
         (error, stdout, stderr) => {
+          this.activeChildren.delete(child);
           if (error != null) {
+            try { child.kill("SIGTERM"); } catch { /* 이미 종료된 프로세스 무시 */ }
             reject(this.classifyError(error, stdout, stderr));
             return;
           }
@@ -127,6 +152,7 @@ export class ClaudeCliProvider implements LLMProvider {
         },
       );
 
+      this.activeChildren.add(child);
       child.stdin?.end(userMessage, "utf-8");
     });
   }
