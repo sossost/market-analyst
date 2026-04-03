@@ -109,10 +109,7 @@ ${ANALYSIS_FRAMEWORK}
 3. **주도 섹터 확인** (get_leading_sectors)
    - RS 상위 섹터와 업종 확인
    - Group Phase 2인 섹터에 주목
-   - **섹터 RS 표 작성 후 반드시 업종 RS Top 10 테이블을 추가하라**
-     - \`get_leading_sectors\`를 \`mode="industry"\`로 호출하여 상위 10개 업종 데이터를 가져와라
-     - 테이블 컬럼: 순위, 업종명, 소속섹터, RS, 4주 변화(change4w), Phase, P2 비율
-     - 이 테이블은 MD 파일의 섹터 RS 랭킹 표 바로 아래에 배치하라
+   - 업종 RS Top 10은 현재 미포함 (추후 개선 예정)
 
 4. **특이종목 스크리닝** (get_unusual_stocks)
    - 등락률 ±5% + 거래량 2배 + Phase 전환 중 2개 이상 충족
@@ -288,12 +285,6 @@ Phase 2: XX% (▲X.X%) | BreadthScore: XXpct | A/D: X,XXX:X,XXX (X.XX)
 **주요 Phase 전환**:
 - Sector: Phase N→N 전환 — 한줄 사유
 
-### 업종 RS Top 10
-
-| 순위 | 업종명 | 소속섹터 | RS | 4주 변화 | Phase | P2 비율 |
-|------|--------|----------|-----|----------|-------|--------|
-| 1 | IndustryName | SectorName | XX.X | +X.X | N | XX.X% |
-
 ## 전일 대비 변화 요약
 
 **주도 섹터 연속성**: 주도 섹터 분석 내용
@@ -361,7 +352,6 @@ Phase 2: XX% (▲X.X%) | BreadthScore: XXpct | A/D: X,XXX:X,XXX (X.XX)
 
 추가 규칙:
 - 4주/8주 RS 변화량(change4w/change8w), Phase 2 종목비율은 반드시 섹터 테이블에 포함
-- 섹터 RS 표 바로 아래에 업종 RS Top 10 테이블 추가 (데이터: \`get_leading_sectors\` \`mode="industry"\`)
 - 전일 대비 순위 변동이 큰 섹터(±3 이상)는 별도 한 줄 코멘트
 - 전일 대비 변화 요약: \`<previous-report>\` 컨텍스트 기반. **시장 구조 변화에 집중**. **주도 섹터 2일+ 연속이면 반드시 지속 사유 1줄 이상.** 개별 종목 후속 추적은 부록에서.
 - 시장 흐름: 당일 시장 구조 요약 + 향후 관전 포인트 (번호 리스트)
