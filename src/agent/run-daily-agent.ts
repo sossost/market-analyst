@@ -322,7 +322,7 @@ async function main() {
   // 9. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (finalDrafts.length > 0) {
     logger.step("[9/9] Running review pipeline...");
-    const sentDrafts = await runReviewPipeline(finalDrafts, "DISCORD_WEBHOOK_URL", { reportType: "daily" });
+    const sentDrafts = await runReviewPipeline(finalDrafts, "DISCORD_WEBHOOK_URL", { reportType: "daily", date: targetDate });
 
     // full_content DB 저장
     if (sentDrafts.length > 0) {

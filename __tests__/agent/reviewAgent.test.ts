@@ -25,6 +25,17 @@ vi.mock("@/lib/gist", () => ({
   createGist: mockCreateGist,
 }));
 
+const mockBuildHtmlReport = vi.fn();
+const mockUploadHtmlReport = vi.fn();
+
+vi.mock("@/lib/htmlReport", () => ({
+  buildHtmlReport: mockBuildHtmlReport,
+}));
+
+vi.mock("@/lib/storageUpload", () => ({
+  uploadHtmlReport: mockUploadHtmlReport,
+}));
+
 const mockSaveReviewFeedback = vi.fn();
 
 vi.mock("@/lib/reviewFeedback", () => ({
@@ -492,6 +503,8 @@ describe("sendDrafts", () => {
     vi.clearAllMocks();
     delete process.env.TEST_WEBHOOK;
     delete process.env.GITHUB_TOKEN;
+    mockBuildHtmlReport.mockReturnValue("<html>report</html>");
+    mockUploadHtmlReport.mockResolvedValue(null);
   });
 
   it("does nothing when the webhook env var is not set", async () => {
@@ -590,6 +603,100 @@ describe("sendDrafts", () => {
 
     expect(mockSendDiscordMessage).not.toHaveBeenCalled();
     expect(mockSendDiscordFile).not.toHaveBeenCalled();
+  });
+
+  it("uploads HTML and sends Storage URL when date is provided and upload succeeds", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockBuildHtmlReport.mockReturnValue("<html>full report</html>");
+    mockUploadHtmlReport.mockResolvedValue("https://storage.example.com/daily/2026-04-03/report.html");
+
+    await sendDrafts(
+      [makeDraft({ message: "Summary line", markdownContent: "# Report\nDetails", filename: "daily.md" })],
+      "TEST_WEBHOOK",
+      "2026-04-03",
+    );
+
+    expect(mockBuildHtmlReport).toHaveBeenCalledWith(
+      "# Report\nDetails",
+      "Summary line",
+      "2026-04-03",
+    );
+    expect(mockUploadHtmlReport).toHaveBeenCalledWith("<html>full report</html>", "2026-04-03");
+    expect(mockSendDiscordMessage).toHaveBeenCalledWith(
+      expect.stringContaining("https://storage.example.com/daily/2026-04-03/report.html"),
+      "TEST_WEBHOOK",
+    );
+    expect(mockSendDiscordMessage.mock.calls[0][0]).toContain("📊 상세 리포트:");
+    expect(mockCreateGist).not.toHaveBeenCalled();
+  });
+
+  it("falls back to Gist when Storage upload returns null", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockUploadHtmlReport.mockResolvedValue(null);
+    mockCreateGist.mockResolvedValue({ url: "https://gist.github.com/fallback", id: "xyz" });
+
+    await sendDrafts(
+      [makeDraft({ message: "Summary", markdownContent: "# Report", filename: "daily.md" })],
+      "TEST_WEBHOOK",
+      "2026-04-03",
+    );
+
+    expect(mockCreateGist).toHaveBeenCalledWith("daily.md", "# Report", "Summary");
+    expect(mockSendDiscordMessage).toHaveBeenCalledWith(
+      expect.stringContaining("https://gist.github.com/fallback"),
+      "TEST_WEBHOOK",
+    );
+    expect(mockSendDiscordMessage.mock.calls[0][0]).toContain("📄 상세 리포트:");
+  });
+
+  it("falls back to Gist when buildHtmlReport throws", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockBuildHtmlReport.mockImplementation(() => { throw new Error("marked parse error"); });
+    mockCreateGist.mockResolvedValue({ url: "https://gist.github.com/error-fallback", id: "abc" });
+
+    await sendDrafts(
+      [makeDraft({ message: "Summary", markdownContent: "# Report" })],
+      "TEST_WEBHOOK",
+      "2026-04-03",
+    );
+
+    expect(mockCreateGist).toHaveBeenCalled();
+    expect(mockSendDiscordMessage).toHaveBeenCalledWith(
+      expect.stringContaining("https://gist.github.com/error-fallback"),
+      "TEST_WEBHOOK",
+    );
+  });
+
+  it("skips Storage upload and goes straight to Gist when date is not provided", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockCreateGist.mockResolvedValue({ url: "https://gist.github.com/no-date", id: "def" });
+
+    await sendDrafts(
+      [makeDraft({ message: "Summary", markdownContent: "# Report" })],
+      "TEST_WEBHOOK",
+    );
+
+    expect(mockBuildHtmlReport).not.toHaveBeenCalled();
+    expect(mockUploadHtmlReport).not.toHaveBeenCalled();
+    expect(mockCreateGist).toHaveBeenCalled();
+  });
+
+  it("uses only first line of draft message as HTML title", async () => {
+    process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockUploadHtmlReport.mockResolvedValue("https://storage.example.com/report.html");
+
+    const multilineMessage = "First line title\nSecond line\nThird line";
+    await sendDrafts(
+      [makeDraft({ message: multilineMessage, markdownContent: "# Report" })],
+      "TEST_WEBHOOK",
+      "2026-04-03",
+    );
+
+    expect(mockBuildHtmlReport).toHaveBeenCalledWith(
+      "# Report",
+      "First line title",
+      "2026-04-03",
+    );
   });
 });
 
