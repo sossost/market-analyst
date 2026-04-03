@@ -912,8 +912,9 @@ function renderSectorRankingSection(body: string): string {
     }
   }
 
-  const html = parts.join("\n");
-  return applyPhasePostProcessing(html);
+  // 섹터 테이블은 renderSectorTable에서 이미 delta/phase 배지를 처리했으므로
+  // applyPhasePostProcessing을 적용하지 않는다 (이중 span 방지)
+  return parts.join("\n");
 }
 
 /**
@@ -977,9 +978,9 @@ function renderSectorTable(text: string): string | null {
     const changeDelta = formatDelta(change);
     const rsCell = `${escapeHtml(rs)} ${changeDelta}`;
 
-    // 4주/8주 색상
-    const w4Cell = formatSignedCell(w4);
-    const w8Cell = formatSignedCell(w8);
+    // 4주/8주: class를 td에 직접 적용 (sample 방식)
+    const w4Class = w4.trim().startsWith("+") ? ' class="up"' : w4.trim().startsWith("-") ? ' class="down"' : "";
+    const w8Class = w8.trim().startsWith("+") ? ' class="up"' : w8.trim().startsWith("-") ? ' class="down"' : "";
 
     // Phase 배지 (전환 포맷: "3 (2→3)" → "2 → <badge>3</badge>")
     const phaseCell = formatPhaseCell(phase);
@@ -991,8 +992,8 @@ function renderSectorTable(text: string): string | null {
       <td>${escapeHtml(rank)}</td>
       <td><strong>${escapeHtml(sector)}</strong></td>
       <td>${rsCell}</td>
-      <td>${w4Cell}</td>
-      <td>${w8Cell}</td>
+      <td${w4Class}>${escapeHtml(w4.trim())}</td>
+      <td${w8Class}>${escapeHtml(w8.trim())}</td>
       <td style="text-align:right">${phaseCell}</td>
       <td>${p2Cell}</td>
     </tr>`;
