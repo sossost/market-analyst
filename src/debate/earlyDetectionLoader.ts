@@ -42,10 +42,69 @@ interface AcceleratingStock {
   sepaGrade: FundamentalGrade;
 }
 
+export type EarlyDetectionSource = "phase1Late" | "risingRs" | "accelerating";
+
+export interface OverlapStock {
+  symbol: string;
+  sector: string | null;
+  overlapCount: number;
+  sources: EarlyDetectionSource[];
+}
+
 export interface EarlyDetectionData {
   phase1Late: Phase1LateStock[];
   risingRs: RisingRsStock[];
   accelerating: AcceleratingStock[];
+  highConviction: OverlapStock[];
+}
+
+/**
+ * 3개 도구 결과의 symbol 교집합을 계산하고 overlap_count를 태깅한다.
+ * 2개 이상 도구에 동시 등장하는 종목을 "고확신 후보"로 반환.
+ * 순수 함수 — 테스트 용이성을 위해 분리.
+ */
+export function computeOverlapStocks(
+  phase1Late: Phase1LateStock[],
+  risingRs: RisingRsStock[],
+  accelerating: AcceleratingStock[],
+): OverlapStock[] {
+  type SymbolEntry = { sector: string | null; sources: Set<EarlyDetectionSource> };
+  const symbolMap = new Map<string, SymbolEntry>();
+
+  type Trackable = { symbol: string; sector: string | null };
+  const track = (stocks: Trackable[], source: EarlyDetectionSource) => {
+    for (const s of stocks) {
+      const existing = symbolMap.get(s.symbol);
+      if (existing == null) {
+        symbolMap.set(s.symbol, { sector: s.sector, sources: new Set([source]) });
+      } else {
+        symbolMap.set(s.symbol, {
+          sector: existing.sector ?? s.sector,
+          sources: new Set(existing.sources).add(source),
+        });
+      }
+    }
+  };
+
+  track(phase1Late, "phase1Late");
+  track(risingRs, "risingRs");
+  track(accelerating, "accelerating");
+
+  const results: OverlapStock[] = [];
+  for (const [symbol, entry] of symbolMap) {
+    if (entry.sources.size >= 2) {
+      results.push({
+        symbol,
+        sector: entry.sector,
+        overlapCount: entry.sources.size,
+        sources: [...entry.sources].sort(),
+      });
+    }
+  }
+
+  // overlap 많은 순 → 같으면 symbol 알파벳 순
+  results.sort((a, b) => b.overlapCount - a.overlapCount || a.symbol.localeCompare(b.symbol));
+  return results;
 }
 
 /**
@@ -60,7 +119,9 @@ export async function loadEarlyDetectionData(date: string): Promise<EarlyDetecti
     loadAccelerating(),
   ]);
 
-  return { phase1Late, risingRs, accelerating };
+  const highConviction = computeOverlapStocks(phase1Late, risingRs, accelerating);
+
+  return { phase1Late, risingRs, accelerating, highConviction };
 }
 
 async function loadPhase1Late(date: string): Promise<Phase1LateStock[]> {
@@ -181,6 +242,27 @@ async function loadAccelerating(): Promise<AcceleratingStock[]> {
 export function formatEarlyDetectionContext(data: EarlyDetectionData): string {
   const sections: string[] = [];
 
+  const SOURCE_LABEL: Record<EarlyDetectionSource, string> = {
+    phase1Late: "Phase1후기",
+    risingRs: "RS상승",
+    accelerating: "펀더멘탈가속",
+  };
+
+  if (data.highConviction.length > 0) {
+    const rows = data.highConviction.map((s) => {
+      const sourceLabels = s.sources.map((src) => SOURCE_LABEL[src]).join("+");
+      return `| ${s.symbol} | ${s.overlapCount} | ${sourceLabels} | ${s.sector ?? "—"} |`;
+    });
+    sections.push([
+      "### 고확신 후보 — 복수 신호 수렴",
+      "2개 이상 조기포착 도구에 동시 등장하는 종목. 신호 수렴도가 높을수록 Phase 2 초입 가능성 높음.",
+      "",
+      "| 종목 | 신호수 | 출처 | 섹터 |",
+      "|------|--------|------|------|",
+      ...rows,
+    ].join("\n"));
+  }
+
   if (data.phase1Late.length > 0) {
     const rows = data.phase1Late.map((s) => {
       const slope = s.ma150Slope != null ? s.ma150Slope.toFixed(4) : "—";
@@ -250,7 +332,7 @@ export async function loadEarlyDetectionContext(date: string): Promise<string> {
     if (totalCount > 0) {
       logger.info(
         "EarlyDetection",
-        `${totalCount}건 로드 (Phase1Late: ${data.phase1Late.length}, RisingRS: ${data.risingRs.length}, Accel: ${data.accelerating.length})`,
+        `${totalCount}건 로드 (Phase1Late: ${data.phase1Late.length}, RisingRS: ${data.risingRs.length}, Accel: ${data.accelerating.length}, 고확신: ${data.highConviction.length})`,
       );
     } else {
       logger.info("EarlyDetection", "조기포착 후보 없음");

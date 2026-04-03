@@ -7,6 +7,7 @@ describe("formatEarlyDetectionContext", () => {
       phase1Late: [],
       risingRs: [],
       accelerating: [],
+      highConviction: [],
     };
     expect(formatEarlyDetectionContext(data)).toBe("");
   });
@@ -26,6 +27,7 @@ describe("formatEarlyDetectionContext", () => {
           sepaGrade: "A",
         },
       ],
+      highConviction: [],
     };
 
     const result = formatEarlyDetectionContext(data);
@@ -59,6 +61,7 @@ describe("formatEarlyDetectionContext", () => {
           sepaGrade: "C",
         },
       ],
+      highConviction: [],
     };
 
     const result = formatEarlyDetectionContext(data);
