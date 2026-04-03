@@ -38,6 +38,7 @@ import { formatChainsForDailyPrompt } from "@/lib/narrativeChainStats";
 import { loadTodayDebateInsight } from "@/debate/sessionStore";
 import { loadPreviousReportContext } from "@/lib/previousReportContext";
 import { loadSectorClusterContext } from "@/lib/sectorClusterContext";
+import { loadConfirmedRegime } from "@/debate/regimeStore";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
@@ -171,16 +172,36 @@ async function main() {
     logger.warn("SectorCluster", `로드 실패 (에이전트는 계속 진행): ${reason}`);
   }
 
-  // 5. 오늘의 토론 인사이트 로드 (fail-open — 없으면 빈 문자열)
+  // 5. 현재 확정 레짐 로드 (fail-open — 없으면 빈 문자열)
+  let regimeContext = "";
+  try {
+    const confirmedRegime = await loadConfirmedRegime();
+    if (confirmedRegime != null) {
+      const confirmedAt = confirmedRegime.confirmedAt ?? confirmedRegime.regimeDate;
+      const confirmedDate = new Date(`${confirmedAt}T00:00:00Z`);
+      const targetDateObj = new Date(`${targetDate}T00:00:00Z`);
+      const consecutiveDays =
+        Math.floor((targetDateObj.getTime() - confirmedDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      regimeContext = `현재 시장 레짐: ${confirmedRegime.regime} (확정일: ${confirmedAt}, 경과일수: ${consecutiveDays}일)`;
+      logger.info("Regime", `현재 확정 레짐: ${confirmedRegime.regime} (${confirmedAt}부터 ${consecutiveDays}일)`);
+    } else {
+      logger.info("Regime", "확정 레짐 없음 — 레짐 컨텍스트 생략");
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("Regime", `레짐 로드 실패 (에이전트는 계속 진행): ${reason}`);
+  }
+
+  // 5-B. 오늘의 토론 인사이트 로드 (fail-open — 없으면 빈 문자열)
   const debateInsight = await loadTodayDebateInsight(targetDate);
   if (debateInsight !== "") {
     logger.info("DebateInsight", "오늘의 토론 인사이트 로드 완료");
   } else {
     logger.info("DebateInsight", "오늘의 토론 인사이트 없음 — [중단] 섹션 생략됨");
   }
-  logger.step("[5/9] Debate insight loaded");
+  logger.step("[5/9] Regime + debate insight loaded");
 
-  // 5-B. 직전 리포트 컨텍스트 로드 (fail-open — 없으면 빈 문자열)
+  // 5-C. 직전 리포트 컨텍스트 로드 (fail-open — 없으면 빈 문자열)
   const previousReportContext = await loadPreviousReportContext(targetDate);
   if (previousReportContext !== "") {
     logger.info("PreviousReport", "직전 리포트 컨텍스트 로드 완료");
@@ -196,7 +217,7 @@ async function main() {
 
   const config: AgentConfig = {
     targetDate,
-    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext, sectorClusterContext }),
+    systemPrompt: buildDailySystemPrompt({ targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext, sectorClusterContext, regimeContext }),
     tools: [
       getIndexReturns,
       getMarketBreadth,
@@ -301,7 +322,7 @@ async function main() {
   // 9. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (finalDrafts.length > 0) {
     logger.step("[9/9] Running review pipeline...");
-    const sentDrafts = await runReviewPipeline(finalDrafts, "DISCORD_WEBHOOK_URL", { reportType: "daily" });
+    const sentDrafts = await runReviewPipeline(finalDrafts, "DISCORD_WEBHOOK_URL", { reportType: "daily", date: targetDate });
 
     // full_content DB 저장
     if (sentDrafts.length > 0) {

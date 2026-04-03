@@ -98,7 +98,9 @@ DISCORD_WEEKLY_WEBHOOK_URL=https://...      # 주간 리포트 채널
 DISCORD_STOCK_REPORT_WEBHOOK_URL=https://...  # S등급 종목 리포트 채널
 DISCORD_ERROR_WEBHOOK_URL=https://...       # 에러 알림 채널 (optional)
 BRAVE_API_KEY=BSA...                        # 카탈리스트 뉴스 검색
-GITHUB_TOKEN=gho_...                        # Gist MD 첨부
+GITHUB_TOKEN=gho_...                        # Gist MD 첨부 (Supabase 미설정 시 fallback)
+SUPABASE_URL=https://...supabase.co         # HTML 리포트 Storage 업로드 (optional)
+SUPABASE_SERVICE_KEY=eyJ...                 # Supabase service_role key (optional)
 ```
 
 ### Run
@@ -172,7 +174,7 @@ yarn db:studio              # Drizzle Studio UI
                            │
                     ┌──────▼───────┐
                     │   Delivery   │
-                    │ Discord+Gist │
+                    │Discord+HTML  │
                     └──────┬───────┘
                            │
                ┌───────────┘
@@ -313,7 +315,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
 | Testing | Vitest (Backend) |
 | Scheduling | macOS launchd (맥미니 서버) |
-| Delivery | Discord Webhook + GitHub Gist |
+| Delivery | Discord Webhook + Supabase Storage (HTML) + GitHub Gist (fallback) |
 | Search | Brave Search API |
 | Automation | Claude Code CLI (Auto Issue Processor, QA) |
 
