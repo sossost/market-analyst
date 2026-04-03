@@ -5,7 +5,13 @@ import { detectPhase } from "@/lib/phase-detection";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
-import { chunk, toNum, resolveVolumeConfirmed } from "@/etl/utils/common";
+import {
+  chunk,
+  toNum,
+  resolveVolumeConfirmed,
+  calculateWeeklyVolRatio,
+  resolveBreakoutSignal,
+} from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
 import type { PhaseInput } from "@/types";
 import { logger } from "@/lib/logger";
@@ -187,6 +193,9 @@ async function main() {
       const volHist = volHistBySymbol.get(sym.symbol) ?? [];
       const vduRatio = calculateVduRatio(volHist, VDU_SHORT_PERIOD, VDU_LONG_PERIOD);
 
+      // Weekly volume ratio: recent 1-week total / prior 4-week weekly average
+      const weeklyVolRatio = calculateWeeklyVolRatio(volHist);
+
       const prevVolConfirmed =
         prevVolConfirmedBySymbol.get(sym.symbol) ?? null;
       const volumeConfirmed = resolveVolumeConfirmed(
@@ -194,6 +203,14 @@ async function main() {
         prevPhase,
         volRatio,
         prevVolConfirmed,
+      );
+
+      // Breakout signal: Phase 2 transition + volume confirmation
+      const breakoutSignal = resolveBreakoutSignal(
+        result.phase,
+        prevPhase,
+        volRatio,
+        weeklyVolRatio,
       );
 
       if (result.phase === 2) phase2Count++;
@@ -213,7 +230,9 @@ async function main() {
         conditionsMet: JSON.stringify(result.detail.conditionsMet),
         volRatio,
         vduRatio,
+        weeklyVolRatio,
         volumeConfirmed,
+        breakoutSignal,
       });
     }
 
@@ -278,7 +297,9 @@ type UpsertRow = {
   conditionsMet: string | null;
   volRatio: number | null;
   vduRatio: number | null;
+  weeklyVolRatio: number | null;
   volumeConfirmed: boolean | null;
+  breakoutSignal: string | null;
 };
 
 async function batchUpsert(rows: UpsertRow[]) {
@@ -301,7 +322,9 @@ async function batchUpsert(rows: UpsertRow[]) {
       conditionsMet: r.conditionsMet,
       volRatio: r.volRatio != null ? String(r.volRatio) : null,
       vduRatio: r.vduRatio != null ? String(r.vduRatio) : null,
+      weeklyVolRatio: r.weeklyVolRatio != null ? String(r.weeklyVolRatio) : null,
       volumeConfirmed: r.volumeConfirmed,
+      breakoutSignal: r.breakoutSignal,
     }));
 
     await db
@@ -320,7 +343,9 @@ async function batchUpsert(rows: UpsertRow[]) {
           conditionsMet: sql`EXCLUDED.conditions_met`,
           volRatio: sql`EXCLUDED.vol_ratio`,
           vduRatio: sql`EXCLUDED.vdu_ratio`,
+          weeklyVolRatio: sql`EXCLUDED.weekly_vol_ratio`,
           volumeConfirmed: sql`EXCLUDED.volume_confirmed`,
+          breakoutSignal: sql`EXCLUDED.breakout_signal`,
         },
       });
   }

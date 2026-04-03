@@ -38,6 +38,8 @@ export const stockPhases = pgTable(
     volRatio: numeric("vol_ratio"), // today volume / vol_ma30
     vduRatio: numeric("vdu_ratio"), // Volume Dry-Up: 5-day avg volume / 50-day avg volume
     volumeConfirmed: boolean("volume_confirmed"), // sticky: true if vol >= 2x at Phase 1→2 entry
+    weeklyVolRatio: numeric("weekly_vol_ratio"), // weekly volume ratio: recent 1w total / prior 4w weekly avg
+    breakoutSignal: text("breakout_signal"), // 'confirmed' | 'unconfirmed' | null — Phase 2 transition volume quality
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

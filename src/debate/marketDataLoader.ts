@@ -42,6 +42,7 @@ interface Phase2Stock {
   sector: string | null;
   industry: string | null;
   volumeConfirmed: boolean;
+  breakoutSignal: string | null; // 'confirmed' | 'unconfirmed' | null
   pctFromHigh52w: number | null;
   marketCapB: number | null; // billions
   /** 최근 가격 변화율 (5거래일) — 모멘텀 방향 판단용 */
@@ -134,6 +135,7 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: string | null;
     industry: string | null;
     volume_confirmed: boolean | null;
+    breakout_signal: string | null;
     pct_from_high_52w: string | null;
     market_cap: string | null;
     price_change_5d: string | null;
@@ -145,6 +147,7 @@ async function loadPhase2Stocks(date: string): Promise<{
     sector: r.sector,
     industry: r.industry,
     volumeConfirmed: r.volume_confirmed ?? false,
+    breakoutSignal: r.breakout_signal,
     pctFromHigh52w: r.pct_from_high_52w != null
       ? Number((toNum(r.pct_from_high_52w) * 100).toFixed(1))
       : null,
@@ -422,7 +425,13 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
  * Format market snapshot as readable text for debate question injection.
  */
 function formatStockLine(s: Phase2Stock): string {
-  const vol = s.volumeConfirmed ? " [거래량 확인]" : "";
+  const vol = s.breakoutSignal === "confirmed"
+    ? " [돌파 확인]"
+    : s.breakoutSignal === "unconfirmed"
+      ? " [거래량 미확인]"
+      : s.volumeConfirmed
+        ? " [거래량 확인]"
+        : "";
   const high52w = s.pctFromHigh52w != null ? `, 고점 대비 ${s.pctFromHigh52w}%` : "";
   const cap = s.marketCapB != null ? `, 시총 $${s.marketCapB}B` : "";
 
@@ -557,10 +566,14 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
     }
   }
 
-  // 4. New Phase 2 entries — split by volume confirmation
+  // 4. New Phase 2 entries — split by breakout signal (primary) or volume confirmation (fallback)
   if (snapshot.newPhase2Stocks.length > 0) {
-    const confirmed = snapshot.newPhase2Stocks.filter((s) => s.volumeConfirmed);
-    const unconfirmed = snapshot.newPhase2Stocks.filter((s) => !s.volumeConfirmed);
+    const confirmed = snapshot.newPhase2Stocks.filter(
+      (s) => s.breakoutSignal === "confirmed" || (s.breakoutSignal == null && s.volumeConfirmed),
+    );
+    const unconfirmed = snapshot.newPhase2Stocks.filter(
+      (s) => s.breakoutSignal === "unconfirmed" || (s.breakoutSignal == null && !s.volumeConfirmed),
+    );
 
     const parts: string[] = [
       `### 신규 상승 전환 진입 종목 (${snapshot.newPhase2Stocks.length}건, 시총 $3억 이상)`,
@@ -568,7 +581,7 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
 
     if (confirmed.length > 0) {
       parts.push(
-        `\n**거래량 돌파 확인 (${confirmed.length}건)** — 거래량 2배 이상 동반, 신뢰도 높음`,
+        `\n**돌파 확인 (${confirmed.length}건)** — 주간/일봉 거래량 돌파 동반, 신뢰도 높음`,
         ...confirmed.slice(0, 10).map(formatStockLine),
       );
     }

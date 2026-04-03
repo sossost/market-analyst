@@ -62,6 +62,14 @@ export function isValidTicker(symbol: string): boolean {
 
 const VOLUME_BREAKOUT_THRESHOLD = 2.0;
 
+/** 주간 거래량 돌파 임계값 — 최근 1주 거래량 합이 이전 4주 주간 평균의 1.5배 이상 */
+const WEEKLY_VOLUME_BREAKOUT_THRESHOLD = 1.5;
+
+/** 주간 거래량 비교에 사용할 기간 (거래일 기준) */
+const WEEKLY_TRADING_DAYS = 5;
+const WEEKLY_LOOKBACK_WEEKS = 4;
+const WEEKLY_LOOKBACK_DAYS = WEEKLY_TRADING_DAYS * WEEKLY_LOOKBACK_WEEKS; // 20일
+
 /**
  * Determine the sticky volume_confirmed flag for Phase 2 stocks.
  *
@@ -85,4 +93,60 @@ export function resolveVolumeConfirmed(
   // Phase 2 continuation — keep if already confirmed, upgrade if volume spikes
   if (prevVolumeConfirmed === true) return true;
   return volRatio != null && volRatio >= VOLUME_BREAKOUT_THRESHOLD;
+}
+
+export type BreakoutSignal = "confirmed" | "unconfirmed" | null;
+
+/**
+ * Calculate weekly volume ratio: recent 1-week total vs prior N-week weekly average.
+ *
+ * @param volumes - Daily volumes sorted most recent first (index 0 = today)
+ * @returns ratio or null if insufficient data
+ */
+export function calculateWeeklyVolRatio(volumes: number[]): number | null {
+  const totalNeeded = WEEKLY_TRADING_DAYS + WEEKLY_LOOKBACK_DAYS;
+  if (volumes.length < totalNeeded) return null;
+
+  const recentWeekTotal = volumes
+    .slice(0, WEEKLY_TRADING_DAYS)
+    .reduce((sum, v) => sum + v, 0);
+
+  const priorTotal = volumes
+    .slice(WEEKLY_TRADING_DAYS, totalNeeded)
+    .reduce((sum, v) => sum + v, 0);
+
+  // 이전 4주 주간 평균 = 이전 20일 합 / 4주
+  const priorWeeklyAvg = priorTotal / WEEKLY_LOOKBACK_WEEKS;
+
+  if (priorWeeklyAvg === 0) return null;
+  return recentWeekTotal / priorWeeklyAvg;
+}
+
+/**
+ * Determine breakout signal for Phase 2 transition stocks.
+ *
+ * - Phase != 2 → null
+ * - Phase 2 continuation (prev == 2) → null (전환 시점에만 판정)
+ * - New Phase 2 entry (prev != 2):
+ *   - weeklyVolRatio >= 1.5 OR dailyVolRatio >= 2.0 → "confirmed"
+ *   - otherwise → "unconfirmed"
+ */
+export function resolveBreakoutSignal(
+  phase: number,
+  prevPhase: number | null,
+  dailyVolRatio: number | null,
+  weeklyVolRatio: number | null,
+): BreakoutSignal {
+  if (phase !== 2) return null;
+
+  // Phase 2 continuation — breakout signal only applies at transition
+  if (prevPhase === 2) return null;
+
+  // New Phase 2 entry — check weekly first, daily as fallback
+  const weeklyConfirmed =
+    weeklyVolRatio != null && weeklyVolRatio >= WEEKLY_VOLUME_BREAKOUT_THRESHOLD;
+  const dailyConfirmed =
+    dailyVolRatio != null && dailyVolRatio >= VOLUME_BREAKOUT_THRESHOLD;
+
+  return weeklyConfirmed || dailyConfirmed ? "confirmed" : "unconfirmed";
 }

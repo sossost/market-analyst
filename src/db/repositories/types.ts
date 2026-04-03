@@ -16,6 +16,7 @@ export interface StockPhaseRow {
   conditions_met: string | null;
   vol_ratio: string | null;
   volume_confirmed: boolean | null;
+  breakout_signal: string | null;
   sector: string | null;
   industry: string | null;
 }
@@ -221,6 +222,7 @@ export interface Phase2StockRow {
   sector: string | null;
   industry: string | null;
   volume_confirmed: boolean | null;
+  breakout_signal: string | null;
   pct_from_high_52w: string | null;
   market_cap: string | null;
   price_change_5d: string | null;

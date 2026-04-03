@@ -409,7 +409,7 @@ export async function findNewPhase2Stocks(
 
   const { rows } = await pool.query<Phase2StockRow>(
     `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
-            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text,
+            sp.volume_confirmed, sp.breakout_signal, sp.pct_from_high_52w::text, s.market_cap::text,
             momentum.change_5d::text AS price_change_5d,
             momentum.change_20d::text AS price_change_20d
      FROM stock_phases sp
@@ -438,7 +438,7 @@ export async function findTopPhase2Stocks(
 
   const { rows } = await pool.query<Phase2StockRow>(
     `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
-            sp.volume_confirmed, sp.pct_from_high_52w::text, s.market_cap::text,
+            sp.volume_confirmed, sp.breakout_signal, sp.pct_from_high_52w::text, s.market_cap::text,
             momentum.change_5d::text AS price_change_5d,
             momentum.change_20d::text AS price_change_20d
      FROM stock_phases sp

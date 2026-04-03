@@ -119,6 +119,7 @@ describe("formatMarketSnapshot", () => {
             sector: "Technology",
             industry: "Semiconductors",
             volumeConfirmed: true,
+            breakoutSignal: null,
             pctFromHigh52w: -5.2,
             marketCapB: 2800.5,
             priceChange5d: 3.2,
@@ -131,6 +132,7 @@ describe("formatMarketSnapshot", () => {
             sector: "Industrials",
             industry: "Machinery",
             volumeConfirmed: false,
+            breakoutSignal: null,
             pctFromHigh52w: -45.0,
             marketCapB: 1.2,
             priceChange5d: -2.1,
@@ -145,7 +147,7 @@ describe("formatMarketSnapshot", () => {
     expect(result).toContain("시총 $3억 이상");
 
     // Confirmed section
-    expect(result).toContain("거래량 돌파 확인 (1건)");
+    expect(result).toContain("돌파 확인 (1건)");
     expect(result).toContain("신뢰도 높음");
     expect(result).toContain("NVDA (RS 95, 고점 대비 -5.2%, 시총 $2800.5B");
     expect(result).toContain("[거래량 확인]");
@@ -174,6 +176,7 @@ describe("formatMarketSnapshot", () => {
             sector: "Technology",
             industry: "Consumer Electronics",
             volumeConfirmed: true,
+            breakoutSignal: null,
             pctFromHigh52w: -10,
             marketCapB: 3500,
             priceChange5d: 1.5,
@@ -183,7 +186,7 @@ describe("formatMarketSnapshot", () => {
       }),
     );
 
-    expect(result).toContain("거래량 돌파 확인 (1건)");
+    expect(result).toContain("돌파 확인 (1건)");
     expect(result).not.toContain("거래량 미확인");
   });
 
@@ -198,6 +201,7 @@ describe("formatMarketSnapshot", () => {
             sector: "Technology",
             industry: "Software",
             volumeConfirmed: false,
+            breakoutSignal: null,
             pctFromHigh52w: -8.1,
             marketCapB: 3100.0,
             priceChange5d: 2.0,
