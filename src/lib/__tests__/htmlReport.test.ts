@@ -618,6 +618,51 @@ describe("buildHtmlReport", () => {
       expect(result).toContain("<h3>");
       expect(result).toContain("직전 핵심 인사이트 후속 판정");
     });
+
+    it("직전 핵심 인사이트 h3 이후가 별도 content-block으로 분리된다", () => {
+      const markdown = `## 전일 대비 변화 요약
+
+**주도 섹터**: Energy 2일 연속 주도
+
+### 직전 핵심 인사이트 후속 판정
+
+✅ **유효** — 에너지 포지션 해소 확인
+
+⏳ **진행중** — AI 테마 확산 초기
+`;
+      const result = makeReport(markdown);
+
+      // h3 바로 뒤에 별도 content-block이 와야 한다
+      expect(result).toContain('<h3>직전 핵심 인사이트 후속 판정</h3>');
+      // 판정 내용이 content-block 안에 포함된다
+      expect(result).toContain('✅');
+      expect(result).toContain('⏳');
+      // content-block이 최소 2개 이상 (본문 + 판정)
+      const blockCount = (result.match(/class="content-block"/g) ?? []).length;
+      expect(blockCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it("시장 흐름 섹션 본문이 볼드 키 없이 서술형 p 태그로 렌더링된다", () => {
+      const markdown = `## 시장 흐름 및 종합 전망
+
+극도의 공포 지속 속에서도 소형주 상대적 강세.
+
+거래량 동반 분석 결과 신뢰도 높음.
+
+### 향후 관전 포인트
+
+1. 관전 포인트 1
+2. 관전 포인트 2
+`;
+      const result = makeReport(markdown);
+
+      // 볼드 키 없는 서술형 p 태그가 content-block 안에 들어가야 한다
+      expect(result).toContain('class="content-block"');
+      // h3 향후 관전 포인트가 별도로 존재
+      expect(result).toContain('<h3>향후 관전 포인트</h3>');
+      // watchpoint 컴포넌트 존재
+      expect(result).toContain('class="watchpoint"');
+    });
   });
 
   describe("섹션 구조 — <section> 태그 생성", () => {
