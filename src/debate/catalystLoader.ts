@@ -1,7 +1,6 @@
-import { db } from "@/db/client";
-import { stockNews, earningCalendar, epsSurprises } from "@/db/schema/analyst";
-import { symbols } from "@/db/schema/market";
-import { and, gte, lte, inArray, desc, asc, sql } from "drizzle-orm";
+import { db, pool } from "@/db/client";
+import { earningCalendar } from "@/db/schema/analyst";
+import { and, gte, lte, inArray, asc } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import type { MarketSnapshot } from "./marketDataLoader";
 
@@ -93,21 +92,22 @@ export async function fetchPhase2News(
   cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
   const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
-  const rows = await db.execute(sql`
-    SELECT symbol, title, site, published_date
-    FROM (
-      SELECT symbol, title, site, published_date,
-        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY published_date DESC) AS rn
-      FROM stock_news
-      WHERE symbol = ANY(${phase2Symbols})
-        AND published_date >= ${cutoffStr}
-        AND published_date <= ${baseDate}
-    ) ranked
-    WHERE rn <= ${MAX_NEWS_PER_SYMBOL}
-    ORDER BY symbol, published_date DESC
-  `);
+  const { rows } = await pool.query(
+    `SELECT symbol, title, site, published_date
+     FROM (
+       SELECT symbol, title, site, published_date,
+         ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY published_date DESC) AS rn
+       FROM stock_news
+       WHERE symbol = ANY($1)
+         AND published_date >= $2
+         AND published_date <= $3
+     ) ranked
+     WHERE rn <= $4
+     ORDER BY symbol, published_date DESC`,
+    [phase2Symbols, cutoffStr, baseDate, MAX_NEWS_PER_SYMBOL],
+  );
 
-  return (rows.rows as Record<string, unknown>[]).map((r) => ({
+  return (rows as Record<string, unknown>[]).map((r) => ({
     symbol: String(r.symbol ?? ""),
     title: String(r.title ?? ""),
     site: r.site != null ? String(r.site) : null,
@@ -131,29 +131,30 @@ export async function fetchSectorBeatRates(
   cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
   const cutoffStr = cutoffDate.toISOString().slice(0, 10);
 
-  const rows = await db.execute(sql`
-    SELECT
-      s.sector,
-      COUNT(*)::int AS total_count,
-      COUNT(*) FILTER (
-        WHERE e.actual_eps::numeric > e.estimated_eps::numeric
-      )::int AS beat_count
-    FROM eps_surprises e
-    JOIN symbols s ON s.symbol = e.symbol
-    WHERE e.symbol = ANY(${phase2Symbols})
-      AND e.actual_date >= ${cutoffStr}
-      AND e.actual_date <= ${baseDate}
-      AND e.actual_eps IS NOT NULL
-      AND e.estimated_eps IS NOT NULL
-      AND e.actual_eps ~ '^-?[0-9]+(\.[0-9]+)?$'
-      AND e.estimated_eps ~ '^-?[0-9]+(\.[0-9]+)?$'
-      AND s.sector IS NOT NULL
-    GROUP BY s.sector
-    HAVING COUNT(*) >= 2
-    ORDER BY COUNT(*) FILTER (WHERE e.actual_eps::numeric > e.estimated_eps::numeric)::float / COUNT(*) DESC
-  `);
+  const { rows } = await pool.query(
+    `SELECT
+       s.sector,
+       COUNT(*)::int AS total_count,
+       COUNT(*) FILTER (
+         WHERE e.actual_eps::numeric > e.estimated_eps::numeric
+       )::int AS beat_count
+     FROM eps_surprises e
+     JOIN symbols s ON s.symbol = e.symbol
+     WHERE e.symbol = ANY($1)
+       AND e.actual_date >= $2
+       AND e.actual_date <= $3
+       AND e.actual_eps IS NOT NULL
+       AND e.estimated_eps IS NOT NULL
+       AND e.actual_eps ~ '^-?[0-9]+(\.[0-9]+)?$'
+       AND e.estimated_eps ~ '^-?[0-9]+(\.[0-9]+)?$'
+       AND s.sector IS NOT NULL
+     GROUP BY s.sector
+     HAVING COUNT(*) >= 2
+     ORDER BY COUNT(*) FILTER (WHERE e.actual_eps::numeric > e.estimated_eps::numeric)::float / COUNT(*) DESC`,
+    [phase2Symbols, cutoffStr, baseDate],
+  );
 
-  return (rows.rows as Record<string, unknown>[]).map((r) => {
+  return (rows as Record<string, unknown>[]).map((r) => {
     const totalCount = Number(r.total_count ?? 0);
     const beatCount = Number(r.beat_count ?? 0);
     return {
