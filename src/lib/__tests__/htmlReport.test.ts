@@ -212,6 +212,23 @@ describe("buildHtmlReport", () => {
       expect(result).toContain("&lt;script&gt;");
     });
 
+    it("마크다운 본문에 포함된 raw HTML을 이스케이프한다 (XSS 방지)", () => {
+      const malicious = '# 제목\n\n<script>alert("xss")</script>\n\n정상 본문';
+
+      const result = buildHtmlReport(malicious, "제목", "2026-04-03");
+
+      expect(result).not.toContain("<script>alert");
+      expect(result).toContain("&lt;script&gt;");
+    });
+
+    it("마크다운 본문의 iframe 태그를 이스케이프한다", () => {
+      const malicious = '본문\n\n<iframe src="http://evil.com"></iframe>';
+
+      const result = buildHtmlReport(malicious, "제목", "2026-04-03");
+
+      expect(result).not.toContain("<iframe");
+    });
+
     it("잘못된 날짜 형식도 에러 없이 처리한다", () => {
       expect(() => {
         buildHtmlReport("본문", "제목", "invalid-date");

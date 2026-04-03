@@ -574,7 +574,7 @@ async function tryUploadToStorage(
   date: string,
 ): Promise<string | null> {
   try {
-    const title = draftMessage.split("\n")[0].slice(0, 100);
+    const title = draftMessage.split("\n").find(line => line.trim() !== "")?.slice(0, 100) ?? "Daily Report";
     const html = buildHtmlReport(markdownContent, title, date);
     return await uploadHtmlReport(html, date);
   } catch (err) {

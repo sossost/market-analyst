@@ -408,7 +408,7 @@ ${sanitizedClusters}
 
 ## 현재 시장 레짐
 
-${regimeContext}
+${sanitizeXml(regimeContext)}
 
 레짐 표기 규칙:
 - 시장 온도 행에 "레짐: [레짐명] (N일)" 형태로 표기하라

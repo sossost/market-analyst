@@ -1,4 +1,17 @@
-import { marked } from "marked";
+import { Marked } from "marked";
+
+/**
+ * 전용 Marked 인스턴스 — raw HTML 블록을 이스케이프하여 XSS 방지.
+ * LLM이 생성한 마크다운에 <script>, <iframe> 등이 포함될 수 있으므로
+ * raw HTML 토큰은 이스케이프된 텍스트로 렌더링한다.
+ */
+const markedInstance = new Marked({
+  renderer: {
+    html(token) {
+      return escapeHtml(typeof token === "string" ? token : token.text);
+    },
+  },
+});
 
 const REPORT_CSS = `
   :root {
@@ -501,7 +514,7 @@ export function buildHtmlReport(
   title: string,
   date: string,
 ): string {
-  const rawHtml = marked.parse(markdownContent) as string;
+  const rawHtml = markedInstance.parse(markdownContent) as string;
   const processedHtml = applyPostProcessing(rawHtml);
 
   const formattedDate = formatKoreanDate(date);
