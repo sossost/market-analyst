@@ -927,7 +927,7 @@ function renderIndustryRankingSection(body: string): string {
   const transitionIndex = body.indexOf("**주요 업종 전환**");
   if (transitionIndex !== -1) {
     const transitionText = body.slice(transitionIndex);
-    const transitionHtml = renderPhaseTransitionBlock(transitionText);
+    const transitionHtml = renderPhaseTransitionBlock(transitionText).replace("주요 Phase 전환", "주요 업종 전환");
     parts.push(`<div class="content-block">${transitionHtml}</div>`);
   } else {
     const afterTableText = extractTextAfterTable(body);
