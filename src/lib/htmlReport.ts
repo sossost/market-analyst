@@ -76,43 +76,26 @@ const REPORT_CSS = `
   .temp-badge.bullish { background: #ddf4ff; color: var(--up); }
   .temp-badge.bearish { background: #ffebe9; color: var(--down); }
 
-  /* Content sections */
+  /* Section */
   section {
     margin-bottom: 36px;
   }
 
-  h1 { font-size: 1.75rem; font-weight: 700; margin: 24px 0 16px; }
-  h2 {
+  section h2 {
     font-size: 1.1rem;
     font-weight: 600;
     color: var(--accent);
     margin-bottom: 16px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
-    margin-top: 32px;
   }
-  h3 {
+
+  section h3 {
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--text);
     margin: 20px 0 12px;
   }
-
-  p {
-    margin-bottom: 12px;
-    font-size: 0.9rem;
-    line-height: 1.7;
-  }
-
-  ul, ol {
-    margin: 8px 0 12px 20px;
-    font-size: 0.9rem;
-  }
-
-  li { margin-bottom: 4px; }
-
-  strong { font-weight: 700; }
-  em { font-style: italic; }
 
   /* Index Cards */
   .index-grid {
@@ -209,10 +192,6 @@ const REPORT_CSS = `
   tbody td {
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
-  }
-
-  tbody tr:nth-child(even) {
-    background: var(--surface);
   }
 
   tbody tr:hover {
@@ -958,8 +937,8 @@ function renderSectorTable(text: string): string | null {
     <th>#</th>
     <th>섹터</th>
     <th>RS</th>
-    <th>4주</th>
-    <th>8주</th>
+    <th>4주 RS</th>
+    <th>8주 RS</th>
     <th style="text-align:right">Phase</th>
     <th>P2 비율</th>
   </tr></thead>`;
@@ -1022,13 +1001,17 @@ function formatSignedCell(val: string): string {
   return escapeHtml(trimmed);
 }
 
-/** Phase 셀 렌더링: "2" → badge, "3 (2→3)" → "2 → <badge>3</badge>" */
+/** Phase 셀 렌더링: "2" → badge, "3 (2→3)" → "2 → <badge>3</badge>", "3 (3→3)" → badge만 */
 function formatPhaseCell(phase: string): string {
   // 전환 패턴: "3 (2→3)" 또는 "1 (3→1)"
   const transitionMatch = phase.match(/\d+\s*\((\d)→(\d)\)/);
   if (transitionMatch != null) {
     const from = transitionMatch[1];
     const to = transitionMatch[2];
+    // 전환 없으면 (from === to) 현재 Phase 배지만
+    if (from === to) {
+      return `<span class="phase-badge p${to}">${to}</span>`;
+    }
     return `${from} → <span class="phase-badge p${to}">${to}</span>`;
   }
   // 단일 Phase
