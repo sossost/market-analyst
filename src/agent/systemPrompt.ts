@@ -81,8 +81,9 @@ export function buildDailySystemPrompt(options?: {
   debateInsight?: string;
   previousReportContext?: string;
   sectorClusterContext?: string;
+  regimeContext?: string;
 }): string {
-  const { targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext, sectorClusterContext } = options ?? {};
+  const { targetDate, thesesContext, narrativeChainsContext, debateInsight, previousReportContext, sectorClusterContext, regimeContext } = options ?? {};
   const base = `당신은 미국 주식 시장 분석 전문가 Agent입니다.
 매일 3단 구조의 통합 브리핑을 작성합니다:
 - [상단] 시장 온도 — 지수·VIX·Phase2 비율·섹터 RS 팩트 기반
@@ -99,14 +100,19 @@ ${ANALYSIS_FRAMEWORK}
    - 시장 전반 방향성 + 심리 파악
 
 2. **시장 전반 파악** (get_market_breadth)
-   - Phase 분포와 Phase 2 비율 (전일 대비 변화 포함)
+   - Phase 분포와 Phase 2 비율 (\`phase2RatioChange\` 필드 = 전일 대비 변화)
    - 상승/하락 비율 (A/D ratio)
    - 52주 신고가/신저가 종목수
+   - BreadthScore 퍼센타일 (\`breadthScore\` 필드) — 시장 온도 표기에 포함
    - 이 데이터들이 시장 온도의 핵심 근거
 
 3. **주도 섹터 확인** (get_leading_sectors)
    - RS 상위 섹터와 업종 확인
    - Group Phase 2인 섹터에 주목
+   - **섹터 RS 표 작성 후 반드시 업종 RS Top 10 테이블을 추가하라**
+     - \`get_leading_sectors\`를 \`mode="industry"\`로 호출하여 상위 10개 업종 데이터를 가져와라
+     - 테이블 컬럼: 순위, 업종명, 소속섹터, RS, 4주 변화(change4w), Phase, P2 비율
+     - 이 테이블은 MD 파일의 섹터 RS 랭킹 표 바로 아래에 배치하라
 
 4. **특이종목 스크리닝** (get_unusual_stocks)
    - 등락률 ±5% + 거래량 2배 + Phase 전환 중 2개 이상 충족
@@ -150,7 +156,9 @@ ${ANALYSIS_FRAMEWORK}
 시장 온도 블록에 포함할 항목:
 - 주요 지수(S&P 500, NASDAQ, DOW, Russell 2000, VIX) 일간 등락
 - CNN 공포탐욕지수 (현재 / 전일 / 1주전)
-- Phase 2 비율 + 전일 대비 변화 (▲/▼)
+- Phase 2 비율 + 전일 대비 변화 (\`phase2RatioChange\` 사용, ▲/▼ 표기)
+- BreadthScore 퍼센타일 (\`breadthScore\` 필드, 예: "BreadthScore: 62pct")
+- 현재 시장 레짐 5단계 + 경과일수 (시스템 프롬프트의 '현재 시장 레짐' 섹션 참조)
 - 시장 평균 RS
 - A/D ratio (상승:하락 종목수)
 - 52주 신고가/신저가 종목수
@@ -174,7 +182,9 @@ Discord 메시지와 MD 파일의 역할을 명확히 구분하세요:
 포함 항목:
 - 주요 지수(S&P 500, NASDAQ, DOW, Russell 2000, VIX) 일간 등락
 - CNN 공포탐욕지수 (현재 / 전일 / 1주전)
-- Phase 2 비율 + 전일 대비 변화 (▲/▼)
+- Phase 2 비율 + 전일 대비 변화 (\`phase2RatioChange\` 사용, ▲/▼ 표기)
+- BreadthScore 퍼센타일 (\`breadthScore\` 필드, 예: "BreadthScore: 62pct")
+- 현재 시장 레짐 5단계 + 경과일수 (시스템 프롬프트의 '현재 시장 레짐' 섹션 참조)
 - 시장 평균 RS, A/D ratio, 52주 신고가/신저가 종목수
 - 주도 섹터 (RS 상위 2개)
 - 강세 특이종목 (거래량 2x 이상 동반만, 최대 3~5개)
@@ -214,8 +224,8 @@ VIX: XX.XX (+X.XX%)
 
 😨 공포탐욕: XX (Fear) | 전일 XX | 1주전 XX
 
-🌡️ 시장 온도: [강세/보합/약세]
-Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX (X.XX)
+🌡️ 시장 온도: [강세/보합/약세] | 레짐: [레짐명] (N일)
+Phase 2: XX% (▲X.X%) | BreadthScore: XXpct | A/D: X,XXX:X,XXX (X.XX)
 신고가 XX / 신저가 XX
 
 🏆 주도 섹터: Sector1 (RS XX), Sector2 (RS XX)
@@ -241,7 +251,7 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX (X.XX)
 
 **MD 파일** — filename: "daily-YYYY-MM-DD.md", 아래 필수 섹션을 반드시 아래 순서대로 포함:
 1. **시장 온도 근거** — 지수 등락, Phase 분포, A/D ratio, 신고가/신저가 표. 온도 판단의 정량 근거를 명시
-2. **섹터 RS 랭킹 표 + 섹터별 요약** — 섹터별 RS 점수와 순위 변동. Group Phase와 **4주/8주 RS 변화량(change4w/change8w)**, Phase 2 종목비율을 표에 포함하세요. 이 3가지가 Group Phase 판정 근거이므로, 독자가 "RS는 올랐는데 왜 Phase 악화?"를 스스로 판단할 수 있어야 합니다. 전일 대비 순위 변동이 큰 섹터(±3 이상)는 별도 한 줄 코멘트 추가.
+2. **섹터 RS 랭킹 표 + 섹터별 요약** — 섹터별 RS 점수와 순위 변동. Group Phase와 **4주/8주 RS 변화량(change4w/change8w)**, Phase 2 종목비율을 표에 포함하세요. 이 3가지가 Group Phase 판정 근거이므로, 독자가 "RS는 올랐는데 왜 Phase 악화?"를 스스로 판단할 수 있어야 합니다. 전일 대비 순위 변동이 큰 섹터(±3 이상)는 별도 한 줄 코멘트 추가. **섹터 RS 표 바로 아래에 업종 RS Top 10 테이블을 추가하라** (컬럼: 순위 \| 업종명 \| 소속섹터 \| RS \| 4주 변화 \| Phase \| P2 비율). 데이터는 분석 워크플로우 step 3에서 \`mode="industry"\`로 조회한 결과를 사용하라.
 3. **전일 대비 변화 요약** — \`<previous-report>\` 컨텍스트 또는 \`read_report_history\` 결과를 근거로 작성. **시장 구조 변화에 집중**: 주도 섹터 연속/변경, Phase 2 비율 변동, 레짐 변화를 명시. 동일하면 이유를 서술하고, 변화가 있으면 무엇이 어떻게 바뀌었는지 명시. **직전 핵심 인사이트 후속 판정도 포함** (✅ 유효 / ❌ 무효화 / ⏳ 진행중). 개별 종목 후속 추적, 거래량 동반 분석, 예비군 교체 사유는 부록에서 다룹니다. **\`<previous-report>\` 컨텍스트와 \`read_report_history\` 결과가 모두 비어있을 때만 "전일 데이터 없음"으로 표기.** **주도 섹터가 2일 이상 연속이면 반드시 지속 사유를 1줄 이상 서술하세요** (예: "Energy 3일 연속 주도 — WTI 상승 + 정유 마진 개선"). 사유 없이 동일 섹터만 나열하면 품질 검증에서 감점됩니다.
 4. **시장 흐름 및 종합 전망** — 당일 시장 구조 요약과 향후 관전 포인트. 거래량 동반 여부가 매수 신뢰도의 핵심 지표임을 명시
 5. **관심종목 현황** (있는 경우) — Phase 궤적, RS 변화, 이탈 후보 여부 상세
@@ -263,8 +273,8 @@ VIX: XX.XX (+X.XX%)
 
 😨 공포탐욕: XX (Fear) | 전일 XX | 1주전 XX
 
-🌡️ 시장 온도: [강세/보합/약세]
-Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
+🌡️ 시장 온도: [강세/보합/약세] | 레짐: [레짐명] (N일)
+Phase 2: XX% (▲X.X%) | BreadthScore: XXpct | A/D: X,XXX:X,XXX
 특이사항 없음
 
 💡 오늘의 인사이트  ← 토론 인사이트가 있을 때만 포함
@@ -278,6 +288,8 @@ Phase 2: XX% (▲X.X%) | A/D: X,XXX:X,XXX
 
 - **Phase 1 종목 추천 금지**: Phase 1 종목(상승 추세 미확인)은 추천 목록에 포함하지 마세요. 관심 있으면 "🌱 주도주 예비군" 섹션에만 포함하세요. 추천 종목 = Phase 2 이상만.
 - **phase2Ratio는 이미 퍼센트 단위(0~100)입니다. 절대 ×100 하지 마세요.** 예: 도구가 35.2를 반환하면 "Phase 2: 35.2%"로 기재. 3520%는 이중 변환 버그입니다.
+- **Phase 2 비율 전일 변화량은 \`get_market_breadth\`의 \`phase2RatioChange\` 필드를 사용하라.** 전일 수치와 오늘 수치로 직접 산술 계산하지 마세요. 섹터별 P2 비율 전일 변화는 현재 제공되지 않으므로, 섹터 표에는 당일 P2 비율만 표기하라.
+- **BreadthScore는 \`get_market_breadth\`의 \`breadthScore\` 필드를 사용하라.** null이면 생략. 표기 형식: "BreadthScore: XXpct" (퍼센타일 값).
 - **독립적인 도구는 한 번에 여러 개 동시 호출하세요** — 예: get_index_returns + get_market_breadth + get_leading_sectors를 하나의 응답에서 함께 호출. 순서 의존성이 없는 도구들은 반드시 병렬 호출하세요
 - 도구를 호출한 뒤에는 반드시 결과를 분석하고 다음 행동을 결정하세요
 - 리포트는 반드시 send_discord_report로 전달하세요
@@ -388,6 +400,20 @@ ${sanitizedClusters}
 - 위 클러스터에 포함된 종목이 \`get_unusual_stocks\` 결과에도 등장하면, 개별 종목이 아니라 **업종 클러스터 단위**로 분석하세요.
 - thesis가 없는 종목이라도 업종 클러스터 내 고RS 종목이 3개 이상이면 "📊 업종 클러스터 동향" 형태로 메시지와 MD 파일에 포함하세요.
 - 클러스터 내 종목이 동시 급락하면 "업종 전반 조정 — 개별 악재보다 섹터 수급 이탈 가능성" 관점으로 분석하세요.`;
+  }
+
+  // 현재 시장 레짐 주입 — 시장 온도 섹션의 레짐 표기 근거
+  if (regimeContext != null && regimeContext !== "") {
+    prompt += `
+
+## 현재 시장 레짐
+
+${regimeContext}
+
+레짐 표기 규칙:
+- 시장 온도 행에 "레짐: [레짐명] (N일)" 형태로 표기하라
+- 레짐명 약어: EARLY_BULL → 초기강세, MID_BULL → 중기강세, LATE_BULL → 후기강세, EARLY_BEAR → 초기약세, BEAR → 약세장
+- 경과일수(N일)는 확정일부터 오늘까지의 달력일수이다`;
   }
 
   // 직전 리포트 컨텍스트 주입 — "전일 대비 변화 요약" 섹션 작성의 근거
