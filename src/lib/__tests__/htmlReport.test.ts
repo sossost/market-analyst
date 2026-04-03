@@ -1,75 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { buildHtmlReport } from "../htmlReport.js";
 
+// ────────────────────────────────────────────────────────────
+// 헬퍼
+// ────────────────────────────────────────────────────────────
+
+function makeReport(markdown: string) {
+  return buildHtmlReport(markdown, "테스트 리포트", "2026-04-03");
+}
+
+// ────────────────────────────────────────────────────────────
+// 기존 테스트: HTML 구조
+// ────────────────────────────────────────────────────────────
+
 describe("buildHtmlReport", () => {
-  describe("마크다운 → HTML 변환", () => {
-    it("마크다운 테이블을 <table> 태그로 변환한다", () => {
-      const markdown = `
-| 섹터 | RS | Phase |
-|------|-----|-------|
-| Technology | 85 | Phase 2 |
-| Energy | 72 | Phase 3 |
-`.trim();
-
-      const result = buildHtmlReport(markdown, "테스트 리포트", "2026-04-03");
-
-      expect(result).toContain("<table");
-      expect(result).toContain("<thead");
-      expect(result).toContain("<tbody");
-      expect(result).toContain("<th");
-      expect(result).toContain("<td");
-    });
-
-    it("마크다운 h1 헤더를 <h1> 태그로 변환한다", () => {
-      const markdown = "# 시장 분석 제목";
-
-      const result = buildHtmlReport(markdown, "테스트", "2026-04-03");
-
-      expect(result).toContain("<h1>");
-      expect(result).toContain("시장 분석 제목");
-    });
-
-    it("마크다운 h2 헤더를 <h2> 태그로 변환한다", () => {
-      const markdown = "## 섹터 분석";
-
-      const result = buildHtmlReport(markdown, "테스트", "2026-04-03");
-
-      expect(result).toContain("<h2>");
-      expect(result).toContain("섹터 분석");
-    });
-
-    it("마크다운 h3 헤더를 <h3> 태그로 변환한다", () => {
-      const markdown = "### 업종 상세";
-
-      const result = buildHtmlReport(markdown, "테스트", "2026-04-03");
-
-      expect(result).toContain("<h3>");
-      expect(result).toContain("업종 상세");
-    });
-
-    it("마크다운 볼드를 <strong> 태그로 변환한다", () => {
-      const markdown = "**중요한 내용**";
-
-      const result = buildHtmlReport(markdown, "테스트", "2026-04-03");
-
-      expect(result).toContain("<strong>");
-      expect(result).toContain("중요한 내용");
-    });
-
-    it("마크다운 리스트를 <ul><li> 태그로 변환한다", () => {
-      const markdown = `
-- 첫 번째 항목
-- 두 번째 항목
-- 세 번째 항목
-`.trim();
-
-      const result = buildHtmlReport(markdown, "테스트", "2026-04-03");
-
-      expect(result).toContain("<ul>");
-      expect(result).toContain("<li>");
-    });
-  });
-
   describe("HTML 구조", () => {
     it("유효한 DOCTYPE HTML 선언으로 시작한다", () => {
       const result = buildHtmlReport("본문", "제목", "2026-04-03");
@@ -280,6 +224,487 @@ describe("buildHtmlReport", () => {
       const result = buildHtmlReport("본문", "제목", "2026-04-03");
 
       expect(result).toContain("(금)");
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // 시맨틱 컴포넌트 변환 테스트
+  // ────────────────────────────────────────────────────────────
+
+  describe("지수 테이블 → .index-card 변환", () => {
+    it("지수 테이블을 .index-grid 컨테이너로 변환한다", () => {
+      const markdown = `## 시장 온도 근거
+
+| 지수 | 종가 | 등락률 |
+|------|------|--------|
+| S&P 500 | 5,500.00 | +0.50% |
+| NASDAQ | 17,000.00 | -0.30% |
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="index-grid"');
+      expect(result).toContain('class="index-card"');
+    });
+
+    it("지수 카드에 label, value, change 클래스가 포함된다", () => {
+      const markdown = `## 시장 온도 근거
+
+| 지수 | 종가 | 등락률 |
+|------|------|--------|
+| S&P 500 | 5,500.00 | +0.50% |
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="label"');
+      expect(result).toContain('class="value"');
+      expect(result).toContain('class="change');
+    });
+
+    it("양수 등락률에 up 클래스를 적용한다", () => {
+      const markdown = `## 시장 온도 근거
+
+| 지수 | 종가 | 등락률 |
+|------|------|--------|
+| S&P 500 | 5,500.00 | +0.50% |
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="change up"');
+    });
+
+    it("음수 등락률에 down 클래스를 적용한다", () => {
+      const markdown = `## 시장 온도 근거
+
+| 지수 | 종가 | 등락률 |
+|------|------|--------|
+| NASDAQ | 17,000.00 | -0.30% |
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="change down"');
+    });
+  });
+
+  describe("Phase 분포 → .phase-bar + .phase-legend 변환", () => {
+    it("Phase 분포 텍스트에서 .phase-bar 컨테이너를 생성한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**Phase 분포**:
+- Phase 1: 226 (4.9%)
+- Phase 2: 1,441 (31.3%)
+- Phase 3: 1,642 (35.7%)
+- Phase 4: 1,292 (28.1%)
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="phase-bar"');
+    });
+
+    it("phase-bar에 각 seg 클래스를 포함한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**Phase 분포**:
+- Phase 1: 226 (4.9%)
+- Phase 2: 1,441 (31.3%)
+- Phase 3: 1,642 (35.7%)
+- Phase 4: 1,292 (28.1%)
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="seg p1"');
+      expect(result).toContain('class="seg p2"');
+      expect(result).toContain('class="seg p3"');
+      expect(result).toContain('class="seg p4"');
+    });
+
+    it("phase-bar에 width 스타일이 퍼센트로 적용된다", () => {
+      const markdown = `## 시장 온도 근거
+
+**Phase 분포**:
+- Phase 1: 226 (4.9%)
+- Phase 2: 1,441 (31.3%)
+- Phase 3: 1,642 (35.7%)
+- Phase 4: 1,292 (28.1%)
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain("width:4.9%");
+      expect(result).toContain("width:31.3%");
+    });
+
+    it("phase-legend에 각 레전드 항목이 포함된다", () => {
+      const markdown = `## 시장 온도 근거
+
+**Phase 분포**:
+- Phase 1: 226 (4.9%)
+- Phase 2: 1,441 (31.3%)
+- Phase 3: 1,642 (35.7%)
+- Phase 4: 1,292 (28.1%)
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="phase-legend"');
+      expect(result).toContain('class="l1"');
+      expect(result).toContain('class="l2"');
+    });
+  });
+
+  describe("stat-chip 변환", () => {
+    it("공포탐욕지수를 .stat-chip으로 변환한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**공포탐욕지수**: 15.3 극도의 공포 (전일 15.7 / 1주전 14.9)
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="stat-chip"');
+      expect(result).toContain("공포탐욕지수");
+    });
+
+    it("Phase 2 비율을 .stat-chip으로 변환한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**Phase 2 비율**: 31.3% (▼0.04p)
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="stat-chip"');
+      expect(result).toContain("Phase 2 비율");
+    });
+
+    it("신고가/신저가를 .stat-chip으로 변환한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**신고가 / 신저가**: 66 / 56
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="stat-chip"');
+      expect(result).toContain("신고가 / 신저가");
+    });
+  });
+
+  describe("온도 배지 → .temp-badge 변환", () => {
+    it("약세 판단 시 bearish 클래스의 temp-badge를 헤더에 추가한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**시장 온도 판단**: 약세
+`;
+      const result = buildHtmlReport(markdown, "시장 브리핑", "2026-04-03");
+
+      expect(result).toContain('class="temp-badge bearish"');
+    });
+
+    it("강세 판단 시 bullish 클래스의 temp-badge를 헤더에 추가한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**시장 온도 판단**: 강세
+`;
+      const result = buildHtmlReport(markdown, "시장 브리핑", "2026-04-03");
+
+      expect(result).toContain('class="temp-badge bullish"');
+    });
+
+    it("중립 판단 시 neutral 클래스의 temp-badge를 헤더에 추가한다", () => {
+      const markdown = `## 시장 온도 근거
+
+**시장 온도 판단**: 중립
+`;
+      const result = buildHtmlReport(markdown, "시장 브리핑", "2026-04-03");
+
+      expect(result).toContain('class="temp-badge neutral"');
+    });
+
+    it("온도 판단이 없으면 temp-badge를 추가하지 않는다", () => {
+      const markdown = `## 섹터 분석
+
+일반 내용
+`;
+      const result = buildHtmlReport(markdown, "시장 브리핑", "2026-04-03");
+
+      expect(result).not.toContain('class="temp-badge');
+    });
+  });
+
+  describe("종목 → .stock-card 변환", () => {
+    it("**TICKER (Name)** 패턴을 .stock-card로 변환한다", () => {
+      const markdown = `## 강세 특이종목
+
+**RLAY (Relay Therapeutics)** +16.4% RS 96 Vol 3.2x
+- 카탈리스트: zovegalisib 임상 데이터 발표
+- 52주 신고가 경신
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="stock-card"');
+      expect(result).toContain('class="stock-ticker"');
+      expect(result).toContain("RLAY");
+    });
+
+    it("종목 이름을 .stock-name 클래스로 렌더링한다", () => {
+      const markdown = `## 강세 특이종목
+
+**RLAY (Relay Therapeutics)** +16.4%
+- 내용
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="stock-name"');
+      expect(result).toContain("Relay Therapeutics");
+    });
+
+    it("수익률 태그를 .tag.return-up으로 변환한다", () => {
+      const markdown = `## 강세 특이종목
+
+**RLAY** +16.4%
+- 내용
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="tag return-up"');
+      expect(result).toContain("+16.4%");
+    });
+
+    it("음수 수익률 태그를 .tag.return-down으로 변환한다", () => {
+      const markdown = `## 약세 특이종목
+
+**EEIQ** -31.5%
+- 급락
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="tag return-down"');
+      expect(result).toContain("-31.5%");
+    });
+
+    it("RS 태그를 .tag.rs로 변환한다", () => {
+      const markdown = `## 강세 특이종목
+
+**RLAY** RS 96
+- 내용
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="tag rs"');
+    });
+
+    it("Vol 태그를 .tag.vol로 변환한다", () => {
+      const markdown = `## 강세 특이종목
+
+**RLAY** Vol 3.2x
+- 내용
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="tag vol"');
+    });
+
+    it("여러 종목을 각각 .stock-card로 변환한다", () => {
+      const markdown = `## 강세 특이종목
+
+**RLAY (Relay)** +16.4%
+- 임상 데이터
+
+**ORKA (Oruka)** +5.7%
+- 증자 계획
+`;
+      const result = makeReport(markdown);
+
+      const cardCount = (result.match(/class="stock-card"/g) ?? []).length;
+      expect(cardCount).toBe(2);
+    });
+
+    it("종목 본문이 .stock-body로 렌더링된다", () => {
+      const markdown = `## 강세 특이종목
+
+**RLAY** +16.4%
+- 임상 데이터 발표
+- 52주 신고가
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="stock-body"');
+    });
+  });
+
+  describe("부록 구분선 → .appendix-divider 변환", () => {
+    it("--- 구분선을 .appendix-divider로 변환한다", () => {
+      const markdown = `## 시장 흐름
+
+본문 내용
+
+---
+📋 **부록: 종목 상세**
+
+## 강세 특이종목
+
+**RLAY** +16.4%
+- 임상 데이터
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="appendix-divider"');
+    });
+
+    it("부록 제목을 .appendix-title로 렌더링한다", () => {
+      const markdown = `본문
+
+---
+📋 **부록: 종목 상세**
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="appendix-title"');
+    });
+  });
+
+  describe("watchpoint 변환", () => {
+    it("번호 리스트를 .watchpoint 컴포넌트로 변환한다", () => {
+      const markdown = `## 시장 흐름 및 종합 전망
+
+본문 내용
+
+### 향후 관전 포인트
+
+1. Energy 섹터 과열 해소 속도
+2. Technology 섹터 RS 50선 회복
+3. Financial Services 섹터 Phase 전환
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="watchpoint"');
+      expect(result).toContain('class="watchpoint-num"');
+      expect(result).toContain('class="watchpoint-text"');
+    });
+
+    it("watchpoint 번호가 올바르게 렌더링된다", () => {
+      const markdown = `## 시장 흐름 및 종합 전망
+
+### 향후 관전 포인트
+
+1. 첫 번째 관전 포인트
+2. 두 번째 관전 포인트
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toMatch(/watchpoint-num.*1/s);
+      expect(result).toMatch(/watchpoint-num.*2/s);
+    });
+  });
+
+  describe("content-block 변환", () => {
+    it("전일 대비 변화 요약 섹션을 .content-block으로 변환한다", () => {
+      const markdown = `## 전일 대비 변화 요약
+
+**주도 섹터**: Energy(RS 74.3) 2일 연속 주도
+**Phase 2 비율**: 31.4% → 31.3% (-0.1p)
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain('class="content-block"');
+    });
+
+    it("h3 서브헤더가 <h3> 태그로 렌더링된다", () => {
+      const markdown = `## 전일 대비 변화 요약
+
+본문 내용
+
+### 직전 핵심 인사이트 후속 판정
+
+판정 내용
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain("<h3>");
+      expect(result).toContain("직전 핵심 인사이트 후속 판정");
+    });
+  });
+
+  describe("섹션 구조 — <section> 태그 생성", () => {
+    it("## 헤더마다 <section> 태그로 감싼다", () => {
+      const markdown = `## 섹터 RS 랭킹 표
+
+내용
+
+## 전일 대비 변화 요약
+
+내용2
+`;
+      const result = makeReport(markdown);
+
+      const sectionCount = (result.match(/<section>/g) ?? []).length;
+      expect(sectionCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it("섹션 내부에 <h2> 태그가 포함된다", () => {
+      const markdown = `## 시장 분석
+
+내용
+`;
+      const result = makeReport(markdown);
+
+      expect(result).toContain("<h2>");
+      expect(result).toContain("시장 분석");
+    });
+  });
+
+  describe("폴백 처리 — 미인식 패턴", () => {
+    it("미인식 섹션은 에러 없이 기본 HTML로 변환한다", () => {
+      const markdown = `## 알 수 없는 섹션
+
+| 컬럼1 | 컬럼2 |
+|-------|-------|
+| 값1 | 값2 |
+`;
+      expect(() => makeReport(markdown)).not.toThrow();
+
+      const result = makeReport(markdown);
+      expect(result).toContain("<!DOCTYPE html>");
+      expect(result).toContain("값1");
+    });
+
+    it("파싱 오류 시 섹션 전체가 폴백으로 처리된다", () => {
+      const markdown = `## 시장 온도 근거
+
+비정상적인 데이터: |||||||
+`;
+      expect(() => makeReport(markdown)).not.toThrow();
+
+      const result = makeReport(markdown);
+      expect(result).toContain("<!DOCTYPE html>");
+    });
+
+    it("마크다운 테이블이 없는 섹터 RS 섹션도 처리된다", () => {
+      const markdown = `## 섹터 RS 랭킹 표
+
+테이블 없이 텍스트만 있는 경우
+`;
+      expect(() => makeReport(markdown)).not.toThrow();
+    });
+  });
+
+  describe("XSS 방지", () => {
+    it("종목 ticker 내 특수문자를 이스케이프한다", () => {
+      const markdown = `## 강세 특이종목
+
+**<script>alert(1)</script>** +10%
+- 내용
+`;
+      const result = makeReport(markdown);
+
+      expect(result).not.toContain("<script>alert");
+    });
+
+    it("종목명 내 HTML 태그를 이스케이프하여 실행 불가능하게 한다", () => {
+      const markdown = `## 강세 특이종목
+
+**TICK (<img src=x onerror=alert(1)>)** +10%
+- 내용
+`;
+      const result = makeReport(markdown);
+
+      // HTML 태그로 실행되면 안 됨 — &lt;img 형태로 이스케이프되어야 함
+      expect(result).not.toContain("<img src=x");
     });
   });
 });
