@@ -49,6 +49,21 @@ const makeIndustryRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const makeIndustryGlobalRow = (overrides: Record<string, unknown> = {}) => ({
+  sector: "Technology",
+  industry: "Semiconductors",
+  avg_rs: "70.0",
+  rs_rank: 1,
+  group_phase: 2,
+  phase2_ratio: "0.80",
+  change_4w: null,
+  change_8w: null,
+  change_12w: null,
+  sector_avg_rs: "43.49",
+  sector_rs_rank: 11,
+  ...overrides,
+});
+
 describe("getLeadingSectors", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -286,22 +301,28 @@ describe("getLeadingSectors", () => {
     expect(firstCallParams[1]).toBe(50);
   });
 
-  it("industry 모드에서 limit 미지정 시 기본 10을 사용한다", async () => {
+  it("industry 모드에서 DB 쿼리는 항상 INDUSTRY_FETCH_LIMIT(50)으로 후보군을 가져온다", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry" });
 
+    // 섹터당 상한 적용 전 충분한 후보를 확보하기 위해 항상 50으로 조회한다
     const firstCallParams = mockQuery.mock.calls[0][1];
-    expect(firstCallParams[1]).toBe(10);
+    expect(firstCallParams[1]).toBe(50);
   });
 
-  it("industry 모드에서 사용자 지정 limit을 사용한다", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("industry 모드에서 섹터당 2개 제한이 적용된 결과를 반환한다", async () => {
+    const energyRows = Array.from({ length: 5 }, (_, i) =>
+      makeIndustryGlobalRow({ industry: `Energy Ind ${i + 1}`, sector: "Energy", avg_rs: String(90 - i) }),
+    );
+    mockQuery.mockResolvedValueOnce({ rows: energyRows });
 
-    await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry", limit: 5 });
+    const result = await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry" });
+    const parsed = JSON.parse(result);
 
-    const firstCallParams = mockQuery.mock.calls[0][1];
-    expect(firstCallParams[1]).toBe(5);
+    // Energy가 5개 있어도 섹터당 2개 제한으로 최대 2개만 반환되어야 한다
+    const energyCount = parsed.industries.filter((i: { sector: string }) => i.sector === "Energy").length;
+    expect(energyCount).toBe(2);
   });
 
   it("weekly 모드에서 전주에 없던 신규 섹터는 prevWeekRank가 null", async () => {
