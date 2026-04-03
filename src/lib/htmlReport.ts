@@ -874,11 +874,11 @@ function renderSectorRankingSection(body: string): string {
     }
   }
 
-  // "주요 Phase 전환" 블록 추출
+  // "주요 Phase 전환" 블록 추출 — sample 포맷: ▲/▼ + <p> 태그
   const transitionIndex = body.indexOf("**주요 Phase 전환**");
   if (transitionIndex !== -1) {
     const transitionText = body.slice(transitionIndex);
-    const transitionHtml = markedInstance.parse(transitionText) as string;
+    const transitionHtml = renderPhaseTransitionBlock(transitionText);
     parts.push(`<div class="content-block">${transitionHtml}</div>`);
   } else {
     // 테이블 이후 텍스트 폴백 처리
@@ -1020,6 +1020,51 @@ function formatPhaseCell(phase: string): string {
     return `<span class="phase-badge p${singleMatch[1]}">${singleMatch[1]}</span>`;
   }
   return escapeHtml(phase);
+}
+
+/**
+ * 주요 Phase 전환 블록을 sample 포맷으로 렌더링.
+ * sample: <p><span class="down">▼</span> Energy Phase 2→3 — 사유</p>
+ *
+ * 마크다운 입력:
+ * **주요 Phase 전환**:
+ * - Energy: Phase 2→3 전환 — 사유
+ * - Healthcare: Phase 3→1 전환 — 사유
+ */
+function renderPhaseTransitionBlock(text: string): string {
+  const lines = text.split("\n");
+  const parts: string[] = ["<p><strong>주요 Phase 전환</strong></p>"];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // "- Sector: Phase N→N ..." 또는 "- Sector Phase N→N ..."
+    const match = trimmed.match(/^-\s*(.+?)(?::|:)\s*Phase\s*(\d)→(\d)\s*(?:전환\s*)?[—–-]\s*(.+)/);
+    if (match != null) {
+      const [, sector, from, to, reason] = match;
+      const fromNum = parseInt(from, 10);
+      const toNum = parseInt(to, 10);
+      // 숫자가 커지면 악화(▼), 작아지면 개선(▲)
+      const isImproved = toNum < fromNum;
+      const arrow = isImproved ? "up" : "down";
+      const arrowChar = isImproved ? "▲" : "▼";
+      parts.push(`<p><span class="${arrow}">${arrowChar}</span> ${escapeHtml(sector.trim())} Phase ${from}→${to} — ${escapeHtml(reason.trim())}</p>`);
+      continue;
+    }
+    // 볼드 리스트 아이템 폴백: "- Energy: Phase 2→3 전환"
+    const simpleFallback = trimmed.match(/^-\s*(.+?)(?::|:)\s*Phase\s*(\d)→(\d)\s*(.*)/);
+    if (simpleFallback != null) {
+      const [, sector, from, to, rest] = simpleFallback;
+      const fromNum = parseInt(from, 10);
+      const toNum = parseInt(to, 10);
+      const isImproved = toNum < fromNum;
+      const arrow = isImproved ? "up" : "down";
+      const arrowChar = isImproved ? "▲" : "▼";
+      const suffix = rest.trim().replace(/^전환\s*/, "");
+      parts.push(`<p><span class="${arrow}">${arrowChar}</span> ${escapeHtml(sector.trim())} Phase ${from}→${to}${suffix ? ` — ${escapeHtml(suffix)}` : ""}</p>`);
+    }
+  }
+
+  return parts.join("\n");
 }
 
 /**
