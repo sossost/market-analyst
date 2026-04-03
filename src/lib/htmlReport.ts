@@ -907,6 +907,131 @@ function renderSectorRankingSection(body: string): string {
 }
 
 /**
+ * "업종 RS 랭킹" 섹션을 렌더링한다.
+ * 테이블은 renderIndustryTable로 변환하고, "주요 업종 전환" 블록은 content-block으로 처리한다.
+ */
+function renderIndustryRankingSection(body: string): string {
+  const parts: string[] = [];
+
+  const industryTableHtml = renderIndustryTable(body);
+  if (industryTableHtml != null) {
+    parts.push(industryTableHtml);
+  } else {
+    const tableHtml = renderMarkdownTableAsHtml(body);
+    if (tableHtml != null) {
+      parts.push(tableHtml);
+    }
+  }
+
+  // "주요 업종 전환" 블록 추출
+  const transitionIndex = body.indexOf("**주요 업종 전환**");
+  if (transitionIndex !== -1) {
+    const transitionText = body.slice(transitionIndex);
+    const transitionHtml = renderPhaseTransitionBlock(transitionText);
+    parts.push(`<div class="content-block">${transitionHtml}</div>`);
+  } else {
+    const afterTableText = extractTextAfterTable(body);
+    if (afterTableText.trim().length > 0) {
+      const fallback = markedInstance.parse(afterTableText) as string;
+      if (fallback.trim().length > 0) {
+        parts.push(`<div class="content-block">${fallback}</div>`);
+      }
+    }
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * 업종 RS 테이블을 시맨틱 HTML로 변환한다.
+ *
+ * 컬럼 구성: # | 업종 | 소속 섹터 | RS | Divergence | Phase | 4주 변화
+ * Divergence 컬러링:
+ * - 양수(업종 > 섹터): class="up" — 섹터 대비 초과 강세
+ * - 음수(업종 < 섹터): class="down" — 섹터 대비 약세
+ */
+function renderIndustryTable(text: string): string | null {
+  const lines = text.split("\n").map((l) => l.trim());
+  const tableStart = lines.findIndex((l) => l.startsWith("|") && l.endsWith("|"));
+  if (tableStart === -1) return null;
+
+  const tableLines = lines.slice(tableStart).filter((l) => l.startsWith("|") && l.endsWith("|"));
+  if (tableLines.length < 3) return null;
+
+  const [headerLine] = tableLines;
+  const headers = parseTableRow(headerLine).map((h) => h.toLowerCase().trim());
+
+  // 업종 RS 테이블인지 확인 (업종 컬럼 + RS 컬럼 필수)
+  const hasRS = headers.some((h) => h === "rs");
+  const hasIndustry = headers.some((h) => h.includes("업종") || h.includes("industry"));
+  if (!hasRS || !hasIndustry) return null;
+
+  // 컬럼 인덱스 매핑
+  const colIdx = {
+    rank: headers.findIndex((h) => h === "순위" || h === "#"),
+    industry: headers.findIndex((h) => h.includes("업종") || h.includes("industry")),
+    sector: headers.findIndex((h) => h.includes("섹터") || h.includes("sector")),
+    rs: headers.findIndex((h) => h === "rs"),
+    divergence: headers.findIndex((h) => h.includes("divergence") || h.includes("다이버전스")),
+    phase: headers.findIndex((h) => h.includes("phase") && !h.includes("비율") && !h.includes("2")),
+    w4: headers.findIndex((h) => h.includes("4주")),
+    p2ratio: headers.findIndex((h) => h.includes("비율") || h.includes("p2")),
+  };
+
+  const dataLines = tableLines.slice(2).filter((l) => !isTableSeparator(l));
+  const rows = dataLines.map((l) => parseTableRow(l));
+
+  const headerHtml = `<thead><tr>
+    <th>#</th>
+    <th>업종</th>
+    <th>소속 섹터</th>
+    <th>RS</th>
+    <th>Divergence</th>
+    <th style="text-align:right">Phase</th>
+    <th>4주 변화</th>
+  </tr></thead>`;
+
+  const bodyRows = rows.map((cells) => {
+    const rank = colIdx.rank >= 0 ? cells[colIdx.rank]?.trim() ?? "" : "";
+    const industry = colIdx.industry >= 0 ? cells[colIdx.industry]?.trim() ?? "" : "";
+    const sector = colIdx.sector >= 0 ? cells[colIdx.sector]?.trim() ?? "" : "";
+    const rs = colIdx.rs >= 0 ? cells[colIdx.rs]?.trim() ?? "" : "";
+    const divergenceRaw = colIdx.divergence >= 0 ? cells[colIdx.divergence]?.trim() ?? "" : "";
+    const phase = colIdx.phase >= 0 ? cells[colIdx.phase]?.trim() ?? "" : "";
+    const w4 = colIdx.w4 >= 0 ? cells[colIdx.w4]?.trim() ?? "" : "";
+
+    // Divergence 컬러링: 양수 → up(빨강), 음수 → down(파랑)
+    const divergenceNum = parseFloat(divergenceRaw.replace(/[+,]/g, ""));
+    let divergenceHtml: string;
+    if (!isNaN(divergenceNum) && divergenceNum > 0) {
+      divergenceHtml = `<span class="up">${escapeHtml(divergenceRaw.startsWith("+") ? divergenceRaw : `+${divergenceRaw}`)}</span>`;
+    } else if (!isNaN(divergenceNum) && divergenceNum < 0) {
+      divergenceHtml = `<span class="down">${escapeHtml(divergenceRaw)}</span>`;
+    } else {
+      divergenceHtml = escapeHtml(divergenceRaw);
+    }
+
+    // 4주 변화 컬러
+    const w4Class = w4.startsWith("+") ? ' class="up"' : w4.startsWith("-") ? ' class="down"' : "";
+
+    // Phase 배지
+    const phaseCell = formatPhaseCell(phase);
+
+    return `<tr>
+      <td>${escapeHtml(rank)}</td>
+      <td><strong>${escapeHtml(industry)}</strong></td>
+      <td>${escapeHtml(sector)}</td>
+      <td>${escapeHtml(rs)}</td>
+      <td>${divergenceHtml}</td>
+      <td style="text-align:right">${phaseCell}</td>
+      <td${w4Class}>${escapeHtml(w4)}</td>
+    </tr>`;
+  }).join("\n");
+
+  return `<table>\n${headerHtml}\n<tbody>${bodyRows}</tbody>\n</table>`;
+}
+
+/**
  * 섹터 RS 테이블을 sample-report.html 포맷으로 재구성한다.
  *
  * 마크다운 컬럼: 순위 | 섹터 | RS | 전일 RS | 변화 | Group Phase | 4주 변화 | 8주 변화 | Phase 2 비율
@@ -926,7 +1051,9 @@ function renderSectorTable(text: string): string | null {
   // 섹터 RS 테이블인지 확인 (RS, 섹터 컬럼 필수)
   const hasRS = headers.some((h) => h === "rs");
   const hasSector = headers.some((h) => h.includes("섹터") || h.includes("sector"));
-  if (!hasRS || !hasSector) return null;
+  const hasIndustry = headers.some((h) => h.includes("업종") || h.includes("industry"));
+  // 업종 테이블(업종 컬럼 포함)을 섹터 테이블로 오판하지 않도록 방어
+  if (!hasRS || !hasSector || hasIndustry) return null;
 
   // 컬럼 인덱스 매핑
   const colIdx = {
@@ -1705,6 +1832,14 @@ function renderSectionByType(
     };
   }
 
+  if (headingContains(heading, "업종 RS", "주도 업종")) {
+    const sectionHtml = renderIndustryRankingSection(body);
+    return {
+      html: `<section>\n<h2>${iconHtml}${escapeHtml(cleanHeading)}</h2>\n${sectionHtml}\n</section>`,
+      tempBadge: null,
+    };
+  }
+
   if (headingContains(heading, "전일 대비", "변화 요약")) {
     const sectionHtml = renderChangeSummarySection(body);
     return {
@@ -1832,6 +1967,16 @@ ${result.html}
     // 섹터 RS 랭킹 섹션
     if (headingContains(heading, "섹터 RS", "RS 랭킹")) {
       const sectionHtml = renderSectorRankingSection(body);
+      htmlParts.push(`<section>
+<h2>${iconHtml}${escapeHtml(cleanHeading)}</h2>
+${sectionHtml}
+</section>`);
+      continue;
+    }
+
+    // 업종 RS 랭킹 섹션
+    if (headingContains(heading, "업종 RS", "주도 업종")) {
+      const sectionHtml = renderIndustryRankingSection(body);
       htmlParts.push(`<section>
 <h2>${iconHtml}${escapeHtml(cleanHeading)}</h2>
 ${sectionHtml}
