@@ -186,6 +186,7 @@
 | Auto PR Reviewer | 이슈 프로세서 생성 PR → Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (PR #364) |
 | QA 에이전트 고도화 | 이슈 기준 강화(총점 ≤32) + severity 세분화(섹터 오분류→block) + 교차 리포트 정합성 검증 + 급락 필터 + 저장 전 완전성 검증 (PR #362) |
 | 도구 에러 자동 감지 | 도구 에러 발생 시 Discord 즉시 알림 + GitHub 이슈 자동 생성 + 핵심 도구(breadth/sectors/index) 실패 추적 via AgentResult.toolErrors (#540) |
+| 토론 품질 경고 | 애널리스트 실패·Thesis 검증 실패·촉매 데이터 로드 실패 시 Discord 경고 자동 발송 (#598) |
 
 ### Layer 13: 전략 참모 + 기업 애널리스트 (F9 + F10) — Done
 시스템 전체를 자동 리뷰하고, 추천 종목별 심층 분석을 자동 생성하는 고도화. (PR #266, #277)

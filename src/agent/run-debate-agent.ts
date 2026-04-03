@@ -41,8 +41,36 @@ import { loadCatalystContext } from "@/debate/catalystLoader";
 // extractDailyInsight는 insightExtractor에서 관리 — 순환 참조 방지를 위해 분리
 export { extractDailyInsight } from "@/debate/insightExtractor";
 
-import type { DebateResult, RoundOutput } from "@/types/debate";
+import type { AgentPersona, DebateResult, RoundOutput } from "@/types/debate";
 import type { MarketSnapshot } from "@/debate/marketDataLoader";
+
+// ────────────────────────────────────────────
+// Discord 경고 메시지 빌더
+// ────────────────────────────────────────────
+
+interface AgentError {
+  persona: AgentPersona;
+  round: 1 | 2;
+  error: string;
+}
+
+/**
+ * 토론 중 실패한 애널리스트 목록을 Discord 경고 메시지로 포맷.
+ * 테스트 가능성을 위해 export.
+ */
+export function buildAgentErrorWarning(
+  debateDate: string,
+  agentErrors: readonly AgentError[],
+): string {
+  const lines = agentErrors.map(
+    (err) => `- ${err.persona} (Round ${err.round}): ${err.error}`,
+  );
+  return [
+    `⚠️ **[토론 품질 경고]** ${debateDate}: 애널리스트 ${agentErrors.length}명 실패`,
+    ...lines,
+    "토론은 나머지 애널리스트로 완료됨",
+  ].join("\n");
+}
 
 interface AlertDecision {
   send: boolean;
@@ -475,7 +503,14 @@ async function main() {
       logger.info("Verify", `${verifyResult.held} theses held (no changes)`);
     }
   } catch (err) {
-    logger.warn("Verify", `Thesis verification failed: ${err instanceof Error ? err.message : String(err)}`);
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("Verify", `Thesis verification failed: ${reason}`);
+    await sendDiscordMessage(
+      `⚠️ **[Thesis 검증 경고]** ${debateDate}: Thesis 검증 실패 — ${reason}`,
+    ).catch((discordErr) => {
+      const discordReason = discordErr instanceof Error ? discordErr.message : String(discordErr);
+      logger.warn("Verify", `경고 Discord 발송 실패: ${discordReason}`);
+    });
   }
 
   // 2.6. 검증 후 timeframe 초과 thesis 정리 — 만료 전 정량 판정 시도
@@ -649,6 +684,11 @@ async function main() {
     for (const err of result.metadata.agentErrors) {
       logger.warn("Debate", `Agent error: ${err.persona} (round ${err.round}): ${err.error}`);
     }
+    const warningMsg = buildAgentErrorWarning(debateDate, result.metadata.agentErrors);
+    await sendDiscordMessage(warningMsg).catch((err) => {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn("Debate", `경고 Discord 발송 실패: ${reason}`);
+    });
   }
 
   // 6. Thesis 저장 + 레짐 저장 + 세션 저장

@@ -1,6 +1,7 @@
 import { db, pool } from "@/db/client";
 import { earningCalendar } from "@/db/schema/analyst";
 import { and, gte, lte, inArray, asc } from "drizzle-orm";
+import { sendDiscordMessage } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import type { MarketSnapshot } from "./marketDataLoader";
 
@@ -362,10 +363,17 @@ export async function loadCatalystContext(
 
     return result;
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
     logger.warn(
       "Catalyst",
-      `촉매 데이터 로드 실패 (토론 계속 진행): ${err instanceof Error ? err.message : String(err)}`,
+      `촉매 데이터 로드 실패 (토론 계속 진행): ${reason}`,
     );
+    sendDiscordMessage(
+      `⚠️ **[촉매 데이터 경고]** ${debateDate}: 촉매 데이터 로드 실패 — ${reason}`,
+    ).catch((discordErr) => {
+      const discordReason = discordErr instanceof Error ? discordErr.message : String(discordErr);
+      logger.warn("Catalyst", `경고 Discord 발송 실패: ${discordReason}`);
+    });
     return "";
   }
 }

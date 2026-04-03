@@ -43,6 +43,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 교차 리포트 정합성: 일간/토론 reported_symbols 불일치 감지 (warn-only)
    → 급락 종목 경고: -5% + 거래량 1.5x 시 Discord 경고 카테고리 삽입
    → 도구 에러 자동 감지: Discord 즉시 알림 + GitHub 이슈 자동 생성 + 핵심 도구 실패 추적
+   → 토론 품질 경고: 애널리스트 실패·Thesis 검증 실패·촉매 로드 실패 시 Discord 경고 발송
 
 6. 기업 애널리스트 (추천 종목별 자동 생성)
    → 피어 멀티플(P/E·EV/EBITDA·P/S) 가중 평균 기반 정량 목표주가 산출
