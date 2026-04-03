@@ -56,7 +56,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@google/generative-ai": "^0.24.1",
-    "@supabase/supabase-js": "^2.101.1",
     "@vitest/runner": "3.2.4",
     "@vitest/utils": "3.2.4",
     "dotenv": "^16.4.7",

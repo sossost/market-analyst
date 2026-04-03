@@ -7,7 +7,6 @@ import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from 
 import { SEND_DISCORD_REPORT_SCHEMA } from "@/tools/sendDiscordReport";
 import type { AgentTool } from "@/tools/types";
 import { buildHtmlReport } from "@/lib/htmlReport";
-import { uploadHtmlReport } from "@/lib/storageUpload";
 import { publishHtmlReport } from "@/lib/reportPublisher";
 
 // ---------------------------------------------------------------------------
@@ -525,7 +524,7 @@ export async function sendDrafts(
     if (draft.markdownContent != null) {
       // Storage 업로드 시도 (date가 있을 때만)
       if (date != null) {
-        const storageUrl = await tryUploadToStorage(
+        const storageUrl = await tryPublishHtmlReport(
           draft.markdownContent,
           draft.message,
           date,
@@ -569,7 +568,7 @@ export async function sendDrafts(
  * 마크다운을 HTML로 변환하여 Storage에 업로드한다.
  * 에러가 발생하면 null을 반환한다 — 절대 throw하지 않는다.
  */
-async function tryUploadToStorage(
+async function tryPublishHtmlReport(
   markdownContent: string,
   draftMessage: string,
   date: string,
@@ -577,20 +576,10 @@ async function tryUploadToStorage(
   try {
     const title = draftMessage.split("\n").find(line => line.trim() !== "")?.slice(0, 100) ?? "Daily Report";
     const html = buildHtmlReport(markdownContent, title, date);
-
-    // 1차: GitHub Pages 발행 (퍼블릭 URL, HTML 렌더링 정상)
-    const pagesUrl = await publishHtmlReport(html, date);
-    if (pagesUrl != null) {
-      // Supabase Storage에도 아카이브 (실패해도 무시)
-      uploadHtmlReport(html, date).catch(() => {});
-      return pagesUrl;
-    }
-
-    // 2차: GitHub Pages 실패 시 Supabase Storage fallback
-    return await uploadHtmlReport(html, date);
+    return await publishHtmlReport(html, date);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    logger.warn("SendDrafts", `HTML 변환/업로드 실패 — Gist fallback: ${reason}`);
+    logger.warn("SendDrafts", `HTML 발행 실패 — Gist fallback: ${reason}`);
     return null;
   }
 }

@@ -26,15 +26,10 @@ vi.mock("@/lib/gist", () => ({
 }));
 
 const mockBuildHtmlReport = vi.fn();
-const mockUploadHtmlReport = vi.fn();
 const mockPublishHtmlReport = vi.fn();
 
 vi.mock("@/lib/htmlReport", () => ({
   buildHtmlReport: mockBuildHtmlReport,
-}));
-
-vi.mock("@/lib/storageUpload", () => ({
-  uploadHtmlReport: mockUploadHtmlReport,
 }));
 
 vi.mock("@/lib/reportPublisher", () => ({
@@ -510,7 +505,6 @@ describe("sendDrafts", () => {
     delete process.env.GITHUB_TOKEN;
     mockBuildHtmlReport.mockReturnValue("<html>report</html>");
     mockPublishHtmlReport.mockResolvedValue(null);
-    mockUploadHtmlReport.mockResolvedValue(null);
   });
 
   it("does nothing when the webhook env var is not set", async () => {
@@ -636,10 +630,9 @@ describe("sendDrafts", () => {
     expect(mockCreateGist).not.toHaveBeenCalled();
   });
 
-  it("falls back to Gist when both publish and Storage upload return null", async () => {
+  it("falls back to Gist when publish returns null", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
     mockPublishHtmlReport.mockResolvedValue(null);
-    mockUploadHtmlReport.mockResolvedValue(null);
     mockCreateGist.mockResolvedValue({ url: "https://gist.github.com/fallback", id: "xyz" });
 
     await sendDrafts(
@@ -684,13 +677,13 @@ describe("sendDrafts", () => {
     );
 
     expect(mockBuildHtmlReport).not.toHaveBeenCalled();
-    expect(mockUploadHtmlReport).not.toHaveBeenCalled();
+    expect(mockPublishHtmlReport).not.toHaveBeenCalled();
     expect(mockCreateGist).toHaveBeenCalled();
   });
 
   it("uses only first line of draft message as HTML title", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
-    mockUploadHtmlReport.mockResolvedValue("https://storage.example.com/report.html");
+    mockPublishHtmlReport.mockResolvedValue("https://sossost.github.io/market-reports/daily/2026-04-03/");
 
     const multilineMessage = "First line title\nSecond line\nThird line";
     await sendDrafts(
