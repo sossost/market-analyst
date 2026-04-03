@@ -272,38 +272,85 @@ describe("detectPhase", () => {
     });
   });
 
-  describe("Phase 3 distribution guard (issue #328 fix)", () => {
-    it("classifies as Phase 3 when price ≤ MA150 and MA150 > MA200 (distribution)", () => {
-      // This was previously misclassified as Phase 1 when slope was flat
+  describe("Phase 3 distribution vs Phase 1 base-building (#328 + #594)", () => {
+    it("classifies as Phase 1 when slope near-flat and price near MA150, even if MA150 > MA200 (#594)", () => {
+      // #594: slope flat + price near MA150 → base-building, not distribution
       const result = detectPhase({
-        price: 98, // price < MA150
+        price: 98, // 2% below MA150 → near
         ma50: 95,
         ma150: 100,
-        ma200: 95, // MA150 > MA200 → was in Phase 2, now topping
-        ma150_20dAgo: 100.5, // slope flat
+        ma200: 95, // MA150 > MA200
+        ma150_20dAgo: 100.5, // slope ≈ -0.5% → flat
         rsScore: 55,
         high52w: 120,
+        low52w: 70,
+      });
+
+      expect(result.phase).toBe(1);
+    });
+
+    it("classifies as Phase 1 when slope near-flat and price near MA150 with MA150 > MA200 (#594)", () => {
+      // #594: slope -0.99% flat + price 1% from MA150 → base-building
+      const result = detectPhase({
+        price: 99,
+        ma50: 97,
+        ma150: 100,
+        ma200: 95, // MA150 > MA200
+        ma150_20dAgo: 101, // slope ≈ -0.99% → flat
+        rsScore: 45,
+        high52w: 130,
+        low52w: 70,
+      });
+
+      expect(result.phase).toBe(1);
+    });
+
+    it("classifies as Phase 3 when slope is steep even if price near MA150 (true distribution)", () => {
+      // Steep decline → true distribution, not base-building
+      const result = detectPhase({
+        price: 99,
+        ma50: 97,
+        ma150: 100,
+        ma200: 95, // MA150 > MA200
+        ma150_20dAgo: 110, // slope ≈ -9.1% → NOT flat (> ±5%)
+        rsScore: 45,
+        high52w: 130,
         low52w: 70,
       });
 
       expect(result.phase).toBe(3);
     });
 
-    it("classifies as Phase 3 not Phase 1 when MA150 > MA200 with flat slope and price near MA150", () => {
-      // Exact scenario from issue #328: Phase 3 → Phase 1 misclassification
+    it("classifies as Phase 3 when price far below MA150 even if slope flat (true distribution)", () => {
+      // Price too far from MA150 → distribution, not base-building
       const result = detectPhase({
-        price: 99, // within 5% of MA150(100) → priceNearMa150 = true
-        ma50: 97,
+        price: 90, // 10% below MA150 → NOT near (> 5% threshold)
+        ma50: 92,
         ma150: 100,
         ma200: 95, // MA150 > MA200
-        ma150_20dAgo: 101, // slope ≈ -0.0099 → flat range
-        rsScore: 45,
+        ma150_20dAgo: 101, // slope ≈ -0.99% → flat
+        rsScore: 55,
         high52w: 130,
         low52w: 70,
       });
 
-      // Should be Phase 3 (distribution), NOT Phase 1
       expect(result.phase).toBe(3);
+    });
+
+    it("classifies as Phase 1 with slope -3% to -4% and price near MA150 (#594 core case)", () => {
+      // The exact scenario from #594: slope -3~-5% base-building stocks
+      const result = detectPhase({
+        price: 98,
+        ma50: 96,
+        ma150: 100,
+        ma200: 95, // MA150 > MA200
+        ma150_20dAgo: 103.5, // slope ≈ -3.4% → flat under ±5% threshold
+        rsScore: 50,
+        high52w: 130,
+        low52w: 70,
+      });
+
+      expect(result.phase).toBe(1);
     });
 
     it("still classifies as Phase 1 when MA150 ≤ MA200 (genuine base)", () => {
