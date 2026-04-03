@@ -100,7 +100,7 @@ export async function fetchPhase2News(
        FROM stock_news
        WHERE symbol = ANY($1)
          AND published_date >= $2
-         AND published_date <= $3
+         AND published_date < ($3::date + 1)::text
      ) ranked
      WHERE rn <= $4
      ORDER BY symbol, published_date DESC`,
@@ -145,8 +145,8 @@ export async function fetchSectorBeatRates(
        AND e.actual_date <= $3
        AND e.actual_eps IS NOT NULL
        AND e.estimated_eps IS NOT NULL
-       AND e.actual_eps ~ '^-?[0-9]+(\.[0-9]+)?$'
-       AND e.estimated_eps ~ '^-?[0-9]+(\.[0-9]+)?$'
+       AND e.actual_eps::text ~ '^-?[0-9]+(\.[0-9]+)?$'
+       AND e.estimated_eps::text ~ '^-?[0-9]+(\.[0-9]+)?$'
        AND s.sector IS NOT NULL
      GROUP BY s.sector
      HAVING COUNT(*) >= 2
