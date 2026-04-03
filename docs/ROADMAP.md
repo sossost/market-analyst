@@ -84,7 +84,7 @@
 | 폴백 | Claude 계열: ClaudeCliProvider(Max 구독, $0) 우선 → AnthropicProvider API 폴백. 외부 API(GPT-4o/Gemini) 장애 시 Claude 자동 폴백 + warn 로그 |
 | 뉴스 사전 수집 | Brave Search로 애널리스트별 뉴스 주입 |
 | 촉매 데이터 주입 | 종목 뉴스 헤드라인 + 섹터별 실적 서프라이즈 비트율 + 임박 실적 발표 일정 → "왜 지금 이 섹터가 강한가" 근거 강화 (#460) |
-| 조기포착 주입 | Phase1Late/RisingRS/펀더멘탈가속 결과를 Round 1·3에 주입 (#414) |
+| 조기포착 주입 | Phase1Late/RisingRS/펀더멘탈가속 결과를 Round 1·3에 주입 (#414) + 교집합 필터로 2+도구 수렴 "고확신 후보" 태깅 (#593) |
 | 모멘텀 데이터 | 5일/20일 가격 변화율 → 고점 피로감 감지 |
 | 환각 방지 | 프롬프트 레벨 수치 정확성 규칙 |
 
