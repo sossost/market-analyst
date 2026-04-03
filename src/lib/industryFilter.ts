@@ -14,6 +14,8 @@ export function applyIndustrySectorCap<T extends { sector: string }>(
   sectorCap: number,
   topN: number,
 ): T[] {
+  if (sectorCap <= 0 || topN <= 0) return [];
+
   const sectorCounts = new Map<string, number>();
   const result: T[] = [];
 

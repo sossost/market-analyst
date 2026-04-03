@@ -229,9 +229,7 @@ export const getLeadingSectors: AgentTool = {
             : null,
       }));
 
-      // limit 파라미터가 에이전트에서 넘어온 경우 topN으로 사용 (기본 INDUSTRY_TOP_N)
-      const effectiveTopN = industryLimit !== INDUSTRY_TOP_N ? industryLimit : INDUSTRY_TOP_N;
-      const industries = applyIndustrySectorCap(allIndustries, INDUSTRY_SECTOR_CAP, effectiveTopN);
+      const industries = applyIndustrySectorCap(allIndustries, INDUSTRY_SECTOR_CAP, industryLimit);
 
       return JSON.stringify({
         _note:

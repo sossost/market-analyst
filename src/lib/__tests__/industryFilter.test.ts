@@ -106,6 +106,20 @@ describe("applyIndustrySectorCap", () => {
     ]);
   });
 
+  it("returns empty array when sectorCap is 0", () => {
+    const input: TestIndustry[] = [
+      { industry: "Oil & Gas E&P", sector: "Energy", avgRs: 90 },
+    ];
+    expect(applyIndustrySectorCap(input, 0, 10)).toHaveLength(0);
+  });
+
+  it("returns empty array when topN is 0", () => {
+    const input: TestIndustry[] = [
+      { industry: "Oil & Gas E&P", sector: "Energy", avgRs: 90 },
+    ];
+    expect(applyIndustrySectorCap(input, 2, 0)).toHaveLength(0);
+  });
+
   it("does not mutate the input array", () => {
     const input: TestIndustry[] = [
       { industry: "Oil & Gas E&P", sector: "Energy", avgRs: 90 },

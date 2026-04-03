@@ -1793,6 +1793,8 @@ const SECTION_ICON_MAP: Record<string, string> = {
   "약세 특이종목": "⚠️",
   "역분할": "⚠️",
   "주도주 예비군": "🌱",
+  "업종 RS": "🏭",
+  "주도 업종": "🏭",
 };
 
 function getSectionIcon(heading: string): string {
