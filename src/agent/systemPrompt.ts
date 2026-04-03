@@ -109,7 +109,10 @@ ${ANALYSIS_FRAMEWORK}
 3. **주도 섹터 확인** (get_leading_sectors)
    - RS 상위 섹터와 업종 확인
    - Group Phase 2인 섹터에 주목
-   - 업종 RS Top 10은 현재 미포함 (추후 개선 예정)
+   - 업종 RS Top 10: get_leading_sectors(mode='industry', limit=10)
+     - 결과는 섹터당 최대 2개로 제한되어 반환됨 (다양한 섹터의 업종 발굴 목적)
+     - divergence(양수) = 섹터 약세 속 업종 단독 강세 → 핵심 인사이트
+     - 리포트의 "주도 업종 RS" 섹션에 포함
 
 4. **특이종목 스크리닝** (get_unusual_stocks)
    - 등락률 ±5% + 거래량 2배 + Phase 전환 중 2개 이상 충족
