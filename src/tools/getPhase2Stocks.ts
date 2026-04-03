@@ -75,6 +75,7 @@ export const getPhase2Stocks: AgentTool = {
       conditionsMet: r.conditions_met != null ? JSON.parse(r.conditions_met) : [],
       volRatio: r.vol_ratio != null ? toNum(r.vol_ratio) : null,
       volumeConfirmed: r.volume_confirmed ?? false,
+      breakoutSignal: r.breakout_signal,
       sector: r.sector,
       industry: r.industry,
     };

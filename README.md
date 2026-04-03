@@ -103,7 +103,7 @@ GITHUB_TOKEN=gho_...                        # Gist MD 첨부
 
 ```bash
 # ETL 파이프라인
-yarn etl:stock-phases       # Weinstein Phase 판별
+yarn etl:stock-phases       # Weinstein Phase 판별 + 거래량 돌파 신호(breakoutSignal)
 yarn etl:sector-rs          # 섹터 RS 계산
 yarn etl:industry-rs        # 산업 RS 계산
 yarn etl:index-prices       # 지수 가격 (S&P 500, NASDAQ, DOW, Russell 2000, VIX)

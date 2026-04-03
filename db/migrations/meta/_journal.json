@@ -211,6 +211,13 @@
       "when": 1775127205207,
       "tag": "0029_living_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1775196411315,
+      "tag": "0030_known_ultimatum",
+      "breakpoints": true
     }
   ]
 }

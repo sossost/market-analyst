@@ -72,7 +72,7 @@ export async function findPhase2Stocks(params: {
        sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met,
-       sp.vol_ratio::text, sp.volume_confirmed,
+       sp.vol_ratio::text, sp.volume_confirmed, sp.breakout_signal,
        s.sector, s.industry
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
@@ -100,7 +100,7 @@ export async function findAllPhase2Stocks(date: string): Promise<StockPhaseRow[]
        sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met,
-       sp.vol_ratio::text, sp.volume_confirmed,
+       sp.vol_ratio::text, sp.volume_confirmed, sp.breakout_signal,
        s.sector, s.industry
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
