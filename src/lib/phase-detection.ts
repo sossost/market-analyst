@@ -12,7 +12,7 @@ export function calculateMa150Slope(
 }
 
 // Phase 1 (Base): MA150 nearly flat, price oscillating near MA150
-const MA150_FLAT_THRESHOLD = 0.02; // ±2% considered flat
+const MA150_FLAT_THRESHOLD = 0.05; // ±5% considered flat (#594: ±2% was too narrow for base-building stocks)
 const PRICE_NEAR_MA150_THRESHOLD = 0.05; // within 5% of MA150
 
 /**
@@ -118,6 +118,8 @@ function determinePhase(
 
   const slopeNegative = ma150Slope < 0;
   const slopeFlat = Math.abs(ma150Slope) < MA150_FLAT_THRESHOLD;
+  const priceNearMa150 =
+    ma150 > 0 && Math.abs(price - ma150) / ma150 < PRICE_NEAR_MA150_THRESHOLD;
 
   // Phase 4: Markdown / Decline (check BEFORE Phase 1)
   // Phase 4 초기 종목이 flat slope + 가격 근접 조건을 동시에 충족하면
@@ -128,17 +130,14 @@ function determinePhase(
 
   // Phase 3 (distribution): price dropped below (or at) MA150 while MA150 still above MA200.
   // This catches topping/distribution after a Phase 2 run.
-  // MUST be checked BEFORE Phase 1 to prevent Phase 3 → Phase 1 misclassification
-  // when slope is flat and price is near MA150.
-  if (!priceAboveMa150 && ma150AboveMa200) {
+  // Exception (#594): slope near-flat + price near MA150 → Phase 1 base-building candidate.
+  // True distribution has steep decline or price far from MA150.
+  if (!priceAboveMa150 && ma150AboveMa200 && !(slopeFlat && priceNearMa150)) {
     return 3;
   }
 
   // Phase 1: Base / Accumulation
   // MA150 nearly flat, price near MA150
-  const priceNearMa150 =
-    ma150 > 0 && Math.abs(price - ma150) / ma150 < PRICE_NEAR_MA150_THRESHOLD;
-
   if (slopeFlat && priceNearMa150) {
     return 1;
   }
