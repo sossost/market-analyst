@@ -1,13 +1,13 @@
 /**
- * Narrative Chains 백필 스크립트.
+ * Narrative Chains 전면 재백필 스크립트.
  *
- * 3/21~4/1 기간 동안 narrative_chains에 연결되지 못한
- * structural_narrative thesis 14건을 복구한다.
+ * #608: 서사체인 파싱 재설계 후, 오염된 기존 데이터를 삭제하고
+ * 모든 structural_narrative thesis를 신규 로직으로 재처리한다.
  *
  * 처리 로직:
- * 1. theses 테이블에서 category='structural_narrative' AND debate_date IN [2026-03-21, 2026-04-01] 조회
- * 2. 이미 narrative_chains.linked_thesis_ids에 포함된 thesis는 건너뜀 (중복 방지)
- * 3. 각 thesis에 대해 recordNarrativeChain 호출
+ * 1. narrative_chains 테이블 TRUNCATE (오염 데이터 삭제)
+ * 2. theses 테이블에서 category='structural_narrative' 전건 조회 (날짜 오름차순)
+ * 3. 각 thesis에 대해 recordNarrativeChain 순차 호출 (체인 매칭 순서 보존)
  *
  * Usage:
  *   npx tsx scripts/backfill-narrative-chains.ts            # 실행
@@ -17,13 +17,12 @@ import "dotenv/config";
 import { pool } from "../src/db/client.js";
 import { db } from "../src/db/client.js";
 import { narrativeChains, theses } from "../src/db/schema/analyst.js";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { recordNarrativeChain } from "../src/debate/narrativeChainService.js";
 import type { Thesis } from "../src/types/debate.js";
 
 const TAG = "BACKFILL_NARRATIVE_CHAINS";
-const BACKFILL_FROM = "2026-03-21";
-const BACKFILL_TO = "2026-04-01";
 
 interface ThesisRow {
   id: number;
@@ -40,7 +39,7 @@ interface ThesisRow {
   dissentReason: string | null;
 }
 
-async function fetchTargetTheses(): Promise<ThesisRow[]> {
+async function fetchAllStructuralTheses(): Promise<ThesisRow[]> {
   const rows = await db
     .select({
       id: theses.id,
@@ -57,33 +56,10 @@ async function fetchTargetTheses(): Promise<ThesisRow[]> {
       dissentReason: theses.dissentReason,
     })
     .from(theses)
-    .where(
-      and(
-        eq(theses.category, "structural_narrative"),
-        gte(theses.debateDate, BACKFILL_FROM),
-        lte(theses.debateDate, BACKFILL_TO),
-      ),
-    )
+    .where(eq(theses.category, "structural_narrative"))
     .orderBy(theses.debateDate);
 
   return rows;
-}
-
-async function fetchAlreadyLinkedThesisIds(): Promise<Set<number>> {
-  const chains = await db
-    .select({ linkedThesisIds: narrativeChains.linkedThesisIds })
-    .from(narrativeChains);
-
-  const linked = new Set<number>();
-  for (const chain of chains) {
-    const ids = chain.linkedThesisIds;
-    if (Array.isArray(ids)) {
-      for (const id of ids) {
-        linked.add(id);
-      }
-    }
-  }
-  return linked;
 }
 
 function toThesisObject(row: ThesisRow): Thesis {
@@ -99,40 +75,32 @@ function toThesisObject(row: ThesisRow): Thesis {
     category: "structural_narrative",
     nextBottleneck: row.nextBottleneck ?? null,
     dissentReason: row.dissentReason ?? null,
-    // theses 테이블에 beneficiaryTickers/beneficiarySectors 컬럼이 없으므로 빈 배열로 구성
+    // theses 테이블에 beneficiaryTickers/beneficiarySectors 컬럼이 없으므로 빈 배열
+    // narrativeChain 필드도 없음 → buildChainFields legacy fallback 사용
     beneficiaryTickers: [],
     beneficiarySectors: [],
+    narrativeChain: null,
   };
 }
 
 async function main() {
   const isDryRun = process.argv.includes("--dry-run");
 
-  console.log(`[${TAG}] 백필 범위: ${BACKFILL_FROM} ~ ${BACKFILL_TO}`);
+  console.log(`[${TAG}] #608 서사체인 전면 재백필`);
   if (isDryRun) {
     console.log(`[${TAG}] --dry-run 모드 — DB 수정 없이 처리 대상만 출력`);
   }
 
-  const [targetTheses, alreadyLinked] = await Promise.all([
-    fetchTargetTheses(),
-    fetchAlreadyLinkedThesisIds(),
-  ]);
+  const targetTheses = await fetchAllStructuralTheses();
+  console.log(`[${TAG}] structural_narrative thesis 전건: ${targetTheses.length}건`);
 
-  console.log(`[${TAG}] structural_narrative thesis 조회: ${targetTheses.length}건`);
-
-  const pending = targetTheses.filter((row) => !alreadyLinked.has(row.id));
-  const skipped = targetTheses.length - pending.length;
-
-  console.log(`[${TAG}] 이미 연결됨(건너뜀): ${skipped}건`);
-  console.log(`[${TAG}] 처리 대상: ${pending.length}건`);
-
-  if (pending.length === 0) {
+  if (targetTheses.length === 0) {
     console.log(`[${TAG}] 처리할 thesis 없음. 종료.`);
     return;
   }
 
   console.log(`\n처리 대상 목록:`);
-  for (const row of pending) {
+  for (const row of targetTheses) {
     console.log(`  #${row.id} (${row.debateDate}) ${row.thesis.slice(0, 80)}...`);
   }
 
@@ -141,10 +109,23 @@ async function main() {
     return;
   }
 
+  // Step 1: 백업 테이블 생성 (TRUNCATE 롤백 안전망)
+  console.log(`\n[${TAG}] 백업 테이블 생성...`);
+  await db.execute(sql`DROP TABLE IF EXISTS narrative_chains_backup_608`);
+  await db.execute(sql`CREATE TABLE narrative_chains_backup_608 AS SELECT * FROM narrative_chains`);
+  console.log(`[${TAG}] 백업 완료 → narrative_chains_backup_608`);
+  console.log(`[${TAG}] (복원 필요 시: INSERT INTO narrative_chains SELECT * FROM narrative_chains_backup_608)`);
+
+  // Step 2: TRUNCATE narrative_chains (오염 데이터 전체 삭제)
+  console.log(`\n[${TAG}] narrative_chains TRUNCATE 시작...`);
+  await db.execute(sql`TRUNCATE TABLE narrative_chains RESTART IDENTITY`);
+  console.log(`[${TAG}] narrative_chains TRUNCATE 완료`);
+
+  // Step 3: 날짜 오름차순으로 순차 재백필
   let successCount = 0;
   let failCount = 0;
 
-  for (const row of pending) {
+  for (const row of targetTheses) {
     const thesisObj = toThesisObject(row);
     try {
       await recordNarrativeChain(thesisObj, row.id);
@@ -157,7 +138,19 @@ async function main() {
     }
   }
 
-  console.log(`\n[${TAG}] 처리 완료 — 성공: ${successCount}건, 실패: ${failCount}건`);
+  // Step 4: 결과 요약
+  const finalCount = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(narrativeChains);
+
+  console.log(`\n${"=".repeat(60)}`);
+  console.log(`[${TAG}] 재백필 완료`);
+  console.log(`  thesis 처리: ${successCount}건 성공, ${failCount}건 실패`);
+  console.log(`  최종 narrative_chains 레코드 수: ${finalCount[0]?.count ?? 0}건`);
+  console.log(`  (재백필 전 33건 → 중복 제거로 감소 예상)`);
+  console.log(`\n  백업 테이블: narrative_chains_backup_608`);
+  console.log(`  검증 후 삭제: DROP TABLE narrative_chains_backup_608;`);
+  console.log(`${"=".repeat(60)}`);
 }
 
 let exitCode = 0;

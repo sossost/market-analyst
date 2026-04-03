@@ -62,6 +62,7 @@ vi.mock("../../../src/db/client.js", () => ({
 import {
   jaccardSimilarity,
   parseBottleneckFromThesis,
+  buildChainFields,
   findMatchingChain,
   recordNarrativeChain,
 } from "@/debate/narrativeChainService.js";
@@ -260,40 +261,123 @@ describe("narrativeChainService", () => {
     });
   });
 
+  describe("buildChainFields", () => {
+    it("uses narrativeChain fields directly when present", () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "AI 인프라 투자 확대",
+        timeframeDays: 60,
+        verificationMetric: "Technology RS",
+        targetCondition: "Technology RS > 60",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        narrativeChain: {
+          megatrend: "AI 인프라 확장",
+          demandDriver: "AI 모델 파라미터 증가 → 전력 수요 급증",
+          supplyChain: "전력 변압기 → 냉각 시스템 → 광트랜시버",
+          bottleneck: "광트랜시버 대역폭 제한",
+        },
+        beneficiarySectors: ["Communication Equipment"],
+        beneficiaryTickers: ["CIEN", "LITE"],
+      };
+      const info = buildChainFields(thesis);
+      expect(info?.megatrend).toBe("AI 인프라 확장");
+      expect(info?.demandDriver).toBe("AI 모델 파라미터 증가 → 전력 수요 급증");
+      expect(info?.supplyChain).toBe("전력 변압기 → 냉각 시스템 → 광트랜시버");
+      expect(info?.bottleneck).toBe("광트랜시버 대역폭 제한");
+      expect(info?.beneficiarySectors).toEqual(["Communication Equipment"]);
+      expect(info?.beneficiaryTickers).toEqual(["CIEN", "LITE"]);
+    });
+
+    it("falls back to first sentence when narrativeChain is null", () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "GPU 공급 부족 지속. 세부 내용.",
+        timeframeDays: 60,
+        verificationMetric: "Technology RS",
+        targetCondition: "Technology RS > 60",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        narrativeChain: null,
+      };
+      const info = buildChainFields(thesis);
+      expect(info?.megatrend).toBe("GPU 공급 부족 지속");
+      expect(info?.bottleneck).toBe("GPU 공급 부족 지속");
+      expect(info?.demandDriver).toBe("");
+      expect(info?.supplyChain).toBe("");
+    });
+
+    it("detects RESOLVING status even with narrativeChain present", () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "GPU 병목이 RESOLVING 단계에 진입",
+        timeframeDays: 60,
+        verificationMetric: "Technology RS",
+        targetCondition: "Technology RS > 60",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        narrativeChain: {
+          megatrend: "AI 인프라",
+          demandDriver: "수요",
+          supplyChain: "공급망",
+          bottleneck: "GPU 병목",
+        },
+      };
+      const info = buildChainFields(thesis);
+      expect(info?.status).toBe("RESOLVING");
+    });
+  });
+
   describe("findMatchingChain", () => {
+    const makeInfo = (megatrend: string, bottleneck: string) => ({
+      megatrend,
+      demandDriver: "",
+      supplyChain: "",
+      bottleneck,
+      nextBottleneck: null,
+      status: "ACTIVE" as const,
+      beneficiarySectors: [],
+      beneficiaryTickers: [],
+    });
+
     it("returns null when no candidates exist", async () => {
       mockWhere.mockResolvedValueOnce([]);
-      const result = await findMatchingChain("AI 인프라", "GPU 공급 부족");
+      const result = await findMatchingChain(makeInfo("AI 인프라", "GPU 공급 부족"));
       expect(result).toBeNull();
     });
 
-    it("returns matching chain when similarity >= 0.7", async () => {
+    it("returns matching chain when keyword overlap >= 2", async () => {
       const identifiedAt = new Date("2026-01-01");
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
+          megatrend: "AI 인프라",
           bottleneck: "GPU supply shortage",
           linkedThesisIds: [10, 20],
           bottleneckIdentifiedAt: identifiedAt,
         },
       ]);
 
-      // "GPU supply shortage" vs "GPU supply shortage"
-      const result = await findMatchingChain("AI 인프라", "GPU supply shortage");
+      // "AI 인프라 GPU supply shortage" — overlap: "ai", "인프라", "gpu", "supply", "shortage" >= 2
+      const result = await findMatchingChain(makeInfo("AI 인프라", "GPU supply shortage"));
       expect(result).toEqual({ id: 1, linkedThesisIds: [10, 20], bottleneckIdentifiedAt: identifiedAt });
     });
 
-    it("returns null when similarity < 0.7", async () => {
+    it("returns null when keyword overlap < 2", async () => {
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
+          megatrend: "에너지 전환",
           bottleneck: "completely different bottleneck text here",
           linkedThesisIds: [10],
           bottleneckIdentifiedAt: new Date("2026-01-01"),
         },
       ]);
 
-      const result = await findMatchingChain("AI 인프라", "GPU 공급 부족");
+      const result = await findMatchingChain(makeInfo("AI 인프라", "GPU 공급 부족"));
       expect(result).toBeNull();
     });
 
@@ -302,13 +386,15 @@ describe("narrativeChainService", () => {
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
-          bottleneck: "same text",
+          megatrend: "AI 인프라 확장",
+          bottleneck: "GPU 공급 부족 심화",
           linkedThesisIds: null,
           bottleneckIdentifiedAt: identifiedAt,
         },
       ]);
 
-      const result = await findMatchingChain("trend", "same text");
+      // "AI 인프라 확장 GPU 공급 부족 심화" — many keyword overlaps
+      const result = await findMatchingChain(makeInfo("AI 인프라", "GPU 공급 부족"));
       expect(result).toEqual({ id: 1, linkedThesisIds: [], bottleneckIdentifiedAt: identifiedAt });
     });
   });
@@ -335,7 +421,7 @@ describe("narrativeChainService", () => {
     it("creates new chain when no matching chain exists", async () => {
       const thesis: Thesis = {
         agentPersona: "tech",
-        thesis: "megatrend: AI 인프라. bottleneck: GPU 공급 부족",
+        thesis: "AI 인프라 GPU 공급 부족 지속",
         timeframeDays: 60,
         verificationMetric: "m",
         targetCondition: "c",
@@ -343,6 +429,12 @@ describe("narrativeChainService", () => {
         consensusLevel: "3/4",
         category: "structural_narrative",
         nextBottleneck: "전력 인프라",
+        narrativeChain: {
+          megatrend: "AI 인프라",
+          demandDriver: "AI 모델 성장 → 데이터센터 수요 증가",
+          supplyChain: "GPU 제조 → 패키징 → 데이터센터",
+          bottleneck: "GPU 공급 부족",
+        },
       };
 
       // findMatchingChain returns no candidates
@@ -379,6 +471,7 @@ describe("narrativeChainService", () => {
       mockWhere.mockResolvedValueOnce([
         {
           id: 5,
+          megatrend: "AI 인프라",
           bottleneck: "AI 인프라 GPU supply shortage 지속",
           linkedThesisIds: [10],
           bottleneckIdentifiedAt: new Date("2026-01-01"),
@@ -432,6 +525,7 @@ describe("narrativeChainService", () => {
       mockWhere.mockResolvedValueOnce([
         {
           id: 5,
+          megatrend: "AI 인프라",
           bottleneck: "GPU 공급 부족이 RESOLVED 완료",
           linkedThesisIds: [10],
           bottleneckIdentifiedAt: identifiedAt,
