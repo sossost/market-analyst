@@ -18,8 +18,16 @@ import type {
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { clampPercent, validateDate, validateNumber } from "./validation";
+import { applyIndustrySectorCap } from "@/lib/industryFilter.js";
 
-const DEFAULT_INDUSTRY_LIMIT = 10;
+/** DB에서 가져올 업종 상위 N개 (섹터당 제한 적용 전 후보군) */
+const INDUSTRY_FETCH_LIMIT = 50;
+
+/** 최종 반환할 업종 개수 */
+const INDUSTRY_TOP_N = 10;
+
+/** 섹터당 최대 허용 업종 개수 */
+const INDUSTRY_SECTOR_CAP = 2;
 
 /**
  * 섹터 쿼리 상한. GICS 11개 섹터를 모두 포함하는 안전 상한.
@@ -187,7 +195,7 @@ export const getLeadingSectors: AgentTool = {
     if (date == null) {
       return JSON.stringify({ error: "Invalid or missing date parameter" });
     }
-    const industryLimit = validateNumber(input.limit, DEFAULT_INDUSTRY_LIMIT);
+    const industryLimit = validateNumber(input.limit, INDUSTRY_TOP_N);
     const mode =
       input.mode === "industry"
         ? "industry"
@@ -197,10 +205,10 @@ export const getLeadingSectors: AgentTool = {
 
     if (mode === "industry") {
       const rows = await retryDatabaseOperation(() =>
-        findTopIndustriesGlobal(date, industryLimit),
+        findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
       );
 
-      const industries = rows.map((i: IndustryRsGlobalRow) => ({
+      const allIndustries = rows.map((i: IndustryRsGlobalRow) => ({
         industry: i.industry,
         sector: i.sector,
         avgRs: toNum(i.avg_rs),
@@ -221,9 +229,13 @@ export const getLeadingSectors: AgentTool = {
             : null,
       }));
 
+      // limit 파라미터가 에이전트에서 넘어온 경우 topN으로 사용 (기본 INDUSTRY_TOP_N)
+      const effectiveTopN = industryLimit !== INDUSTRY_TOP_N ? industryLimit : INDUSTRY_TOP_N;
+      const industries = applyIndustrySectorCap(allIndustries, INDUSTRY_SECTOR_CAP, effectiveTopN);
+
       return JSON.stringify({
         _note:
-          "phase2Ratio는 이미 퍼센트(0~100). divergence = 업종RS - 섹터RS (양수 = 섹터 대비 업종 초과 강세)",
+          "phase2Ratio는 이미 퍼센트(0~100). divergence = 업종RS - 섹터RS (양수 = 섹터 대비 업종 초과 강세). 섹터당 최대 2개로 제한됨.",
         date,
         mode: "industry",
         industries,
