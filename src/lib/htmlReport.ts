@@ -471,24 +471,41 @@ const PHASE_CLASS_MAP: Record<string, string> = {
   P4: "p4",
 };
 
+/**
+ * HTML 태그 내부(속성값 등)를 건드리지 않고 텍스트 노드에서만 치환을 수행한다.
+ * `<a href="...P2...">` 같은 URL이 깨지는 것을 방지.
+ */
+function replaceInTextNodes(
+  html: string,
+  pattern: RegExp,
+  replacer: (match: string, ...args: string[]) => string,
+): string {
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (segment, tag, text) => {
+    if (tag != null) return tag;
+    return text.replace(pattern, replacer);
+  });
+}
+
 function applyPostProcessing(html: string): string {
   // 테이블에 data-table 클래스 추가
   let result = html.replace(/<table>/g, '<table class="data-table">');
 
-  // ▲ (상승 기호)에 up 클래스 적용
-  result = result.replace(
+  // ▲ (상승 기호)에 up 클래스 적용 — 텍스트 노드에서만
+  result = replaceInTextNodes(
+    result,
     /▲\s*([\d.]+%?)/g,
-    '<span class="up">▲ $1</span>',
+    (_match, value) => `<span class="up">▲ ${value}</span>`,
   );
 
-  // ▼ (하락 기호)에 down 클래스 적용
-  result = result.replace(
+  // ▼ (하락 기호)에 down 클래스 적용 — 텍스트 노드에서만
+  result = replaceInTextNodes(
+    result,
     /▼\s*([\d.]+%?)/g,
-    '<span class="down">▼ $1</span>',
+    (_match, value) => `<span class="down">▼ ${value}</span>`,
   );
 
-  // Phase 배지 색상 코딩 (테이블 셀 내부의 Phase 텍스트)
-  result = result.replace(PHASE_BADGE_PATTERN, (match) => {
+  // Phase 배지 색상 코딩 — 텍스트 노드에서만
+  result = replaceInTextNodes(result, PHASE_BADGE_PATTERN, (match) => {
     const normalised = match.replace(/\s/, "");
     const phaseClass =
       PHASE_CLASS_MAP[match] ?? PHASE_CLASS_MAP[normalised] ?? "";

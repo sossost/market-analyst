@@ -192,6 +192,27 @@ describe("buildHtmlReport", () => {
 
       expect(result).toContain('class="phase-badge p4"');
     });
+
+    it("URL 내부의 P2 텍스트는 치환하지 않는다", () => {
+      const markdown = '[링크](https://example.com/api/P2/report)에서 Phase 2 확인';
+
+      const result = buildHtmlReport(markdown, "제목", "2026-04-03");
+
+      // URL 내부의 P2는 그대로 보존
+      expect(result).toContain("example.com/api/P2/report");
+      // 텍스트 노드의 Phase 2는 배지 적용
+      expect(result).toContain('class="phase-badge p2"');
+    });
+
+    it("href 속성 내부의 ▲ 기호는 치환하지 않는다", () => {
+      const html = '<a href="https://example.com/▲test">▲ 2.5%</a>';
+      const markdown = `본문 ${html}`;
+
+      const result = buildHtmlReport(markdown, "제목", "2026-04-03");
+
+      // 텍스트 노드의 ▲는 up 클래스 적용
+      expect(result).toContain('class="up"');
+    });
   });
 
   describe("엣지 케이스", () => {
