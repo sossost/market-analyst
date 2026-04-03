@@ -752,4 +752,52 @@ describe("buildHtmlReport", () => {
       expect(result).not.toContain("<img src=x");
     });
   });
+
+  describe("업종 RS 테이블 렌더링", () => {
+    const industryMarkdown = `## 업종 RS Top 10
+
+| # | 업종 | 소속 섹터 | RS | Divergence | Phase | 4주 변화 |
+|---|------|----------|-----|-----------|-------|---------|
+| 1 | Semiconductors | Technology | 64.5 | +20.3 | 2 | +3.2 |
+| 2 | Oil & Gas E&P | Energy | 71.2 | -5.1 | 3 | -1.8 |
+`;
+
+    it("업종 + RS 컬럼이 있으면 <table>을 생성한다", () => {
+      const result = makeReport(industryMarkdown);
+      expect(result).toContain("<table>");
+      expect(result).toContain("Semiconductors");
+    });
+
+    it("Divergence 양수에 class=up이 적용된다", () => {
+      const result = makeReport(industryMarkdown);
+      expect(result).toMatch(/class="up"[^>]*>.*20\.3/s);
+    });
+
+    it("Divergence 음수에 class=down이 적용된다", () => {
+      const result = makeReport(industryMarkdown);
+      expect(result).toMatch(/class="down"[^>]*>.*5\.1/s);
+    });
+
+    it("Phase 배지가 phase-badge 클래스�� 렌더링된다", () => {
+      const result = makeReport(industryMarkdown);
+      expect(result).toContain("phase-badge p2");
+      expect(result).toContain("phase-badge p3");
+    });
+
+    it("섹��� 전용 컬럼(업종 없음)은 업종 테이블로 렌더링되지 않는다", () => {
+      const sectorOnly = `## 섹터 RS 랭킹 표
+
+| 순위 | 섹터 | RS | 변�� | Group Phase | 4��� 변화 | 8주 변화 | Phase 2 비율 |
+|------|------|-----|------|------------|---------|---------|-------------|
+| 1 | Energy | 72.5 | +1.2 | 2 | +5.0 | +8.3 | 45.2% |
+`;
+      const result = makeReport(sectorOnly);
+      expect(result).not.toContain("Divergence");
+    });
+
+    it("업��� RS 섹션에 아이콘이 ��함된다", () => {
+      const result = makeReport(industryMarkdown);
+      expect(result).toContain("🏭");
+    });
+  });
 });
