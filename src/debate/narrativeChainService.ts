@@ -65,12 +65,19 @@ export function buildChainFields(thesis: Thesis): BottleneckInfo | null {
   const text = thesis.thesis;
   if (text == null || text === "") return null;
 
-  // Extract status from thesis text
+  // Extract status from thesis text.
+  // Guard against false positives: "병목 해소 신호 0건" means NOT resolved.
+  // negationPattern applies to both "병목 해소" (Korean) and "RESOLVED" (English),
+  // because LLM may mix "RESOLVED" with Korean negation context.
   let status: NarrativeChainStatus = "ACTIVE";
   const upperText = text.toUpperCase();
+  const hasNegation = /병목\s*해소.{0,8}(0건|없|아직|미확인|신호|zero)/i.test(text);
   if (upperText.includes("OVERSUPPLY") || upperText.includes("공급 과잉")) {
     status = "OVERSUPPLY";
-  } else if (upperText.includes("RESOLVED") || upperText.includes("병목 해소")) {
+  } else if (
+    !hasNegation &&
+    (upperText.includes("RESOLVED") || text.includes("병목 해소"))
+  ) {
     status = "RESOLVED";
   } else if (upperText.includes("RESOLVING") || upperText.includes("해소 진행")) {
     status = "RESOLVING";
