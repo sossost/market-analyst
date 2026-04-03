@@ -40,6 +40,17 @@ export interface MinorityView {
 }
 
 /**
+ * Structured narrative chain fields extracted from a structural_narrative thesis.
+ * Populated by the LLM in round 3 synthesis.
+ */
+export interface NarrativeChainFields {
+  megatrend: string;
+  demandDriver: string;
+  supplyChain: string;
+  bottleneck: string;
+}
+
+/**
  * Single thesis extracted from moderator synthesis.
  */
 export interface Thesis {
@@ -56,6 +67,9 @@ export interface Thesis {
   dissentReason?: string | null;
   beneficiarySectors?: string[] | null;
   beneficiaryTickers?: string[] | null;
+  nextBeneficiarySectors?: string[] | null;
+  nextBeneficiaryTickers?: string[] | null;
+  narrativeChain?: NarrativeChainFields | null;
   minorityView?: MinorityView | null;
 }
 
