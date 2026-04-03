@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { logger } from "@/lib/logger";
@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 const TAG = "ReportPublisher";
 const PAGES_REPO = "sossost/market-reports";
 const PAGES_BASE_URL = "https://sossost.github.io/market-reports";
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * HTML 리포트를 GitHub Pages 레포에 push하여 퍼블릭 URL을 생성한다.
@@ -18,11 +19,22 @@ export async function publishHtmlReport(
   html: string,
   date: string,
 ): Promise<string | null> {
+  if (!DATE_PATTERN.test(date)) {
+    logger.error(TAG, `잘못된 날짜 형식: ${date} — YYYY-MM-DD 필요`);
+    return null;
+  }
+
   const workDir = join(tmpdir(), `market-reports-${Date.now()}`);
 
   try {
+    // GitHub 토큰이 있으면 URL에 포함하여 인증
+    const token = process.env["GITHUB_TOKEN"];
+    const repoUrl = token != null && token !== ""
+      ? `https://x-access-token:${token}@github.com/${PAGES_REPO}.git`
+      : `https://github.com/${PAGES_REPO}.git`;
+
     // 1. clone (shallow)
-    await git(["clone", "--depth", "1", `https://github.com/${PAGES_REPO}.git`, workDir]);
+    await git(["clone", "--depth", "1", repoUrl, workDir]);
 
     // 2. write file
     const dir = join(workDir, "daily", date);
@@ -38,7 +50,7 @@ export async function publishHtmlReport(
       return `${PAGES_BASE_URL}/daily/${date}/`;
     }
 
-    await git(["commit", "-m", `report: ${date}`], workDir);
+    await git(["-c", "user.name=Market Analyst Bot", "-c", "user.email=bot@noreply.github.com", "commit", "-m", `report: ${date}`], workDir);
     await git(["push"], workDir);
 
     const url = `${PAGES_BASE_URL}/daily/${date}/`;
@@ -49,9 +61,7 @@ export async function publishHtmlReport(
     logger.error(TAG, `GitHub Pages 발행 실패: ${msg}`);
     return null;
   } finally {
-    // cleanup
     try {
-      const { rmSync } = await import("node:fs");
       rmSync(workDir, { recursive: true, force: true });
     } catch { /* 정리 실패는 무시 */ }
   }
