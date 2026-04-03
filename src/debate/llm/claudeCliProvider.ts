@@ -99,11 +99,8 @@ export class ClaudeCliProvider implements LLMProvider {
 
   /** 모든 ClaudeCliProvider 인스턴스의 활성 child process를 종료한다. */
   static killAll(): void {
-    for (const instance of ClaudeCliProvider.instances) {
-      for (const child of instance.activeChildren) {
-        try { child.kill("SIGTERM"); } catch { /* 이미 종료된 프로세스 무시 */ }
-      }
-      instance.activeChildren.clear();
+    for (const instance of Array.from(ClaudeCliProvider.instances)) {
+      instance.dispose();
     }
   }
 

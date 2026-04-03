@@ -732,6 +732,11 @@ process.on("exit", () => {
   ClaudeCliProvider.killAll();
 });
 
+// SIGINT, SIGTERM 시에도 exit 핸들러가 실행되도록 유도
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, () => process.exit(sig === "SIGINT" ? 130 : 143));
+}
+
 main().catch(async (err) => {
   const errorMsg = err instanceof Error ? err.message : String(err);
   logger.error("Debate", `Fatal: ${errorMsg}`);
