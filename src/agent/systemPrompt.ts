@@ -187,6 +187,7 @@ Discord 메시지와 MD 파일의 역할을 명확히 구분하세요:
 - 현재 시장 레짐 5단계 + 경과일수 (시스템 프롬프트의 '현재 시장 레짐' 섹션 참조)
 - 시장 평균 RS, A/D ratio, 52주 신고가/신저가 종목수
 - 주도 섹터 (RS 상위 2개)
+- 주도 업종 (divergence 상위 3개 — 섹터 대비 단독 강세 업종)
 - 강세 특이종목 (거래량 2x 이상 동반만, 최대 3~5개)
 - 주도주 예비군 (Phase 1 후기 + RS 상승 초기)
 - 약세 경고 (보유 시 주의)
@@ -229,6 +230,7 @@ Phase 2: XX% (▲X.X%) | BreadthScore: XXpct | A/D: X,XXX:X,XXX (X.XX)
 신고가 XX / 신저가 XX
 
 🏆 주도 섹터: Sector1 (RS XX), Sector2 (RS XX)
+🏭 주도 업종: Industry1 (RS XX, +Div), Industry2 (RS XX, +Div), Industry3 (RS XX, +Div)
 
 🔥 강세 특이종목 (거래량 동반 매수 후보만)
 ⭐ SYMBOL +XX% RS XX Vol X.Xx | 한줄 카탈리스트
@@ -287,6 +289,16 @@ Phase 2: XX% (▲X.X%) | BreadthScore: XXpct | A/D: X,XXX:X,XXX (X.XX)
 
 **주요 Phase 전환**:
 - Sector: Phase N→N 전환 — 한줄 사유
+
+## 업종 RS Top 10
+
+섹터당 최대 2개로 제한된 결과입니다. Divergence(양수)가 큰 업종 = 섹터 대비 단독 강세.
+
+| # | 업종 | 소속 섹터 | RS | Divergence | Phase | 4주 변화 |
+|---|------|----------|-----|-----------|-------|---------|
+| 1 | IndustryName | SectorName | XX.XX | +XX.XX | N | +X.X |
+
+**핵심 divergence**: Divergence 상위 1~2개 업종의 의미 해석 (섹터 약세 속 업종 단독 강세라면 그 이유)
 
 ## 전일 대비 변화 요약
 
