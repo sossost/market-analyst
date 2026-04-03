@@ -237,6 +237,16 @@ const REPORT_CSS = `
     margin-bottom: 0;
   }
 
+  .content-block ul, .content-block ol {
+    margin: 4px 0 8px 20px;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .content-block li {
+    margin-bottom: 4px;
+  }
+
   /* Stock Cards */
   .stock-card {
     background: var(--surface);
