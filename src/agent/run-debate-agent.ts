@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { pool } from "@/db/client";
+import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { runDebate } from "@/debate/debateEngine";
 import { buildMemoryContext } from "@/debate/memoryLoader";
@@ -726,9 +727,20 @@ async function main() {
   logger.step("\nDone.");
 }
 
+// 프로세스 종료 시 남은 claude child process 정리 — zombie 방지
+process.on("exit", () => {
+  ClaudeCliProvider.killAll();
+});
+
+// SIGINT, SIGTERM 시에도 exit 핸들러가 실행되도록 유도
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, () => process.exit(sig === "SIGINT" ? 130 : 143));
+}
+
 main().catch(async (err) => {
   const errorMsg = err instanceof Error ? err.message : String(err);
   logger.error("Debate", `Fatal: ${errorMsg}`);
+  ClaudeCliProvider.killAll();
   await sendDiscordError(errorMsg);
   await pool.end();
   process.exit(1);
