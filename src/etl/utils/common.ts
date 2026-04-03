@@ -129,6 +129,7 @@ export function calculateWeeklyVolRatio(volumes: number[]): number | null {
  * - Phase 2 continuation (prev == 2) → null (전환 시점에만 판정)
  * - New Phase 2 entry (prev != 2):
  *   - weeklyVolRatio >= 1.5 OR dailyVolRatio >= 2.0 → "confirmed"
+ *   - both ratios null (insufficient data) → null
  *   - otherwise → "unconfirmed"
  */
 export function resolveBreakoutSignal(
@@ -148,5 +149,8 @@ export function resolveBreakoutSignal(
   const dailyConfirmed =
     dailyVolRatio != null && dailyVolRatio >= VOLUME_BREAKOUT_THRESHOLD;
 
-  return weeklyConfirmed || dailyConfirmed ? "confirmed" : "unconfirmed";
+  if (weeklyConfirmed || dailyConfirmed) return "confirmed";
+  if (weeklyVolRatio === null && dailyVolRatio === null) return null;
+
+  return "unconfirmed";
 }

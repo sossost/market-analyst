@@ -162,8 +162,8 @@ describe("resolveBreakoutSignal", () => {
       expect(resolveBreakoutSignal(2, 1, 1.5, 1.2)).toBe("unconfirmed");
     });
 
-    it("unconfirmed when both ratios are null", () => {
-      expect(resolveBreakoutSignal(2, 1, null, null)).toBe("unconfirmed");
+    it("returns null when both ratios are null (insufficient data)", () => {
+      expect(resolveBreakoutSignal(2, 1, null, null)).toBe(null);
     });
 
     it("confirmed when prevPhase is null (first appearance) with weekly volume", () => {
