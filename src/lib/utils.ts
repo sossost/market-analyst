@@ -11,6 +11,13 @@ export function toNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+export type DivergenceSignal = 'positive' | 'negative' | null;
+
+export function toDivergenceSignal(raw: string | null | undefined): DivergenceSignal {
+  if (raw === 'positive' || raw === 'negative') return raw;
+  return null;
+}
+
 export function chunk<T>(arr: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {

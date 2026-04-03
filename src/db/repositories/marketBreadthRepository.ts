@@ -499,8 +499,11 @@ export async function findMarketBreadthSnapshot(
        new_lows,
        hl_ratio::text,
        vix_close::text,
+       vix_high::text,
        fear_greed_score,
        fear_greed_rating,
+       breadth_score::text,
+       divergence_signal,
        created_at::text
      FROM market_breadth_daily
      WHERE date = $1`,
@@ -539,8 +542,11 @@ export async function findMarketBreadthSnapshots(
        new_lows,
        hl_ratio::text,
        vix_close::text,
+       vix_high::text,
        fear_greed_score,
        fear_greed_rating,
+       breadth_score::text,
+       divergence_signal,
        created_at::text
      FROM market_breadth_daily
      WHERE date = ANY($1::text[])

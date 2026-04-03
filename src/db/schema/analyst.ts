@@ -1201,6 +1201,8 @@ export const marketBreadthDaily = pgTable("market_breadth_daily", {
   vixHigh:             numeric("vix_high",  { precision: 6, scale: 2 }),
   fearGreedScore:      integer("fear_greed_score"),
   fearGreedRating:     varchar("fear_greed_rating", { length: 30 }),
+  breadthScore:        numeric("breadth_score", { precision: 5, scale: 2 }),
+  divergenceSignal:    varchar("divergence_signal", { length: 20 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.date] }),

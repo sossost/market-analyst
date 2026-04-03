@@ -1,7 +1,7 @@
 import { clampPercent } from "@/tools/validation";
 import { logger } from "@/lib/logger";
 import { MIN_MARKET_CAP, CNN_FEAR_GREED_URL, CNN_FEAR_GREED_REFERER } from "@/lib/constants";
-import { toNum } from "@/etl/utils/common";
+import { toNum, toDivergenceSignal, type DivergenceSignal } from "@/etl/utils/common";
 import { pool } from "@/db/client";
 import {
   findSectorSnapshot,
@@ -62,6 +62,8 @@ interface MarketBreadthSnapshot {
   adRatio: number | null;
   newHighs: number | null;
   newLows: number | null;
+  breadthScore: number | null;
+  divergenceSignal: DivergenceSignal;
 }
 
 interface IndexQuote {
@@ -193,6 +195,8 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
       adRatio: snapshot.ad_ratio != null ? toNum(snapshot.ad_ratio) : null,
       newHighs: snapshot.new_highs,
       newLows: snapshot.new_lows,
+      breadthScore: snapshot.breadth_score != null ? toNum(snapshot.breadth_score) : null,
+      divergenceSignal: toDivergenceSignal(snapshot.divergence_signal),
     };
   }
 
@@ -242,6 +246,8 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
     adRatio,
     newHighs,
     newLows,
+    breadthScore: null,
+    divergenceSignal: null,
   };
 }
 
@@ -461,12 +467,23 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
       .map(([k, v]) => `${k}: ${v}`)
       .join(", ");
     const changeSign = b.phase2RatioChange >= 0 ? "+" : "";
-    sections.push(
-      `### 시장 브레드스 (${snapshot.date} 기준, 총 ${b.totalStocks}종목)\n` +
-      `- Phase 분포: ${phaseStr}\n` +
-      `- Phase 2 비율: ${b.phase2Ratio != null ? `${b.phase2Ratio}%` : 'N/A'} (전일 대비 ${changeSign}${b.phase2RatioChange}%p)\n` +
+    const breadthScoreLine = `- BreadthScore: ${b.breadthScore != null ? b.breadthScore.toFixed(1) : 'N/A'} / 100`;
+    const divergenceLine = b.divergenceSignal === 'positive'
+      ? '  (양봉 다이버전스: 가격 하락 중 브레드스 개선)'
+      : b.divergenceSignal === 'negative'
+        ? '  (음봉 다이버전스: 가격 상승 중 브레드스 악화)'
+        : null;
+
+    const breadthLines = [
+      `### 시장 브레드스 (${snapshot.date} 기준, 총 ${b.totalStocks}종목)`,
+      `- Phase 분포: ${phaseStr}`,
+      `- Phase 2 비율: ${b.phase2Ratio != null ? `${b.phase2Ratio}%` : 'N/A'} (전일 대비 ${changeSign}${b.phase2RatioChange}%p)`,
       `- 시장 평균 RS: ${b.marketAvgRs}`,
-    );
+      breadthScoreLine,
+      ...(divergenceLine != null ? [divergenceLine] : []),
+    ];
+
+    sections.push(breadthLines.join('\n'));
   }
 
   // 3. Sector RS ranking

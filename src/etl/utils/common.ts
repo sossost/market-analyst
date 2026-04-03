@@ -3,7 +3,8 @@
  * This file re-exports them for backward compatibility and retains
  * ETL-specific utilities that are not candidates for promotion.
  */
-export { sleep, toNum, chunk } from "@/lib/utils";
+export { sleep, toNum, chunk, toDivergenceSignal } from "@/lib/utils";
+export type { DivergenceSignal } from "@/lib/utils";
 
 /**
  * FMP v3 API 설정 로드.
