@@ -60,6 +60,8 @@ describe("formatMarketSnapshot", () => {
           adRatio: null,
           newHighs: null,
           newLows: null,
+          breadthScore: null,
+          divergenceSignal: null,
         },
       }),
     );
@@ -233,6 +235,8 @@ describe("formatMarketSnapshot", () => {
           adRatio: null,
           newHighs: null,
           newLows: null,
+          breadthScore: null,
+          divergenceSignal: null,
         },
       }),
     );

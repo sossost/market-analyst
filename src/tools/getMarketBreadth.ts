@@ -1,5 +1,5 @@
 import { retryDatabaseOperation } from "@/etl/utils/retry";
-import { toNum } from "@/etl/utils/common";
+import { toNum, toDivergenceSignal } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
 import { clampPercent, validateDate } from "./validation";
 import {
@@ -77,6 +77,9 @@ async function executeWeeklyMode(date: string): Promise<string> {
       findBreadthTopSectors(latestDate, 5),
     );
 
+    const latestBreadthScore = latestSnap?.breadth_score != null ? toNum(latestSnap.breadth_score) : null;
+    const latestDivergenceSignal = toDivergenceSignal(latestSnap?.divergence_signal);
+
     return JSON.stringify({
       _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
       mode: "weekly",
@@ -92,6 +95,8 @@ async function executeWeeklyMode(date: string): Promise<string> {
         marketAvgRs: latestTrend?.marketAvgRs ?? 0,
         advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
         newHighLow: { newHighs, newLows, ratio: hlRatio },
+        breadthScore: latestBreadthScore,
+        divergenceSignal: latestDivergenceSignal,
         topSectors: topSectors.map((s) => ({
           sector: s.sector,
           avgRs: toNum(s.avg_rs),
@@ -214,6 +219,8 @@ async function executeDailyMode(date: string): Promise<string> {
     const newHighs = snapshot.new_highs ?? 0;
     const newLows = snapshot.new_lows ?? 0;
     const hlRatio = snapshot.hl_ratio != null ? toNum(snapshot.hl_ratio) : null;
+    const breadthScore = snapshot.breadth_score != null ? toNum(snapshot.breadth_score) : null;
+    const divergenceSignal = toDivergenceSignal(snapshot.divergence_signal);
 
     const phaseDistribution = {
       phase1: snapshot.phase1_count,
@@ -236,6 +243,8 @@ async function executeDailyMode(date: string): Promise<string> {
       marketAvgRs: snapshot.market_avg_rs != null ? toNum(snapshot.market_avg_rs) : 0,
       advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
       newHighLow: { newHighs, newLows, ratio: hlRatio },
+      breadthScore,
+      divergenceSignal,
       topSectors: topSectors.map((s) => ({
         sector: s.sector,
         avgRs: toNum(s.avg_rs),

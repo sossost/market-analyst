@@ -255,6 +255,8 @@ export interface MarketBreadthDailyRow {
   vix_high: string | null;
   fear_greed_score: number | null;
   fear_greed_rating: string | null;
+  breadth_score: string | null;
+  divergence_signal: string | null;
   created_at: string;
 }
 
