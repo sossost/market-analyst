@@ -40,6 +40,25 @@ log "=== 일간 ETL 파이프라인 시작 ==="
 run_step "Load Daily Prices" "src/etl/jobs/load-daily-prices.ts"
 run_step "Load Index Prices" "src/etl/jobs/load-index-prices.ts"
 
+# [휴일 감지] Phase 1 완료 후 거래일 여부 확인
+log "▶ 거래일 확인"
+set +e
+npx tsx src/etl/jobs/check-trading-day.ts >> "$LOG_FILE" 2>&1
+TRADING_DAY_EXIT=$?
+set -e
+
+if [ $TRADING_DAY_EXIT -eq 0 ]; then
+  log "✓ 거래일 확인 — 정상 진행"
+elif [ $TRADING_DAY_EXIT -eq 2 ]; then
+  log "○ 미장 휴일 감지 — Phase 2 이후 스킵"
+  log "=== ETL 파이프라인 완료 (휴일 스킵) ==="
+  exit 0
+else
+  log "✗ 거래일 확인 실패 (exit $TRADING_DAY_EXIT)"
+  send_error "check-trading-day.ts 실패" "ETL"
+  exit 1
+fi
+
 # Phase 2 (병렬)
 run_parallel \
   "Build Daily MA" "src/etl/jobs/build-daily-ma.ts" \
