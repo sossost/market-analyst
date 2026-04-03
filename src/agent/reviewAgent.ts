@@ -8,6 +8,7 @@ import { SEND_DISCORD_REPORT_SCHEMA } from "@/tools/sendDiscordReport";
 import type { AgentTool } from "@/tools/types";
 import { buildHtmlReport } from "@/lib/htmlReport";
 import { uploadHtmlReport } from "@/lib/storageUpload";
+import { publishHtmlReport } from "@/lib/reportPublisher";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -576,6 +577,16 @@ async function tryUploadToStorage(
   try {
     const title = draftMessage.split("\n").find(line => line.trim() !== "")?.slice(0, 100) ?? "Daily Report";
     const html = buildHtmlReport(markdownContent, title, date);
+
+    // 1차: GitHub Pages 발행 (퍼블릭 URL, HTML 렌더링 정상)
+    const pagesUrl = await publishHtmlReport(html, date);
+    if (pagesUrl != null) {
+      // Supabase Storage에도 아카이브 (실패해도 무시)
+      uploadHtmlReport(html, date).catch(() => {});
+      return pagesUrl;
+    }
+
+    // 2차: GitHub Pages 실패 시 Supabase Storage fallback
     return await uploadHtmlReport(html, date);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

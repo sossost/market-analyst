@@ -27,6 +27,7 @@ vi.mock("@/lib/gist", () => ({
 
 const mockBuildHtmlReport = vi.fn();
 const mockUploadHtmlReport = vi.fn();
+const mockPublishHtmlReport = vi.fn();
 
 vi.mock("@/lib/htmlReport", () => ({
   buildHtmlReport: mockBuildHtmlReport,
@@ -34,6 +35,10 @@ vi.mock("@/lib/htmlReport", () => ({
 
 vi.mock("@/lib/storageUpload", () => ({
   uploadHtmlReport: mockUploadHtmlReport,
+}));
+
+vi.mock("@/lib/reportPublisher", () => ({
+  publishHtmlReport: mockPublishHtmlReport,
 }));
 
 const mockSaveReviewFeedback = vi.fn();
@@ -504,6 +509,7 @@ describe("sendDrafts", () => {
     delete process.env.TEST_WEBHOOK;
     delete process.env.GITHUB_TOKEN;
     mockBuildHtmlReport.mockReturnValue("<html>report</html>");
+    mockPublishHtmlReport.mockResolvedValue(null);
     mockUploadHtmlReport.mockResolvedValue(null);
   });
 
@@ -605,10 +611,10 @@ describe("sendDrafts", () => {
     expect(mockSendDiscordFile).not.toHaveBeenCalled();
   });
 
-  it("uploads HTML and sends Storage URL when date is provided and upload succeeds", async () => {
+  it("uploads HTML and sends GitHub Pages URL when date is provided and publish succeeds", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
     mockBuildHtmlReport.mockReturnValue("<html>full report</html>");
-    mockUploadHtmlReport.mockResolvedValue("https://storage.example.com/daily/2026-04-03/report.html");
+    mockPublishHtmlReport.mockResolvedValue("https://sossost.github.io/market-reports/daily/2026-04-03/");
 
     await sendDrafts(
       [makeDraft({ message: "Summary line", markdownContent: "# Report\nDetails", filename: "daily.md" })],
@@ -621,17 +627,18 @@ describe("sendDrafts", () => {
       "Summary line",
       "2026-04-03",
     );
-    expect(mockUploadHtmlReport).toHaveBeenCalledWith("<html>full report</html>", "2026-04-03");
+    expect(mockPublishHtmlReport).toHaveBeenCalledWith("<html>full report</html>", "2026-04-03");
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
-      expect.stringContaining("https://storage.example.com/daily/2026-04-03/report.html"),
+      expect.stringContaining("https://sossost.github.io/market-reports/daily/2026-04-03/"),
       "TEST_WEBHOOK",
     );
     expect(mockSendDiscordMessage.mock.calls[0][0]).toContain("📊 상세 리포트:");
     expect(mockCreateGist).not.toHaveBeenCalled();
   });
 
-  it("falls back to Gist when Storage upload returns null", async () => {
+  it("falls back to Gist when both publish and Storage upload return null", async () => {
     process.env.TEST_WEBHOOK = "https://discord.test/webhook";
+    mockPublishHtmlReport.mockResolvedValue(null);
     mockUploadHtmlReport.mockResolvedValue(null);
     mockCreateGist.mockResolvedValue({ url: "https://gist.github.com/fallback", id: "xyz" });
 
