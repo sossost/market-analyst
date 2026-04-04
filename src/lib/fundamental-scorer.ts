@@ -251,13 +251,17 @@ function evaluateROE(quarters: QuarterlyData[]): CriteriaResult {
  * | required\bonus | 0   | 1   | 2   |
  * |----------------|-----|-----|-----|
  * | 0              | F   | C   | C   |
- * | 1              | C   | B   | B   |
+ * | 1              | C   | C   | B   |
  * | 2              | B   | B   | A   |
+ *
+ * 변경 이력:
+ * - (1,1)→B: EPS만 + bonus 1개로 B 획득 가능 → revenue 없이 B 판정 허점 (#621)
+ * - (1,1)→C: required 1개만이면 bonus 2개 모두 충족해야 B. 근거 없는 관대함 제거.
  */
 export function determineGrade(requiredMet: number, bonusMet: number): FundamentalGrade {
   if (requiredMet >= 2 && bonusMet >= 2) return "A";
   if (requiredMet >= 2) return "B"; // 필수 전부 충족 → 최소 B
-  if (requiredMet >= 1 && bonusMet >= 1) return "B";
+  if (requiredMet >= 1 && bonusMet >= 2) return "B"; // 필수 1개 + bonus 전부 → B
   if (requiredMet > 0 || bonusMet > 0) return "C";
   return "F";
 }

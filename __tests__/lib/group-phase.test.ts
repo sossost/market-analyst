@@ -73,4 +73,57 @@ describe("detectGroupPhase", () => {
     });
     expect(result).toBe(1);
   });
+
+  // ── Min stock gate tests (#621) ──
+
+  it("rejects Phase 2 when totalStocks below minimum (5)", () => {
+    const result = detectGroupPhase({
+      change4w: 5,
+      change8w: 8,
+      phase2Ratio: 0.45,
+      totalStocks: 3,
+    });
+    // Would be Phase 2 without min stock gate, but 3 < 5 → not Phase 2
+    expect(result).not.toBe(2);
+  });
+
+  it("allows Phase 2 when totalStocks meets minimum", () => {
+    const result = detectGroupPhase({
+      change4w: 5,
+      change8w: 8,
+      phase2Ratio: 0.45,
+      totalStocks: 5,
+    });
+    expect(result).toBe(2);
+  });
+
+  it("allows Phase 2 when totalStocks is large", () => {
+    const result = detectGroupPhase({
+      change4w: 5,
+      change8w: 8,
+      phase2Ratio: 0.35,
+      totalStocks: 50,
+    });
+    expect(result).toBe(2);
+  });
+
+  it("allows Phase 2 when totalStocks is not provided (backward compat)", () => {
+    const result = detectGroupPhase({
+      change4w: 5,
+      change8w: 8,
+      phase2Ratio: 0.45,
+    });
+    expect(result).toBe(2);
+  });
+
+  it("rejects Phase 2 for very small sector even with high phase2Ratio", () => {
+    // 2 stocks, 1 in Phase 2 = 50% ratio, but only 2 total stocks
+    const result = detectGroupPhase({
+      change4w: 5,
+      change8w: 8,
+      phase2Ratio: 0.5,
+      totalStocks: 2,
+    });
+    expect(result).not.toBe(2);
+  });
 });

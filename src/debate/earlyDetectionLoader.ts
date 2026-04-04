@@ -44,11 +44,15 @@ interface AcceleratingStock {
 
 export type EarlyDetectionSource = "phase1Late" | "risingRs" | "accelerating";
 
+export type ConvictionLevel = "high" | "medium";
+
 export interface OverlapStock {
   symbol: string;
   sector: string | null;
   overlapCount: number;
   sources: EarlyDetectionSource[];
+  /** 3개 도구 수렴 = high, 2개 = medium */
+  convictionLevel: ConvictionLevel;
 }
 
 export interface EarlyDetectionData {
@@ -93,11 +97,13 @@ export function computeOverlapStocks(
   const results: OverlapStock[] = [];
   for (const [symbol, entry] of symbolMap) {
     if (entry.sources.size >= 2) {
+      const overlapCount = entry.sources.size;
       results.push({
         symbol,
         sector: entry.sector,
-        overlapCount: entry.sources.size,
+        overlapCount,
         sources: [...entry.sources].sort(),
+        convictionLevel: overlapCount >= 3 ? "high" : "medium",
       });
     }
   }

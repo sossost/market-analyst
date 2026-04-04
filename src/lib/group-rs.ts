@@ -169,6 +169,7 @@ export async function buildGroupRs(
       change4w: hist.change4w,
       change8w: hist.change8w,
       phase2Ratio: breadth.phase2Ratio,
+      totalStocks: toNum(g.stock_count),
     });
 
     return {
