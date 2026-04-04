@@ -29,7 +29,7 @@ export const BEAR_EXCEPTION_SECTOR_RS_PERCENTILE = 15;
  * 나머지 게이트(RS, 가격, 안정성 등)가 품질을 보장.
  */
 export const BEAR_EXCEPTION_ALLOWED_GRADES: ReadonlySet<string> = new Set(["S", "A"]);
-
+export const BEAR_EXCEPTION_ALLOWED_GRADES_TEXT = Array.from(BEAR_EXCEPTION_ALLOWED_GRADES).join("/");
 
 /** [Bear 예외] 태그 — reason 접두사 */
 export const BEAR_EXCEPTION_TAG = "[Bear 예외]";
@@ -102,9 +102,8 @@ export async function evaluateBearException(
     );
   }
   if (!isFundamentalQualified) {
-    const allowedStr = [...BEAR_EXCEPTION_ALLOWED_GRADES].join("/");
     failReasons.push(
-      `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${allowedStr})`,
+      `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${BEAR_EXCEPTION_ALLOWED_GRADES_TEXT})`,
     );
   }
   if (!isPhase2Persistent) {
