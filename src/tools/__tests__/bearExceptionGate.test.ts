@@ -34,7 +34,7 @@ import {
   BEAR_EXCEPTION_TAG,
   BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS,
   BEAR_EXCEPTION_SECTOR_RS_PERCENTILE,
-  BEAR_EXCEPTION_MIN_GRADE,
+  BEAR_EXCEPTION_ALLOWED_GRADES,
 } from "../bearExceptionGate";
 import { pool } from "@/db/client";
 import { logger } from "@/lib/logger";
@@ -55,17 +55,20 @@ beforeEach(() => {
 // =============================================================================
 
 describe("Bear Exception Gate 상수", () => {
-  it("Phase 2 지속성 기준은 5일이다", () => {
-    expect(BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS).toBe(5);
+  it("Phase 2 지속성 기준은 3일이다", () => {
+    expect(BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS).toBe(3);
   });
 
-  it("섹터 RS 퍼센타일 기준은 상위 5%이다", () => {
-    expect(BEAR_EXCEPTION_SECTOR_RS_PERCENTILE).toBe(5);
+  it("섹터 RS 퍼센타일 기준은 상위 15%이다", () => {
+    expect(BEAR_EXCEPTION_SECTOR_RS_PERCENTILE).toBe(15);
   });
 
-  it("최소 SEPA 등급은 S이다", () => {
-    expect(BEAR_EXCEPTION_MIN_GRADE).toBe("S");
+  it("허용 SEPA 등급은 S와 A이다", () => {
+    expect(BEAR_EXCEPTION_ALLOWED_GRADES.has("S")).toBe(true);
+    expect(BEAR_EXCEPTION_ALLOWED_GRADES.has("A")).toBe(true);
+    expect(BEAR_EXCEPTION_ALLOWED_GRADES.has("B")).toBe(false);
   });
+
 });
 
 // =============================================================================
@@ -74,21 +77,21 @@ describe("Bear Exception Gate 상수", () => {
 
 describe("evaluateBearException", () => {
   function setupAllPassMocks() {
-    // 1. 섹터 RS: rank 1 / total 20 → 5%
+    // 1. 섹터 RS: rank 2 / total 20 → 10% (≤15% 통과)
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ rs_rank: "1", total_sectors: "20" }],
+      rows: [{ rs_rank: "2", total_sectors: "20" }],
     });
-    // 2. 펀더멘탈: S등급
+    // 2. 펀더멘탈: A등급 (S/A 허용)
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ grade: "S" }],
+      rows: [{ grade: "A" }],
     });
-    // 3. Phase 2 지속성: 5일
+    // 3. Phase 2 지속성: 3일
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ phase2_count: "5" }],
+      rows: [{ phase2_count: "3" }],
     });
   }
 
-  it("3조건 모두 충족하면 passed: true를 반환한다", async () => {
+  it("3조건 모두 충족하면 passed: true를 반환한다 (A등급)", async () => {
     setupAllPassMocks();
 
     const result = await evaluateBearException({
@@ -98,18 +101,17 @@ describe("evaluateBearException", () => {
     });
 
     expect(result.passed).toBe(true);
-    expect(result.details.sectorRsRank).toBe(1);
+    expect(result.details.sectorRsRank).toBe(2);
     expect(result.details.totalSectors).toBe(20);
-    expect(result.details.sectorRsPercentile).toBe(5);
-    expect(result.details.fundamentalGrade).toBe("S");
-    expect(result.details.phase2Count).toBe(5);
+    expect(result.details.sectorRsPercentile).toBe(10);
+    expect(result.details.fundamentalGrade).toBe("A");
+    expect(result.details.phase2Count).toBe(3);
     expect(result.reason).toContain("Bear 예외 통과");
   });
 
-  it("섹터 RS가 상위 5% 초과면 passed: false를 반환한다", async () => {
-    // rank 3 / total 20 → 15% (5% 초과)
+  it("S등급도 통과한다", async () => {
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ rs_rank: "3", total_sectors: "20" }],
+      rows: [{ rs_rank: "1", total_sectors: "20" }],
     });
     mockPool.query.mockResolvedValueOnce({
       rows: [{ grade: "S" }],
@@ -124,21 +126,20 @@ describe("evaluateBearException", () => {
       date: "2026-03-10",
     });
 
-    expect(result.passed).toBe(false);
-    expect(result.details.sectorRsPercentile).toBe(15);
-    expect(result.reason).toContain("섹터RS 15%");
+    expect(result.passed).toBe(true);
+    expect(result.details.fundamentalGrade).toBe("S");
   });
 
-  it("펀더멘탈이 S등급이 아니면 passed: false를 반환한다", async () => {
+  it("섹터 RS가 상위 15% 초과면 passed: false를 반환한다", async () => {
+    // rank 4 / total 20 → 20% (15% 초과)
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ rs_rank: "1", total_sectors: "20" }],
-    });
-    // A등급 — S 미만
-    mockPool.query.mockResolvedValueOnce({
-      rows: [{ grade: "A" }],
+      rows: [{ rs_rank: "4", total_sectors: "20" }],
     });
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ phase2_count: "5" }],
+      rows: [{ grade: "S" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "3" }],
     });
 
     const result = await evaluateBearException({
@@ -148,20 +149,43 @@ describe("evaluateBearException", () => {
     });
 
     expect(result.passed).toBe(false);
-    expect(result.details.fundamentalGrade).toBe("A");
-    expect(result.reason).toContain("SEPA A");
+    expect(result.details.sectorRsPercentile).toBe(20);
+    expect(result.reason).toContain("섹터RS 20%");
   });
 
-  it("Phase 2 지속성이 5일 미만이면 passed: false를 반환한다", async () => {
+  it("펀더멘탈이 B등급이면 passed: false를 반환한다", async () => {
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "1", total_sectors: "20" }],
+    });
+    // B등급 — S/A 미달
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "B" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "3" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "LMT",
+      sector: "Industrials",
+      date: "2026-03-10",
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.details.fundamentalGrade).toBe("B");
+    expect(result.reason).toContain("SEPA B");
+  });
+
+  it("Phase 2 지속성이 3일 미만이면 passed: false를 반환한다", async () => {
     mockPool.query.mockResolvedValueOnce({
       rows: [{ rs_rank: "1", total_sectors: "20" }],
     });
     mockPool.query.mockResolvedValueOnce({
       rows: [{ grade: "S" }],
     });
-    // 4일 — 5일 미만
+    // 2일 — 3일 미만
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ phase2_count: "4" }],
+      rows: [{ phase2_count: "2" }],
     });
 
     const result = await evaluateBearException({
@@ -171,8 +195,8 @@ describe("evaluateBearException", () => {
     });
 
     expect(result.passed).toBe(false);
-    expect(result.details.phase2Count).toBe(4);
-    expect(result.reason).toContain("Phase2 지속 4일");
+    expect(result.details.phase2Count).toBe(2);
+    expect(result.reason).toContain("Phase2 지속 2일");
   });
 
   it("3조건 모두 실패하면 3개 실패 사유를 모두 포함한다", async () => {
@@ -257,16 +281,16 @@ describe("evaluateBearException", () => {
     expect(mockLogger.error).toHaveBeenCalled();
   });
 
-  it("섹터 RS rank 1/20 = 5% 는 경계값으로 통과한다", async () => {
-    // rank 1 / total 20 → 5% (정확히 경계)
+  it("섹터 RS rank 3/20 = 15% 는 경계값으로 통과한다", async () => {
+    // rank 3 / total 20 → 15% (정확히 경계)
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ rs_rank: "1", total_sectors: "20" }],
+      rows: [{ rs_rank: "3", total_sectors: "20" }],
     });
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ grade: "S" }],
+      rows: [{ grade: "A" }],
     });
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ phase2_count: "6" }],
+      rows: [{ phase2_count: "3" }],
     });
 
     const result = await evaluateBearException({
@@ -276,18 +300,18 @@ describe("evaluateBearException", () => {
     });
 
     expect(result.passed).toBe(true);
-    expect(result.details.sectorRsPercentile).toBe(5);
+    expect(result.details.sectorRsPercentile).toBe(15);
   });
 
-  it("섹터 RS rank 2/20 = 10% 는 경계값 초과로 실패한다", async () => {
+  it("섹터 RS rank 4/20 = 20% 는 경계값 초과로 실패한다", async () => {
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ rs_rank: "2", total_sectors: "20" }],
+      rows: [{ rs_rank: "4", total_sectors: "20" }],
     });
     mockPool.query.mockResolvedValueOnce({
       rows: [{ grade: "S" }],
     });
     mockPool.query.mockResolvedValueOnce({
-      rows: [{ phase2_count: "5" }],
+      rows: [{ phase2_count: "3" }],
     });
 
     const result = await evaluateBearException({
@@ -297,7 +321,7 @@ describe("evaluateBearException", () => {
     });
 
     expect(result.passed).toBe(false);
-    expect(result.details.sectorRsPercentile).toBe(10);
+    expect(result.details.sectorRsPercentile).toBe(20);
   });
 });
 

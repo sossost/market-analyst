@@ -5,9 +5,9 @@
  * 조건부 예외 진입을 허용하는 게이트.
  *
  * 예외 조건 (모두 충족해야 통과):
- * 1. 섹터 RS 상위 5% — 시장 대비 상대강도 최상위
- * 2. 펀더멘탈 SEPA S등급 — 실적 최강 종목
- * 3. Phase 2 지속성 5일 이상 — 일반 기준(2일)보다 엄격
+ * 1. 섹터 RS 상위 15% — 시장 대비 상대강도 상위권
+ * 2. 펀더멘탈 SEPA S/A 등급 — 실적 상위 종목
+ * 3. Phase 2 지속성 3일 이상 — 일반 게이트와 동일 기준
  */
 
 import { retryDatabaseOperation } from "@/etl/utils/retry";
@@ -16,14 +16,20 @@ import { findSectorRsRankWithTotal } from "@/db/repositories/sectorRepository.js
 import { findLatestFundamentalGrade } from "@/db/repositories/fundamentalRepository.js";
 import { findPhase2PersistenceBySymbol } from "@/db/repositories/stockPhaseRepository.js";
 
-/** Bear 예외 통과에 필요한 Phase 2 지속 최소 일수 (일반 기준 2일보다 엄격) */
-export const BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS = 5;
+/** Bear 예외 통과에 필요한 Phase 2 지속 최소 일수 (일반 게이트와 동일 기준) */
+export const BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS = 3;
 
 /** 섹터 RS 상위 N% 이내만 예외 허용 */
-export const BEAR_EXCEPTION_SECTOR_RS_PERCENTILE = 5;
+export const BEAR_EXCEPTION_SECTOR_RS_PERCENTILE = 15;
 
-/** Bear 예외 허용 SEPA 최소 등급 */
-export const BEAR_EXCEPTION_MIN_GRADE = "S";
+/**
+ * Bear 예외 허용 SEPA 등급 집합.
+ * S(최상) + A(우수) — Bear 장에서도 펀더멘탈이 검증된 종목만 허용.
+ * 근거: S 단독 조건은 1,441건 중 0건 통과 (#619). S+A로 완화하되
+ * 나머지 게이트(RS, 가격, 안정성 등)가 품질을 보장.
+ */
+export const BEAR_EXCEPTION_ALLOWED_GRADES: ReadonlySet<string> = new Set(["S", "A"]);
+export const BEAR_EXCEPTION_ALLOWED_GRADES_TEXT = Array.from(BEAR_EXCEPTION_ALLOWED_GRADES).join("/");
 
 /** [Bear 예외] 태그 — reason 접두사 */
 export const BEAR_EXCEPTION_TAG = "[Bear 예외]";
@@ -81,12 +87,12 @@ export async function evaluateBearException(
     sectorRsPercentile != null &&
     sectorRsPercentile <= BEAR_EXCEPTION_SECTOR_RS_PERCENTILE;
 
-  const isFundamentalS = fundamentalGrade === BEAR_EXCEPTION_MIN_GRADE;
+  const isFundamentalQualified = fundamentalGrade != null && BEAR_EXCEPTION_ALLOWED_GRADES.has(fundamentalGrade);
 
   const isPhase2Persistent =
     phase2Count >= BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS;
 
-  const passed = isSectorRsTop && isFundamentalS && isPhase2Persistent;
+  const passed = isSectorRsTop && isFundamentalQualified && isPhase2Persistent;
 
   // 실패 사유 구성
   const failReasons: string[] = [];
@@ -95,9 +101,9 @@ export async function evaluateBearException(
       `섹터RS ${sectorRsPercentile ?? "N/A"}% (기준: ≤${BEAR_EXCEPTION_SECTOR_RS_PERCENTILE}%)`,
     );
   }
-  if (!isFundamentalS) {
+  if (!isFundamentalQualified) {
     failReasons.push(
-      `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${BEAR_EXCEPTION_MIN_GRADE})`,
+      `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${BEAR_EXCEPTION_ALLOWED_GRADES_TEXT})`,
     );
   }
   if (!isPhase2Persistent) {
