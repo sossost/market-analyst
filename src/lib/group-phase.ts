@@ -3,11 +3,14 @@ import type { Phase } from "@/types";
 const FLAT_THRESHOLD = 1.5; // ±1.5 RS points considered flat
 const PHASE2_RATIO_THRESHOLD = 0.3; // 30%+ of stocks in Phase 2
 const DECLINE_THRESHOLD = -2; // RS declining by 2+ points
+const MIN_GROUP_STOCKS = 5; // 최소 종목 수 — 소규모 섹터의 noise Phase 2 판정 방지
 
 interface GroupPhaseInput {
   change4w: number | null;
   change8w: number | null;
   phase2Ratio: number;
+  /** 섹터/업종 내 총 종목 수. 미전달 시 min stock 게이트 비활성. */
+  totalStocks?: number;
 }
 
 /**
@@ -19,18 +22,20 @@ interface GroupPhaseInput {
  * Phase 3: Mixed signals — distribution/topping (default)
  */
 export function detectGroupPhase(input: GroupPhaseInput): Phase {
-  const { change4w, change8w, phase2Ratio } = input;
+  const { change4w, change8w, phase2Ratio, totalStocks } = input;
 
   // No historical data → base
   if (change4w == null || change8w == null) {
     return 1;
   }
 
-  // Phase 2: Both periods accelerating + enough Phase 2 stocks
+  // Phase 2: Both periods accelerating + enough Phase 2 stocks + min stock count
+  const meetsMinStocks = totalStocks == null || totalStocks >= MIN_GROUP_STOCKS;
   if (
     change4w > FLAT_THRESHOLD &&
     change8w > FLAT_THRESHOLD &&
-    phase2Ratio >= PHASE2_RATIO_THRESHOLD
+    phase2Ratio >= PHASE2_RATIO_THRESHOLD &&
+    meetsMinStocks
   ) {
     return 2;
   }

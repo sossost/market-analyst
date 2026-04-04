@@ -247,10 +247,12 @@ describe("scoreFundamentals", () => {
   });
 
   it("grades B when 1 required + 2 bonus met", () => {
+    // EPS YoY growth accelerating: 30% → 34.7% → 40% (newest) + margin expanding
+    // Revenue only ~15% YoY → requiredMet = 1, bonusMet = 2
     const input = makeInput("GOOD", [
-      q("Q4 2025", "2025-12-31", { epsDiluted: 1.50, revenue: 5_000_000_000, netIncome: 500_000_000, netMargin: 10 }),
-      q("Q3 2025", "2025-09-30", { epsDiluted: 1.30, revenue: 4_800_000_000, netIncome: 450_000_000, netMargin: 9.4 }),
-      q("Q2 2025", "2025-06-30", { epsDiluted: 1.10, revenue: 4_600_000_000, netIncome: 400_000_000, netMargin: 8.7 }),
+      q("Q4 2025", "2025-12-31", { epsDiluted: 1.54, revenue: 5_000_000_000, netIncome: 500_000_000, netMargin: 10 }),
+      q("Q3 2025", "2025-09-30", { epsDiluted: 1.28, revenue: 4_800_000_000, netIncome: 450_000_000, netMargin: 9.4 }),
+      q("Q2 2025", "2025-06-30", { epsDiluted: 1.04, revenue: 4_600_000_000, netIncome: 400_000_000, netMargin: 8.7 }),
       q("Q1 2025", "2025-03-31", { epsDiluted: 0.95, revenue: 4_400_000_000, netIncome: 350_000_000, netMargin: 8.0 }),
       // Prior year — EPS grew >25% but revenue only ~15%
       q("Q4 2024", "2024-12-31", { epsDiluted: 1.10, revenue: 4_350_000_000, netIncome: 400_000_000, netMargin: 9.2 }),
@@ -262,7 +264,8 @@ describe("scoreFundamentals", () => {
     const score = scoreFundamentals(input);
 
     expect(score.grade).toBe("B");
-    expect(score.requiredMet).toBeGreaterThanOrEqual(1);
+    expect(score.requiredMet).toBe(1);
+    expect(score.bonusMet).toBe(2);
   });
 
   it("grades C when no required met but some bonus", () => {
@@ -388,8 +391,12 @@ describe("determineGrade", () => {
     expect(determineGrade(2, 0)).toBe("B");
   });
 
-  it("B: required=1, bonus=1", () => {
-    expect(determineGrade(1, 1)).toBe("B");
+  it("C: required=1, bonus=1 (강화 #621: EPS만 + bonus 1개는 B 불충분)", () => {
+    expect(determineGrade(1, 1)).toBe("C");
+  });
+
+  it("B: required=1, bonus=2 (required 1개 + bonus 전부 → B)", () => {
+    expect(determineGrade(1, 2)).toBe("B");
   });
 
   it("C: required=1, bonus=0", () => {

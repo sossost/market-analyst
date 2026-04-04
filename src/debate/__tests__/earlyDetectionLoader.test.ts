@@ -20,7 +20,7 @@ describe("computeOverlapStocks", () => {
     expect(result).toEqual([]);
   });
 
-  it("2개 도구에 등장하면 overlapCount 2로 태깅", () => {
+  it("2개 도구에 등장하면 overlapCount 2, convictionLevel medium", () => {
     const result = computeOverlapStocks(
       [{ symbol: "AAPL", rsScore: 45, ma150Slope: 0.001, volRatio: 2.0, sector: "Tech" }],
       [{ symbol: "AAPL", rsScore: 42, rsChange: 8, sector: "Tech" }],
@@ -32,10 +32,11 @@ describe("computeOverlapStocks", () => {
       sector: "Tech",
       overlapCount: 2,
       sources: ["phase1Late", "risingRs"],
+      convictionLevel: "medium",
     });
   });
 
-  it("3개 도구에 모두 등장하면 overlapCount 3으로 태깅", () => {
+  it("3개 도구에 모두 등장하면 overlapCount 3, convictionLevel high", () => {
     const result = computeOverlapStocks(
       [{ symbol: "NVDA", rsScore: 50, ma150Slope: 0.002, volRatio: 3.0, sector: "Tech" }],
       [{ symbol: "NVDA", rsScore: 55, rsChange: 12, sector: "Tech" }],
@@ -51,6 +52,7 @@ describe("computeOverlapStocks", () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].overlapCount).toBe(3);
+    expect(result[0].convictionLevel).toBe("high");
     expect(result[0].sources).toEqual(["accelerating", "phase1Late", "risingRs"]);
   });
 
@@ -79,10 +81,13 @@ describe("computeOverlapStocks", () => {
     expect(result).toHaveLength(3);
     expect(result[0].symbol).toBe("AAPL");
     expect(result[0].overlapCount).toBe(3);
+    expect(result[0].convictionLevel).toBe("high");
     expect(result[1].symbol).toBe("MSFT");
     expect(result[1].overlapCount).toBe(2);
+    expect(result[1].convictionLevel).toBe("medium");
     expect(result[2].symbol).toBe("TSLA");
     expect(result[2].overlapCount).toBe(2);
+    expect(result[2].convictionLevel).toBe("medium");
   });
 
   it("sector가 첫 번째 도구에서 null이면 다른 도구에서 채운다", () => {
@@ -266,7 +271,7 @@ describe("formatEarlyDetectionContext", () => {
       ],
       accelerating: [],
       highConviction: [
-        { symbol: "AAPL", sector: "Tech", overlapCount: 2, sources: ["phase1Late", "risingRs"] },
+        { symbol: "AAPL", sector: "Tech", overlapCount: 2, sources: ["phase1Late", "risingRs"], convictionLevel: "medium" as const },
       ],
     };
     const result = formatEarlyDetectionContext(data);
@@ -287,6 +292,7 @@ describe("formatEarlyDetectionContext", () => {
           sector: "Tech",
           overlapCount: 3,
           sources: ["accelerating", "phase1Late", "risingRs"],
+          convictionLevel: "high" as const,
         },
       ],
     };
@@ -313,7 +319,7 @@ describe("formatEarlyDetectionContext", () => {
       risingRs: [],
       accelerating: [],
       highConviction: [
-        { symbol: "XYZ", sector: null, overlapCount: 2, sources: ["phase1Late", "risingRs"] },
+        { symbol: "XYZ", sector: null, overlapCount: 2, sources: ["phase1Late", "risingRs"], convictionLevel: "medium" as const },
       ],
     };
     const result = formatEarlyDetectionContext(data);
