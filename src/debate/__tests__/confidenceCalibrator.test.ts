@@ -500,7 +500,6 @@ describe("formatModeratorPerformanceContext", () => {
 
     expect(output).toContain("에이전트별 Thesis 적중률");
     expect(output).toContain("적중률이 높은 분석가의 의견에 더 큰 비중");
-    expect(output).toContain("50% 미만 분석가의 단독 의견");
     expect(output).toContain("매크로 이코노미스트");
     expect(output).toContain("지정학 전략가");
     expect(output).toContain("EXPIRED");
@@ -561,6 +560,31 @@ describe("formatModeratorPerformanceContext", () => {
 
     expect(output).toContain("만료");
     expect(output).toContain("| 1 |");
+  });
+
+  it("50% 미만 에이전트에 대해 정량적 가중치 규칙을 추가한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "macro", confirmed: 6, invalidated: 2, expired: 0, hitRate: 0.75 },
+      { persona: "sentiment", confirmed: 4, invalidated: 5, expired: 0, hitRate: 0.44 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates);
+
+    expect(output).toContain("저신뢰 분석가 가중치 규칙");
+    expect(output).toContain("0.5배 가중치");
+    expect(output).toContain("단독 의견");
+    expect(output).toContain("완전 제외");
+  });
+
+  it("모든 에이전트가 50% 이상이면 가중치 규칙을 추가하지 않는다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "macro", confirmed: 6, invalidated: 2, expired: 0, hitRate: 0.75 },
+      { persona: "tech", confirmed: 5, invalidated: 2, expired: 0, hitRate: 0.71 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates);
+
+    expect(output).not.toContain("저신뢰 분석가 가중치 규칙");
   });
 });
 

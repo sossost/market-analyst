@@ -8,7 +8,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { extractThesesFromText } from "../round3-synthesis.js";
+import { extractThesesFromText, containsNumericPrediction } from "../round3-synthesis.js";
 import { logger } from "@/lib/logger";
 
 // ─── Helper ──────��─────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
 // ─── sentiment confidence 자동 하향 ─────────────────────────────────────────
 
 describe("sentiment confidence 자동 하향", () => {
-  it("sentiment의 high confidence를 medium으로 하향한다", () => {
+  it("sentiment의 high confidence를 low로 2단계 하향한다", () => {
     const text = wrapThesesInText([
       makeThesis({
         agentPersona: "sentiment",
@@ -198,7 +198,7 @@ describe("sentiment confidence 자동 하향", () => {
     const result = extractThesesFromText(text);
 
     expect(result.theses).toHaveLength(1);
-    expect(result.theses[0].confidence).toBe("medium");
+    expect(result.theses[0].confidence).toBe("low");
   });
 
   it("sentiment의 medium confidence를 low로 하향한다", () => {
@@ -333,7 +333,152 @@ describe("sentiment confidence 자동 하향", () => {
 
     expect(result.theses).toHaveLength(3);
     expect(result.theses.find((t) => t.agentPersona === "macro")!.confidence).toBe("high");
-    expect(result.theses.find((t) => t.agentPersona === "sentiment")!.confidence).toBe("medium");
+    expect(result.theses.find((t) => t.agentPersona === "sentiment")!.confidence).toBe("low");
     expect(result.theses.find((t) => t.agentPersona === "tech")!.confidence).toBe("high");
+  });
+});
+
+// ─── containsNumericPrediction 패턴 검출 ─────────────────────────────────────
+
+describe("containsNumericPrediction", () => {
+  it("VIX + 수치 + 하회 패턴을 검출한다", () => {
+    expect(containsNumericPrediction("VIX 20 하회 안착에 4-6주 소요")).toBe(true);
+  });
+
+  it("F&G + 수치 + 회복 패턴을 검출한다", () => {
+    expect(containsNumericPrediction("F&G 25+ 회복 전망")).toBe(true);
+  });
+
+  it("RS + 수치 + 하회 패턴을 검출한다", () => {
+    expect(containsNumericPrediction("RS 60일내 65 하회 전망")).toBe(true);
+  });
+
+  it("N주 내 반전 패턴을 검출한다", () => {
+    expect(containsNumericPrediction("4주 내 반전 가능성")).toBe(true);
+  });
+
+  it("바닥 형성 후 반등 패턴을 검출한다", () => {
+    expect(containsNumericPrediction("바닥 형성 이후 반등 예상")).toBe(true);
+  });
+
+  it("VIX 레인지 예측 패턴을 검출한다", () => {
+    expect(containsNumericPrediction("VIX 22-28 레인지 전망")).toBe(true);
+  });
+
+  it("공포탐욕 수치 예측을 검출한다", () => {
+    expect(containsNumericPrediction("공포탐욕 30 도달 전망")).toBe(true);
+  });
+
+  it("현재값 인용은 검출하지 않는다", () => {
+    expect(containsNumericPrediction("현재 VIX 31, 극단적 공포 구간")).toBe(false);
+  });
+
+  it("수치 없는 방향성 관찰은 검출하지 않는다", () => {
+    expect(containsNumericPrediction("자금이 defensive 섹터로 이동 중")).toBe(false);
+  });
+
+  it("구조적 분석은 검출하지 않는다", () => {
+    expect(containsNumericPrediction("포지셔닝이 과밀하여 해소 압력 존재")).toBe(false);
+  });
+
+  it("조건부 분석은 검출하지 않는다", () => {
+    expect(containsNumericPrediction("VIX가 30 이상 유지되는 한 risk-off 지속")).toBe(false);
+  });
+});
+
+// ─── sentiment 수치 예측 thesis 드롭 ─────────────────────────────────────────
+
+describe("sentiment 수치 예측 thesis 드롭", () => {
+  it("sentiment의 수치 예측 thesis를 드롭한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        thesis: "VIX 20 하회 안착 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(0);
+  });
+
+  it("sentiment의 구조적 분석 thesis는 통과한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        thesis: "포지셔닝이 과밀하여 해소 압력이 구조적으로 존재",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+  });
+
+  it("macro의 수치 포함 thesis는 드롭하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "macro",
+        category: "structural_narrative",
+        thesis: "VIX 20 하회 안착 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+  });
+
+  it("수치 예측 드롭 시 로그를 남긴다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        thesis: "F&G 25+ 회복 전망으로 리스크온 전환 기대",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    extractThesesFromText(text);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Round3",
+      expect.stringContaining("수치 예측 thesis 드롭"),
+    );
+  });
+
+  it("여러 thesis에서 수치 예측인 sentiment만 드롭한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        thesis: "VIX 22-28 레인지 전망",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        thesis: "자금이 defensive 섹터로 구조적 이동 중",
+        timeframeDays: 60,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "structural_narrative",
+        thesis: "AI 인프라 투자 가속화",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(2);
+    expect(result.theses.find((t) => t.thesis.includes("VIX 22-28"))).toBeUndefined();
+    expect(result.theses.find((t) => t.thesis.includes("자금이 defensive"))).toBeDefined();
+    expect(result.theses.find((t) => t.thesis.includes("AI 인프라"))).toBeDefined();
   });
 });

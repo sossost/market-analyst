@@ -475,11 +475,12 @@ function normalizeMinorityView(raw: unknown): MinorityView | null {
 }
 
 /**
- * sentiment 에이전트의 confidence를 1단계 하향한다.
- * 적중률 40% 반영 — high→medium, medium→low, low는 유지.
+ * sentiment 에이전트의 confidence를 2단계 하향한다.
+ * 적중률 44% 반영 — high→low, medium→low, low는 유지.
+ * #620: 1단계(high→medium)에서 2단계로 강화. 44% 적중률은 low 수준.
  */
 const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
-  high: "medium",
+  high: "low",
   medium: "low",
   low: "low",
 };
@@ -489,8 +490,54 @@ const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
  * 전체 적중률 50% 미만 에이전트를 등록한다.
  * macro(60%), geopolitics(62.5%)는 전체 적중률이 50% 이상이므로 대상 아님.
  * 이들은 카테고리 차단(ALLOWED_CATEGORIES_PER_PERSONA)으로 short_term_outlook만 억제.
+ * #620: sentiment 적중률 44% — 2단계 하향(high→low, medium→low)으로 강화.
  */
 const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
+
+/**
+ * sentiment 에이전트의 thesis에 수치 예측 패턴이 포함되어 있는지 검사한다.
+ * VIX/F&G/RS 등 지표 + 구체적 수치 + 예측 표현(전망, 도달, 회복, 하회 등) 조합을 검출.
+ * 순수 함수 — 테스트 용이.
+ * #620: 프롬프트 제약이 무시된 전적이 있으므로 코드 레벨 가드레일로 차단.
+ */
+const SENTIMENT_NUMERIC_PREDICTION_PATTERNS: RegExp[] = [
+  // VIX + 수치 + 예측 표현
+  /VIX\s*\d+.*(?:하회|하락|도달|안착|회복|전망|예상|반전|레인지)/i,
+  /VIX.*(?:하회|하락|도달|안착|회복|전망|예상|반전)\s*.*\d+/i,
+  // Fear & Greed / F&G + 수치 + 예측 표현
+  /(?:F&G|Fear\s*(?:&|and)\s*Greed|공포\s*탐욕)\s*\d+.*(?:회복|도달|상승|하락|전망|예상|반전)/i,
+  /(?:F&G|Fear\s*(?:&|and)\s*Greed|공포\s*탐욕).*(?:회복|도달|상승|하락|전망|예상|반전)\s*.*\d+/i,
+  // RS + 수치 + 예측 표현
+  /RS\s*\d+.*(?:하회|하락|도달|상승|회복|돌파|전망|예상)/i,
+  /RS.*(?:하회|하락|도달|상승|회복|돌파|전망|예상)\s*.*\d+/i,
+  // N주/N일 내 반전/도달 패턴
+  /\d+\s*(?:주|일|개월|week|day|month)\s*(?:내|이내|안에).*(?:반전|도달|회복|하락|상승|안착)/i,
+  // 바닥/고점 형성 후 반등/하락
+  /(?:바닥|저점|고점)\s*(?:형성|확인).*(?:후|이후).*(?:반등|반전|회복|하락)/i,
+];
+
+export function containsNumericPrediction(thesis: string): boolean {
+  return SENTIMENT_NUMERIC_PREDICTION_PATTERNS.some((pattern) => pattern.test(thesis));
+}
+
+/**
+ * sentiment 에이전트의 수치 예측 thesis를 필터링(드롭)한다.
+ * sentiment 이외 에이전트의 thesis는 통과.
+ * #620: 프롬프트 제약이 무시된 전적 — 코드 레벨 가드레일.
+ */
+function filterNumericPredictions(theses: Thesis[]): Thesis[] {
+  return theses.filter((t) => {
+    if (t.agentPersona !== "sentiment") return true;
+    if (containsNumericPrediction(t.thesis)) {
+      logger.info(
+        "Round3",
+        `sentiment의 수치 예측 thesis 드롭: "${t.thesis.slice(0, 60)}..." (#620 가드레일)`,
+      );
+      return false;
+    }
+    return true;
+  });
+}
 
 /**
  * thesis 객체의 optional/category 필드를 정규화.
@@ -613,7 +660,8 @@ export function extractThesesFromText(text: string): ExtractionResult {
     if (validated.length < parsed.length) {
       logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
     }
-    return { theses: validated, cleanReport };
+    const filtered = filterNumericPredictions(validated);
+    return { theses: filtered, cleanReport };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
@@ -649,7 +697,7 @@ export function extractDebateOutput(text: string): DebateExtractionResult {
       if (validated.length < parsed.length) {
         logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
       }
-      return validated;
+      return filterNumericPredictions(validated);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
