@@ -71,6 +71,7 @@ export async function findPhase2Stocks(params: {
     `WITH latest_scores AS (
        SELECT DISTINCT ON (symbol) symbol, grade
        FROM fundamental_scores
+       WHERE scored_date <= $1
        ORDER BY symbol, scored_date DESC
      )
      SELECT
@@ -285,6 +286,7 @@ export async function findRisingRsStocks(params: {
     `WITH latest_scores AS (
        SELECT DISTINCT ON (symbol) symbol, grade
        FROM fundamental_scores
+       WHERE scored_date <= $1
        ORDER BY symbol, scored_date DESC
      ),
      rs_4w AS (
@@ -342,6 +344,7 @@ export async function findPhase1LateStocks(
     `WITH latest_scores AS (
        SELECT DISTINCT ON (symbol) symbol, grade
        FROM fundamental_scores
+       WHERE scored_date <= $1
        ORDER BY symbol, scored_date DESC
      ),
      trading_boundary AS (
