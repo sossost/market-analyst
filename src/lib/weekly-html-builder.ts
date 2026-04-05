@@ -457,6 +457,53 @@ const WEEKLY_REPORT_CSS = `
     line-height: 1.5;
   }
 
+  /* Gate Check Tags */
+  .gate5-checks {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin: 8px 0 6px;
+  }
+
+  .gate-check {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .gate-check.pass { background: #dafbe1; color: var(--phase2); }
+  .gate-check.fail { background: #ffebe9; color: var(--up); }
+  .gate-check.pending { background: #fff8c5; color: var(--yellow); }
+
+  /* Mini Stats Grid */
+  .mini-stats {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .mini-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: var(--surface-2);
+    border-radius: 6px;
+    padding: 4px 10px;
+    min-width: 56px;
+  }
+
+  .mini-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .mini-val {
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
   .empty-state {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -922,8 +969,8 @@ export function renderGate5Block(candidates: Phase2Stock[]): string {
 
   if (count === 0) {
     return `
-      <h3>신규 등록 (0종목)</h3>
-      <div class="empty-state">5중 게이트를 통과한 종목 없음</div>`;
+      <h3>5중 게이트 후보 (0종목)</h3>
+      <div class="empty-state">Phase 2 + RS 60+ + SEPA S/A 조건을 충족하는 종목 없음</div>`;
   }
 
   const cards = candidates
@@ -932,56 +979,70 @@ export function renderGate5Block(candidates: Phase2Stock[]): string {
       const newBadge = stock.isNewPhase2
         ? '<span class="gate5-new-badge">신규 P2</span>'
         : "";
+      const sectorStr = stock.sector != null ? escapeHtml(stock.sector) : "";
+      const industryStr = stock.industry != null ? ` · ${escapeHtml(stock.industry)}` : "";
 
-      const condTags = stock.conditionsMet
-        .map(
-          (cond) =>
-            `<span class="cond-tag met">${escapeHtml(cond)}</span>`,
-        )
+      // 5중 게이트 체크리스트 — 프로그래밍으로 판정 가능한 3개는 확정, 나머지 2개는 "에이전트 판단"
+      const gate1 = stock.phase === 2; // Phase 2
+      const gate2 = true; // 업종 RS ▲ — 개별 업종 RS 데이터가 이 타입에 없으므로 "확인 필요"로 표시
+      const gate3 = stock.rsScore >= 60; // RS 60+
+      // gate4 (thesis) / gate5 (SEPA) — 이 단계에서는 프로그래밍 판단 불가, LLM이 결정
+      const gateChecks = [
+        { label: "Phase 2", pass: gate1 },
+        { label: `RS ${stock.rsScore}`, pass: gate3 },
+        { label: "SEPA S/A", pass: true }, // get_phase2_stocks가 이미 S/A만 반환
+        { label: "업종RS ▲", pass: null as boolean | null }, // 에이전트 확인 필요
+        { label: "thesis", pass: null as boolean | null }, // 에이전트 확인 필요
+      ];
+      const gateHtml = gateChecks
+        .map((g) => {
+          if (g.pass === true) return `<span class="gate-check pass">✓ ${escapeHtml(g.label)}</span>`;
+          if (g.pass === false) return `<span class="gate-check fail">✗ ${escapeHtml(g.label)}</span>`;
+          return `<span class="gate-check pending">? ${escapeHtml(g.label)}</span>`;
+        })
         .join("");
+
+      // 핵심 수치 미니 그리드 (글 나열 대신 시각적 칩)
+      const miniStats: string[] = [];
+      if (stock.pctFromHigh52w != null) {
+        const cls = Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down";
+        miniStats.push(`<span class="mini-stat"><span class="mini-label">고점 대비</span><span class="mini-val ${cls}">${stock.pctFromHigh52w.toFixed(0)}%</span></span>`);
+      }
+      if (stock.pctFromLow52w != null) {
+        miniStats.push(`<span class="mini-stat"><span class="mini-label">저점 대비</span><span class="mini-val up">+${stock.pctFromLow52w.toFixed(0)}%</span></span>`);
+      }
+      if (stock.ma150Slope != null) {
+        const slopeCls = stock.ma150Slope > 0 ? "up" : "down";
+        miniStats.push(`<span class="mini-stat"><span class="mini-label">MA150</span><span class="mini-val ${slopeCls}">${stock.ma150Slope > 0 ? "▲" : "▼"}</span></span>`);
+      }
+      if (stock.volRatio != null) {
+        const volCls = stock.volRatio >= 1.5 ? "up" : "neutral-color";
+        miniStats.push(`<span class="mini-stat"><span class="mini-label">거래량</span><span class="mini-val ${volCls}">${stock.volRatio.toFixed(1)}x</span></span>`);
+      }
 
       const signalTag =
         stock.breakoutSignal !== "" && stock.breakoutSignal !== "none"
           ? `<span class="cond-tag signal">${escapeHtml(stock.breakoutSignal)}</span>`
           : "";
 
-      const pctHighStr =
-        stock.pctFromHigh52w != null
-          ? `52주 고점 대비 ${stock.pctFromHigh52w.toFixed(1)}%`
-          : "";
-      const pctLowStr =
-        stock.pctFromLow52w != null
-          ? `| 저점 대비 +${stock.pctFromLow52w.toFixed(1)}%`
-          : "";
-      const volStr = stock.volRatio != null ? `| 거래량비 ${stock.volRatio.toFixed(1)}x` : "";
-      const slopeStr =
-        stock.ma150Slope != null
-          ? `| MA150 기울기 ${stock.ma150Slope > 0 ? "+" : ""}${stock.ma150Slope.toFixed(3)}`
-          : "";
-      const sectorStr = stock.sector != null ? escapeHtml(stock.sector) : "";
-      const industryStr = stock.industry != null ? ` · ${escapeHtml(stock.industry)}` : "";
-
       return `
         <div class="gate5-card">
           <div class="gate5-card-header">
             <span class="gate5-ticker">${escapeHtml(stock.symbol)}</span>
-            <span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(stock.phase))}</span>
+            <span class="phase-badge ${escapeHtml(phaseCls)}">P${escapeHtml(String(stock.phase))}</span>
             <span class="gate5-meta">RS ${escapeHtml(String(stock.rsScore))}</span>
-            ${newBadge}
+            ${newBadge}${signalTag}
           </div>
           <div class="gate5-meta">${sectorStr}${industryStr}</div>
-          <div class="gate5-conditions">
-            ${condTags}${signalTag}
-          </div>
-          <div class="gate5-stats">
-            ${escapeHtml([pctHighStr, pctLowStr, volStr, slopeStr].filter(Boolean).join(" "))}
-          </div>
+          <div class="gate5-checks">${gateHtml}</div>
+          ${miniStats.length > 0 ? `<div class="mini-stats">${miniStats.join("")}</div>` : ""}
         </div>`;
     })
     .join("");
 
   return `
-    <h3>신규 등록 (${escapeHtml(String(count))}종목)</h3>
+    <h3>5중 게이트 후보 (${escapeHtml(String(count))}종목)</h3>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin:-8px 0 12px;">Phase 2 + RS 60+ + SEPA S/A 통과. thesis·업종RS는 에이전트가 판단 후 등록.</p>
     <div class="gate5-grid">${cards}</div>`;
 }
 
@@ -1078,9 +1139,9 @@ export function buildWeeklyHtml(
         <div class="content-block">${watchlistNarrativeHtml}</div>
       </section>
 
-      <!-- 섹션 4: 신규 관심종목 등록/해제 -->
+      <!-- 섹션 4: 5중 게이트 평가 + 등록/해제 -->
       <section>
-        <h2>🆕 신규 관심종목 등록/해제</h2>
+        <h2>🆕 5중 게이트 평가 · 관심종목 등록/해제</h2>
         ${gate5Html}
         <div class="content-block">${gate5SummaryHtml}</div>
       </section>

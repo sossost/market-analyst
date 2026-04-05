@@ -552,7 +552,7 @@ describe("renderGate5Block", () => {
 
     const result = renderGate5Block(candidates);
 
-    expect(result).toContain("신규 등록 (3종목)");
+    expect(result).toContain("5중 게이트 후보 (3종목)");
     const cardCount = (result.match(/class="gate5-card"/g) ?? []).length;
     expect(cardCount).toBe(3);
   });
@@ -561,7 +561,7 @@ describe("renderGate5Block", () => {
     const result = renderGate5Block([]);
 
     expect(result).toContain("0종목");
-    expect(result).toContain("5중 게이트를 통과한 종목 없음");
+    expect(result).toContain("Phase 2 + RS 60+ + SEPA S/A 조건을 충족하는 종목 없음");
     expect(result).not.toContain("gate5-card");
   });
 
@@ -582,17 +582,20 @@ describe("renderGate5Block", () => {
     expect(result).not.toContain("신규 P2");
   });
 
-  it("conditionsMet: 각 조건 태그가 cond-tag met 클래스로 생성된다", () => {
+  it("5중 게이트 체크리스트: pass/pending 상태가 표시된다", () => {
     const result = renderGate5Block([
-      createMockPhase2Stock({
-        conditionsMet: ["MA 정배열", "Phase 2 진입", "RS >= 60"],
-      }),
+      createMockPhase2Stock({ phase: 2, rsScore: 75 }),
     ]);
 
-    expect(result).toContain('class="cond-tag met"');
-    expect(result).toContain("MA 정배열");
-    expect(result).toContain("Phase 2 진입");
-    expect(result).toContain("RS &gt;= 60");
+    // 프로그래밍 확정: Phase 2, RS 75, SEPA S/A → pass
+    expect(result).toContain('class="gate-check pass"');
+    expect(result).toContain("✓ Phase 2");
+    expect(result).toContain("✓ RS 75");
+    expect(result).toContain("✓ SEPA S/A");
+    // 에이전트 판단 필요: 업종RS, thesis → pending
+    expect(result).toContain('class="gate-check pending"');
+    expect(result).toContain("? 업종RS");
+    expect(result).toContain("? thesis");
   });
 
   it("breakoutSignal이 none이 아니면 signal 태그가 추가된다", () => {
@@ -615,7 +618,7 @@ describe("renderGate5Block", () => {
   it("1종목이면 헤더도 1종목으로 일치한다", () => {
     const result = renderGate5Block([createMockPhase2Stock()]);
 
-    expect(result).toContain("신규 등록 (1종목)");
+    expect(result).toContain("5중 게이트 후보 (1종목)");
     const cardCount = (result.match(/class="gate5-card"/g) ?? []).length;
     expect(cardCount).toBe(1);
   });
@@ -634,7 +637,7 @@ describe("buildWeeklyHtml", () => {
     expect(result).toContain("섹터 로테이션");
     expect(result).toContain("업종 RS");
     expect(result).toContain("관심종목");
-    expect(result).toContain("신규 관심종목");
+    expect(result).toContain("5중 게이트 평가");
   });
 
   it("온도 배지 bullish: bullish 클래스가 적용된다", () => {
