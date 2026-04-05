@@ -73,6 +73,55 @@ describe("publishHtmlReport", () => {
     );
   });
 
+  it("type 기본값은 daily이다", async () => {
+    simulateGitSuccess();
+    const result = await publishHtmlReport("<html></html>", "2026-04-02");
+
+    expect(result).toBe("https://sossost.github.io/market-reports/daily/2026-04-02/");
+  });
+
+  it('type "weekly" 시 weekly/{date}/ 경로로 파일을 저장하고 weekly URL을 반환한다', async () => {
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
+        if (_args.includes("status")) {
+          cb(null, "M weekly/2026-04-02/index.html\n", "");
+        } else {
+          cb(null, "", "");
+        }
+      },
+    );
+
+    const result = await publishHtmlReport("<html>weekly</html>", "2026-04-02", "weekly");
+
+    expect(result).toBe("https://sossost.github.io/market-reports/weekly/2026-04-02/");
+    // mkdirSync에 weekly 경로가 포함되어야 함
+    expect(mockMkdirSync).toHaveBeenCalledWith(
+      expect.stringContaining("weekly"),
+      { recursive: true },
+    );
+    expect(mockWriteFileSync).toHaveBeenCalledWith(
+      expect.stringContaining("index.html"),
+      "<html>weekly</html>",
+      "utf-8",
+    );
+  });
+
+  it('type "weekly" 변경 없으면 push 건너뛰고 weekly URL을 반환한다', async () => {
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
+        if (_args.includes("status")) {
+          cb(null, "", "");
+        } else {
+          cb(null, "", "");
+        }
+      },
+    );
+
+    const result = await publishHtmlReport("<html></html>", "2026-04-02", "weekly");
+
+    expect(result).toBe("https://sossost.github.io/market-reports/weekly/2026-04-02/");
+  });
+
   it("git push 실패 시 null을 반환한다 (throw 안 함)", async () => {
     simulateGitPushFailure();
     const result = await publishHtmlReport("<html>report</html>", "2026-04-02");

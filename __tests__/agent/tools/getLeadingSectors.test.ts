@@ -302,25 +302,63 @@ describe("getLeadingSectors", () => {
   });
 
   it("industry 모드에서 DB 쿼리는 항상 INDUSTRY_FETCH_LIMIT(50)으로 후보군을 가져온다", async () => {
+    // 1st: findPrevWeekDate
+    mockQuery.mockResolvedValueOnce({ rows: [{ prev_week_date: "2026-02-28" }] });
+    // 2nd: findIndustriesWeeklyChange
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // 3rd: findTopIndustriesGlobal
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry" });
 
-    // 섹터당 상한 적용 전 충분한 후보를 확보하기 위해 항상 50으로 조회한다
-    const firstCallParams = mockQuery.mock.calls[0][1];
-    expect(firstCallParams[1]).toBe(50);
+    // findIndustriesWeeklyChange의 limit 파라미터가 50이어야 함
+    const weeklyChangeParams = mockQuery.mock.calls[1][1];
+    expect(weeklyChangeParams[2]).toBe(50);
   });
 
-  it("industry 모드에서 섹터당 2개 제한이 적용된 결과를 반환한다", async () => {
-    const energyRows = Array.from({ length: 5 }, (_, i) =>
+  it("industry 모드에서 changeWeek 경로(prevWeekDate 있음)는 섹터당 제한 없이 반환한다", async () => {
+    const energyWeeklyRows = Array.from({ length: 5 }, (_, i) => ({
+      sector: "Energy",
+      industry: `Energy Ind ${i + 1}`,
+      avg_rs: String(90 - i),
+      rs_rank: i + 1,
+      group_phase: 2,
+      phase2_ratio: "0.80",
+      change_week: String(10 - i),
+    }));
+    const energyGlobalRows = Array.from({ length: 5 }, (_, i) =>
       makeIndustryGlobalRow({ industry: `Energy Ind ${i + 1}`, sector: "Energy", avg_rs: String(90 - i) }),
     );
-    mockQuery.mockResolvedValueOnce({ rows: energyRows });
+
+    // 1st: findPrevWeekDate
+    mockQuery.mockResolvedValueOnce({ rows: [{ prev_week_date: "2026-02-28" }] });
+    // 2nd: findIndustriesWeeklyChange
+    mockQuery.mockResolvedValueOnce({ rows: energyWeeklyRows });
+    // 3rd: findTopIndustriesGlobal
+    mockQuery.mockResolvedValueOnce({ rows: energyGlobalRows });
 
     const result = await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry" });
     const parsed = JSON.parse(result);
 
-    // Energy가 5개 있어도 섹터당 2개 제한으로 최대 2개만 반환되어야 한다
+    // changeWeek 경로에서는 섹터당 제한 없음 — 한 섹터 집중은 자금 유입 신호
+    const energyCount = parsed.industries.filter((i: { sector: string }) => i.sector === "Energy").length;
+    expect(energyCount).toBe(5);
+  });
+
+  it("industry 모드에서 prevWeekDate 없으면 섹터당 2개 제한이 적용된다", async () => {
+    const energyGlobalRows = Array.from({ length: 5 }, (_, i) =>
+      makeIndustryGlobalRow({ industry: `Energy Ind ${i + 1}`, sector: "Energy", avg_rs: String(90 - i) }),
+    );
+
+    // 1st: findPrevWeekDate — null
+    mockQuery.mockResolvedValueOnce({ rows: [{ prev_week_date: null }] });
+    // 2nd: findTopIndustriesGlobal (fallback 경로)
+    mockQuery.mockResolvedValueOnce({ rows: energyGlobalRows });
+
+    const result = await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry" });
+    const parsed = JSON.parse(result);
+
+    // prevWeekDate 없는 경로에서는 섹터당 2개 제한 적용
     const energyCount = parsed.industries.filter((i: { sector: string }) => i.sector === "Energy").length;
     expect(energyCount).toBe(2);
   });

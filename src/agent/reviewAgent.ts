@@ -7,7 +7,7 @@ import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from 
 import { SEND_DISCORD_REPORT_SCHEMA } from "@/tools/sendDiscordReport";
 import type { AgentTool } from "@/tools/types";
 import { buildHtmlReport } from "@/lib/htmlReport";
-import { publishHtmlReport } from "@/lib/reportPublisher";
+import { publishHtmlReport, type ReportType } from "@/lib/reportPublisher";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -511,6 +511,7 @@ export async function sendDrafts(
   drafts: ReportDraft[],
   webhookEnvVar: string,
   date?: string,
+  reportType?: ReportType,
 ): Promise<void> {
   const webhookUrl = process.env[webhookEnvVar];
   if (webhookUrl == null || webhookUrl === "") {
@@ -528,6 +529,7 @@ export async function sendDrafts(
           draft.markdownContent,
           draft.message,
           date,
+          reportType,
         );
 
         if (storageUrl != null) {
@@ -572,11 +574,13 @@ async function tryPublishHtmlReport(
   markdownContent: string,
   draftMessage: string,
   date: string,
+  reportType?: ReportType,
 ): Promise<string | null> {
   try {
-    const title = draftMessage.split("\n").find(line => line.trim() !== "")?.slice(0, 100) ?? "Daily Report";
+    const defaultTitle = reportType === "weekly" ? "Weekly Report" : "Daily Report";
+    const title = draftMessage.split("\n").find(line => line.trim() !== "")?.slice(0, 100) ?? defaultTitle;
     const html = buildHtmlReport(markdownContent, title, date);
-    return await publishHtmlReport(html, date);
+    return await publishHtmlReport(html, date, reportType);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("SendDrafts", `HTML 발행 실패 — Gist fallback: ${reason}`);
@@ -666,7 +670,11 @@ export async function runReviewPipeline(
     finalDrafts = drafts;
   }
 
-  await sendDrafts(finalDrafts, webhookEnvVar, options?.date);
+  const publishType: ReportType | undefined =
+    options?.reportType === "daily" || options?.reportType === "weekly"
+      ? options.reportType
+      : undefined;
+  await sendDrafts(finalDrafts, webhookEnvVar, options?.date, publishType);
   logger.step("--- Review Pipeline Complete ---\n");
 
   return finalDrafts;
