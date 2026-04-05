@@ -449,25 +449,24 @@ describe("renderIndexTable — Fear & Greed 방향 레이블", () => {
 // ─── renderPhase2TrendTable ───────────────────────────────────────────────────
 
 describe("renderPhase2TrendTable", () => {
-  it("정상: 추이 테이블 행 + Phase 분포 바 + stat 칩을 렌더링한다", () => {
+  it("정상: Phase 분포 바 + 주간 변화 인라인 + stat 칩을 렌더링한다", () => {
     const breadth = createMockMarketBreadth();
 
     const result = renderPhase2TrendTable(breadth);
 
-    expect(result).toContain("2026-03-28");
-    expect(result).toContain("2026-04-04");
     expect(result).toContain("phase-bar");
     expect(result).toContain("stat-chip");
-    expect(result).toContain("30.5%");
+    expect(result).toContain("주간");
   });
 
-  it("빈 weeklyTrend: 빈 상태 메시지를 표시한다", () => {
+  it("빈 weeklyTrend: Phase 분포 바는 표시하되 인라인 주간 변화 없음", () => {
     const breadth = createMockMarketBreadth({ weeklyTrend: [] });
 
     const result = renderPhase2TrendTable(breadth);
 
-    expect(result).toContain("주간 추이 데이터 없음");
-    expect(result).not.toContain("<table>");
+    expect(result).toContain("phase-bar");
+    // 인라인 "(주간 +X.X%p)" 없음
+    expect(result).not.toContain("%p)");
   });
 
   it("phase2RatioChange 양수: up 색상 클래스가 적용된다", () => {

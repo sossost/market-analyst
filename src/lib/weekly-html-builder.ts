@@ -665,17 +665,13 @@ function getFearGreedDirectionLabel(score: number, previous1Week: number): strin
 
 function renderFearGreed(fg: FearGreedData): string {
   const scoreCls = fg.score <= 25 ? "up" : fg.score >= 75 ? "down" : "";
-  const prevCloseStr =
-    fg.previousClose != null
-      ? `전일 ${fg.previousClose.toFixed(1)}`
-      : "";
   const prev1wStr =
     fg.previous1Week != null
-      ? `| 1주전 ${fg.previous1Week.toFixed(1)} → 현재 ${fg.score.toFixed(1)} (${getFearGreedDirectionLabel(fg.score, fg.previous1Week)})`
+      ? `1주전 ${fg.previous1Week.toFixed(1)} → 현재 ${fg.score.toFixed(1)} (${getFearGreedDirectionLabel(fg.score, fg.previous1Week)})`
       : "";
   const prev1mStr =
     fg.previous1Month != null
-      ? `| 1달전 ${fg.previous1Month.toFixed(1)}`
+      ? `1달전 ${fg.previous1Month.toFixed(1)}`
       : "";
 
   return `
@@ -686,7 +682,7 @@ function renderFearGreed(fg: FearGreedData): string {
         <div class="fg-rating">${escapeHtml(fg.rating)}</div>
       </div>
       <div class="fg-compare">
-        ${escapeHtml([prevCloseStr, prev1wStr, prev1mStr].filter(Boolean).join(" "))}
+        ${escapeHtml([prev1wStr, prev1mStr].filter(Boolean).join(" | "))}
       </div>
     </div>`;
 }
@@ -1210,21 +1206,21 @@ export function buildWeeklyHtml(
         <div class="content-block">${thesisAccuracyHtml}</div>
       </section>
 
-      <!-- 섹션 4: 관심종목 궤적 -->
+      <!-- 섹션 4: 관심종목 궤적 (ACTIVE) -->
       <section>
         <h2>🎯 관심종목 궤적</h2>
         ${watchlistHtml}
         ${data.watchlist.items.length > 0 ? `<div class="content-block">${watchlistNarrativeHtml}</div>` : ""}
       </section>
 
-      <!-- 섹션 4: 5중 게이트 평가 + 등록/해제 -->
+      <!-- 섹션 5: 5중 게이트 평가 + 등록/해제 -->
       <section>
         <h2>🆕 5중 게이트 평가 · 관심종목 등록/해제</h2>
         ${watchlistChangesHtml}
         <div class="content-block">${gate5SummaryHtml}</div>
       </section>
 
-      <!-- 섹션 5: 다음 주 관전 포인트 -->
+      <!-- 섹션 6: 다음 주 관전 포인트 -->
       <section>
         <h2>🔮 다음 주 관전 포인트</h2>
         <div class="content-block">${nextWeekHtml}</div>
