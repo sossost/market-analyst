@@ -106,6 +106,11 @@ async function main() {
     industryTop10: industries as WeeklyReportData["industryTop10"],
     watchlist,
     gate5Candidates: stocks as WeeklyReportData["gate5Candidates"],
+    watchlistChanges: {
+      registered: [],
+      exited: [],
+      pending4of5: [],
+    },
   };
 
   // 3. 목업 인사이트
