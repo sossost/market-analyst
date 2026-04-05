@@ -131,7 +131,9 @@ async function main() {
     fearGreed: fearGreed as WeeklyReportData["fearGreed"],
     marketBreadth: breadth,
     sectorRanking: sectors as WeeklyReportData["sectorRanking"],
-    industryTop10: industries as WeeklyReportData["industryTop10"],
+    // 전체 업종 데이터 사용 — renderIndustryTop10Table이 .slice(0,10)으로 상위 10개만 표시
+    // 게이트 판정에는 전체 업종 changeWeek이 필요
+    industryTop10: allIndustries as WeeklyReportData["industryTop10"],
     watchlist,
     gate5Candidates: stocks as WeeklyReportData["gate5Candidates"],
     watchlistChanges: {

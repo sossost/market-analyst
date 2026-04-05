@@ -1010,9 +1010,9 @@ export function renderWatchlistChanges(
 
   // 종목 데이터 룩업맵
   const stockMap = new Map(candidates.map((s) => [s.symbol, s]));
-  const industryChangeMap = new Map<string, number>();
+  const industryRsMap = new Map<string, { avgRs: number; changeWeek: number | null }>();
   for (const ind of industries) {
-    if (ind.changeWeek != null) industryChangeMap.set(ind.industry, ind.changeWeek);
+    industryRsMap.set(ind.industry, { avgRs: ind.avgRs, changeWeek: ind.changeWeek });
   }
 
   const hasAny = registered.length > 0 || exited.length > 0 || pending4of5.length > 0;
@@ -1033,7 +1033,7 @@ export function renderWatchlistChanges(
     ? `
       <h3>예비 관심종목 (${escapeHtml(String(pending4of5.length))}종목 — 4/5, thesis 미충족)</h3>
       <table>
-        <thead><tr><th>종목</th><th>업종</th><th>RS</th><th>고점대비</th><th>P2</th><th>RS60</th><th>SEPA</th><th>업종RS</th><th>thesis</th><th>통과</th></tr></thead>
+        <thead><tr><th>종목</th><th>업종</th><th>고점대비</th><th>저점대비</th><th>Phase 2</th><th>RS &gt; 60</th><th>SEPA S/A</th><th>업종RS ▲</th><th>thesis</th><th>통과</th></tr></thead>
         <tbody>
           ${pending4of5.map((c) => {
             const stock = stockMap.get(c.symbol);
@@ -1042,17 +1042,25 @@ export function renderWatchlistChanges(
             const highStr = stock?.pctFromHigh52w != null
               ? `<span class="${Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down"}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
               : "—";
-            const phase = stock?.phase != null ? `P${stock.phase}` : "—";
             const sepa = stock?.sepaGrade ?? "—";
-            const indChange = stock?.industry != null ? industryChangeMap.get(stock.industry) : null;
-            const indRsStr = indChange != null
-              ? `<span class="${colorClass(indChange)}">${indChange >= 0 ? "+" : ""}${indChange.toFixed(1)}</span>`
+            const lowStr = stock?.pctFromLow52w != null
+              ? `+${stock.pctFromLow52w.toFixed(0)}%`
               : "—";
+            const indData = stock?.industry != null ? industryRsMap.get(stock.industry) : null;
+            let indRsStr = "—";
+            if (indData != null) {
+              const cw = indData.changeWeek;
+              const cwStr = cw != null
+                ? `<span class="${colorClass(cw)}">(${cw >= 0 ? "+" : ""}${Math.abs(cw) < 0.05 ? cw.toFixed(2) : cw.toFixed(1)})</span>`
+                : "";
+              indRsStr = `${indData.avgRs.toFixed(0)} ${cwStr}`;
+            }
+            const phase = stock?.phase != null ? `P${stock.phase}` : "—";
             return `<tr>
               <td><strong>${escapeHtml(c.symbol)}</strong></td>
               <td>${escapeHtml(industry)}</td>
-              <td class="tc">${escapeHtml(rs)}</td>
               <td class="tc">${highStr}</td>
+              <td class="tc">${escapeHtml(lowStr)}</td>
               <td class="tc">${escapeHtml(phase)}</td>
               <td class="tc">${escapeHtml(rs)}</td>
               <td class="tc">${escapeHtml(sepa)}</td>
