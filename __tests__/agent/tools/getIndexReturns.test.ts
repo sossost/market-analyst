@@ -192,12 +192,17 @@ describe("getIndexReturns", () => {
   describe("weekly mode", () => {
     it("주간 누적 수익률을 올바르게 계산한다", async () => {
       // DB 결과는 날짜 내림차순: 최신 → 과거
+      // 이번주(2026-03-30 월 ~ 2026-04-03 금) + 전주 마지막 거래일(2026-03-27 금)
+      // weekStartClose = 전주 금요일(2026-03-27) close = 5000
+      // weekEndClose = 이번주 금요일(2026-04-03) close = 5250
       const rows = [
-        { date: "2026-03-24", open: "5240", high: "5260", low: "5230", close: "5250", volume: "1000000" },
-        { date: "2026-03-23", open: "5190", high: "5220", low: "5180", close: "5200", volume: "1000000" },
-        { date: "2026-03-22", open: "5090", high: "5120", low: "5080", close: "5100", volume: "1000000" },
-        { date: "2026-03-21", open: "5040", high: "5060", low: "5030", close: "5050", volume: "1000000" },
-        { date: "2026-03-20", open: "4990", high: "5010", low: "4990", close: "5000", volume: "1000000" },
+        { date: "2026-04-03", open: "5240", high: "5260", low: "5230", close: "5250", volume: "1000000" }, // 금
+        { date: "2026-04-02", open: "5190", high: "5220", low: "5180", close: "5200", volume: "1000000" }, // 목
+        { date: "2026-04-01", open: "5090", high: "5120", low: "5080", close: "5100", volume: "1000000" }, // 수
+        { date: "2026-03-31", open: "5040", high: "5060", low: "5030", close: "5050", volume: "1000000" }, // 화
+        { date: "2026-03-30", open: "5010", high: "5020", low: "4990", close: "5010", volume: "1000000" }, // 월 (이번주 첫 거래일)
+        { date: "2026-03-27", open: "4990", high: "5010", low: "4990", close: "5000", volume: "1000000" }, // 전주 금 ← weekStartClose
+        { date: "2026-03-26", open: "4950", high: "4970", low: "4930", close: "4960", volume: "1000000" }, // 전주 목
       ];
 
       setupDbMock({
@@ -219,22 +224,27 @@ describe("getIndexReturns", () => {
       expect(result.indices).toHaveLength(5);
 
       const index = result.indices[0];
-      // reversed chronological: [5000, 5050, 5100, 5200, 5250]
+      // weekStartClose = 전주 금요일 2026-03-27 close = 5000
       expect(index.weekStartClose).toBe(5000);
+      // weekEndClose = 이번주 금요일 2026-04-03 close = 5250
       expect(index.weekEndClose).toBe(5250);
+      // weeklyChange = 5250 - 5000 = 250, weeklyChangePercent = 250/5000*100 = 5
       expect(index.weeklyChange).toBe(250);
       expect(index.weeklyChangePercent).toBe(5);
+      // weekHigh/weekLow는 이번주(월~금) 데이터만 기준
       expect(index.weekHigh).toBe(5260);
       expect(index.weekLow).toBe(4990);
       expect(index.tradingDays).toBe(5);
     });
 
     it("closePosition이 near_high로 정확히 계산된다", async () => {
-      // weekHigh=110, weekLow=100, weekEndClose=108 → (108-100)/(110-100)=0.8 → near_high
+      // 이번주(2026-03-30 월, 2026-03-31 화) + 전주(2026-03-27 금)
+      // 이번주 weekHigh=110, weekLow=100, weekEndClose=108
+      // (108-100)/(110-100)=0.8 → near_high
       const rows = [
-        { date: "2026-03-24", open: "106", high: "109", low: "106", close: "108", volume: "1000" },
-        { date: "2026-03-23", open: "103", high: "110", low: "103", close: "105", volume: "1000" },
-        { date: "2026-03-22", open: "100", high: "102", low: "100", close: "100", volume: "1000" },
+        { date: "2026-03-31", open: "106", high: "109", low: "106", close: "108", volume: "1000" }, // 화
+        { date: "2026-03-30", open: "100", high: "110", low: "100", close: "105", volume: "1000" }, // 월
+        { date: "2026-03-27", open: "98",  high: "99",  low: "97",  close: "100", volume: "1000" }, // 전주 금 ← weekStartClose
       ];
 
       setupDbMock({
@@ -255,11 +265,13 @@ describe("getIndexReturns", () => {
     });
 
     it("closePosition이 near_low로 정확히 계산된다", async () => {
-      // weekHigh=110, weekLow=100, weekEndClose=102 → (102-100)/(110-100)=0.2 → near_low
+      // 이번주(2026-03-30 월, 2026-03-31 화) + 전주(2026-03-27 금)
+      // 이번주 weekHigh=110, weekLow=100, weekEndClose=102
+      // (102-100)/(110-100)=0.2 → near_low
       const rows = [
-        { date: "2026-03-24", open: "101", high: "103", low: "101", close: "102", volume: "1000" },
-        { date: "2026-03-23", open: "103", high: "104", low: "101", close: "103", volume: "1000" },
-        { date: "2026-03-22", open: "105", high: "110", low: "100", close: "105", volume: "1000" },
+        { date: "2026-03-31", open: "101", high: "103", low: "101", close: "102", volume: "1000" }, // 화
+        { date: "2026-03-30", open: "103", high: "110", low: "100", close: "103", volume: "1000" }, // 월
+        { date: "2026-03-27", open: "98",  high: "99",  low: "97",  close: "100", volume: "1000" }, // 전주 금 ← weekStartClose
       ];
 
       setupDbMock({
@@ -280,11 +292,13 @@ describe("getIndexReturns", () => {
     });
 
     it("closePosition이 mid로 정확히 계산된다", async () => {
-      // weekHigh=110, weekLow=100, weekEndClose=105 → (105-100)/(110-100)=0.5 → mid
+      // 이번주(2026-03-30 월, 2026-03-31 화) + 전주(2026-03-27 금)
+      // 이번주 weekHigh=110, weekLow=100, weekEndClose=105
+      // (105-100)/(110-100)=0.5 → mid
       const rows = [
-        { date: "2026-03-24", open: "104", high: "106", low: "104", close: "105", volume: "1000" },
-        { date: "2026-03-23", open: "103", high: "110", low: "101", close: "103", volume: "1000" },
-        { date: "2026-03-22", open: "100", high: "102", low: "100", close: "100", volume: "1000" },
+        { date: "2026-03-31", open: "104", high: "106", low: "104", close: "105", volume: "1000" }, // 화
+        { date: "2026-03-30", open: "103", high: "110", low: "100", close: "103", volume: "1000" }, // 월
+        { date: "2026-03-27", open: "98",  high: "99",  low: "97",  close: "100", volume: "1000" }, // 전주 금 ← weekStartClose
       ];
 
       setupDbMock({
