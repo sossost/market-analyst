@@ -8,7 +8,10 @@ set -euo pipefail
 
 # PR 베이스 브랜치를 stdin JSON에서 읽어옴 (없으면 main 기본값)
 # mcp__github__create_pull_request 호출 시 tool_input.base 포함
-STDIN_JSON=$(cat)
+STDIN_JSON=""
+if [ ! -t 0 ]; then
+  STDIN_JSON=$(cat)
+fi
 BASE_BRANCH=$(echo "$STDIN_JSON" | grep -o '"base"\s*:\s*"[^"]*"' | head -1 | sed 's/.*"base"\s*:\s*"\([^"]*\)".*/\1/' || echo "")
 if [ -z "$BASE_BRANCH" ]; then
   BASE_BRANCH="main"

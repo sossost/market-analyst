@@ -187,7 +187,7 @@ function determineClosePosition(
  * YYYY-MM-DD 문자열을 파싱하여 해당 주의 월요일 날짜를 UTC 기준으로 반환한다.
  * getDay()는 UTC 기준: 0=일, 1=월, ..., 6=토
  */
-function getWeekMondayUtc(dateStr: string): Date {
+export function getWeekMondayUtc(dateStr: string): Date {
   const date = new Date(`${dateStr}T00:00:00Z`);
   const dayOfWeek = date.getUTCDay();
   // 일요일(0)은 6일 전 월요일, 그 외는 (dayOfWeek - 1)일 전 월요일
@@ -197,7 +197,7 @@ function getWeekMondayUtc(dateStr: string): Date {
   return monday;
 }
 
-function computeWeeklyQuote(
+export function computeWeeklyQuote(
   symbol: string,
   rows: IndexPriceRow[],
 ): WeeklyIndexQuote | null {
