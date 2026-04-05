@@ -24,12 +24,9 @@ import { readRecommendationPerformance } from "@/tools/readRecommendationPerform
 import { saveWatchlist } from "@/tools/saveWatchlist";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
 import { readRegimePerformance } from "@/tools/readRegimePerformance";
-import {
-  createDraftCaptureTool,
-  runReviewPipeline,
-  draftsToFullContent,
-  type ReportDraft,
-} from "./reviewAgent";
+import { createWeeklyDataCollector } from "@/tools/weeklyDataCollector";
+import { createCaptureWeeklyInsightTool } from "@/tools/captureWeeklyInsight";
+import type { WeeklyReportInsight } from "@/tools/schemas/weeklyReportSchema";
 import {
   runFundamentalValidation,
   formatFundamentalSupplement,
@@ -47,6 +44,9 @@ import {
   loadPendingRegimes,
   formatRegimeForPrompt,
 } from "@/debate/regimeStore";
+import { buildWeeklyHtml } from "@/lib/weekly-html-builder";
+import { publishHtmlReport } from "@/lib/reportPublisher";
+import { saveReportLog, updateReportFullContent } from "@/lib/reportLog";
 
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
@@ -76,6 +76,32 @@ function validateAgentEnvironment(): void {
       `Missing required environment variables: ${missing.join(", ")}`,
     );
   }
+}
+
+async function publishWeeklyReport(
+  html: string,
+  insight: WeeklyReportInsight,
+  targetDate: string,
+): Promise<void> {
+  const webhookEnvVar = "DISCORD_WEEKLY_WEBHOOK_URL";
+
+  // Supabase Storage 업로드 시도
+  const storageUrl = await (async (): Promise<string | null> => {
+    try {
+      return await publishHtmlReport(html, targetDate, "weekly");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn("WeeklyAgent", `HTML 업로드 실패 — Discord 메시지만 발송: ${reason}`);
+      return null;
+    }
+  })();
+
+  // Discord 발송
+  const discordText = storageUrl != null
+    ? `${insight.discordMessage}\n\n📊 상세 리포트: ${storageUrl}`
+    : insight.discordMessage;
+
+  await sendDiscordMessage(discordText, webhookEnvVar);
 }
 
 async function main() {
@@ -209,10 +235,11 @@ async function main() {
     logger.warn("Watchlist", `관심종목 현황 로드 실패 (에이전트는 계속 진행): ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 4. Agent 실행 (draft 모드 — 리포트는 캡처만, 발송은 리뷰 후)
+  // 4. 데이터 컬렉터 + 인사이트 캡처 컨테이너 초기화
   logger.step("[4/7] Running agent loop...\n");
 
-  const reportDrafts: ReportDraft[] = [];
+  const dataCollector = createWeeklyDataCollector();
+  const capturedInsight: { insight: WeeklyReportInsight | null } = { insight: null };
 
   const config: AgentConfig = {
     targetDate,
@@ -227,10 +254,16 @@ async function main() {
       sectorClusterContext,
     }),
     tools: [
-      getIndexReturns,
-      getMarketBreadth,
-      getLeadingSectors,
-      getPhase2Stocks,
+      // 데이터 캡처 래핑 도구들
+      dataCollector.wrap(getIndexReturns, "indexReturns"),
+      dataCollector.wrap(getMarketBreadth, "marketBreadth"),
+      // getLeadingSectors는 mode에 따라 sectorRanking 또는 industryTop10으로 분기
+      // 에이전트가 mode: "weekly"로 호출하면 sectorRanking 캡처
+      // 에이전트가 mode: "industry"로 호출하면 industryTop10 캡처 시도 (텍스트 반환 시 생략)
+      dataCollector.wrap(getLeadingSectors, "sectorRanking"),
+      dataCollector.wrap(getWatchlistStatus, "watchlist"),
+      dataCollector.wrap(getPhase2Stocks, "gate5Candidates"),
+      // 비캡처 도구들 (agentLoop 분석에 사용)
       getPhase1LateStocks,
       getRisingRS,
       getFundamentalAcceleration,
@@ -238,11 +271,11 @@ async function main() {
       searchCatalyst,
       readReportHistory,
       readRegimePerformance,
-      getWatchlistStatus,
       saveWatchlist,
       saveRecommendations,
       readRecommendationPerformance,
-      createDraftCaptureTool(reportDrafts),
+      // 해석 캡처 도구 — 에이전트가 마지막에 정확히 1회 호출
+      createCaptureWeeklyInsightTool(capturedInsight),
       saveReportLogTool,
     ],
     model: MODEL,
@@ -250,7 +283,7 @@ async function main() {
     maxIterations: MAX_ITERATIONS,
   };
 
-  // 에이전트 루프 실행 — 에러 발생해도 draft가 캡처됐으면 발송 진행
+  // 에이전트 루프 실행
   let loopError: string | null = null;
   try {
     const result = await runAgentLoop(config);
@@ -297,37 +330,37 @@ async function main() {
     logger.error("Agent", `Agent loop crashed: ${loopError}`);
   }
 
-  // 6. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
-  if (reportDrafts.length > 0) {
-    logger.step("[6/7] Running review pipeline...");
-    const sentDrafts = await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL", { reportType: "weekly", date: targetDate });
+  // 6. HTML 조립 + 발행
+  logger.step("[6/7] Publishing weekly report...");
 
-    // DB 저장: INSERT (레코드 생성) → UPDATE (full_content 추가)
-    // 주간 에이전트는 save_report_log 도구를 안정적으로 호출하지 않으므로 코드 레벨에서 직접 INSERT.
-    // saveReportLog는 onConflictDoNothing이므로, 에이전트가 도구 호출한 경우에도 안전.
-    if (sentDrafts.length > 0) {
-      const { saveReportLog, updateReportFullContent } = await import("@/lib/reportLog");
-      const fullContent = draftsToFullContent(sentDrafts);
+  if (capturedInsight.insight != null) {
+    const reportData = dataCollector.toWeeklyReportData();
+    const html = buildWeeklyHtml(reportData, capturedInsight.insight, targetDate);
 
-      await saveReportLog({
-        date: targetDate,
-        type: "weekly",
-        reportedSymbols: [],
-        marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
-        fullContent: null,
-        metadata: {
-          model: MODEL,
-          tokensUsed: { input: 0, output: 0 },
-          toolCalls: 0,
-          executionTime: 0,
-        },
-      });
-      await updateReportFullContent(targetDate, "weekly", fullContent);
-    }
+    // HTML 발행 + Discord 발송
+    await publishWeeklyReport(html, capturedInsight.insight, targetDate);
+
+    // DB 저장
+    await saveReportLog({
+      date: targetDate,
+      type: "weekly",
+      reportedSymbols: [],
+      marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
+      fullContent: null,
+      metadata: {
+        model: MODEL,
+        tokensUsed: { input: 0, output: 0 },
+        toolCalls: 0,
+        executionTime: 0,
+      },
+    });
+    await updateReportFullContent(targetDate, "weekly", html);
+
+    logger.step("[6/7] Weekly report published successfully.");
   } else if (loopError != null) {
-    throw new Error(`Agent failed with no drafts: ${loopError}`);
+    throw new Error(`Agent failed with no insight captured: ${loopError}`);
   } else {
-    logger.warn("Agent", "No report drafts captured");
+    logger.warn("Agent", "No insight captured — capture_weekly_insight was not called");
   }
 
   await pool.end();
