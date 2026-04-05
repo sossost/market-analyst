@@ -191,6 +191,8 @@ const WEEKLY_REPORT_CSS = `
     margin-left: 6px;
   }
 
+  .tc { text-align: center; }
+
   .up { color: var(--up); }
   .down { color: var(--down); }
   .neutral-color { color: var(--text-muted); }
@@ -985,9 +987,10 @@ export function renderGate5Block(
   const rows = candidates
     .map((stock) => {
       const newBadge = stock.isNewPhase2 ? ' <span class="gate5-new-badge">NEW</span>' : "";
-      const hasSignal = stock.breakoutSignal !== "" && stock.breakoutSignal !== "none";
+      const sig = (stock.breakoutSignal ?? "").trim();
+      const hasSignal = sig !== "" && sig !== "none";
       const signalBadge = hasSignal
-        ? ` <span class="cond-tag signal">${escapeHtml(stock.breakoutSignal)}</span>`
+        ? ` <span class="cond-tag signal">${escapeHtml(sig)}</span>`
         : "";
       const industryStr = stock.industry != null ? escapeHtml(stock.industry) : "—";
 
@@ -1024,14 +1027,14 @@ export function renderGate5Block(
         <tr>
           <td><strong>${escapeHtml(stock.symbol)}</strong>${newBadge}${signalBadge}</td>
           <td>${industryStr}</td>
-          <td>${escapeHtml(String(stock.rsScore))}</td>
-          <td>${highStr}</td>
-          <td style="text-align:center;">${g1}</td>
-          <td style="text-align:center;">${g2}</td>
-          <td style="text-align:center;">${g3}</td>
-          <td style="text-align:center;">${g4}</td>
-          <td style="text-align:center;">${g5}</td>
-          <td style="text-align:center;font-weight:600;">${gateCount}/5</td>
+          <td class="tc">${escapeHtml(String(stock.rsScore))}</td>
+          <td class="tc">${highStr}</td>
+          <td class="tc">${g1}</td>
+          <td class="tc">${g2}</td>
+          <td class="tc">${g3}</td>
+          <td class="tc">${g4}</td>
+          <td class="tc">${g5}</td>
+          <td class="tc">${gateCount}/5</td>
         </tr>`;
     })
     .join("");
