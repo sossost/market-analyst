@@ -195,6 +195,20 @@ export interface Phase2Stock {
   breakoutSignal: string;
   sector: string | null;
   industry: string | null;
+  sepaGrade: string | null;
+}
+
+export interface WatchlistChange {
+  symbol: string;
+  action: 'register' | 'exit';
+  reason: string;
+  gateResults?: {
+    phase2: boolean;
+    rs60: boolean;
+    sepa: boolean;
+    industryRs: boolean;
+    thesis: boolean;
+  };
 }
 
 // ─── 데이터 컨테이너 (도구 반환값 직접 매핑) ──────────────────────────────────
@@ -219,6 +233,12 @@ export interface WeeklyReportData {
   watchlist: WatchlistStatusData;
   /** get_phase2_stocks 반환값 */
   gate5Candidates: Phase2Stock[];
+  /** save_watchlist 결과 캡처 — 등록/해제/예비 */
+  watchlistChanges: {
+    registered: WatchlistChange[];
+    exited: WatchlistChange[];
+    pending4of5: WatchlistChange[];
+  };
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────

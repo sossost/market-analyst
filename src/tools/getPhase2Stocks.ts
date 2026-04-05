@@ -6,7 +6,7 @@ import { validateDate, validateNumber, MAX_RS_SCORE } from "./validation";
 
 const DEFAULT_MIN_RS = 60;
 const DEFAULT_MAX_RS = MAX_RS_SCORE;
-const DEFAULT_LIMIT = 30;
+const DEFAULT_LIMIT = 200;
 
 /**
  * Phase 2 초입 종목 리스트를 조회한다.
@@ -32,10 +32,6 @@ export const getPhase2Stocks: AgentTool = {
           type: "number",
           description: "최대 RS 점수 (기본 95). RS 과열 종목 필터링용.",
         },
-        limit: {
-          type: "number",
-          description: "최대 반환 종목 수 (기본 30)",
-        },
       },
       required: ["date"],
     },
@@ -48,7 +44,7 @@ export const getPhase2Stocks: AgentTool = {
     }
     const minRs = validateNumber(input.min_rs, DEFAULT_MIN_RS);
     const maxRs = validateNumber(input.max_rs, DEFAULT_MAX_RS);
-    const limit = validateNumber(input.limit, DEFAULT_LIMIT);
+    const limit = DEFAULT_LIMIT;
 
     const rows = await retryDatabaseOperation(() =>
       findPhase2Stocks({ date, minRs, maxRs, limit }),
@@ -78,6 +74,7 @@ export const getPhase2Stocks: AgentTool = {
       breakoutSignal: r.breakout_signal,
       sector: r.sector,
       industry: r.industry,
+      sepaGrade: r.sepa_grade ?? null,
     };
     });
 

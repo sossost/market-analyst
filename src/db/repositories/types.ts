@@ -19,6 +19,7 @@ export interface StockPhaseRow {
   breakout_signal: string | null;
   sector: string | null;
   industry: string | null;
+  sepa_grade: string | null;
 }
 
 export interface UnusualPhaseCountRow {

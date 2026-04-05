@@ -21,6 +21,7 @@ import type {
   IndustryItem,
   WatchlistStatusData,
   Phase2Stock,
+  WatchlistChange,
 } from "./schemas/weeklyReportSchema.js";
 import { logger } from "@/lib/logger";
 
@@ -108,6 +109,11 @@ export class WeeklyDataCollector {
         items: [],
       },
       gate5Candidates: (data.gate5Candidates as Phase2Stock[] | undefined) ?? [],
+      watchlistChanges: (data.watchlistChanges as WeeklyReportData["watchlistChanges"] | undefined) ?? {
+        registered: [],
+        exited: [],
+        pending4of5: [],
+      },
     };
   }
 
@@ -151,6 +157,9 @@ export class WeeklyDataCollector {
         break;
       case "gate5Candidates":
         this._captureGate5Candidates(parsed);
+        break;
+      case "watchlistChanges":
+        this._captureWatchlistChange(parsed, input);
         break;
       default:
         // fearGreed는 indexReturns 내부에서 처리
@@ -263,6 +272,59 @@ export class WeeklyDataCollector {
 
     this._data.gate5Candidates = stocks as Phase2Stock[];
     logger.info("WeeklyDataCollector", `gate5Candidates: ${stocks.length}개 Phase2 종목 캡처`);
+  }
+
+  private _captureWatchlistChange(
+    parsed: Record<string, unknown>,
+    input: Record<string, unknown>,
+  ): void {
+    const action = input.action as string | undefined;
+    const symbol = input.symbol as string | undefined;
+
+    if (symbol == null || action == null) return;
+
+    const isSuccess = parsed.success === true;
+    const isBlocked = parsed.blocked === true;
+
+    // gateFailures 배열에서 thesis만 실패했는지 확인
+    const gateFailures = parsed.gateFailures;
+    const isThesisOnlyBlock =
+      isBlocked &&
+      isArray(gateFailures) &&
+      gateFailures.length === 1 &&
+      gateFailures[0] === "thesis";
+
+    const reason =
+      typeof parsed.reason === "string"
+        ? parsed.reason
+        : typeof parsed.message === "string"
+        ? parsed.message
+        : "";
+
+    if (!this._data.watchlistChanges) {
+      this._data.watchlistChanges = { registered: [], exited: [], pending4of5: [] };
+    }
+
+    const changes = this._data.watchlistChanges as WeeklyReportData["watchlistChanges"];
+
+    const change: WatchlistChange = {
+      symbol,
+      action: action === "register" ? "register" : "exit",
+      reason,
+    };
+
+    if (action === "register" && isSuccess) {
+      changes.registered.push(change);
+      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 등록 확정`);
+    } else if (action === "exit" && isSuccess) {
+      changes.exited.push(change);
+      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 해제 확정`);
+    } else if (action === "register" && isThesisOnlyBlock) {
+      changes.pending4of5.push(change);
+      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 예비 (4/5 — thesis 미충족)`);
+    } else {
+      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 미분류 (action=${action}, success=${String(isSuccess)}, blocked=${String(isBlocked)})`);
+    }
   }
 }
 
