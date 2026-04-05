@@ -172,6 +172,7 @@ function createMockPhase2Stock(overrides?: Partial<Phase2Stock>): Phase2Stock {
     breakoutSignal: "52w_breakout",
     sector: "Technology",
     industry: "Consumer Electronics",
+    sepaGrade: "A",
     ...overrides,
   };
 }
@@ -187,6 +188,7 @@ function createMockWeeklyReportData(
     industryTop10: [createMockIndustryItem()],
     watchlist: createMockWatchlistStatusData(),
     gate5Candidates: [createMockPhase2Stock()],
+    watchlistChanges: { registered: [], exited: [], pending4of5: [] },
     ...overrides,
   };
 }

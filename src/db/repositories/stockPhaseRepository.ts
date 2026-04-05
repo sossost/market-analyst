@@ -79,17 +79,17 @@ export async function findPhase2Stocks(params: {
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met,
        sp.vol_ratio::text, sp.volume_confirmed, sp.breakout_signal,
-       s.sector, s.industry
+       s.sector, s.industry,
+       fs.grade AS sepa_grade
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
-     JOIN latest_scores fs ON fs.symbol = sp.symbol
+     LEFT JOIN latest_scores fs ON fs.symbol = sp.symbol
      WHERE sp.date = $1
        AND sp.phase = 2
        AND sp.rs_score >= $2
        AND sp.rs_score <= $3
        AND s.market_cap::numeric >= $5
        AND s.country = 'US'
-       AND fs.grade IN ('S', 'A')
      ORDER BY sp.rs_score DESC
      LIMIT $4`,
     [date, minRs, maxRs, limit, MIN_MARKET_CAP],
