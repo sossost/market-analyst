@@ -115,7 +115,7 @@ export async function findPrevWeekDate(
   const { rows } = await pool.query<PrevWeekDateRow>(
     `SELECT MAX(date) AS prev_week_date
      FROM sector_rs_daily
-     WHERE date < ($1::date - 5)::text`,
+     WHERE date < ($1::date - INTERVAL '5 days')::date::text`,
     [date],
   );
 
