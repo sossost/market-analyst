@@ -1107,6 +1107,9 @@ export function buildWeeklyHtml(
   const riskFactorsHtml = mdToHtml(insight.riskFactors);
   const nextWeekHtml = mdToHtml(insight.nextWeekWatchpoints);
   const thesisScenariosHtml = mdToHtml(insight.thesisScenarios);
+  const debateInsightHtml = mdToHtml(insight.debateInsight);
+  const narrativeEvolutionHtml = mdToHtml(insight.narrativeEvolution);
+  const thesisAccuracyHtml = mdToHtml(insight.thesisAccuracy);
   const regimeContextHtml = mdToHtml(insight.regimeContext);
 
   return `<!DOCTYPE html>
@@ -1146,7 +1149,18 @@ export function buildWeeklyHtml(
         <div class="content-block">${industryFlowHtml}</div>
       </section>
 
-      <!-- 섹션 3: 관심종목 궤적 -->
+      <!-- 섹션 3: 토론 인사이트 -->
+      <section>
+        <h2>💬 토론 인사이트</h2>
+        <h3>Thesis 충돌/강화</h3>
+        <div class="content-block">${debateInsightHtml}</div>
+        <h3>서사 체인 진화</h3>
+        <div class="content-block">${narrativeEvolutionHtml}</div>
+        <h3>Thesis 적중률 피드백</h3>
+        <div class="content-block">${thesisAccuracyHtml}</div>
+      </section>
+
+      <!-- 섹션 4: 관심종목 궤적 -->
       <section>
         <h2>🎯 관심종목 궤적</h2>
         ${watchlistHtml}

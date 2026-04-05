@@ -64,7 +64,19 @@ export function createCaptureWeeklyInsightTool(
           },
           thesisScenarios: {
             type: "string",
-            description: "현재 ACTIVE thesis와 이번 주 데이터 정합성. 진전된 thesis와 관망 중인 thesis 구분.",
+            description: "다음 주 확인할 thesis 체크포인트. 진전된 thesis와 관망 중인 thesis 구분.",
+          },
+          debateInsight: {
+            type: "string",
+            description: "토론 인사이트: thesis 간 충돌/강화 분석. 이번 주 데이터가 어느 thesis를 지지하는지, 애널리스트 간 합의/불일치 포인트.",
+          },
+          narrativeEvolution: {
+            type: "string",
+            description: "서사 체인 진화: narrative chain이 이번 주 어떻게 전개됐는지. 확장/약화/새 분기 여부.",
+          },
+          thesisAccuracy: {
+            type: "string",
+            description: "thesis 적중률 피드백: 과거 thesis 검증 결과가 현재 thesis 신뢰도에 미치는 영향. 적중/실패 사례.",
           },
           regimeContext: {
             type: "string",
@@ -85,6 +97,9 @@ export function createCaptureWeeklyInsightTool(
           "riskFactors",
           "nextWeekWatchpoints",
           "thesisScenarios",
+          "debateInsight",
+          "narrativeEvolution",
+          "thesisAccuracy",
           "regimeContext",
           "discordMessage",
         ],

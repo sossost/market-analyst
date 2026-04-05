@@ -119,6 +119,9 @@ async function main() {
     riskFactors: "- **EARLY_BEAR 레짐 지속**: Phase 2 비율 개선이나 탈출 기준까지 거리\n- **VIX 20 이상**: 안정 구간 미진입\n- **공포탐욕 극단적 공포**: 역사적 반등 구간이나 추가 하락 가능성",
     nextWeekWatchpoints: "### RS 가속 업종 Top 3\n- **Personal Products & Services** — RS 55.4 (+8.2)\n- **Consulting Services** — RS 56.1 (+6.5)\n- **Software - Services** — RS 39.3 (+5.3)",
     thesisScenarios: "- **AI 광통신 병목** ACTIVE → Technology RS 50 회복 여부 확인\n- **Financial Services 로테이션** → 섹터 RS 55 돌파 여부\n- **Energy 과열 조정** → 섹터 RS 70 하회 시 전환 확인",
+    debateInsight: "이번 주 **Energy 과열 조정** thesis와 **인프라 자금 유입** thesis가 Industrials에서 충돌하고 있다. Energy RS가 -4.5로 하락하면서 과열 조정 thesis가 힘을 얻는 반면, Industrials 내 Engineering(ECG RS 92, STRL RS 84) + Marine Shipping(RS 71.3 +3.9)이 동시에 강세를 보이며 인프라 thesis를 지지한다.\n\n애널리스트 3명은 Energy→Industrials 로테이션 진행 중으로 판단, 2명은 단기 되돌림으로 관망 입장.",
+    narrativeEvolution: "**AI 광통신 병목** 체인이 이번 주 약화 조짐. Technology 섹터 RS 43.5(최하위)에서 반도체(TER RS 93, ADI RS 73)만 버티고 Software/Communication은 이탈. 체인이 'AI 전반'에서 '반도체 단독'으로 축소 분기 중.\n\n**Financial Services 로테이션** 체인은 Banks-Regional(CAC, OSBC, BUSE, CNOB, INDB) 5개 종목이 동시에 게이트 후보에 올라오면서 확장 신호.",
+    thesisAccuracy: "지난 4주 thesis 적중률 62% (8/13). 최근 적중: Energy 과열 초기 경고(3주 전) → 실제 RS -4.5 하락. 최근 실패: Consumer Cyclical 반등 thesis → Phase 3 유지, RS 변화 0.0으로 무반응. 현재 ACTIVE thesis 중 신뢰도 조정: Energy 과열(HIGH→HIGH 유지), AI 광통신(HIGH→MED 하향 검토).",
     regimeContext: "EARLY_BEAR 레짐에서 Phase 2 비율 반등은 기술적 되돌림 수준. 추세 전환 확정(Phase 2 ≥ 40% + RECOVERY) 전까지 보수적 접근 유지.",
     discordMessage: "📊 주간 시장 분석\nEARLY_BEAR 레짐 지속 — 신규 등록 보수적 접근",
   };

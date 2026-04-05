@@ -247,8 +247,14 @@ export interface WeeklyReportInsight {
   riskFactors: string;
   /** 다음 주 관전 포인트: 확인이 필요한 시그널과 지표 */
   nextWeekWatchpoints: string;
-  /** Thesis 기반 시나리오: 현재 narrative chain과의 정합성 */
+  /** Thesis 기반 시나리오: 다음 주 확인할 체크포인트 */
   thesisScenarios: string;
+  /** 토론 인사이트: thesis 간 충돌/강화, 이번 주 데이터가 어느 thesis를 지지하는지 */
+  debateInsight: string;
+  /** 서사 체인 진화: narrative chain이 이번 주 어떻게 전개됐는지 (확장/약화/분기) */
+  narrativeEvolution: string;
+  /** Thesis 적중률: 과거 thesis 검증 결과가 현재 thesis 신뢰도에 미치는 영향 */
+  thesisAccuracy: string;
   /** 레짐 맥락 해석: 현재 시장 레짐과 전략적 포지셔닝 */
   regimeContext: string;
   /** Discord 핵심 요약 (3~5줄). 텍스트 전용, 링크 금지 */
@@ -274,6 +280,9 @@ export function validateWeeklyReportInsight(
     "riskFactors",
     "nextWeekWatchpoints",
     "thesisScenarios",
+    "debateInsight",
+    "narrativeEvolution",
+    "thesisAccuracy",
     "regimeContext",
     "discordMessage",
   ];
@@ -306,6 +315,9 @@ export function fillInsightDefaults(
     riskFactors: "",
     nextWeekWatchpoints: "",
     thesisScenarios: "",
+    debateInsight: "",
+    narrativeEvolution: "",
+    thesisAccuracy: "",
     regimeContext: "",
     discordMessage: "",
   };
@@ -349,6 +361,18 @@ export function fillInsightDefaults(
       typeof raw["thesisScenarios"] === "string"
         ? raw["thesisScenarios"]
         : defaults.thesisScenarios,
+    debateInsight:
+      typeof raw["debateInsight"] === "string"
+        ? raw["debateInsight"]
+        : defaults.debateInsight,
+    narrativeEvolution:
+      typeof raw["narrativeEvolution"] === "string"
+        ? raw["narrativeEvolution"]
+        : defaults.narrativeEvolution,
+    thesisAccuracy:
+      typeof raw["thesisAccuracy"] === "string"
+        ? raw["thesisAccuracy"]
+        : defaults.thesisAccuracy,
     regimeContext:
       typeof raw["regimeContext"] === "string"
         ? raw["regimeContext"]
