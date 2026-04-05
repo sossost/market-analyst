@@ -1040,11 +1040,11 @@ export function renderWatchlistChanges(
             const industry = stock?.industry ?? "—";
             const rs = stock?.rsScore != null ? String(stock.rsScore) : "—";
             const highStr = stock?.pctFromHigh52w != null
-              ? `<span class="${Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down"}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
+              ? `<span class="${colorClass(stock.pctFromHigh52w)}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
               : "—";
             const sepa = stock?.sepaGrade ?? "—";
             const lowStr = stock?.pctFromLow52w != null
-              ? `+${stock.pctFromLow52w.toFixed(0)}%`
+              ? `<span class="up">+${stock.pctFromLow52w.toFixed(0)}%</span>`
               : "—";
             const indData = stock?.industry != null ? industryRsMap.get(stock.industry) : null;
             let indRsStr = "—";
@@ -1060,7 +1060,7 @@ export function renderWatchlistChanges(
               <td><strong>${escapeHtml(c.symbol)}</strong></td>
               <td>${escapeHtml(industry)}</td>
               <td class="tc">${highStr}</td>
-              <td class="tc">${escapeHtml(lowStr)}</td>
+              <td class="tc">${lowStr}</td>
               <td class="tc">${escapeHtml(phase)}</td>
               <td class="tc">${escapeHtml(rs)}</td>
               <td class="tc">${escapeHtml(sepa)}</td>
