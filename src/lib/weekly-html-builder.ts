@@ -644,7 +644,7 @@ function renderFearGreed(fg: FearGreedData): string {
 export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
   const { weeklyTrend, phase1to2Transitions, latestSnapshot } = breadth;
 
-  // 주간 추이 테이블
+  // 주간 추이 테이블 (시장 평균 RS는 정의상 ~50 고정이므로 제외)
   const trendRows = weeklyTrend
     .map((t) => {
       const p2Str = `${t.phase2Ratio.toFixed(1)}%`;
@@ -652,7 +652,6 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
         <tr>
           <td>${escapeHtml(t.date)}</td>
           <td><strong>${escapeHtml(p2Str)}</strong></td>
-          <td>${escapeHtml(t.marketAvgRs.toFixed(1))}</td>
         </tr>`;
     })
     .join("");
@@ -665,7 +664,6 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
             <tr>
               <th>날짜</th>
               <th>Phase 2 비율</th>
-              <th>시장 평균 RS</th>
             </tr>
           </thead>
           <tbody>${trendRows}</tbody>
@@ -973,77 +971,60 @@ export function renderGate5Block(candidates: Phase2Stock[]): string {
       <div class="empty-state">Phase 2 + RS 60+ + SEPA S/A 조건을 충족하는 종목 없음</div>`;
   }
 
-  const cards = candidates
+  // 테이블 형태로 렌더링 — 카드 22개 스크롤보다 한눈에 비교 가능
+  const rows = candidates
     .map((stock) => {
       const phaseCls = phaseBadgeClass(stock.phase);
-      const newBadge = stock.isNewPhase2
-        ? '<span class="gate5-new-badge">신규 P2</span>'
-        : "";
-      const sectorStr = stock.sector != null ? escapeHtml(stock.sector) : "";
-      const industryStr = stock.industry != null ? ` · ${escapeHtml(stock.industry)}` : "";
-
-      // 5중 게이트 체크리스트 — 프로그래밍으로 판정 가능한 3개는 확정, 나머지 2개는 "에이전트 판단"
-      const gate1 = stock.phase === 2; // Phase 2
-      const gate2 = true; // 업종 RS ▲ — 개별 업종 RS 데이터가 이 타입에 없으므로 "확인 필요"로 표시
-      const gate3 = stock.rsScore >= 60; // RS 60+
-      // gate4 (thesis) / gate5 (SEPA) — 이 단계에서는 프로그래밍 판단 불가, LLM이 결정
-      const gateChecks = [
-        { label: "Phase 2", pass: gate1 },
-        { label: `RS ${stock.rsScore}`, pass: gate3 },
-        { label: "SEPA S/A", pass: true }, // get_phase2_stocks가 이미 S/A만 반환
-        { label: "업종RS ▲", pass: null as boolean | null }, // 에이전트 확인 필요
-        { label: "thesis", pass: null as boolean | null }, // 에이전트 확인 필요
-      ];
-      const gateHtml = gateChecks
-        .map((g) => {
-          if (g.pass === true) return `<span class="gate-check pass">✓ ${escapeHtml(g.label)}</span>`;
-          if (g.pass === false) return `<span class="gate-check fail">✗ ${escapeHtml(g.label)}</span>`;
-          return `<span class="gate-check pending">? ${escapeHtml(g.label)}</span>`;
-        })
-        .join("");
-
-      // 핵심 수치 미니 그리드 (글 나열 대신 시각적 칩)
-      const miniStats: string[] = [];
-      if (stock.pctFromHigh52w != null) {
-        const cls = Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down";
-        miniStats.push(`<span class="mini-stat"><span class="mini-label">고점 대비</span><span class="mini-val ${cls}">${stock.pctFromHigh52w.toFixed(0)}%</span></span>`);
-      }
-      if (stock.pctFromLow52w != null) {
-        miniStats.push(`<span class="mini-stat"><span class="mini-label">저점 대비</span><span class="mini-val up">+${stock.pctFromLow52w.toFixed(0)}%</span></span>`);
-      }
-      if (stock.ma150Slope != null) {
-        const slopeCls = stock.ma150Slope > 0 ? "up" : "down";
-        miniStats.push(`<span class="mini-stat"><span class="mini-label">MA150</span><span class="mini-val ${slopeCls}">${stock.ma150Slope > 0 ? "▲" : "▼"}</span></span>`);
-      }
-      if (stock.volRatio != null) {
-        const volCls = stock.volRatio >= 1.5 ? "up" : "neutral-color";
-        miniStats.push(`<span class="mini-stat"><span class="mini-label">거래량</span><span class="mini-val ${volCls}">${stock.volRatio.toFixed(1)}x</span></span>`);
-      }
-
-      const signalTag =
+      const newBadge = stock.isNewPhase2 ? ' <span class="gate5-new-badge">NEW</span>' : "";
+      const signalBadge =
         stock.breakoutSignal !== "" && stock.breakoutSignal !== "none"
-          ? `<span class="cond-tag signal">${escapeHtml(stock.breakoutSignal)}</span>`
+          ? ` <span class="cond-tag signal">${escapeHtml(stock.breakoutSignal)}</span>`
           : "";
+      const industryStr = stock.industry != null ? escapeHtml(stock.industry) : "—";
+
+      // 52주 고점 대비 — 가까울수록 좋음
+      const highStr = stock.pctFromHigh52w != null
+        ? `<span class="${Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down"}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
+        : "—";
+
+      // MA150 기울기 방향
+      const slopeStr = stock.ma150Slope != null
+        ? `<span class="${stock.ma150Slope > 0 ? "up" : "down"}">${stock.ma150Slope > 0 ? "▲" : "▼"}</span>`
+        : "—";
+
+      // 거래량 비율
+      const volStr = stock.volRatio != null
+        ? `<span class="${stock.volRatio >= 1.5 ? "up" : "neutral-color"}">${stock.volRatio.toFixed(1)}x</span>`
+        : "—";
 
       return `
-        <div class="gate5-card">
-          <div class="gate5-card-header">
-            <span class="gate5-ticker">${escapeHtml(stock.symbol)}</span>
-            <span class="phase-badge ${escapeHtml(phaseCls)}">P${escapeHtml(String(stock.phase))}</span>
-            <span class="gate5-meta">RS ${escapeHtml(String(stock.rsScore))}</span>
-            ${newBadge}${signalTag}
-          </div>
-          <div class="gate5-meta">${sectorStr}${industryStr}</div>
-          <div class="gate5-checks">${gateHtml}</div>
-          ${miniStats.length > 0 ? `<div class="mini-stats">${miniStats.join("")}</div>` : ""}
-        </div>`;
+        <tr>
+          <td><strong>${escapeHtml(stock.symbol)}</strong>${newBadge}${signalBadge}</td>
+          <td>${industryStr}</td>
+          <td>${escapeHtml(String(stock.rsScore))}</td>
+          <td>${highStr}</td>
+          <td>${slopeStr}</td>
+          <td>${volStr}</td>
+        </tr>`;
     })
     .join("");
 
   return `
     <h3>5중 게이트 후보 (${escapeHtml(String(count))}종목)</h3>
-    <p style="font-size:0.82rem;color:var(--text-muted);margin:-8px 0 12px;">Phase 2 + RS 60+ + SEPA S/A 통과. thesis·업종RS는 에이전트가 판단 후 등록.</p>
-    <div class="gate5-grid">${cards}</div>`;
+    <p style="font-size:0.82rem;color:var(--text-muted);margin:-4px 0 12px;">Phase 2 + RS 60+ + SEPA S/A 통과. 업종RS·thesis는 에이전트가 판단 후 등록.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th>업종</th>
+          <th>RS</th>
+          <th>고점대비</th>
+          <th>MA150</th>
+          <th>거래량</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────
@@ -1116,13 +1097,13 @@ export function buildWeeklyHtml(
         <h2>📊 주간 시장 구조 변화</h2>
         ${indexTableHtml}
         ${phase2TrendHtml}
-        <div class="content-block">${sectorRotationHtml}</div>
       </section>
 
       <!-- 섹션 1-2: 섹터 로테이션 -->
       <section>
         <h2>🔄 섹터 로테이션</h2>
         ${sectorTableHtml}
+        <div class="content-block">${sectorRotationHtml}</div>
       </section>
 
       <!-- 섹션 2: 업종 RS 주간 변화 -->
@@ -1136,7 +1117,7 @@ export function buildWeeklyHtml(
       <section>
         <h2>🎯 관심종목 궤적</h2>
         ${watchlistHtml}
-        <div class="content-block">${watchlistNarrativeHtml}</div>
+        ${data.watchlist.items.length > 0 ? `<div class="content-block">${watchlistNarrativeHtml}</div>` : ""}
       </section>
 
       <!-- 섹션 4: 5중 게이트 평가 + 등록/해제 -->

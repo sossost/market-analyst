@@ -543,7 +543,7 @@ describe("renderWatchlistSection", () => {
 // ─── renderGate5Block ─────────────────────────────────────────────────────────
 
 describe("renderGate5Block", () => {
-  it("정상: 종목 카드를 생성하고 헤더 N이 실제 카드 수와 일치한다", () => {
+  it("정상: 종목 행을 생성하고 헤더 N이 실제 행 수와 일치한다", () => {
     const candidates = [
       createMockPhase2Stock({ symbol: "NVDA" }),
       createMockPhase2Stock({ symbol: "AMD" }),
@@ -553,8 +553,10 @@ describe("renderGate5Block", () => {
     const result = renderGate5Block(candidates);
 
     expect(result).toContain("5중 게이트 후보 (3종목)");
-    const cardCount = (result.match(/class="gate5-card"/g) ?? []).length;
-    expect(cardCount).toBe(3);
+    expect(result).toContain("NVDA");
+    expect(result).toContain("AMD");
+    expect(result).toContain("AVGO");
+    expect(result).toContain("<table>");
   });
 
   it("빈 배열: 0종목 헤더 + 5중 게이트 통과 종목 없음 메시지를 반환한다", () => {
@@ -565,37 +567,35 @@ describe("renderGate5Block", () => {
     expect(result).not.toContain("gate5-card");
   });
 
-  it("isNewPhase2 true: 신규 P2 배지가 표시된다", () => {
+  it("isNewPhase2 true: NEW 배지가 표시된다", () => {
     const result = renderGate5Block([
       createMockPhase2Stock({ isNewPhase2: true }),
     ]);
 
-    expect(result).toContain("신규 P2");
+    expect(result).toContain("NEW");
     expect(result).toContain("gate5-new-badge");
   });
 
-  it("isNewPhase2 false: 신규 P2 배지가 없다", () => {
+  it("isNewPhase2 false: NEW 배지가 없다", () => {
     const result = renderGate5Block([
       createMockPhase2Stock({ isNewPhase2: false }),
     ]);
 
-    expect(result).not.toContain("신규 P2");
+    expect(result).not.toContain("gate5-new-badge");
   });
 
-  it("5중 게이트 체크리스트: pass/pending 상태가 표시된다", () => {
+  it("테이블에 RS, 고점대비, MA150, 거래량 컬럼이 있다", () => {
     const result = renderGate5Block([
-      createMockPhase2Stock({ phase: 2, rsScore: 75 }),
+      createMockPhase2Stock({ rsScore: 75, pctFromHigh52w: -12.5, ma150Slope: 0.05, volRatio: 1.2 }),
     ]);
 
-    // 프로그래밍 확정: Phase 2, RS 75, SEPA S/A → pass
-    expect(result).toContain('class="gate-check pass"');
-    expect(result).toContain("✓ Phase 2");
-    expect(result).toContain("✓ RS 75");
-    expect(result).toContain("✓ SEPA S/A");
-    // 에이전트 판단 필요: 업종RS, thesis → pending
-    expect(result).toContain('class="gate-check pending"');
-    expect(result).toContain("? 업종RS");
-    expect(result).toContain("? thesis");
+    expect(result).toContain("RS");
+    expect(result).toContain("고점대비");
+    expect(result).toContain("MA150");
+    expect(result).toContain("거래량");
+    expect(result).toContain("-13%"); // toFixed(0) of -12.5
+    expect(result).toContain("▲"); // positive slope
+    expect(result).toContain("1.2x");
   });
 
   it("breakoutSignal이 none이 아니면 signal 태그가 추가된다", () => {
@@ -616,11 +616,10 @@ describe("renderGate5Block", () => {
   });
 
   it("1종목이면 헤더도 1종목으로 일치한다", () => {
-    const result = renderGate5Block([createMockPhase2Stock()]);
+    const result = renderGate5Block([createMockPhase2Stock({ symbol: "TEST" })]);
 
     expect(result).toContain("5중 게이트 후보 (1종목)");
-    const cardCount = (result.match(/class="gate5-card"/g) ?? []).length;
-    expect(cardCount).toBe(1);
+    expect(result).toContain("TEST");
   });
 });
 
