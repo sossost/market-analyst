@@ -547,6 +547,40 @@ function colorClass(value: number): "up" | "down" | "neutral-color" {
   return "neutral-color";
 }
 
+/**
+ * VIX 전용 컬러 — 일반 지수와 반대.
+ * VIX 상승 = 시장 불안 → 한국식 하락색(파랑, down)
+ * VIX 하락 = 시장 안도 → 한국식 상승색(빨강, up)
+ */
+function vixColorClass(change: number): "up" | "down" | "neutral-color" {
+  if (change > 0) return "down";
+  if (change < 0) return "up";
+  return "neutral-color";
+}
+
+const VIX_FEAR_THRESHOLD = 25;
+
+function renderVixCard(idx: IndexReturn): string {
+  const vixChange = idx.weekEndClose - idx.weekStartClose;
+  const cls = vixColorClass(vixChange);
+  const directionLabel = vixChange > 0 ? "▲ 경계" : vixChange < 0 ? "▼ 안도" : "—";
+  const fearBadge =
+    idx.weekHigh >= VIX_FEAR_THRESHOLD
+      ? `<div style="font-size:0.72rem;color:var(--orange);font-weight:600;margin-top:4px;">주중 공포 임계선 도달</div>`
+      : "";
+
+  return `
+    <div class="index-card">
+      <div class="label">${escapeHtml(idx.name)}</div>
+      <div class="value">${escapeHtml(formatNumber(idx.weekEndClose))}</div>
+      <div class="change ${escapeHtml(cls)}">${escapeHtml(directionLabel)}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+        고 ${escapeHtml(formatNumber(idx.weekHigh))} / 저 ${escapeHtml(formatNumber(idx.weekLow))}
+      </div>
+      ${fearBadge}
+    </div>`;
+}
+
 function phaseBadgeClass(phase: number): string {
   const map: Record<number, string> = { 1: "p1", 2: "p2", 3: "p3", 4: "p4" };
   return map[phase] ?? "p1";
@@ -590,6 +624,10 @@ export function renderIndexTable(
 
   const cards = indices
     .map((idx) => {
+      if (idx.symbol === "^VIX") {
+        return renderVixCard(idx);
+      }
+
       const cls = colorClass(idx.weeklyChangePercent);
       const changeStr = formatPercent(idx.weeklyChangePercent);
       const posLabel = closePositionLabel(idx.closePosition);
@@ -612,6 +650,16 @@ export function renderIndexTable(
   return `<div class="index-grid">${cards}</div>${fearGreedHtml}`;
 }
 
+function getFearGreedDirectionLabel(score: number, previous1Week: number): string {
+  const isRising = score > previous1Week;
+  const isGreedZone = score >= 50;
+
+  if (isRising && isGreedZone) return "탐욕 심화";
+  if (isRising && !isGreedZone) return "공포 완화";
+  if (!isRising && !isGreedZone) return "공포 심화";
+  return "탐욕 약화";
+}
+
 function renderFearGreed(fg: FearGreedData): string {
   const scoreCls = fg.score <= 25 ? "up" : fg.score >= 75 ? "down" : "";
   const prevCloseStr =
@@ -620,7 +668,7 @@ function renderFearGreed(fg: FearGreedData): string {
       : "";
   const prev1wStr =
     fg.previous1Week != null
-      ? `| 1주전 ${fg.previous1Week.toFixed(1)}`
+      ? `| 1주전 ${fg.previous1Week.toFixed(1)} → 현재 ${fg.score.toFixed(1)} (${getFearGreedDirectionLabel(fg.score, fg.previous1Week)})`
       : "";
   const prev1mStr =
     fg.previous1Month != null

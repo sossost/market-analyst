@@ -211,10 +211,11 @@ function computeWeeklyQuote(
   const weekMonday = getWeekMondayUtc(weekEndDate);
 
   // 이번 주 거래일: weekMonday 이상인 rows
-  // 전주 마지막 거래일: weekMonday 이전 날짜 중 가장 최근 row
-  const prevWeekRow = chronological.findLast(
+  // 전주 마지막 거래일: weekMonday 이전 날짜 중 가장 최근 row (chronological 정렬이므로 마지막 요소)
+  const prevWeekRows = chronological.filter(
     (r) => new Date(`${r.date}T00:00:00Z`) < weekMonday,
   );
+  const prevWeekRow = prevWeekRows.length > 0 ? prevWeekRows[prevWeekRows.length - 1] : null;
 
   if (prevWeekRow == null) return null;
 

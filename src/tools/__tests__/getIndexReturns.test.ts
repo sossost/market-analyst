@@ -41,9 +41,10 @@ function computeWeeklyQuoteTest(rows: TestRow[]): {
   const weekEndDate = rows[0].date;
   const weekMonday = getWeekMondayUtc(weekEndDate);
 
-  const prevWeekRow = chronological.findLast(
+  const prevWeekRows = chronological.filter(
     (r) => new Date(`${r.date}T00:00:00Z`) < weekMonday,
   );
+  const prevWeekRow = prevWeekRows.length > 0 ? prevWeekRows[prevWeekRows.length - 1] : null;
 
   if (prevWeekRow == null) return null;
 

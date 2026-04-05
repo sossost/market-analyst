@@ -276,6 +276,156 @@ describe("renderIndexTable", () => {
 
     expect(result).toContain('class="change down"');
   });
+
+  it("VIX 카드: weeklyChangePercent 대신 방향 레이블(▲/▼)을 표시한다", () => {
+    const vix = createMockIndexReturn({
+      symbol: "^VIX",
+      name: "VIX",
+      weekStartClose: 25,
+      weekEndClose: 23,
+      weeklyChangePercent: -8.0, // 이 값은 VIX 카드에서 표시되지 않아야 함
+      weekHigh: 27,
+      weekLow: 21,
+    });
+
+    const result = renderIndexTable([vix], null);
+
+    // 방향 레이블이 있고 weeklyChangePercent 포맷(-8.00%)이 없어야 함
+    expect(result).toContain("▼ 안도");
+    expect(result).not.toContain("-8.00%");
+  });
+
+  it("VIX 상승 시 down 컬러 클래스가 적용된다 (역방향 — 시장 불안)", () => {
+    const vix = createMockIndexReturn({
+      symbol: "^VIX",
+      name: "VIX",
+      weekStartClose: 20,
+      weekEndClose: 28,
+      weekHigh: 30,
+      weekLow: 19,
+    });
+
+    const result = renderIndexTable([vix], null);
+
+    expect(result).toContain("▲ 경계");
+    expect(result).toContain('class="change down"');
+  });
+
+  it("VIX 하락 시 up 컬러 클래스가 적용된다 (역방향 — 시장 안도)", () => {
+    const vix = createMockIndexReturn({
+      symbol: "^VIX",
+      name: "VIX",
+      weekStartClose: 30,
+      weekEndClose: 22,
+      weekHigh: 31,
+      weekLow: 20,
+    });
+
+    const result = renderIndexTable([vix], null);
+
+    expect(result).toContain("▼ 안도");
+    expect(result).toContain('class="change up"');
+  });
+
+  it("VIX weekHigh >= 25: 공포 임계선 도달 배지가 표시된다", () => {
+    const vix = createMockIndexReturn({
+      symbol: "^VIX",
+      name: "VIX",
+      weekStartClose: 22,
+      weekEndClose: 24,
+      weekHigh: 26,
+      weekLow: 21,
+    });
+
+    const result = renderIndexTable([vix], null);
+
+    expect(result).toContain("주중 공포 임계선 도달");
+  });
+
+  it("VIX weekHigh < 25: 공포 임계선 도달 배지가 없다", () => {
+    const vix = createMockIndexReturn({
+      symbol: "^VIX",
+      name: "VIX",
+      weekStartClose: 18,
+      weekEndClose: 20,
+      weekHigh: 22,
+      weekLow: 17,
+    });
+
+    const result = renderIndexTable([vix], null);
+
+    expect(result).not.toContain("주중 공포 임계선 도달");
+  });
+
+  it("VIX 카드가 주간 레인지(고/저)를 표시한다", () => {
+    const vix = createMockIndexReturn({
+      symbol: "^VIX",
+      name: "VIX",
+      weekStartClose: 20,
+      weekEndClose: 23,
+      weekHigh: 27.5,
+      weekLow: 18.3,
+    });
+
+    const result = renderIndexTable([vix], null);
+
+    expect(result).toContain("27.5");
+    expect(result).toContain("18.3");
+  });
+});
+
+// ─── Fear & Greed 방향 레이블 ─────────────────────────────────────────────────
+
+describe("renderIndexTable — Fear & Greed 방향 레이블", () => {
+  it("score > previous1Week + score >= 50: 탐욕 심화 레이블이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 65, previous1Week: 55 });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).toContain("탐욕 심화");
+  });
+
+  it("score > previous1Week + score < 50: 공포 완화 레이블이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 45, previous1Week: 35 });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).toContain("공포 완화");
+  });
+
+  it("score < previous1Week + score < 50: 공포 심화 레이블이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 30, previous1Week: 45 });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).toContain("공포 심화");
+  });
+
+  it("score < previous1Week + score >= 50: 탐욕 약화 레이블이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 55, previous1Week: 70 });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).toContain("탐욕 약화");
+  });
+
+  it("previous1Week null: 방향 레이블 없이 기존 방식으로 표시된다", () => {
+    const fg = createMockFearGreed({ score: 50, previous1Week: null });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).not.toContain("탐욕");
+    expect(result).not.toContain("공포 심화");
+    expect(result).not.toContain("공포 완화");
+  });
+
+  it("previous1Week가 있을 때 '1주전 → 현재' 형식으로 표시된다", () => {
+    const fg = createMockFearGreed({ score: 45.2, previous1Week: 31.5 });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).toContain("1주전 31.5 → 현재 45.2");
+  });
 });
 
 // ─── renderPhase2TrendTable ───────────────────────────────────────────────────
