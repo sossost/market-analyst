@@ -263,8 +263,9 @@ ${round2Section}
 - \`sector_rotation\`: 섹터 로테이션 전망. 기본 timeframe 30~60일.
 - \`short_term_outlook\`: 단기 시장/지수 전망. 기본 timeframe 30일.
 
-**short_term_outlook 범위 제한 (중요 — 적중률 39.1% 개선 목적):**
-- 이 카테고리는 시장 심리/변동성의 **타이밍 예측**에서 체계적으로 실패합니다 (14건 INVALIDATED vs 9건 CONFIRMED).
+**short_term_outlook 범위 제한 (중요 — 적중률 41.7%, 역신호 수준):**
+- 이 카테고리는 시장 심리/변동성의 **타이밍 예측**에서 체계적으로 실패합니다 (14건 INVALIDATED vs 10건 CONFIRMED).
+- **시스템 강제 규칙**: 이 카테고리의 confidence는 자동으로 \`low\`로 다운그레이드됩니다. 세션당 최대 1건만 저장됩니다.
 - 아래 규칙을 반드시 준수하세요:
 
 - **금지 패턴 (thesis로 추출하지 마세요):**
@@ -495,6 +496,19 @@ const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
 const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
 
 /**
+ * confidence 자동 하향 대상 카테고리.
+ * 적중률 50% 미만 카테고리를 등록한다.
+ * #627: short_term_outlook 적중률 41.7% — 전 에이전트 단기 전망 역신호.
+ * 해당 카테고리 thesis는 confidence를 강제 low로 다운그레이드.
+ *
+ * 참고: sentiment/macro/geopolitics는 ALLOWED_CATEGORIES_PER_PERSONA에 의해
+ * short_term_outlook이 sector_rotation으로 먼저 재분류되므로 이 가드레일은
+ * 실질적으로 tech 에이전트에만 적용된다. sentiment는 별도로
+ * CONFIDENCE_DOWNGRADE_PERSONAS에 의해 confidence가 low로 하향된다.
+ */
+const CONFIDENCE_DOWNGRADE_CATEGORIES = new Set<ThesisCategory>(["short_term_outlook"]);
+
+/**
  * sentiment 에이전트의 thesis에 수치 예측 패턴이 포함되어 있는지 검사한다.
  * VIX/F&G/RS 등 지표 + 구체적 수치 + 예측 표현(전망, 도달, 회복, 하회 등) 조합을 검출.
  * 순수 함수 — 테스트 용이.
@@ -518,6 +532,31 @@ const SENTIMENT_NUMERIC_PREDICTION_PATTERNS: RegExp[] = [
 
 export function containsNumericPrediction(thesis: string): boolean {
   return SENTIMENT_NUMERIC_PREDICTION_PATTERNS.some((pattern) => pattern.test(thesis));
+}
+
+/**
+ * short_term_outlook 카테고리 thesis를 1회 추출당 최대 1건으로 제한한다.
+ * 2건 이상이면 첫 번째만 유지, 나머지 드롭 + 로그.
+ * #627: 적중률 41.7% — 발행량 자체를 억제하여 역신호 노출 최소화.
+ * 참고: extractThesesFromText / extractDebateOutput은 debate당 1회 호출되므로
+ * 추출당 1건 = 사실상 debate당 1건.
+ */
+const MAX_SHORT_TERM_OUTLOOK_PER_EXTRACTION = 1;
+
+export function filterShortTermOutlookCap(theses: Thesis[]): Thesis[] {
+  let count = 0;
+  return theses.filter((t) => {
+    if (t.category !== "short_term_outlook") return true;
+    count++;
+    if (count > MAX_SHORT_TERM_OUTLOOK_PER_EXTRACTION) {
+      logger.info(
+        "Round3",
+        `short_term_outlook thesis 초과 드롭 (${count}/${MAX_SHORT_TERM_OUTLOOK_PER_EXTRACTION}건 제한): "${t.thesis.slice(0, 60)}..." (#627 가드레일)`,
+      );
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -580,6 +619,19 @@ function normalizeThesisFields(
       );
       confidence = downgraded;
     }
+  }
+
+  // 저적중 카테고리 confidence 자동 하향 (#627)
+  if (
+    CONFIDENCE_DOWNGRADE_CATEGORIES.has(category) &&
+    VALID_CONFIDENCE.has(confidence) &&
+    confidence !== "low"
+  ) {
+    logger.info(
+      "Round3",
+      `${category} 카테고리 thesis confidence 하향: ${confidence} → low (카테고리 적중률 보정 #627)`,
+    );
+    confidence = "low";
   }
 
   const narrativeChain = normalizeNarrativeChain(obj.narrativeChain);
@@ -661,7 +713,8 @@ export function extractThesesFromText(text: string): ExtractionResult {
       logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
     }
     const filtered = filterNumericPredictions(validated);
-    return { theses: filtered, cleanReport };
+    const capped = filterShortTermOutlookCap(filtered);
+    return { theses: capped, cleanReport };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
@@ -697,7 +750,8 @@ export function extractDebateOutput(text: string): DebateExtractionResult {
       if (validated.length < parsed.length) {
         logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
       }
-      return filterNumericPredictions(validated);
+      const filtered = filterNumericPredictions(validated);
+      return filterShortTermOutlookCap(filtered);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
