@@ -111,9 +111,11 @@ async function main() {
   const pending4of5 = (stocks as Array<{ symbol: string; industry: string | null; rsScore: number; sepaGrade: string | null }>)
     .filter((s) => {
       if (s.industry == null) return false;
+      // SEPA S/A 필수
+      if (s.sepaGrade !== "S" && s.sepaGrade !== "A") return false;
+      // 업종RS 상승
       const change = industryChangeMap.get(s.industry);
       if (change == null || change <= 0) return false;
-      // SEPA S/A는 이미 SQL 필터로 통과
       return true;
     })
     .map((s) => ({

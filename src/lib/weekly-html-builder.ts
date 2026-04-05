@@ -1001,8 +1001,19 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
  * - pending4of5: 기술적 4개 게이트 충족, thesis 미충족 예비
  * - exited: 이번 주 해제 확정
  */
-export function renderWatchlistChanges(changes: WeeklyReportData["watchlistChanges"]): string {
+export function renderWatchlistChanges(
+  changes: WeeklyReportData["watchlistChanges"],
+  candidates: Phase2Stock[] = [],
+  industries: IndustryItem[] = [],
+): string {
   const { registered, pending4of5, exited } = changes;
+
+  // 종목 데이터 룩업맵
+  const stockMap = new Map(candidates.map((s) => [s.symbol, s]));
+  const industryChangeMap = new Map<string, number>();
+  for (const ind of industries) {
+    if (ind.changeWeek != null) industryChangeMap.set(ind.industry, ind.changeWeek);
+  }
 
   const hasAny = registered.length > 0 || exited.length > 0 || pending4of5.length > 0;
 
@@ -1022,23 +1033,32 @@ export function renderWatchlistChanges(changes: WeeklyReportData["watchlistChang
     ? `
       <h3>예비 관심종목 (${escapeHtml(String(pending4of5.length))}종목 — 4/5, thesis 미충족)</h3>
       <table>
-        <thead><tr><th>종목</th><th>업종</th><th>RS</th><th>P2</th><th>RS60</th><th>SEPA</th><th>업종RS</th><th>thesis</th></tr></thead>
+        <thead><tr><th>종목</th><th>업종</th><th>RS</th><th>고점대비</th><th>P2</th><th>RS60</th><th>SEPA</th><th>업종RS</th><th>thesis</th><th>통과</th></tr></thead>
         <tbody>
           ${pending4of5.map((c) => {
-            // reason에서 RS와 업종 추출: "4/5 통과 (thesis 미확인) — RS 95, Semiconductors, 업종RS ▲"
-            const rsMatch = c.reason.match(/RS (\d+)/);
-            const rs = rsMatch != null ? rsMatch[1] : "—";
-            const parts = c.reason.split("— ")[1] ?? "";
-            const industry = parts.split(", ").slice(1, -1).join(", ") || "—";
+            const stock = stockMap.get(c.symbol);
+            const industry = stock?.industry ?? "—";
+            const rs = stock?.rsScore != null ? String(stock.rsScore) : "—";
+            const highStr = stock?.pctFromHigh52w != null
+              ? `<span class="${Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down"}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
+              : "—";
+            const phase = stock?.phase != null ? `P${stock.phase}` : "—";
+            const sepa = stock?.sepaGrade ?? "—";
+            const indChange = stock?.industry != null ? industryChangeMap.get(stock.industry) : null;
+            const indRsStr = indChange != null
+              ? `<span class="${colorClass(indChange)}">${indChange >= 0 ? "+" : ""}${indChange.toFixed(1)}</span>`
+              : "—";
             return `<tr>
               <td><strong>${escapeHtml(c.symbol)}</strong></td>
               <td>${escapeHtml(industry)}</td>
               <td class="tc">${escapeHtml(rs)}</td>
-              <td class="tc"><span class="gate-check pass">✓</span></td>
-              <td class="tc"><span class="gate-check pass">✓</span></td>
-              <td class="tc"><span class="gate-check pass">✓</span></td>
-              <td class="tc"><span class="gate-check pass">✓</span></td>
+              <td class="tc">${highStr}</td>
+              <td class="tc">${escapeHtml(phase)}</td>
+              <td class="tc">${escapeHtml(rs)}</td>
+              <td class="tc">${escapeHtml(sepa)}</td>
+              <td class="tc">${indRsStr}</td>
               <td class="tc"><span class="gate-check pending">?</span></td>
+              <td class="tc">4/5</td>
             </tr>`;
           }).join("")}
         </tbody>
@@ -1119,7 +1139,7 @@ export function buildWeeklyHtml(
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
   const watchlistHtml = renderWatchlistSection(data.watchlist);
-  const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges);
+  const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges, data.gate5Candidates, data.industryTop10);
 
   // 해석 블록: LLM 텍스트 → marked HTML
   const sectorRotationHtml = mdToHtml(insight.sectorRotationNarrative);
