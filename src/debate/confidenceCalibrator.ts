@@ -558,7 +558,9 @@ export function formatModeratorPerformanceContext(
     lines.push("1. 이 분석가의 의견은 **0.5배 가중치**로 취급하세요.");
     lines.push("2. 이 분석가의 **단독 의견**(다른 분석가가 동의하지 않는)은 합의에서 **완전 제외**하세요.");
     lines.push("3. 다른 분석가의 근거로 보강될 때만 합의에 반영하되, 비중은 보강한 분석가의 적중률 기준으로 설정하세요.");
-    lines.push("4. 이 분석가의 thesis confidence는 시스템에서 자동 하향됩니다. 모더레이터가 추가 상향하지 마세요.");
+    if (lowReliabilityPersonas.includes(PERSONA_LABEL_KR.sentiment)) {
+      lines.push(`4. **${PERSONA_LABEL_KR.sentiment}**의 thesis confidence는 시스템에서 자동 하향됩니다. 모더레이터가 추가 상향하지 마세요.`);
+    }
   }
 
   return lines.join("\n");
