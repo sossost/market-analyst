@@ -985,10 +985,10 @@ export function renderGate5Block(
   const rows = candidates
     .map((stock) => {
       const newBadge = stock.isNewPhase2 ? ' <span class="gate5-new-badge">NEW</span>' : "";
-      const signalBadge =
-        stock.breakoutSignal !== "" && stock.breakoutSignal !== "none"
-          ? ` <span class="cond-tag signal">${escapeHtml(stock.breakoutSignal)}</span>`
-          : "";
+      const hasSignal = stock.breakoutSignal !== "" && stock.breakoutSignal !== "none";
+      const signalBadge = hasSignal
+        ? ` <span class="cond-tag signal">${escapeHtml(stock.breakoutSignal)}</span>`
+        : "";
       const industryStr = stock.industry != null ? escapeHtml(stock.industry) : "—";
 
       // 5중 게이트 개별 판정
@@ -1026,15 +1026,18 @@ export function renderGate5Block(
           <td>${industryStr}</td>
           <td>${escapeHtml(String(stock.rsScore))}</td>
           <td>${highStr}</td>
-          <td style="text-align:center;">${g1}${g2}${g3}${g4}${g5}</td>
-          <td style="text-align:center;">${gateCount}/5</td>
+          <td style="text-align:center;">${g1}</td>
+          <td style="text-align:center;">${g2}</td>
+          <td style="text-align:center;">${g3}</td>
+          <td style="text-align:center;">${g4}</td>
+          <td style="text-align:center;">${g5}</td>
+          <td style="text-align:center;font-weight:600;">${gateCount}/5</td>
         </tr>`;
     })
     .join("");
 
   return `
     <h3>5중 게이트 후보 (${escapeHtml(String(count))}종목)</h3>
-    <p style="font-size:0.82rem;color:var(--text-muted);margin:-4px 0 12px;">게이트: P2=Phase2 · RS=RS60+ · S=SEPA S/A · 업=업종RS▲ · T=thesis. ?=에이전트 판단 대기.</p>
     <table>
       <thead>
         <tr>
@@ -1042,7 +1045,11 @@ export function renderGate5Block(
           <th>업종</th>
           <th>RS</th>
           <th>고점대비</th>
-          <th>게이트 (P2·RS·S·업·T)</th>
+          <th>P2</th>
+          <th>RS60</th>
+          <th>SEPA</th>
+          <th>업종RS</th>
+          <th>thesis</th>
           <th>통과</th>
         </tr>
       </thead>
