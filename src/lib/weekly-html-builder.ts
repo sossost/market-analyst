@@ -697,36 +697,7 @@ function renderFearGreed(fg: FearGreedData): string {
 export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
   const { weeklyTrend, phase1to2Transitions, latestSnapshot } = breadth;
 
-  // Phase 2 추이: 5행 테이블 대신 시작→끝 한 줄로 압축
-  let trendSummary = "";
-  if (weeklyTrend.length >= 2) {
-    const first = weeklyTrend[0];
-    const last = weeklyTrend[weeklyTrend.length - 1];
-    const change = last.phase2Ratio - first.phase2Ratio;
-    const changeCls = colorClass(change);
-    const changeStr = `${change >= 0 ? "+" : ""}${change.toFixed(1)}%p`;
-    trendSummary = `
-      <div class="stat-row">
-        <div class="stat-chip">
-          <span class="stat-label">Phase 2 비율 (${escapeHtml(last.date)})</span>
-          <span class="stat-value">${last.phase2Ratio.toFixed(1)}%</span>
-        </div>
-        <div class="stat-chip">
-          <span class="stat-label">주간 변화 (${escapeHtml(first.date)} → ${escapeHtml(last.date)})</span>
-          <span class="stat-value ${escapeHtml(changeCls)}">${first.phase2Ratio.toFixed(1)}% → ${last.phase2Ratio.toFixed(1)}% (${escapeHtml(changeStr)})</span>
-        </div>
-      </div>`;
-  } else if (weeklyTrend.length === 1) {
-    trendSummary = `
-      <div class="stat-row">
-        <div class="stat-chip">
-          <span class="stat-label">Phase 2 비율 (${escapeHtml(weeklyTrend[0].date)})</span>
-          <span class="stat-value">${weeklyTrend[0].phase2Ratio.toFixed(1)}%</span>
-        </div>
-      </div>`;
-  }
-
-  // Phase 분포 바
+  // Phase 분포 바 + 주간 변화 (중복 제거: 바 하나에 변화량만 주석)
   const snap = latestSnapshot;
   const total = snap.totalStocks > 0 ? snap.totalStocks : 1;
   const p1Pct = ((snap.phaseDistribution.phase1 / total) * 100).toFixed(1);
@@ -734,8 +705,19 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
   const p3Pct = ((snap.phaseDistribution.phase3 / total) * 100).toFixed(1);
   const p4Pct = ((snap.phaseDistribution.phase4 / total) * 100).toFixed(1);
 
+  // 주간 Phase 2 변화량 계산
+  let p2WeeklyChange = "";
+  if (weeklyTrend.length >= 2) {
+    const first = weeklyTrend[0];
+    const last = weeklyTrend[weeklyTrend.length - 1];
+    const change = last.phase2Ratio - first.phase2Ratio;
+    const cls = colorClass(change);
+    const sign = change >= 0 ? "+" : "";
+    p2WeeklyChange = ` <span class="${escapeHtml(cls)}" style="font-weight:400;font-size:0.85rem;">(주간 ${sign}${change.toFixed(1)}%p)</span>`;
+  }
+
   const phaseBar = `
-    <h3>Phase 분포 (${escapeHtml(snap.date)})</h3>
+    <h3>Phase 분포${p2WeeklyChange}</h3>
     <div class="phase-bar">
       <div class="seg p1" style="width:${escapeHtml(p1Pct)}%"></div>
       <div class="seg p2" style="width:${escapeHtml(p2Pct)}%"></div>
@@ -796,7 +778,7 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
       }
     </div>`;
 
-  return `${trendSummary}${phaseBar}${statsHtml}`;
+  return `${phaseBar}${statsHtml}`;
 }
 
 /**
@@ -1039,9 +1021,28 @@ export function renderWatchlistChanges(changes: WeeklyReportData["watchlistChang
   const pending4of5Html = pending4of5.length > 0
     ? `
       <h3>예비 관심종목 (${escapeHtml(String(pending4of5.length))}종목 — 4/5, thesis 미충족)</h3>
-      <div class="gate5-grid">
-        ${pending4of5.map((c) => renderWatchlistChangeCard(c, "pending")).join("")}
-      </div>`
+      <table>
+        <thead><tr><th>종목</th><th>업종</th><th>RS</th><th>P2</th><th>RS60</th><th>SEPA</th><th>업종RS</th><th>thesis</th></tr></thead>
+        <tbody>
+          ${pending4of5.map((c) => {
+            // reason에서 RS와 업종 추출: "4/5 통과 (thesis 미확인) — RS 95, Semiconductors, 업종RS ▲"
+            const rsMatch = c.reason.match(/RS (\d+)/);
+            const rs = rsMatch != null ? rsMatch[1] : "—";
+            const parts = c.reason.split("— ")[1] ?? "";
+            const industry = parts.split(", ").slice(1, -1).join(", ") || "—";
+            return `<tr>
+              <td><strong>${escapeHtml(c.symbol)}</strong></td>
+              <td>${escapeHtml(industry)}</td>
+              <td class="tc">${escapeHtml(rs)}</td>
+              <td class="tc"><span class="gate-check pass">✓</span></td>
+              <td class="tc"><span class="gate-check pass">✓</span></td>
+              <td class="tc"><span class="gate-check pass">✓</span></td>
+              <td class="tc"><span class="gate-check pass">✓</span></td>
+              <td class="tc"><span class="gate-check pending">?</span></td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>`
     : "";
 
   const exitedHtml = exited.length > 0
