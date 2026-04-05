@@ -697,31 +697,34 @@ function renderFearGreed(fg: FearGreedData): string {
 export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
   const { weeklyTrend, phase1to2Transitions, latestSnapshot } = breadth;
 
-  // 주간 추이 테이블 (시장 평균 RS는 정의상 ~50 고정이므로 제외)
-  const trendRows = weeklyTrend
-    .map((t) => {
-      const p2Str = `${t.phase2Ratio.toFixed(1)}%`;
-      return `
-        <tr>
-          <td>${escapeHtml(t.date)}</td>
-          <td><strong>${escapeHtml(p2Str)}</strong></td>
-        </tr>`;
-    })
-    .join("");
-
-  const trendTable =
-    weeklyTrend.length > 0
-      ? `
-        <table>
-          <thead>
-            <tr>
-              <th>날짜</th>
-              <th>Phase 2 비율</th>
-            </tr>
-          </thead>
-          <tbody>${trendRows}</tbody>
-        </table>`
-      : '<div class="empty-state">주간 추이 데이터 없음</div>';
+  // Phase 2 추이: 5행 테이블 대신 시작→끝 한 줄로 압축
+  let trendSummary = "";
+  if (weeklyTrend.length >= 2) {
+    const first = weeklyTrend[0];
+    const last = weeklyTrend[weeklyTrend.length - 1];
+    const change = last.phase2Ratio - first.phase2Ratio;
+    const changeCls = colorClass(change);
+    const changeStr = `${change >= 0 ? "+" : ""}${change.toFixed(1)}%p`;
+    trendSummary = `
+      <div class="stat-row">
+        <div class="stat-chip">
+          <span class="stat-label">Phase 2 비율 (${escapeHtml(last.date)})</span>
+          <span class="stat-value">${last.phase2Ratio.toFixed(1)}%</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-label">주간 변화 (${escapeHtml(first.date)} → ${escapeHtml(last.date)})</span>
+          <span class="stat-value ${escapeHtml(changeCls)}">${first.phase2Ratio.toFixed(1)}% → ${last.phase2Ratio.toFixed(1)}% (${escapeHtml(changeStr)})</span>
+        </div>
+      </div>`;
+  } else if (weeklyTrend.length === 1) {
+    trendSummary = `
+      <div class="stat-row">
+        <div class="stat-chip">
+          <span class="stat-label">Phase 2 비율 (${escapeHtml(weeklyTrend[0].date)})</span>
+          <span class="stat-value">${weeklyTrend[0].phase2Ratio.toFixed(1)}%</span>
+        </div>
+      </div>`;
+  }
 
   // Phase 분포 바
   const snap = latestSnapshot;
@@ -793,7 +796,7 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
       }
     </div>`;
 
-  return `${trendTable}${phaseBar}${statsHtml}`;
+  return `${trendSummary}${phaseBar}${statsHtml}`;
 }
 
 /**

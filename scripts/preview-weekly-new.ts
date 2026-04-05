@@ -97,6 +97,32 @@ async function main() {
   const stocks = Array.isArray(phase2Raw.stocks) ? phase2Raw.stocks : [];
   console.log(`  ✓ ${stocks.length} gate5 candidates`);
 
+  // 6.5. 전체 업종 RS 조회 (게이트 판정용 — Top 10이 아닌 전체)
+  console.log("[6.5] 전체 업종 RS 조회 (게이트 판정)...");
+  const allIndustryRaw = parse(await getLeadingSectors.execute({ mode: "industry", limit: 200, date: targetDate }));
+  const allIndustries = Array.isArray(allIndustryRaw.industries) ? allIndustryRaw.industries : [];
+  const industryChangeMap = new Map<string, number>();
+  for (const ind of allIndustries as Array<{ industry: string; changeWeek: number | null }>) {
+    if (ind.changeWeek != null) industryChangeMap.set(ind.industry, ind.changeWeek);
+  }
+  console.log(`  ✓ ${industryChangeMap.size} industries with changeWeek`);
+
+  // 4/5 예비종목 판정: P2 ✓ + RS60+ ✓ + SEPA S/A ✓ + 업종RS ▲ ✓ + thesis ?
+  const pending4of5 = (stocks as Array<{ symbol: string; industry: string | null; rsScore: number; sepaGrade: string | null }>)
+    .filter((s) => {
+      if (s.industry == null) return false;
+      const change = industryChangeMap.get(s.industry);
+      if (change == null || change <= 0) return false;
+      // SEPA S/A는 이미 SQL 필터로 통과
+      return true;
+    })
+    .map((s) => ({
+      symbol: s.symbol,
+      action: "register" as const,
+      reason: `4/5 통과 (thesis 미확인) — RS ${s.rsScore}, ${s.industry}, 업종RS ▲`,
+    }));
+  console.log(`  ✓ ${pending4of5.length} pending 4/5`);
+
   // 2. WeeklyReportData 조립
   const reportData: WeeklyReportData = {
     indexReturns: indices as WeeklyReportData["indexReturns"],
@@ -107,9 +133,9 @@ async function main() {
     watchlist,
     gate5Candidates: stocks as WeeklyReportData["gate5Candidates"],
     watchlistChanges: {
-      registered: [],
-      exited: [],
-      pending4of5: [],
+      registered: [], // 에이전트 판단 필요 — 프리뷰에서는 비어있음
+      exited: [],     // 에이전트 판단 필요
+      pending4of5,    // 프로그래밍으로 판정 가능
     },
   };
 
