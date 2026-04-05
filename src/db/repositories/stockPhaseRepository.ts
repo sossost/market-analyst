@@ -68,7 +68,13 @@ export async function findPhase2Stocks(params: {
   const { date, minRs, maxRs, limit } = params;
 
   const { rows } = await pool.query<StockPhaseRow>(
-    `SELECT
+    `WITH latest_scores AS (
+       SELECT DISTINCT ON (symbol) symbol, grade
+       FROM fundamental_scores
+       WHERE scored_date <= $1
+       ORDER BY symbol, scored_date DESC
+     )
+     SELECT
        sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met,
@@ -76,11 +82,14 @@ export async function findPhase2Stocks(params: {
        s.sector, s.industry
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     JOIN latest_scores fs ON fs.symbol = sp.symbol
      WHERE sp.date = $1
        AND sp.phase = 2
        AND sp.rs_score >= $2
        AND sp.rs_score <= $3
        AND s.market_cap::numeric >= $5
+       AND s.country = 'US'
+       AND fs.grade IN ('S', 'A')
      ORDER BY sp.rs_score DESC
      LIMIT $4`,
     [date, minRs, maxRs, limit, MIN_MARKET_CAP],
@@ -274,7 +283,13 @@ export async function findRisingRsStocks(params: {
   const { date, rsMin, rsMax, limit, minRsChange, allowedPhases } = params;
 
   const { rows } = await pool.query<RisingRsStockRow>(
-    `WITH rs_4w AS (
+    `WITH latest_scores AS (
+       SELECT DISTINCT ON (symbol) symbol, grade
+       FROM fundamental_scores
+       WHERE scored_date <= $1
+       ORDER BY symbol, scored_date DESC
+     ),
+     rs_4w AS (
        SELECT sp.symbol, sp.rs_score AS rs_score_4w_ago
        FROM stock_phases sp
        WHERE sp.date = (
@@ -295,6 +310,7 @@ export async function findRisingRsStocks(params: {
        srd.group_phase AS sector_group_phase
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     JOIN latest_scores fs ON fs.symbol = sp.symbol
      LEFT JOIN rs_4w r4w ON r4w.symbol = sp.symbol
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
      WHERE sp.date = $1::text
@@ -303,6 +319,8 @@ export async function findRisingRsStocks(params: {
        AND (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) >= $5
        AND sp.phase = ANY($6::int[])
        AND s.market_cap::numeric >= $7
+       AND s.country = 'US'
+       AND fs.grade IN ('S', 'A')
      ORDER BY
        CASE WHEN srd.change_4w::numeric > 0 THEN 0 ELSE 1 END,
        (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) DESC,
@@ -323,7 +341,13 @@ export async function findPhase1LateStocks(
   limit: number,
 ): Promise<Phase1LateStockRow[]> {
   const { rows } = await pool.query<Phase1LateStockRow>(
-    `WITH trading_boundary AS (
+    `WITH latest_scores AS (
+       SELECT DISTINCT ON (symbol) symbol, grade
+       FROM fundamental_scores
+       WHERE scored_date <= $1
+       ORDER BY symbol, scored_date DESC
+     ),
+     trading_boundary AS (
        SELECT MIN(d.date) AS min_date FROM (
          SELECT DISTINCT date FROM stock_phases
          WHERE date <= $1
@@ -339,6 +363,7 @@ export async function findPhase1LateStocks(
        srd.avg_rs::text AS sector_avg_rs
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     JOIN latest_scores fs ON fs.symbol = sp.symbol
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
      WHERE sp.date = $1
        AND sp.phase = 1
@@ -347,6 +372,8 @@ export async function findPhase1LateStocks(
        AND sp.rs_score >= 30
        AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.0
        AND s.market_cap::numeric >= $3
+       AND s.country = 'US'
+       AND fs.grade IN ('S', 'A')
        AND (
          SELECT COUNT(*)
          FROM stock_phases sp2
