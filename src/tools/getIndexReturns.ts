@@ -201,13 +201,19 @@ function computeWeeklyQuote(
   symbol: string,
   rows: IndexPriceRow[],
 ): WeeklyIndexQuote | null {
+  // FMP API가 주말(토/일) row를 포함해 반환할 수 있으므로 사전 필터링한다.
+  const tradingDayRows = rows.filter((r) => {
+    const d = new Date(`${r.date}T00:00:00Z`);
+    const day = d.getUTCDay();
+    return day !== 0 && day !== 6; // 일(0)/토(6) 제외
+  });
+  if (tradingDayRows.length < 2) return null;
+
   // rows are sorted desc by date — reverse for chronological order
-  const chronological = [...rows].reverse();
+  const chronological = [...tradingDayRows].reverse();
 
-  if (chronological.length < 2) return null;
-
-  // weekEndDate = 가장 최근 거래일 (rows[0] = desc 정렬 첫번째)
-  const weekEndDate = rows[0].date;
+  // weekEndDate = 가장 최근 거래일 (tradingDayRows[0] = desc 정렬 첫번째)
+  const weekEndDate = tradingDayRows[0].date;
   const weekMonday = getWeekMondayUtc(weekEndDate);
 
   // 이번 주 거래일: weekMonday 이상인 rows

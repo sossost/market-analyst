@@ -409,6 +409,22 @@ describe("renderIndexTable — Fear & Greed 방향 레이블", () => {
     expect(result).toContain("탐욕 약화");
   });
 
+  it("score === previous1Week (탐욕 구간 50): 변동 없음 레이블이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 50, previous1Week: 50 });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).toContain("변동 없음");
+  });
+
+  it("score === previous1Week (공포 구간 30): 변동 없음 레이블이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 30, previous1Week: 30 });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    expect(result).toContain("변동 없음");
+  });
+
   it("previous1Week null: 방향 레이블 없이 기존 방식으로 표시된다", () => {
     const fg = createMockFearGreed({ score: 50, previous1Week: null });
 

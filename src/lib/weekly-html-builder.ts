@@ -651,6 +651,8 @@ export function renderIndexTable(
 }
 
 function getFearGreedDirectionLabel(score: number, previous1Week: number): string {
+  if (score === previous1Week) return "변동 없음";
+
   const isRising = score > previous1Week;
   const isGreedZone = score >= 50;
 

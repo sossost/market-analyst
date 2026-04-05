@@ -34,11 +34,16 @@ function computeWeeklyQuoteTest(rows: TestRow[]): {
   weekLow: number;
   tradingDays: number;
 } | null {
-  const chronological = [...rows].reverse();
+  const tradingDayRows = rows.filter((r) => {
+    const d = new Date(`${r.date}T00:00:00Z`);
+    const day = d.getUTCDay();
+    return day !== 0 && day !== 6;
+  });
+  if (tradingDayRows.length < 2) return null;
 
-  if (chronological.length < 2) return null;
+  const chronological = [...tradingDayRows].reverse();
 
-  const weekEndDate = rows[0].date;
+  const weekEndDate = tradingDayRows[0].date;
   const weekMonday = getWeekMondayUtc(weekEndDate);
 
   const prevWeekRows = chronological.filter(
@@ -223,6 +228,40 @@ describe("computeWeeklyQuote — weekStartClose 교정", () => {
   it("getWeekMondayUtc: 일요일 입력 시 지난 월요일을 반환한다", () => {
     const monday = getWeekMondayUtc("2026-04-05"); // 일요일
     expect(monday.toISOString().slice(0, 10)).toBe("2026-03-30"); // 지난 주 월요일
+  });
+
+  it("주말(토/일) row가 포함되어 있어도 필터링 후 정상 계산된다", () => {
+    // FMP가 토요일(2026-04-04)과 일요일(2026-04-05) row를 반환하는 경우
+    const rows: TestRow[] = [
+      makeRow("2026-04-05", 22100, 22200, 22000), // 일요일 — 제외
+      makeRow("2026-04-04", 22050, 22100, 21950), // 토요일 — 제외
+      makeRow("2026-04-03", 22000, 22200, 21800), // 금요일
+      makeRow("2026-04-02", 21900, 22000, 21700), // 목요일
+      makeRow("2026-03-27", 21000, 21200, 20800), // 전주 금요일 ← weekStartClose
+      makeRow("2026-03-26", 20800, 21000, 20600),
+    ];
+
+    const result = computeWeeklyQuoteTest(rows);
+
+    expect(result).not.toBeNull();
+    // 주말 row 제외 후 weekEndDate = 2026-04-03(금요일)
+    expect(result!.weekEndClose).toBe(22000);
+    expect(result!.weekStartClose).toBe(21000);
+    // tradingDays = 금요일 + 목요일 = 2
+    expect(result!.tradingDays).toBe(2);
+  });
+
+  it("주말 row만 있고 평일 row가 2개 미만이면 null을 반환한다", () => {
+    const rows: TestRow[] = [
+      makeRow("2026-04-05", 22100, 22200, 22000), // 일요일
+      makeRow("2026-04-04", 22050, 22100, 21950), // 토요일
+      makeRow("2026-04-03", 22000, 22200, 21800), // 금요일 1개뿐
+    ];
+
+    const result = computeWeeklyQuoteTest(rows);
+
+    // 평일 row 1개 → 전주 기준점 없음 → null
+    expect(result).toBeNull();
   });
 
   it("월 경계 케이스: 전주가 3월이고 이번주가 4월이어도 올바르게 동작한다", () => {
