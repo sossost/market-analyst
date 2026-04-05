@@ -8,7 +8,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { extractThesesFromText, containsNumericPrediction } from "../round3-synthesis.js";
+import { extractThesesFromText, containsNumericPrediction, filterShortTermOutlookCap } from "../round3-synthesis.js";
 import { logger } from "@/lib/logger";
 
 // ─── Helper ──────��─────────────────────────────────────────────────────────────
@@ -480,5 +480,247 @@ describe("sentiment 수치 예측 thesis 드롭", () => {
     expect(result.theses.find((t) => t.thesis.includes("VIX 22-28"))).toBeUndefined();
     expect(result.theses.find((t) => t.thesis.includes("자금이 defensive"))).toBeDefined();
     expect(result.theses.find((t) => t.thesis.includes("AI 인프라"))).toBeDefined();
+  });
+});
+
+// ─── short_term_outlook 카테고리 confidence 강제 하향 (#627) ──────────────────
+
+describe("short_term_outlook 카테고리 confidence 강제 하향", () => {
+  it("tech의 short_term_outlook high confidence를 low로 하향한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        confidence: "high",
+        thesis: "반도체 단기 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].category).toBe("short_term_outlook");
+    expect(result.theses[0].confidence).toBe("low");
+  });
+
+  it("tech의 short_term_outlook medium confidence를 low로 하향한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        confidence: "medium",
+        thesis: "NASDAQ 단기 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("low");
+  });
+
+  it("tech의 short_term_outlook low confidence는 low를 유지한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        confidence: "low",
+        thesis: "약한 단기 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("low");
+  });
+
+  it("structural_narrative 카테고리 confidence는 하향하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "AI 인프라 서사",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("sector_rotation 카테고리 confidence는 하향하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "macro",
+        category: "sector_rotation",
+        confidence: "high",
+        thesis: "섹터 로테이션 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("sentiment의 short_term_outlook은 카테고리 재분류 후 페르소나 하향으로 low가 된다", () => {
+    // sentiment의 short_term_outlook → sector_rotation(카테고리 재분류)
+    // → confidence는 CONFIDENCE_DOWNGRADE_PERSONAS(페르소나 하향)에 의해 low
+    // CONFIDENCE_DOWNGRADE_CATEGORIES는 sector_rotation에 해당 없으므로 미적용
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "short_term_outlook",
+        confidence: "high",
+        thesis: "심리 단기 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].category).toBe("sector_rotation"); // 카테고리 재분류
+    expect(result.theses[0].confidence).toBe("low"); // 페르소나 하향
+  });
+
+  it("카테고리 confidence 하향 시 로그를 남긴다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        confidence: "high",
+        thesis: "단기 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    extractThesesFromText(text);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Round3",
+      expect.stringContaining("카테고리 thesis confidence 하향"),
+    );
+  });
+});
+
+// ─── short_term_outlook 세션당 발행 건수 제한 (#627) ──────────────────────────
+
+describe("short_term_outlook 세션당 발행 건수 제한", () => {
+  it("short_term_outlook 1건은 통과한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "반도체 단기 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].category).toBe("short_term_outlook");
+  });
+
+  it("short_term_outlook 2건 중 1건만 유지한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "첫 번째 단기 전망",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "두 번째 단기 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    const shortTermTheses = result.theses.filter((t) => t.category === "short_term_outlook");
+    expect(shortTermTheses).toHaveLength(1);
+    expect(shortTermTheses[0].thesis).toContain("첫 번째");
+  });
+
+  it("short_term_outlook 초과 드롭 시 다른 카테고리는 영향 없다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "단기 전망 1",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "structural_narrative",
+        thesis: "AI 인프라 서사",
+        timeframeDays: 60,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "단기 전망 2",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(2);
+    expect(result.theses.find((t) => t.thesis.includes("단기 전망 1"))).toBeDefined();
+    expect(result.theses.find((t) => t.thesis.includes("AI 인프라"))).toBeDefined();
+    expect(result.theses.find((t) => t.thesis.includes("단기 전망 2"))).toBeUndefined();
+  });
+
+  it("초과 드롭 시 로그를 남긴다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "단기 전망 1",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "단기 전망 2",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    extractThesesFromText(text);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Round3",
+      expect.stringContaining("short_term_outlook thesis 초과 드롭"),
+    );
+  });
+
+  it("filterShortTermOutlookCap을 직접 호출해도 동작한다", () => {
+    const theses = [
+      { category: "short_term_outlook", thesis: "전망 1" },
+      { category: "structural_narrative", thesis: "서사 1" },
+      { category: "short_term_outlook", thesis: "전망 2" },
+      { category: "short_term_outlook", thesis: "전망 3" },
+    ] as any;
+
+    const result = filterShortTermOutlookCap(theses);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].thesis).toBe("전망 1");
+    expect(result[1].thesis).toBe("서사 1");
   });
 });
