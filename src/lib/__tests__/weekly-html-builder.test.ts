@@ -763,25 +763,20 @@ describe("renderWatchlistChanges", () => {
     expect(result).toContain("Phase 3 진입으로 해제");
   });
 
-  it("gateResults가 있으면 게이트 배지들이 렌더링된다", () => {
+  it("등록 종목이 있으면 symbol과 reason이 렌더링된다", () => {
     const result = renderWatchlistChanges({
       registered: [{
         symbol: "TSLA",
         action: "register",
         reason: "5중 게이트 통과",
-        gateResults: { phase2: true, rs60: true, sepa: true, industryRs: true, thesis: true },
       }],
       exited: [],
       pending4of5: [],
     });
 
     expect(result).toContain("TSLA");
-    expect(result).toContain("gate5-checks");
-    expect(result).toContain("Phase2");
-    expect(result).toContain("RS60+");
-    expect(result).toContain("SEPA");
-    expect(result).toContain("업종RS▲");
-    expect(result).toContain("thesis");
+    expect(result).toContain("5중 게이트 통과");
+    expect(result).toContain("5/5 게이트 충족");
   });
 });
 
