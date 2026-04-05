@@ -338,11 +338,11 @@ describe("getLeadingSectors", () => {
     mockQuery.mockResolvedValueOnce({ rows: energyGlobalRows });
 
     const result = await getLeadingSectors.execute({ date: "2026-03-07", mode: "industry" });
-    const parsed = JSON.parse(result);
 
-    // changeWeek 경로에서는 섹터당 제한 없음 — 한 섹터 집중은 자금 유입 신호
-    const energyCount = parsed.industries.filter((i: { sector: string }) => i.sector === "Energy").length;
-    expect(energyCount).toBe(5);
+    // changeWeek 경로는 plain text 반환 — 5개 Energy 업종이 모두 테이블에 포함되어야 함
+    for (let i = 1; i <= 5; i++) {
+      expect(result).toContain(`Energy Ind ${i}`);
+    }
   });
 
   it("industry 모드에서 prevWeekDate 없으면 섹터당 2개 제한이 적용된다", async () => {

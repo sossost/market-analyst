@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  *
  * 검증 대상:
  * - mode: 'industry'로 호출 시 전주 날짜 조회 후 weeklyChange 쿼리를 실행한다
+ * - prevWeekDate 있을 때: plain 마크다운 텍스트 반환 (JSON 아님)
+ * - prevWeekDate 없을 때: JSON 반환 (industries 배열 포함)
  * - changeWeek 필드: 전주 RS 변화값 (소수점 2자리)
  * - 전주 데이터 없으면 changeWeek = null
  * - divergence 계산: industryRs - sectorRs (소수점 2자리)
@@ -118,7 +120,7 @@ function mockIndustryQueryWithoutPrevWeek(
 // ─── mode: 'industry' ────────────────────────────────────────────────────────
 
 describe("mode: 'industry'", () => {
-  it("industries 배열을 반환하고 mode 필드가 'industry'이다", async () => {
+  it("prevWeekDate 있을 때 plain 마크다운 텍스트를 반환한다 (JSON 아님)", async () => {
     mockIndustryQueryWithPrevWeek();
 
     const result = await getLeadingSectors.execute({
@@ -127,14 +129,27 @@ describe("mode: 'industry'", () => {
       limit: 5,
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.mode).toBe("industry");
-    expect(parsed.date).toBe("2026-03-28");
-    expect(Array.isArray(parsed.industries)).toBe(true);
-    expect(parsed.industries).toHaveLength(1);
+    // plain text 반환 — JSON.parse 하면 실패해야 함
+    expect(() => JSON.parse(result)).toThrow();
+    expect(result).toContain("업종 RS 주간 변화 Top 10");
+    expect(result).toContain("2026-03-28");
+    expect(result).toContain("2026-03-21");
   });
 
-  it("changeWeek 필드가 소수점 2자리 숫자로 반환된다", async () => {
+  it("plain 텍스트에 업종명과 섹터가 포함된다", async () => {
+    mockIndustryQueryWithPrevWeek();
+
+    const result = await getLeadingSectors.execute({
+      date: "2026-03-28",
+      mode: "industry",
+      limit: 5,
+    });
+
+    expect(result).toContain("Semiconductors");
+    expect(result).toContain("Technology");
+  });
+
+  it("changeWeek 값이 테이블에 포함된다 (3.50 → +3.5)", async () => {
     mockIndustryQueryWithPrevWeek(makeWeeklyRow({ change_week: "3.50" }));
 
     const result = await getLeadingSectors.execute({
@@ -142,11 +157,10 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.industries[0].changeWeek).toBe(3.5);
+    expect(result).toContain("+3.5");
   });
 
-  it("changeWeek 소수점 처리: 2.555 → 2.56 (2자리 반올림)", async () => {
+  it("changeWeek 소수점 처리: 2.555 → +2.56 (2자리 반올림)", async () => {
     mockIndustryQueryWithPrevWeek(makeWeeklyRow({ change_week: "2.555" }));
 
     const result = await getLeadingSectors.execute({
@@ -154,11 +168,10 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.industries[0].changeWeek).toBe(2.56);
+    expect(result).toContain("+2.56");
   });
 
-  it("changeWeek가 null이면 null로 반환된다", async () => {
+  it("changeWeek가 null이면 테이블에 — 로 표시된다", async () => {
     mockIndustryQueryWithPrevWeek(makeWeeklyRow({ change_week: null }));
 
     const result = await getLeadingSectors.execute({
@@ -166,11 +179,10 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.industries[0].changeWeek).toBeNull();
+    expect(result).toContain("—");
   });
 
-  it("prevWeekDate가 null이면 changeWeek이 null이고 prevWeekDate도 null이다", async () => {
+  it("prevWeekDate가 null이면 JSON을 반환하고 changeWeek이 null이다", async () => {
     mockIndustryQueryWithoutPrevWeek();
 
     const result = await getLeadingSectors.execute({
@@ -183,7 +195,7 @@ describe("mode: 'industry'", () => {
     expect(parsed.industries[0].changeWeek).toBeNull();
   });
 
-  it("divergence = avgRs - sectorAvgRs (소수점 2자리)", async () => {
+  it("divergence = avgRs - sectorAvgRs (70 - 50 = 20): 상위 3개 요약에 업종명이 포함된다", async () => {
     // industryRs=70, sectorRs=50 → divergence=20.00
     mockIndustryQueryWithPrevWeek(
       makeWeeklyRow({ avg_rs: "70.00" }),
@@ -195,11 +207,12 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.industries[0].divergence).toBe(20);
+    // plain 텍스트 — 상위 3개 요약에 업종명이 포함됨
+    expect(result).toContain("Semiconductors");
+    expect(result).toContain("상위 3개 업종 요약");
   });
 
-  it("divergence 계산 시 소수점 처리: 70.75 - 50.50 = 20.25", async () => {
+  it("divergence 계산 시 소수점 처리 (70.75 - 50.50 = 20.25): 요약에 RS 값이 포함된다", async () => {
     mockIndustryQueryWithPrevWeek(
       makeWeeklyRow({ avg_rs: "70.75" }),
       makeGlobalRow({ avg_rs: "70.75", sector_avg_rs: "50.50" }),
@@ -210,11 +223,10 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.industries[0].divergence).toBe(20.25);
+    expect(result).toContain("70.75");
   });
 
-  it("sector_avg_rs가 null이면 divergence도 null이다", async () => {
+  it("sector_avg_rs가 null일 때도 plain 텍스트를 반환한다", async () => {
     mockIndustryQueryWithPrevWeek(
       makeWeeklyRow({}),
       makeGlobalRow({ sector_avg_rs: null, sector_rs_rank: null }),
@@ -225,12 +237,12 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.industries[0].divergence).toBeNull();
-    expect(parsed.industries[0].sectorAvgRs).toBeNull();
+    // plain 텍스트 반환 — JSON 아님
+    expect(() => JSON.parse(result)).toThrow();
+    expect(result).toContain("Semiconductors");
   });
 
-  it("phase2Ratio는 DB값 × 100으로 변환된다 (0.57 → 57)", async () => {
+  it("phase2Ratio가 DB값 × 100으로 계산된다 (0.57 → 57): 테이블에 57%가 포함된다", async () => {
     mockIndustryQueryWithPrevWeek(makeWeeklyRow({ phase2_ratio: "0.57" }));
 
     const result = await getLeadingSectors.execute({
@@ -238,11 +250,10 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.industries[0].phase2Ratio).toBe(57);
+    expect(result).toContain("57%");
   });
 
-  it("응답에 _note 필드가 포함된다", async () => {
+  it("prevWeekDate 있을 때 plain 텍스트 — 빈 industries면 테이블 행 없음", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [PREV_WEEK_DATE_ROW] } as never)
       .mockResolvedValueOnce({ rows: [] } as never)
@@ -253,14 +264,13 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed._note).toBeTruthy();
-    expect(typeof parsed._note).toBe("string");
+    // JSON이 아닌 plain text
+    expect(() => JSON.parse(result)).toThrow();
+    expect(result).toContain("업종 RS 주간 변화 Top 10");
   });
 
-  it("change4w가 null이면 null로 반환된다", async () => {
-    mockIndustryQueryWithPrevWeek(
-      makeWeeklyRow({}),
+  it("change4w가 null이면 prevWeekDate 없는 경로에서 null로 반환된다", async () => {
+    mockIndustryQueryWithoutPrevWeek(
       makeGlobalRow({ change_4w: null }),
     );
 
@@ -273,9 +283,8 @@ describe("mode: 'industry'", () => {
     expect(parsed.industries[0].change4w).toBeNull();
   });
 
-  it("change8w가 null이면 null로, 값이 있으면 숫자로 반환된다", async () => {
-    mockIndustryQueryWithPrevWeek(
-      makeWeeklyRow({}),
+  it("change8w: prevWeekDate 없는 경로 — null이면 null, 값이 있으면 숫자로 반환된다", async () => {
+    mockIndustryQueryWithoutPrevWeek(
       makeGlobalRow({ change_8w: null }),
     );
 
@@ -285,8 +294,7 @@ describe("mode: 'industry'", () => {
     });
     expect(JSON.parse(resultNull).industries[0].change8w).toBeNull();
 
-    mockIndustryQueryWithPrevWeek(
-      makeWeeklyRow({}),
+    mockIndustryQueryWithoutPrevWeek(
       makeGlobalRow({ change_8w: "8.50" }),
     );
 
@@ -297,9 +305,8 @@ describe("mode: 'industry'", () => {
     expect(JSON.parse(resultValue).industries[0].change8w).toBe(8.5);
   });
 
-  it("change12w가 null이면 null로, 값이 있으면 숫자로 반환된다", async () => {
-    mockIndustryQueryWithPrevWeek(
-      makeWeeklyRow({}),
+  it("change12w: prevWeekDate 없는 경로 — null이면 null, 값이 있으면 숫자로 반환된다", async () => {
+    mockIndustryQueryWithoutPrevWeek(
       makeGlobalRow({ change_12w: null }),
     );
 
@@ -309,8 +316,7 @@ describe("mode: 'industry'", () => {
     });
     expect(JSON.parse(resultNull).industries[0].change12w).toBeNull();
 
-    mockIndustryQueryWithPrevWeek(
-      makeWeeklyRow({}),
+    mockIndustryQueryWithoutPrevWeek(
       makeGlobalRow({ change_12w: "12.75" }),
     );
 
@@ -331,7 +337,7 @@ describe("mode: 'industry'", () => {
     expect(parsed.error).toBeTruthy();
   });
 
-  it("prevWeekDate 필드가 응답에 포함된다", async () => {
+  it("prevWeekDate 있을 때 plain 텍스트에 전주 날짜가 포함된다", async () => {
     mockIndustryQueryWithPrevWeek();
 
     const result = await getLeadingSectors.execute({
@@ -339,8 +345,7 @@ describe("mode: 'industry'", () => {
       mode: "industry",
     });
 
-    const parsed = JSON.parse(result);
-    expect(parsed.prevWeekDate).toBe("2026-03-21");
+    expect(result).toContain("2026-03-21");
   });
 });
 

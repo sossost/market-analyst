@@ -37,6 +37,29 @@ const INDUSTRY_SECTOR_CAP = 2;
  */
 const SECTOR_QUERY_LIMIT = 50;
 
+/** 주간 업종 RS 변화 Top 10 마크다운 테이블 생성 */
+function buildWeeklyChangeTable(
+  industries: {
+    industry: string;
+    sector: string;
+    avgRs: number;
+    groupPhase: number;
+    phase2Ratio: number | null;
+    changeWeek: number | null;
+  }[],
+): string {
+  const header =
+    "| # | 업종 | 섹터 | RS | 주간 변화 | Phase | P2 비율 |\n" +
+    "|----|------|------|----|-----------|-------|---------|";
+  const rows = industries.map((i, idx) => {
+    const cw =
+      i.changeWeek != null ? (i.changeWeek >= 0 ? `+${i.changeWeek.toFixed(1)}` : i.changeWeek.toFixed(1)) : "—";
+    const p2 = i.phase2Ratio != null ? `${i.phase2Ratio}%` : "—";
+    return `| ${idx + 1} | ${i.industry} | ${i.sector} | ${i.avgRs.toFixed(1)} | ${cw} | ${i.groupPhase} | ${p2} |`;
+  });
+  return `${header}\n${rows.join("\n")}`;
+}
+
 function mapSectorRow(
   s: SectorRsRow,
   industryBySector: Map<string, IndustryRsRow[]>,
@@ -313,13 +336,28 @@ export const getLeadingSectors: AgentTool = {
               industryLimit,
             );
 
+      if (prevWeekDate != null) {
+        // 주간 변화 경로: plain 마크다운 텍스트로 반환 — JSON이 아님
+        // 에이전트가 재구성하지 않고 그대로 리포트에 붙여넣기하도록
+        const weeklyChangeTable = buildWeeklyChangeTable(industries);
+        const top3 = industries.slice(0, 3).map(i =>
+          `- **${i.industry}** (${i.sector}) — RS ${i.avgRs}, 주간 변화 ${i.changeWeek != null ? (i.changeWeek >= 0 ? `+${i.changeWeek}` : `${i.changeWeek}`) : "—"}, Phase ${i.groupPhase}, P2 비율 ${i.phase2Ratio ?? "—"}%`
+        ).join("\n");
+
+        return `[업종 RS 주간 변화 Top 10 — ${date} 기준, 전주 ${prevWeekDate} 대비]
+
+아래 테이블을 섹션 2 "업종 RS 주간 변화 Top 10"에 그대로 사용하세요.
+
+${weeklyChangeTable}
+
+상위 3개 업종 요약:
+${top3}`;
+      }
+
       return JSON.stringify({
-        _note:
-          prevWeekDate != null
-            ? "phase2Ratio는 이미 퍼센트(0~100). divergence = 업종RS - 섹터RS. changeWeek = 전주 대비 RS 변화 (null = 전주 데이터 없음). 섹터당 제한 없음."
-            : "phase2Ratio는 이미 퍼센트(0~100). divergence = 업종RS - 섹터RS. 섹터당 최대 2개로 제한됨.",
+        _note: "일간 스냅샷 경로. phase2Ratio는 이미 퍼센트(0~100). 섹터당 최대 2개로 제한됨.",
         date,
-        prevWeekDate,
+        prevWeekDate: null,
         mode: "industry",
         industries,
       });
