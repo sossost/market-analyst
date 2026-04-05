@@ -5,7 +5,7 @@ import {
   renderSectorTable,
   renderIndustryTop10Table,
   renderWatchlistSection,
-  renderGate5Block,
+  renderWatchlistChanges,
   buildWeeklyHtml,
 } from "../weekly-html-builder.js";
 import type {
@@ -711,104 +711,77 @@ describe("renderWatchlistSection", () => {
   });
 });
 
-// ─── renderGate5Block ─────────────────────────────────────────────────────────
+// ─── renderWatchlistChanges ───────────────────────────────────────────────────
 
-describe("renderGate5Block", () => {
-  it("정상: 종목 행을 생성하고 헤더 N이 실제 행 수와 일치한다", () => {
-    const candidates = [
-      createMockPhase2Stock({ symbol: "NVDA" }),
-      createMockPhase2Stock({ symbol: "AMD" }),
-      createMockPhase2Stock({ symbol: "AVGO" }),
-    ];
+describe("renderWatchlistChanges", () => {
+  it("빈 케이스: 모두 비어 있으면 신규 등록/해제 없음 메시지를 반환한다", () => {
+    const result = renderWatchlistChanges({
+      registered: [],
+      exited: [],
+      pending4of5: [],
+    });
 
-    const result = renderGate5Block(candidates);
-
-    expect(result).toContain("5중 게이트 후보 (3종목)");
-    expect(result).toContain("NVDA");
-    expect(result).toContain("AMD");
-    expect(result).toContain("AVGO");
-    expect(result).toContain("<table>");
-  });
-
-  it("빈 배열: 0종목 헤더 + 5중 게이트 통과 종목 없음 메시지를 반환한다", () => {
-    const result = renderGate5Block([]);
-
-    expect(result).toContain("0종목");
-    expect(result).toContain("Phase 2 + RS 60+ + SEPA S/A 조건을 충족하는 종목 없음");
+    expect(result).toContain("이번 주 신규 등록/해제 없음");
     expect(result).not.toContain("gate5-card");
   });
 
-  it("isNewPhase2 true: NEW 배지가 표시된다", () => {
-    const result = renderGate5Block([
-      createMockPhase2Stock({ isNewPhase2: true }),
-    ]);
+  it("등록 1건: 카드가 렌더링되고 5/5 게이트 충족 배지가 표시된다", () => {
+    const result = renderWatchlistChanges({
+      registered: [{ symbol: "NVDA", action: "register", reason: "Phase 2 진입 + thesis 연결" }],
+      exited: [],
+      pending4of5: [],
+    });
 
-    expect(result).toContain("NEW");
-    expect(result).toContain("gate5-new-badge");
+    expect(result).toContain("NVDA");
+    expect(result).toContain("신규 등록 (1종목)");
+    expect(result).toContain("5/5 게이트 충족");
+    expect(result).toContain("Phase 2 진입 + thesis 연결");
   });
 
-  it("isNewPhase2 false: NEW 배지가 없다", () => {
-    const result = renderGate5Block([
-      createMockPhase2Stock({ isNewPhase2: false }),
-    ]);
+  it("예비 1건: 4/5 (thesis 미충족) 배지가 표시된다", () => {
+    const result = renderWatchlistChanges({
+      registered: [],
+      exited: [],
+      pending4of5: [{ symbol: "AMD", action: "register", reason: "thesis 미충족 — 예비" }],
+    });
 
-    expect(result).not.toContain("gate5-new-badge");
-  });
-
-  it("테이블에 RS, 고점대비, 게이트 충족 컬럼이 있다", () => {
-    const result = renderGate5Block([
-      createMockPhase2Stock({ rsScore: 75, pctFromHigh52w: -12.5, industry: "Semiconductors" }),
-    ]);
-
-    expect(result).toContain("RS");
-    expect(result).toContain("고점대비");
-    expect(result).toContain("게이트");
-    expect(result).toContain("통과");
-    expect(result).toContain("-13%");
-    // 1~3 게이트 항상 통과
-    expect(result).toContain('class="gate-check pass"');
-    // thesis는 ?
-    expect(result).toContain('class="gate-check pending"');
-  });
-
-  it("업종RS: industryTop10에 매칭되면 ✓/✗로 판정된다", () => {
-    const industries = [
-      { industry: "Semiconductors", changeWeek: 3.5 } as any,
-      { industry: "Software", changeWeek: -1.2 } as any,
-    ];
-    const result = renderGate5Block([
-      createMockPhase2Stock({ symbol: "NVDA", industry: "Semiconductors" }),
-      createMockPhase2Stock({ symbol: "MSFT", industry: "Software" }),
-    ], industries);
-
-    // NVDA: 업종RS +3.5 → 4/5
+    expect(result).toContain("AMD");
+    expect(result).toContain("예비 관심종목");
     expect(result).toContain("4/5");
-    // MSFT: 업종RS -1.2 → 3/5
-    expect(result).toContain("3/5");
+    expect(result).toContain("thesis 미충족");
   });
 
-  it("breakoutSignal이 none이 아니면 signal 태그가 추가된다", () => {
-    const result = renderGate5Block([
-      createMockPhase2Stock({ breakoutSignal: "52w_breakout" }),
-    ]);
+  it("해제 1건: 해제 사유가 표시된다", () => {
+    const result = renderWatchlistChanges({
+      registered: [],
+      exited: [{ symbol: "AAPL", action: "exit", reason: "Phase 3 진입으로 해제" }],
+      pending4of5: [],
+    });
 
-    expect(result).toContain('class="cond-tag signal"');
-    expect(result).toContain("52w_breakout");
+    expect(result).toContain("AAPL");
+    expect(result).toContain("해제 (1종목)");
+    expect(result).toContain("Phase 3 진입으로 해제");
   });
 
-  it("breakoutSignal이 none이면 signal 태그가 없다", () => {
-    const result = renderGate5Block([
-      createMockPhase2Stock({ breakoutSignal: "none" }),
-    ]);
+  it("gateResults가 있으면 게이트 배지들이 렌더링된다", () => {
+    const result = renderWatchlistChanges({
+      registered: [{
+        symbol: "TSLA",
+        action: "register",
+        reason: "5중 게이트 통과",
+        gateResults: { phase2: true, rs60: true, sepa: true, industryRs: true, thesis: true },
+      }],
+      exited: [],
+      pending4of5: [],
+    });
 
-    expect(result).not.toContain('class="cond-tag signal"');
-  });
-
-  it("1종목이면 헤더도 1종목으로 일치한다", () => {
-    const result = renderGate5Block([createMockPhase2Stock({ symbol: "TEST" })]);
-
-    expect(result).toContain("5중 게이트 후보 (1종목)");
-    expect(result).toContain("TEST");
+    expect(result).toContain("TSLA");
+    expect(result).toContain("gate5-checks");
+    expect(result).toContain("Phase2");
+    expect(result).toContain("RS60+");
+    expect(result).toContain("SEPA");
+    expect(result).toContain("업종RS▲");
+    expect(result).toContain("thesis");
   });
 });
 
@@ -862,11 +835,13 @@ describe("buildWeeklyHtml", () => {
     expect(result).toContain('class="temp-badge bearish"');
   });
 
-  it("XSS: 종목명에 포함된 HTML 특수문자가 이스케이프된다", () => {
+  it("XSS: watchlistChanges 종목명에 포함된 HTML 특수문자가 이스케이프된다", () => {
     const data = createMockWeeklyReportData({
-      gate5Candidates: [
-        createMockPhase2Stock({ symbol: '<script>alert(1)</script>' }),
-      ],
+      watchlistChanges: {
+        registered: [{ symbol: '<script>alert(1)</script>', action: "register", reason: "test" }],
+        exited: [],
+        pending4of5: [],
+      },
     });
     const insight = createMockWeeklyReportInsight();
 

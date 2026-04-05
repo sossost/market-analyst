@@ -19,6 +19,7 @@ import type {
   IndustryItem,
   WatchlistStatusData,
   Phase2Stock,
+  WatchlistChange,
   WeeklyReportData,
   WeeklyReportInsight,
 } from "@/tools/schemas/weeklyReportSchema.js";
@@ -1010,104 +1011,84 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
 }
 
 /**
- * 5중 게이트 평가 카드를 렌더링한다.
- * 헤더의 종목 수는 반드시 실제 카드 수와 일치하도록 프로그래밍으로 계산한다.
- * 0건이면 빈 상태 메시지를 표시한다.
+ * 관심종목 등록/해제/예비 3단 구조를 렌더링한다.
+ * - registered: 5/5 게이트 충족 + 등록 확정
+ * - pending4of5: 기술적 4개 게이트 충족, thesis 미충족 예비
+ * - exited: 이번 주 해제 확정
  */
-export function renderGate5Block(
-  candidates: Phase2Stock[],
-  industries: IndustryItem[] = [],
+export function renderWatchlistChanges(changes: WeeklyReportData["watchlistChanges"]): string {
+  const { registered, pending4of5, exited } = changes;
+
+  const hasAny = registered.length > 0 || exited.length > 0 || pending4of5.length > 0;
+
+  if (!hasAny) {
+    return `<div class="empty-state">이번 주 신규 등록/해제 없음</div>`;
+  }
+
+  const registeredHtml = registered.length > 0
+    ? `
+      <h3>신규 등록 (${escapeHtml(String(registered.length))}종목)</h3>
+      <div class="gate5-grid">
+        ${registered.map((c) => renderWatchlistChangeCard(c, "registered")).join("")}
+      </div>`
+    : `<h3>신규 등록</h3><div class="empty-state">이번 주 신규 등록 없음</div>`;
+
+  const pending4of5Html = pending4of5.length > 0
+    ? `
+      <h3>예비 관심종목 (${escapeHtml(String(pending4of5.length))}종목 — 4/5, thesis 미충족)</h3>
+      <div class="gate5-grid">
+        ${pending4of5.map((c) => renderWatchlistChangeCard(c, "pending")).join("")}
+      </div>`
+    : "";
+
+  const exitedHtml = exited.length > 0
+    ? `
+      <h3>해제 (${escapeHtml(String(exited.length))}종목)</h3>
+      <div class="gate5-grid">
+        ${exited.map((c) => renderWatchlistChangeCard(c, "exited")).join("")}
+      </div>`
+    : "";
+
+  return `${registeredHtml}${pending4of5Html}${exitedHtml}`;
+}
+
+type WatchlistCardVariant = "registered" | "pending" | "exited";
+
+function renderWatchlistChangeCard(
+  change: WatchlistChange,
+  variant: WatchlistCardVariant,
 ): string {
-  const count = candidates.length;
-
-  if (count === 0) {
-    return `
-      <h3>5중 게이트 후보 (0종목)</h3>
-      <div class="empty-state">Phase 2 + RS 60+ + SEPA S/A 조건을 충족하는 종목 없음</div>`;
-  }
-
-  // 업종RS 변화 맵: industry → changeWeek (양수면 ✓, 아니면 ✗)
-  const industryChangeMap = new Map<string, number>();
-  for (const ind of industries) {
-    if (ind.changeWeek != null) {
-      industryChangeMap.set(ind.industry, ind.changeWeek);
+  const badgeHtml = (() => {
+    if (variant === "registered") {
+      return `<span class="gate5-new-badge">5/5 게이트 충족</span>`;
     }
-  }
+    if (variant === "pending") {
+      return `<span class="gate-check pending" style="margin-left:auto;">4/5 (thesis 미충족)</span>`;
+    }
+    return `<span class="gate-check fail" style="margin-left:auto;">해제</span>`;
+  })();
 
-  const rows = candidates
-    .map((stock) => {
-      const newBadge = stock.isNewPhase2 ? ' <span class="gate5-new-badge">NEW</span>' : "";
-      const sig = (stock.breakoutSignal ?? "").trim();
-      const hasSignal = sig !== "" && sig !== "none";
-      const signalBadge = hasSignal
-        ? ` <span class="cond-tag signal">${escapeHtml(sig)}</span>`
-        : "";
-      const industryStr = stock.industry != null ? escapeHtml(stock.industry) : "—";
-
-      // 5중 게이트 개별 판정
-      // 1~3: SQL 필터 통과 (항상 ✓)
-      const g1 = '<span class="gate-check pass">✓</span>'; // Phase 2
-      const g2 = '<span class="gate-check pass">✓</span>'; // RS 60+
-      const g3 = '<span class="gate-check pass">✓</span>'; // SEPA S/A
-
-      // 4: 업종RS ▲ — industryTop10에서 매칭
-      let g4: string;
-      let gateCount = 3; // 1~3 항상 통과
-      if (stock.industry != null && industryChangeMap.has(stock.industry)) {
-        const change = industryChangeMap.get(stock.industry)!;
-        if (change > 0) {
-          g4 = `<span class="gate-check pass">✓</span>`;
-          gateCount++;
-        } else {
-          g4 = `<span class="gate-check fail">✗</span>`;
-        }
-      } else {
-        g4 = `<span class="gate-check pending">—</span>`;
-      }
-
-      // 5: thesis — 프로그래밍 판정 불가
-      const g5 = '<span class="gate-check pending">?</span>';
-
-      // 52주 고점 대비
-      const highStr = stock.pctFromHigh52w != null
-        ? `<span class="${Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down"}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
-        : "—";
-
-      return `
-        <tr>
-          <td><strong>${escapeHtml(stock.symbol)}</strong>${newBadge}${signalBadge}</td>
-          <td>${industryStr}</td>
-          <td class="tc">${escapeHtml(String(stock.rsScore))}</td>
-          <td class="tc">${highStr}</td>
-          <td class="tc">${g1}</td>
-          <td class="tc">${g2}</td>
-          <td class="tc">${g3}</td>
-          <td class="tc">${g4}</td>
-          <td class="tc">${g5}</td>
-          <td class="tc">${gateCount}/5</td>
-        </tr>`;
-    })
-    .join("");
+  const gateResultsHtml =
+    change.gateResults != null
+      ? `
+      <div class="gate5-checks">
+        <span class="gate-check ${change.gateResults.phase2 ? "pass" : "fail"}">Phase2</span>
+        <span class="gate-check ${change.gateResults.rs60 ? "pass" : "fail"}">RS60+</span>
+        <span class="gate-check ${change.gateResults.sepa ? "pass" : "fail"}">SEPA</span>
+        <span class="gate-check ${change.gateResults.industryRs ? "pass" : "fail"}">업종RS▲</span>
+        <span class="gate-check ${change.gateResults.thesis ? "pass" : "fail"}">thesis</span>
+      </div>`
+      : "";
 
   return `
-    <h3>5중 게이트 후보 (${escapeHtml(String(count))}종목)</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>종목</th>
-          <th>업종</th>
-          <th>RS</th>
-          <th>고점대비</th>
-          <th>P2</th>
-          <th>RS60</th>
-          <th>SEPA</th>
-          <th>업종RS</th>
-          <th>thesis</th>
-          <th>통과</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+    <div class="gate5-card">
+      <div class="gate5-card-header">
+        <span class="gate5-ticker">${escapeHtml(change.symbol)}</span>
+        ${badgeHtml}
+      </div>
+      ${gateResultsHtml}
+      ${change.reason !== "" ? `<div class="gate5-stats">${escapeHtml(change.reason)}</div>` : ""}
+    </div>`;
 }
 
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────
@@ -1147,7 +1128,7 @@ export function buildWeeklyHtml(
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
   const watchlistHtml = renderWatchlistSection(data.watchlist);
-  const gate5Html = renderGate5Block(data.gate5Candidates, data.industryTop10);
+  const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges);
 
   // 해석 블록: LLM 텍스트 → marked HTML
   const sectorRotationHtml = mdToHtml(insight.sectorRotationNarrative);
@@ -1220,7 +1201,7 @@ export function buildWeeklyHtml(
       <!-- 섹션 4: 5중 게이트 평가 + 등록/해제 -->
       <section>
         <h2>🆕 5중 게이트 평가 · 관심종목 등록/해제</h2>
-        ${gate5Html}
+        ${watchlistChangesHtml}
         <div class="content-block">${gate5SummaryHtml}</div>
       </section>
 
