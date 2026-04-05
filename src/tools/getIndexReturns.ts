@@ -183,6 +183,20 @@ function determineClosePosition(
   return "mid";
 }
 
+/**
+ * YYYY-MM-DD 문자열을 파싱하여 해당 주의 월요일 날짜를 UTC 기준으로 반환한다.
+ * getDay()는 UTC 기준: 0=일, 1=월, ..., 6=토
+ */
+function getWeekMondayUtc(dateStr: string): Date {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  const dayOfWeek = date.getUTCDay();
+  // 일요일(0)은 6일 전 월요일, 그 외는 (dayOfWeek - 1)일 전 월요일
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(date);
+  monday.setUTCDate(date.getUTCDate() - daysFromMonday);
+  return monday;
+}
+
 function computeWeeklyQuote(
   symbol: string,
   rows: IndexPriceRow[],
@@ -190,24 +204,44 @@ function computeWeeklyQuote(
   // rows are sorted desc by date — reverse for chronological order
   const chronological = [...rows].reverse();
 
-  const closes = chronological
-    .map((r) => Number(r.close))
-    .filter((c) => Number.isFinite(c));
-  const highs = chronological
+  if (chronological.length < 2) return null;
+
+  // weekEndDate = 가장 최근 거래일 (rows[0] = desc 정렬 첫번째)
+  const weekEndDate = rows[0].date;
+  const weekMonday = getWeekMondayUtc(weekEndDate);
+
+  // 이번 주 거래일: weekMonday 이상인 rows
+  // 전주 마지막 거래일: weekMonday 이전 날짜 중 가장 최근 row
+  const prevWeekRow = chronological.findLast(
+    (r) => new Date(`${r.date}T00:00:00Z`) < weekMonday,
+  );
+
+  if (prevWeekRow == null) return null;
+
+  const weekStartClose = Number(prevWeekRow.close);
+  if (!Number.isFinite(weekStartClose) || weekStartClose === 0) return null;
+
+  // 이번 주 거래일만으로 high/low/tradingDays 계산
+  const thisWeekRows = chronological.filter(
+    (r) => new Date(`${r.date}T00:00:00Z`) >= weekMonday,
+  );
+
+  if (thisWeekRows.length === 0) return null;
+
+  const weekEndClose = Number(thisWeekRows[thisWeekRows.length - 1].close);
+  if (!Number.isFinite(weekEndClose)) return null;
+
+  const highs = thisWeekRows
     .map((r) => Number(r.high))
     .filter((h) => Number.isFinite(h));
-  const lows = chronological
+  const lows = thisWeekRows
     .map((r) => Number(r.low))
     .filter((l) => Number.isFinite(l));
 
-  if (closes.length < 2 || highs.length === 0 || lows.length === 0) return null;
+  if (highs.length === 0 || lows.length === 0) return null;
 
-  const weekStartClose = closes[0];
-  const weekEndClose = closes[closes.length - 1];
   const weekHigh = Math.max(...highs);
   const weekLow = Math.min(...lows);
-
-  if (weekStartClose === 0) return null;
 
   const weeklyChange = weekEndClose - weekStartClose;
   const weeklyChangePercent = (weeklyChange / weekStartClose) * 100;
@@ -222,7 +256,7 @@ function computeWeeklyQuote(
     weekHigh: Number(weekHigh.toFixed(2)),
     weekLow: Number(weekLow.toFixed(2)),
     closePosition: determineClosePosition(weekEndClose, weekHigh, weekLow),
-    tradingDays: closes.length,
+    tradingDays: thisWeekRows.length,
   };
 }
 
