@@ -202,13 +202,6 @@ export interface WatchlistChange {
   symbol: string;
   action: 'register' | 'exit';
   reason: string;
-  gateResults?: {
-    phase2: boolean;
-    rs60: boolean;
-    sepa: boolean;
-    industryRs: boolean;
-    thesis: boolean;
-  };
 }
 
 // ─── 데이터 컨테이너 (도구 반환값 직접 매핑) ──────────────────────────────────

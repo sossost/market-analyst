@@ -283,6 +283,13 @@ export class WeeklyDataCollector {
 
     if (symbol == null || action == null) return;
 
+    // action 검증 — 명시적으로 허용된 값만 처리
+    const validAction = action === 'register' || action === 'exit' ? action : null;
+    if (validAction == null) {
+      logger.warn('WeeklyDataCollector', `watchlistChanges: 알 수 없는 action — ${String(action)}`);
+      return;
+    }
+
     const isSuccess = parsed.success === true;
     const isBlocked = parsed.blocked === true;
 
@@ -292,7 +299,7 @@ export class WeeklyDataCollector {
       isBlocked &&
       isArray(gateFailures) &&
       gateFailures.length === 1 &&
-      gateFailures[0] === "thesis";
+      typeof gateFailures[0] === 'string' && gateFailures[0] === "thesis";
 
     const reason =
       typeof parsed.reason === "string"
@@ -307,23 +314,28 @@ export class WeeklyDataCollector {
 
     const changes = this._data.watchlistChanges as WeeklyReportData["watchlistChanges"];
 
-    const change: WatchlistChange = {
-      symbol,
-      action: action === "register" ? "register" : "exit",
-      reason,
-    };
+    const change: WatchlistChange = { symbol, action: validAction, reason };
 
-    if (action === "register" && isSuccess) {
-      changes.registered.push(change);
+    if (validAction === "register" && isSuccess) {
+      this._data.watchlistChanges = {
+        ...changes,
+        registered: [...changes.registered, change],
+      };
       logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 등록 확정`);
-    } else if (action === "exit" && isSuccess) {
-      changes.exited.push(change);
+    } else if (validAction === "exit" && isSuccess) {
+      this._data.watchlistChanges = {
+        ...changes,
+        exited: [...changes.exited, change],
+      };
       logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 해제 확정`);
-    } else if (action === "register" && isThesisOnlyBlock) {
-      changes.pending4of5.push(change);
+    } else if (validAction === "register" && isThesisOnlyBlock) {
+      this._data.watchlistChanges = {
+        ...changes,
+        pending4of5: [...changes.pending4of5, change],
+      };
       logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 예비 (4/5 — thesis 미충족)`);
     } else {
-      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 미분류 (action=${action}, success=${String(isSuccess)}, blocked=${String(isBlocked)})`);
+      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 미분류 (action=${validAction}, success=${String(isSuccess)}, blocked=${String(isBlocked)})`);
     }
   }
 }

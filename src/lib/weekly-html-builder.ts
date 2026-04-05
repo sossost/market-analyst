@@ -1068,25 +1068,12 @@ function renderWatchlistChangeCard(
     return `<span class="gate-check fail" style="margin-left:auto;">해제</span>`;
   })();
 
-  const gateResultsHtml =
-    change.gateResults != null
-      ? `
-      <div class="gate5-checks">
-        <span class="gate-check ${change.gateResults.phase2 ? "pass" : "fail"}">Phase2</span>
-        <span class="gate-check ${change.gateResults.rs60 ? "pass" : "fail"}">RS60+</span>
-        <span class="gate-check ${change.gateResults.sepa ? "pass" : "fail"}">SEPA</span>
-        <span class="gate-check ${change.gateResults.industryRs ? "pass" : "fail"}">업종RS▲</span>
-        <span class="gate-check ${change.gateResults.thesis ? "pass" : "fail"}">thesis</span>
-      </div>`
-      : "";
-
   return `
     <div class="gate5-card">
       <div class="gate5-card-header">
         <span class="gate5-ticker">${escapeHtml(change.symbol)}</span>
         ${badgeHtml}
       </div>
-      ${gateResultsHtml}
       ${change.reason !== "" ? `<div class="gate5-stats">${escapeHtml(change.reason)}</div>` : ""}
     </div>`;
 }
