@@ -30,10 +30,17 @@ import type {
  * LLM이 생성한 마크다운에 <script> 등이 포함될 수 있으므로
  * raw HTML은 이스케이프된 텍스트로 렌더링한다.
  */
+const DANGEROUS_HREF_PATTERN = /^(javascript|data):/i;
+
 const markedInstance = new Marked({
   renderer: {
     html(token) {
       return escapeHtml(typeof token === "string" ? token : token.text);
+    },
+    link({ href, title, text }) {
+      const safeHref = DANGEROUS_HREF_PATTERN.test(href ?? "") ? "#" : (href ?? "#");
+      const titleAttr = title != null ? ` title="${escapeHtml(title)}"` : "";
+      return `<a href="${escapeHtml(safeHref)}"${titleAttr}>${text}</a>`;
     },
   },
 });
@@ -998,11 +1005,15 @@ export function buildWeeklyHtml(
   const temperatureLabel = escapeHtml(insight.marketTemperatureLabel);
 
   // 날짜 포맷 (MM/DD ~ MM/DD)
-  const dateObj = new Date(date);
-  const weekEndLabel = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
-  const weekStartObj = new Date(dateObj);
-  weekStartObj.setDate(weekStartObj.getDate() - 4);
-  const weekStartLabel = `${weekStartObj.getMonth() + 1}/${weekStartObj.getDate()}`;
+  // new Date("YYYY-MM-DD")는 UTC 자정으로 파싱되어 KST에서 getMonth()/getDate() 사용 시
+  // 하루 밀림이 발생한다. 문자열에서 직접 파싱하거나 UTC 메서드를 사용한다.
+  const [yearStr, monthStr, dayStr] = date.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  const weekEndLabel = `${month}/${day}`;
+  const weekStartDate = new Date(Date.UTC(year, month - 1, day - 4));
+  const weekStartLabel = `${weekStartDate.getUTCMonth() + 1}/${weekStartDate.getUTCDate()}`;
   const weekRangeLabel = `${weekStartLabel} ~ ${weekEndLabel}`;
 
   // 데이터 블록 렌더링

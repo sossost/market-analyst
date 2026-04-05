@@ -695,6 +695,63 @@ describe("buildWeeklyHtml", () => {
     expect(result).toContain("3/31 ~ 4/4");
   });
 
+  it("날짜 UTC off-by-one: 2026-04-04 입력 시 4/4로 표시된다 (3/4 하루 밀림 없음)", () => {
+    const data = createMockWeeklyReportData();
+    const insight = createMockWeeklyReportInsight();
+
+    const result = buildWeeklyHtml(data, insight, "2026-04-04");
+
+    // new Date("2026-04-04")가 UTC 자정 → KST에서 getDate() → 3 이 되는 버그를 방지
+    expect(result).toContain("4/4");
+    expect(result).not.toMatch(/3\/31 ~ 4\/3/);
+  });
+
+  it("날짜 UTC off-by-one: 월 경계(2026-02-01) 입력 시 2/1로 표시된다", () => {
+    const data = createMockWeeklyReportData();
+    const insight = createMockWeeklyReportInsight();
+
+    const result = buildWeeklyHtml(data, insight, "2026-02-01");
+
+    expect(result).toContain("2/1");
+    // 하루 밀림 버그라면 1/31이 됨
+    expect(result).not.toMatch(/weekEnd.*1\/31/);
+  });
+
+  it("XSS: javascript: 링크가 # 으로 치환된다", () => {
+    const data = createMockWeeklyReportData();
+    const insight = createMockWeeklyReportInsight({
+      sectorRotationNarrative: "[클릭](javascript:alert(1))",
+    });
+
+    const result = buildWeeklyHtml(data, insight, "2026-04-04");
+
+    expect(result).not.toContain("javascript:");
+    expect(result).toContain('href="#"');
+  });
+
+  it("XSS: data: 링크가 # 으로 치환된다", () => {
+    const data = createMockWeeklyReportData();
+    const insight = createMockWeeklyReportInsight({
+      industryFlowNarrative: "[이미지](data:text/html,<script>alert(1)</script>)",
+    });
+
+    const result = buildWeeklyHtml(data, insight, "2026-04-04");
+
+    expect(result).not.toContain("data:text/html");
+    expect(result).toContain('href="#"');
+  });
+
+  it("XSS: 일반 https 링크는 그대로 유지된다", () => {
+    const data = createMockWeeklyReportData();
+    const insight = createMockWeeklyReportInsight({
+      riskFactors: "[참고](https://example.com)",
+    });
+
+    const result = buildWeeklyHtml(data, insight, "2026-04-04");
+
+    expect(result).toContain('href="https://example.com"');
+  });
+
   it("인라인 <style> 블록이 포함된다 (외부 CSS 의존 없음)", () => {
     const data = createMockWeeklyReportData();
     const insight = createMockWeeklyReportInsight();

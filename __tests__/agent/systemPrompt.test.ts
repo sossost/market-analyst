@@ -435,13 +435,13 @@ describe("buildWeeklySystemPrompt", () => {
     expect(result).toContain("원자재/거시 지표 동향은 당일 시장 데이터 미수집으로 생략");
   });
 
-  it("includes message-markdownContent consistency rule", () => {
+  it("includes capture_weekly_insight output rule", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildWeeklySystemPrompt();
 
-    expect(result).toContain("message와 markdownContent 수치 일치");
-    expect(result).toContain("불일치는 markdownContent 기준으로 통일");
+    expect(result).toContain("capture_weekly_insight를 정확히 1회 호출");
+    expect(result).toContain("데이터 테이블은 프로그래밍이 렌더링한다");
   });
 
   it("replaces old glossary instruction with consistency rule", () => {

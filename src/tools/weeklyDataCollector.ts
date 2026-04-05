@@ -5,9 +5,8 @@
  * agentLoop.ts는 수정하지 않는다 — 도구의 execute를 래핑하여 결과를 복사해둔다.
  *
  * 설계 결정:
- * - getLeadingSectors(mode: "industry")는 prevWeekDate가 있을 때 텍스트를 반환한다.
- *   이 경우 JSON 파싱이 불가능하므로 industryTop10은 빈 배열로 유지한다.
- *   HTML 빌더가 빈 배열일 때 "데이터 미수집" 메시지를 표시한다.
+ * - getLeadingSectors(mode: "industry")는 prevWeekDate 유무와 무관하게 항상 JSON을 반환한다.
+ *   industries 배열을 캡처하여 industryTop10에 저장한다.
  * - getLeadingSectors(mode: "weekly")는 sectors 배열을 JSON으로 반환한다.
  * - getMarketBreadth(mode: "weekly")는 weeklyTrend + latestSnapshot을 JSON으로 반환한다.
  */
@@ -226,12 +225,13 @@ export class WeeklyDataCollector {
     // mode가 "industry"인 경우에만 업종 데이터 캡처
     if (input.mode !== "industry") return;
 
-    // prevWeekDate가 없는 경로(일간 스냅샷)만 JSON을 반환한다
+    // prevWeekDate 유무와 무관하게 항상 JSON으로 industries 배열을 반환한다
     const industries = parsed.industries;
     if (!isArray(industries)) return;
 
     this._data.industryTop10 = industries as IndustryItem[];
-    logger.info("WeeklyDataCollector", `industryTop10: ${industries.length}개 업종 캡처 (일간 스냅샷 경로)`);
+    const path = parsed.prevWeekDate != null ? "주간 변화 경로" : "일간 스냅샷 경로";
+    logger.info("WeeklyDataCollector", `industryTop10: ${industries.length}개 업종 캡처 (${path})`);
   }
 
   private _captureWatchlist(parsed: Record<string, unknown>): void {

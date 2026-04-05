@@ -337,21 +337,17 @@ export const getLeadingSectors: AgentTool = {
             );
 
       if (prevWeekDate != null) {
-        // 주간 변화 경로: plain 마크다운 텍스트로 반환 — JSON이 아님
-        // 에이전트가 재구성하지 않고 그대로 리포트에 붙여넣기하도록
+        // 주간 변화 경로: JSON으로 반환하여 weeklyDataCollector가 industries를 캡처할 수 있게 한다.
+        // weeklyChangeTable은 에이전트가 narrative 작성에 활용하도록 포함한다.
         const weeklyChangeTable = buildWeeklyChangeTable(industries);
-        const top3 = industries.slice(0, 3).map(i =>
-          `- **${i.industry}** (${i.sector}) — RS ${i.avgRs}, 주간 변화 ${i.changeWeek != null ? (i.changeWeek >= 0 ? `+${i.changeWeek}` : `${i.changeWeek}`) : "—"}, Phase ${i.groupPhase}, P2 비율 ${i.phase2Ratio ?? "—"}%`
-        ).join("\n");
-
-        return `[업종 RS 주간 변화 Top 10 — ${date} 기준, 전주 ${prevWeekDate} 대비]
-
-아래 테이블을 섹션 2 "업종 RS 주간 변화 Top 10"에 그대로 사용하세요.
-
-${weeklyChangeTable}
-
-상위 3개 업종 요약:
-${top3}`;
+        return JSON.stringify({
+          _note: "phase2Ratio는 이미 퍼센트(0~100). weeklyChangeTable을 섹션 2에 그대로 사용하세요.",
+          date,
+          prevWeekDate,
+          mode: "industry",
+          industries,
+          weeklyChangeTable,
+        });
       }
 
       return JSON.stringify({
