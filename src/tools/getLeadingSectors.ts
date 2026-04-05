@@ -23,7 +23,7 @@ import { clampPercent, validateDate, validateNumber } from "./validation";
 import { applyIndustrySectorCap } from "@/lib/industryFilter.js";
 
 /** DB에서 가져올 업종 상위 N개 (섹터당 제한 적용 전 후보군) */
-const INDUSTRY_FETCH_LIMIT = 50;
+const INDUSTRY_FETCH_LIMIT_DEFAULT = 50;
 
 /** 최종 반환할 업종 개수 */
 const INDUSTRY_TOP_N = 10;
@@ -256,10 +256,10 @@ export const getLeadingSectors: AgentTool = {
         // changeWeek + divergence 계산을 위해 두 쿼리 병렬 조회
         const [weeklyRows, globalRows] = await Promise.all([
           retryDatabaseOperation(() =>
-            findIndustriesWeeklyChange(date, prevWeekDate, INDUSTRY_FETCH_LIMIT),
+            findIndustriesWeeklyChange(date, prevWeekDate, Math.max(industryLimit, INDUSTRY_FETCH_LIMIT_DEFAULT)),
           ),
           retryDatabaseOperation(() =>
-            findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
+            findTopIndustriesGlobal(date, Math.max(industryLimit, INDUSTRY_FETCH_LIMIT_DEFAULT)),
           ),
         ]);
         const globalMap = new Map<string, IndustryRsGlobalRow>();
@@ -299,7 +299,7 @@ export const getLeadingSectors: AgentTool = {
         });
       } else {
         const globalRows = await retryDatabaseOperation(() =>
-          findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
+          findTopIndustriesGlobal(date, Math.max(industryLimit, INDUSTRY_FETCH_LIMIT_DEFAULT)),
         );
         allIndustries = globalRows.map((i: IndustryRsGlobalRow) => ({
           industry: i.industry,
