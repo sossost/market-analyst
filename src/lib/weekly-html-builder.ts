@@ -664,7 +664,8 @@ function getFearGreedDirectionLabel(score: number, previous1Week: number): strin
 }
 
 function renderFearGreed(fg: FearGreedData): string {
-  const scoreCls = fg.score <= 25 ? "up" : fg.score >= 75 ? "down" : "";
+  // 공포(낮은 점수)=파랑(down), 탐욕(높은 점수)=빨강(up)
+  const scoreCls = fg.score <= 25 ? "down" : fg.score >= 75 ? "up" : "";
   const prev1wStr =
     fg.previous1Week != null
       ? `1주전 ${fg.previous1Week.toFixed(1)} → 현재 ${fg.score.toFixed(1)} (${getFearGreedDirectionLabel(fg.score, fg.previous1Week)})`
@@ -1029,7 +1030,7 @@ export function renderWatchlistChanges(
     ? `
       <h3>예비 관심종목 (${escapeHtml(String(pending4of5.length))}종목 — 4/5, thesis 미충족)</h3>
       <table>
-        <thead><tr><th>종목</th><th>업종</th><th>고점대비</th><th>저점대비</th><th>Phase 2</th><th>RS &gt; 60</th><th>SEPA S/A</th><th>업종RS ▲</th><th>thesis</th><th>통과</th></tr></thead>
+        <thead><tr><th>종목</th><th>업종</th><th>고점대비</th><th>저점대비</th><th>Phase 2</th><th>RS &gt; 60</th><th>SEPA S/A</th><th>업종RS(주간▲)</th><th>thesis</th><th>통과</th></tr></thead>
         <tbody>
           ${pending4of5.map((c) => {
             const stock = stockMap.get(c.symbol);
@@ -1234,7 +1235,8 @@ export function buildWeeklyHtml(
       </section>
 
       <!-- 레짐 맥락 -->
-      <section class="regime-context">
+      <section>
+        <h2>🌡️ 레짐 맥락</h2>
         <div class="content-block">${regimeContextHtml}</div>
       </section>
     </div>
