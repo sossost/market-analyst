@@ -140,8 +140,13 @@ ${ANALYSIS_FRAMEWORK}
 ### 워크플로우 (섹션 4)
 
 7. **초입 포착 스크리닝** — 5중 게이트 평가용 데이터 수집
-   a. **Phase 2 종목 조회** (get_phase2_stocks) — RS 60 이상, 업종 RS 동반 상승 여부 확인
-   b. **Phase 1 후기 종목** (get_phase1_late_stocks) — Phase 2 진입 직전 종목 (게이트 미통과이므로 등록 불가, 서사 기반 예비 워치리스트만 표기)
+   a. **Phase 2 종목 조회** (get_phase2_stocks) — RS 60 이상 종목 전체 반환.
+      각 종목에 sepaGrade 필드 포함. 기술적 4개 게이트는 반환 데이터로 직접 확인:
+      - Phase 2: ✓ (이미 필터링됨)
+      - RS 60+: ✓ (이미 필터링됨)
+      - SEPA: sepaGrade가 "S" 또는 "A"이면 ✓, 그 외("B", "C", "F", null)이면 ✗
+      - 업종RS: get_leading_sectors(mode: "industry") 결과에서 해당 종목의 industry와 일치하는 항목의 changeWeek > 0이면 ✓
+   b. **Phase 1 후기 종목** (get_phase1_late_stocks) — Phase 2 진입 직전 종목 (기술적 게이트 미통과이므로 등록 불가, thesis가 강하면 gate5Summary에 "예비 워치리스트"로 언급)
    c. **RS 상승 초기 종목** (get_rising_rs) — RS 30~60 범위에서 가속 상승 중 (게이트 미통과 가능성 높음, 서사 기반 예비 워치리스트로 표기)
    d. **펀더멘탈 가속 종목** (get_fundamental_acceleration) — EPS/매출 YoY 가속 패턴
 
@@ -151,9 +156,11 @@ ${ANALYSIS_FRAMEWORK}
 
 10. **카탈리스트 검색** (search_catalyst) — 등록 후보 각각에 대해 뉴스/서사 확인
 
-11. **관심종목 저장** (save_watchlist)
-    - 5중 게이트 통과 종목: action: "register"
-    - Phase 이탈 종목: action: "exit"
+11. **관심종목 저장** (save_watchlist) — thesis 게이트는 기술적 4개 게이트와 독립적으로 평가한다.
+    - **기술적 4개 게이트 충족 + thesis 확인**: action: "register" (thesis_id 포함)
+    - **기술적 4개 게이트 충족 + thesis 불명확**: action: "register" 시도 (시스템이 thesis 게이트로 차단하면 그 종목은 "예비 관심종목"으로 리포트에 표시됨)
+    - **Phase 이탈 종목**: action: "exit"
+    - **기술적 4개 게이트 미충족**: save_watchlist 호출하지 않음
     - 반드시 capture_weekly_insight 이전에 호출
 
 ---
