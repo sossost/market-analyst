@@ -9,15 +9,20 @@ const PAGES_REPO = "sossost/market-reports";
 const PAGES_BASE_URL = "https://sossost.github.io/market-reports";
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+export type ReportType = "daily" | "weekly";
+
 /**
  * HTML 리포트를 GitHub Pages 레포에 push하여 퍼블릭 URL을 생성한다.
  *
  * - 실패 시 null 반환 (fail-open — Gist fallback이 동작해야 함)
  * - 성공 시 GitHub Pages URL 반환
+ * - type 기본값 "daily" — 기존 일간 파이프라인 무변경
+ * - type "weekly" 시 경로: weekly/{date}/index.html
  */
 export async function publishHtmlReport(
   html: string,
   date: string,
+  type: ReportType = "daily",
 ): Promise<string | null> {
   if (!DATE_PATTERN.test(date)) {
     logger.error(TAG, `잘못된 날짜 형식: ${date} — YYYY-MM-DD 필요`);
@@ -36,8 +41,8 @@ export async function publishHtmlReport(
     // 1. clone (shallow)
     await git(["clone", "--depth", "1", repoUrl, workDir]);
 
-    // 2. write file
-    const dir = join(workDir, "daily", date);
+    // 2. write file — type에 따라 경로 분기
+    const dir = join(workDir, type, date);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "index.html"), html, "utf-8");
 
@@ -47,13 +52,13 @@ export async function publishHtmlReport(
     const status = await git(["status", "--porcelain"], workDir);
     if (status.trim() === "") {
       logger.info(TAG, "변경 없음 — push 건너뜀");
-      return `${PAGES_BASE_URL}/daily/${date}/`;
+      return `${PAGES_BASE_URL}/${type}/${date}/`;
     }
 
-    await git(["-c", "user.name=Market Analyst Bot", "-c", "user.email=bot@noreply.github.com", "commit", "-m", `report: ${date}`], workDir);
+    await git(["-c", "user.name=Market Analyst Bot", "-c", "user.email=bot@noreply.github.com", "commit", "-m", `report(${type}): ${date}`], workDir);
     await git(["push"], workDir);
 
-    const url = `${PAGES_BASE_URL}/daily/${date}/`;
+    const url = `${PAGES_BASE_URL}/${type}/${date}/`;
     logger.info(TAG, `GitHub Pages 발행 완료: ${url}`);
     return url;
   } catch (err) {

@@ -3,6 +3,7 @@ import {
   findTopSectors,
   findTopIndustries,
   findTopIndustriesGlobal,
+  findIndustriesWeeklyChange,
   findPrevWeekDate,
   findPrevDayDate,
   findSectorsByDate,
@@ -14,6 +15,7 @@ import type {
   IndustryRsRow,
   IndustryRsGlobalRow,
   IndustryDrilldownRow,
+  IndustryWeeklyChangeRow,
 } from "@/db/repositories/index.js";
 import { toNum } from "@/etl/utils/common";
 import type { AgentTool } from "./types";
@@ -34,6 +36,29 @@ const INDUSTRY_SECTOR_CAP = 2;
  * 섹터는 업종과 달리 전체 수가 적으므로 항상 전체를 반환한다.
  */
 const SECTOR_QUERY_LIMIT = 50;
+
+/** 주간 업종 RS 변화 Top 10 마크다운 테이블 생성 */
+function buildWeeklyChangeTable(
+  industries: {
+    industry: string;
+    sector: string;
+    avgRs: number;
+    groupPhase: number;
+    phase2Ratio: number | null;
+    changeWeek: number | null;
+  }[],
+): string {
+  const header =
+    "| # | 업종 | 섹터 | RS | 주간 변화 | Phase | P2 비율 |\n" +
+    "|----|------|------|----|-----------|-------|---------|";
+  const rows = industries.map((i, idx) => {
+    const cw =
+      i.changeWeek != null ? (i.changeWeek >= 0 ? `+${i.changeWeek.toFixed(1)}` : i.changeWeek.toFixed(1)) : "—";
+    const p2 = i.phase2Ratio != null ? `${i.phase2Ratio}%` : "—";
+    return `| ${idx + 1} | ${i.industry} | ${i.sector} | ${i.avgRs.toFixed(1)} | ${cw} | ${i.groupPhase} | ${p2} |`;
+  });
+  return `${header}\n${rows.join("\n")}`;
+}
 
 function mapSectorRow(
   s: SectorRsRow,
@@ -204,37 +229,135 @@ export const getLeadingSectors: AgentTool = {
           : "daily";
 
     if (mode === "industry") {
-      const rows = await retryDatabaseOperation(() =>
-        findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
+      // 전주 날짜 조회 — changeWeek 계산용
+      const prevWeekDateRow = await retryDatabaseOperation(() =>
+        findPrevWeekDate(date),
       );
+      const prevWeekDate = prevWeekDateRow.prev_week_date ?? null;
 
-      const allIndustries = rows.map((i: IndustryRsGlobalRow) => ({
-        industry: i.industry,
-        sector: i.sector,
-        avgRs: toNum(i.avg_rs),
-        rsRank: i.rs_rank,
-        groupPhase: i.group_phase,
-        phase2Ratio: clampPercent(
-          Number((toNum(i.phase2_ratio) * 100).toFixed(1)),
-          `industry:${i.industry}:phase2Ratio`,
-        ),
-        change4w: i.change_4w != null ? toNum(i.change_4w) : null,
-        change8w: i.change_8w != null ? toNum(i.change_8w) : null,
-        change12w: i.change_12w != null ? toNum(i.change_12w) : null,
-        sectorAvgRs: i.sector_avg_rs != null ? toNum(i.sector_avg_rs) : null,
-        sectorRsRank: i.sector_rs_rank,
-        divergence:
-          i.sector_avg_rs != null
-            ? Number((toNum(i.avg_rs) - toNum(i.sector_avg_rs)).toFixed(2))
-            : null,
-      }));
+      // 전주 날짜가 있으면 주간 변화 포함 쿼리, 없으면 기존 글로벌 쿼리 사용
+      let allIndustries: {
+        industry: string;
+        sector: string;
+        avgRs: number;
+        rsRank: number;
+        groupPhase: number;
+        phase2Ratio: number | null;
+        change4w: number | null;
+        change8w: number | null;
+        change12w: number | null;
+        sectorAvgRs: number | null;
+        sectorRsRank: number | null;
+        divergence: number | null;
+        changeWeek: number | null;
+      }[];
 
-      const industries = applyIndustrySectorCap(allIndustries, INDUSTRY_SECTOR_CAP, industryLimit);
+      if (prevWeekDate != null) {
+        // changeWeek + divergence 계산을 위해 두 쿼리 병렬 조회
+        const [weeklyRows, globalRows] = await Promise.all([
+          retryDatabaseOperation(() =>
+            findIndustriesWeeklyChange(date, prevWeekDate, INDUSTRY_FETCH_LIMIT),
+          ),
+          retryDatabaseOperation(() =>
+            findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
+          ),
+        ]);
+        const globalMap = new Map<string, IndustryRsGlobalRow>();
+        for (const g of globalRows) {
+          globalMap.set(g.industry, g);
+        }
+
+        allIndustries = weeklyRows.map((i: IndustryWeeklyChangeRow) => {
+          const global = globalMap.get(i.industry);
+          const sectorAvgRs =
+            global?.sector_avg_rs != null ? toNum(global.sector_avg_rs) : null;
+          return {
+            industry: i.industry,
+            sector: i.sector,
+            avgRs: toNum(i.avg_rs),
+            rsRank: i.rs_rank,
+            groupPhase: i.group_phase,
+            phase2Ratio: clampPercent(
+              Number((toNum(i.phase2_ratio) * 100).toFixed(1)),
+              `industry:${i.industry}:phase2Ratio`,
+            ),
+            change4w: global?.change_4w != null ? toNum(global.change_4w) : null,
+            change8w: global?.change_8w != null ? toNum(global.change_8w) : null,
+            change12w:
+              global?.change_12w != null ? toNum(global.change_12w) : null,
+            sectorAvgRs,
+            sectorRsRank: global?.sector_rs_rank ?? null,
+            divergence:
+              sectorAvgRs != null
+                ? Number((toNum(i.avg_rs) - sectorAvgRs).toFixed(2))
+                : null,
+            changeWeek:
+              i.change_week != null
+                ? Number(Number(i.change_week).toFixed(2))
+                : null,
+          };
+        });
+      } else {
+        const globalRows = await retryDatabaseOperation(() =>
+          findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
+        );
+        allIndustries = globalRows.map((i: IndustryRsGlobalRow) => ({
+          industry: i.industry,
+          sector: i.sector,
+          avgRs: toNum(i.avg_rs),
+          rsRank: i.rs_rank,
+          groupPhase: i.group_phase,
+          phase2Ratio: clampPercent(
+            Number((toNum(i.phase2_ratio) * 100).toFixed(1)),
+            `industry:${i.industry}:phase2Ratio`,
+          ),
+          change4w: i.change_4w != null ? toNum(i.change_4w) : null,
+          change8w: i.change_8w != null ? toNum(i.change_8w) : null,
+          change12w: i.change_12w != null ? toNum(i.change_12w) : null,
+          sectorAvgRs:
+            i.sector_avg_rs != null ? toNum(i.sector_avg_rs) : null,
+          sectorRsRank: i.sector_rs_rank,
+          divergence:
+            i.sector_avg_rs != null
+              ? Number((toNum(i.avg_rs) - toNum(i.sector_avg_rs)).toFixed(2))
+              : null,
+          changeWeek: null,
+        }));
+      }
+
+      // changeWeek 경로(주간 변화 분석): 섹터당 제한 없음 — 한 섹터 집중은 강한 자금 유입 신호
+      // prevWeekDate 없는 경로(일간 스냅샷): 섹터당 캡 적용
+      const industries =
+        prevWeekDate != null
+          ? allIndustries.slice(0, industryLimit)
+          : applyIndustrySectorCap(
+              allIndustries,
+              INDUSTRY_SECTOR_CAP,
+              industryLimit,
+            );
+
+      if (prevWeekDate != null) {
+        // 주간 변화 경로: plain 마크다운 텍스트로 반환 — JSON이 아님
+        // 에이전트가 재구성하지 않고 그대로 리포트에 붙여넣기하도록
+        const weeklyChangeTable = buildWeeklyChangeTable(industries);
+        const top3 = industries.slice(0, 3).map(i =>
+          `- **${i.industry}** (${i.sector}) — RS ${i.avgRs}, 주간 변화 ${i.changeWeek != null ? (i.changeWeek >= 0 ? `+${i.changeWeek}` : `${i.changeWeek}`) : "—"}, Phase ${i.groupPhase}, P2 비율 ${i.phase2Ratio ?? "—"}%`
+        ).join("\n");
+
+        return `[업종 RS 주간 변화 Top 10 — ${date} 기준, 전주 ${prevWeekDate} 대비]
+
+아래 테이블을 섹션 2 "업종 RS 주간 변화 Top 10"에 그대로 사용하세요.
+
+${weeklyChangeTable}
+
+상위 3개 업종 요약:
+${top3}`;
+      }
 
       return JSON.stringify({
-        _note:
-          "phase2Ratio는 이미 퍼센트(0~100). divergence = 업종RS - 섹터RS (양수 = 섹터 대비 업종 초과 강세). 섹터당 최대 2개로 제한됨.",
+        _note: "일간 스냅샷 경로. phase2Ratio는 이미 퍼센트(0~100). 섹터당 최대 2개로 제한됨.",
         date,
+        prevWeekDate: null,
         mode: "industry",
         industries,
       });

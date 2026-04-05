@@ -621,7 +621,7 @@ describe("sendDrafts", () => {
       "Summary line",
       "2026-04-03",
     );
-    expect(mockPublishHtmlReport).toHaveBeenCalledWith("<html>full report</html>", "2026-04-03");
+    expect(mockPublishHtmlReport).toHaveBeenCalledWith("<html>full report</html>", "2026-04-03", undefined);
     expect(mockSendDiscordMessage).toHaveBeenCalledWith(
       expect.stringContaining("https://sossost.github.io/market-reports/daily/2026-04-03/"),
       "TEST_WEBHOOK",

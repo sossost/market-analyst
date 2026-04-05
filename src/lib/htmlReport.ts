@@ -1378,6 +1378,48 @@ function renderContentBlockSection(body: string): string {
 }
 
 /**
+ * h3 서브섹션을 content-block 카드로 렌더링한다.
+ * "다음 주 관전 포인트", "리스크 경고" 등 종목이 아닌 분석 섹션에 사용.
+ */
+function renderSubsectionCards(body: string): string {
+  const lines = body.split("\n");
+  const sections: Array<{ heading: string; lines: string[] }> = [];
+  let currentHeading = "";
+  let currentLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("### ")) {
+      if (currentLines.some((l) => l.trim().length > 0)) {
+        sections.push({ heading: currentHeading, lines: currentLines });
+      }
+      currentHeading = line.slice(4).trim();
+      currentLines = [];
+    } else {
+      currentLines.push(line);
+    }
+  }
+
+  if (currentLines.some((l) => l.trim().length > 0)) {
+    sections.push({ heading: currentHeading, lines: currentLines });
+  }
+
+  if (sections.length === 0) return "";
+
+  return sections
+    .map(({ heading, lines: sLines }) => {
+      const contentBody = sLines.join("\n").trim();
+      const renderedBody = applyPostProcessing(
+        markedInstance.parse(contentBody) as string,
+      );
+      if (heading === "") {
+        return `<div class="content-block">${renderedBody}</div>`;
+      }
+      return `<h3>${escapeHtml(heading)}</h3>\n<div class="content-block">${renderedBody}</div>`;
+    })
+    .join("\n");
+}
+
+/**
  * 부록 헤더 섹션의 body를 렌더링한다.
  * ### h3 헤더를 <section> + <h2>로 변환하고, 각 하위 내용을 stock-card 섹션으로 처리한다.
  * h3 헤더가 없으면 전체를 stock-card 섹션으로 처리한다.
@@ -1411,11 +1453,19 @@ function renderAppendixBodySection(body: string): string {
       const sectionBody = sLines.join("\n");
       const sectionIcon = getSectionIcon(heading);
       const iconHtml = sectionIcon !== "" ? `<span class="section-icon">${sectionIcon}</span>` : "";
-      const sectionHtml = renderStockCardSection(sectionBody);
+      const headingLower = heading.toLowerCase();
+      // "해제", "예비 워치리스트" 등은 종목 카드가 아니라 content-block으로 렌더링
+      const useContentBlock =
+        headingLower.includes("해제") ||
+        headingLower.includes("예비") ||
+        headingLower.includes("관찰");
+      const sectionHtml = useContentBlock
+        ? `<div class="content-block">${applyPostProcessing(markedInstance.parse(sectionBody) as string)}</div>`
+        : renderStockCardSection(sectionBody);
       if (heading === "") {
         return sectionHtml;
       }
-      return `<section>\n<h2>${iconHtml}${escapeHtml(heading)}</h2>\n${sectionHtml}\n</section>`;
+      return `<section>\n<h3>${iconHtml}${escapeHtml(heading)}</h3>\n${sectionHtml}\n</section>`;
     })
     .join("\n");
 }
@@ -1976,8 +2026,8 @@ ${sectionHtml}
       continue;
     }
 
-    // 업종 RS 랭킹 섹션
-    if (headingContains(heading, "업종 RS", "주도 업종")) {
+    // 업종 RS 랭킹 섹션 (일간 전용 — "주간 변화"가 포함된 헤딩은 일반 렌더링으로)
+    if (headingContains(heading, "업종 RS", "주도 업종") && !heading.includes("주간 변화")) {
       const sectionHtml = renderIndustryRankingSection(body);
       htmlParts.push(`<section>
 <h2>${iconHtml}${escapeHtml(cleanHeading)}</h2>
@@ -2028,8 +2078,28 @@ ${sectionHtml}
       continue;
     }
 
-    // 부록 내 종목 섹션
-    if (isAppendixMode || headingContains(heading, "특이종목", "예비군", "관심종목")) {
+    // 주간: "다음 주 관전 포인트", "리스크 경고" — 종목 카드 불필요, content-block으로 렌더링
+    if (headingContains(heading, "관전 포인트", "다음 주", "리스크 경고", "리스크")) {
+      const sectionHtml = renderSubsectionCards(body);
+      htmlParts.push(`<section>
+<h2>${iconHtml}${escapeHtml(cleanHeading)}</h2>
+${sectionHtml}
+</section>`);
+      continue;
+    }
+
+    // 주간: "관심종목 등록/해제" — h3 서브섹션(해제, 예비 워치리스트) 분리 + 종목 카드 유지
+    if (headingContains(heading, "관심종목", "등록", "해제")) {
+      const sectionHtml = renderAppendixBodySection(body);
+      htmlParts.push(`<section>
+<h2>${iconHtml}${escapeHtml(cleanHeading)}</h2>
+${sectionHtml}
+</section>`);
+      continue;
+    }
+
+    // 부록 내 종목 섹션 (일간 리포트 — 부록 구분선 이후)
+    if (isAppendixMode || headingContains(heading, "특이종목", "예비군")) {
       isAppendixMode = true;
       const sectionHtml = renderStockCardSection(body);
       htmlParts.push(`<section>

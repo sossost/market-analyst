@@ -16,6 +16,7 @@ import type {
   SectorRsRankWithTotalRow,
   EtlSectorPhaseTransitionRow,
   IndustryDrilldownRow,
+  IndustryWeeklyChangeRow,
 } from "./types.js";
 
 /**
@@ -85,6 +86,37 @@ export async function findTopIndustriesGlobal(
      ORDER BY i.avg_rs::numeric DESC
      LIMIT $2`,
     [date, limit],
+  );
+
+  return rows;
+}
+
+/**
+ * 업종 RS 주간 변화를 조회한다 (mode: 'industry' 전주 대비용).
+ * 현재 주 avg_rs - 전주 avg_rs = change_week 으로 내림차순 정렬.
+ * 전주 데이터가 없는 업종은 change_week = null.
+ */
+export async function findIndustriesWeeklyChange(
+  date: string,
+  prevWeekDate: string,
+  limit: number,
+): Promise<IndustryWeeklyChangeRow[]> {
+  const { rows } = await pool.query<IndustryWeeklyChangeRow>(
+    `SELECT
+       curr.sector,
+       curr.industry,
+       curr.avg_rs::text,
+       curr.rs_rank,
+       curr.group_phase,
+       curr.phase2_ratio::text,
+       (curr.avg_rs - prev.avg_rs)::text AS change_week
+     FROM industry_rs_daily curr
+     LEFT JOIN industry_rs_daily prev
+       ON curr.industry = prev.industry AND prev.date = $2
+     WHERE curr.date = $1
+     ORDER BY (curr.avg_rs - prev.avg_rs)::numeric DESC NULLS LAST
+     LIMIT $3`,
+    [date, prevWeekDate, limit],
   );
 
   return rows;

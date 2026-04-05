@@ -300,7 +300,7 @@ async function main() {
   // 6. 리뷰 파이프라인 → 최종 발송 (루프 실패해도 draft가 있으면 발송)
   if (reportDrafts.length > 0) {
     logger.step("[6/7] Running review pipeline...");
-    const sentDrafts = await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL", { reportType: "weekly" });
+    const sentDrafts = await runReviewPipeline(reportDrafts, "DISCORD_WEEKLY_WEBHOOK_URL", { reportType: "weekly", date: targetDate });
 
     // DB 저장: INSERT (레코드 생성) → UPDATE (full_content 추가)
     // 주간 에이전트는 save_report_log 도구를 안정적으로 호출하지 않으므로 코드 레벨에서 직접 INSERT.

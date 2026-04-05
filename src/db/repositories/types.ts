@@ -104,6 +104,20 @@ export interface IndustryDrilldownRow {
   rs_change: string | null;
 }
 
+/**
+ * 업종 RS 주간 변화 조회 결과 (mode: 'industry' 전주 대비 변화용).
+ * 현재 주 RS - 전주 RS = change_week
+ */
+export interface IndustryWeeklyChangeRow {
+  sector: string;
+  industry: string;
+  avg_rs: string;
+  rs_rank: number;
+  group_phase: number;
+  phase2_ratio: string;
+  change_week: string | null;
+}
+
 // ─── market_regimes ──────────────────────────────────────────────────────────
 
 export interface MarketRegimeRow {
