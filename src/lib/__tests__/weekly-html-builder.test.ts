@@ -584,18 +584,36 @@ describe("renderGate5Block", () => {
     expect(result).not.toContain("gate5-new-badge");
   });
 
-  it("테이블에 RS, 고점대비, MA150, 거래량 컬럼이 있다", () => {
+  it("테이블에 RS, 고점대비, 게이트 충족 컬럼이 있다", () => {
     const result = renderGate5Block([
-      createMockPhase2Stock({ rsScore: 75, pctFromHigh52w: -12.5, ma150Slope: 0.05, volRatio: 1.2 }),
+      createMockPhase2Stock({ rsScore: 75, pctFromHigh52w: -12.5, industry: "Semiconductors" }),
     ]);
 
     expect(result).toContain("RS");
     expect(result).toContain("고점대비");
-    expect(result).toContain("MA150");
-    expect(result).toContain("거래량");
-    expect(result).toContain("-13%"); // toFixed(0) of -12.5
-    expect(result).toContain("▲"); // positive slope
-    expect(result).toContain("1.2x");
+    expect(result).toContain("게이트");
+    expect(result).toContain("통과");
+    expect(result).toContain("-13%");
+    // 1~3 게이트 항상 통과
+    expect(result).toContain('class="gate-check pass"');
+    // thesis는 ?
+    expect(result).toContain('class="gate-check pending"');
+  });
+
+  it("업종RS: industryTop10에 매칭되면 ✓/✗로 판정된다", () => {
+    const industries = [
+      { industry: "Semiconductors", changeWeek: 3.5 } as any,
+      { industry: "Software", changeWeek: -1.2 } as any,
+    ];
+    const result = renderGate5Block([
+      createMockPhase2Stock({ symbol: "NVDA", industry: "Semiconductors" }),
+      createMockPhase2Stock({ symbol: "MSFT", industry: "Software" }),
+    ], industries);
+
+    // NVDA: 업종RS +3.5 → 4/5
+    expect(result).toContain("4/5");
+    // MSFT: 업종RS -1.2 → 3/5
+    expect(result).toContain("3/5");
   });
 
   it("breakoutSignal이 none이 아니면 signal 태그가 추가된다", () => {

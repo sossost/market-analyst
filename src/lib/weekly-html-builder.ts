@@ -962,7 +962,10 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
  * 헤더의 종목 수는 반드시 실제 카드 수와 일치하도록 프로그래밍으로 계산한다.
  * 0건이면 빈 상태 메시지를 표시한다.
  */
-export function renderGate5Block(candidates: Phase2Stock[]): string {
+export function renderGate5Block(
+  candidates: Phase2Stock[],
+  industries: IndustryItem[] = [],
+): string {
   const count = candidates.length;
 
   if (count === 0) {
@@ -971,10 +974,16 @@ export function renderGate5Block(candidates: Phase2Stock[]): string {
       <div class="empty-state">Phase 2 + RS 60+ + SEPA S/A 조건을 충족하는 종목 없음</div>`;
   }
 
-  // 테이블 형태로 렌더링 — 카드 22개 스크롤보다 한눈에 비교 가능
+  // 업종RS 변화 맵: industry → changeWeek (양수면 ✓, 아니면 ✗)
+  const industryChangeMap = new Map<string, number>();
+  for (const ind of industries) {
+    if (ind.changeWeek != null) {
+      industryChangeMap.set(ind.industry, ind.changeWeek);
+    }
+  }
+
   const rows = candidates
     .map((stock) => {
-      const phaseCls = phaseBadgeClass(stock.phase);
       const newBadge = stock.isNewPhase2 ? ' <span class="gate5-new-badge">NEW</span>' : "";
       const signalBadge =
         stock.breakoutSignal !== "" && stock.breakoutSignal !== "none"
@@ -982,19 +991,33 @@ export function renderGate5Block(candidates: Phase2Stock[]): string {
           : "";
       const industryStr = stock.industry != null ? escapeHtml(stock.industry) : "—";
 
-      // 52주 고점 대비 — 가까울수록 좋음
+      // 5중 게이트 개별 판정
+      // 1~3: SQL 필터 통과 (항상 ✓)
+      const g1 = '<span class="gate-check pass">✓</span>'; // Phase 2
+      const g2 = '<span class="gate-check pass">✓</span>'; // RS 60+
+      const g3 = '<span class="gate-check pass">✓</span>'; // SEPA S/A
+
+      // 4: 업종RS ▲ — industryTop10에서 매칭
+      let g4: string;
+      let gateCount = 3; // 1~3 항상 통과
+      if (stock.industry != null && industryChangeMap.has(stock.industry)) {
+        const change = industryChangeMap.get(stock.industry)!;
+        if (change > 0) {
+          g4 = `<span class="gate-check pass">✓</span>`;
+          gateCount++;
+        } else {
+          g4 = `<span class="gate-check fail">✗</span>`;
+        }
+      } else {
+        g4 = `<span class="gate-check pending">—</span>`;
+      }
+
+      // 5: thesis — 프로그래밍 판정 불가
+      const g5 = '<span class="gate-check pending">?</span>';
+
+      // 52주 고점 대비
       const highStr = stock.pctFromHigh52w != null
         ? `<span class="${Math.abs(stock.pctFromHigh52w) <= 15 ? "up" : "down"}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
-        : "—";
-
-      // MA150 기울기 방향
-      const slopeStr = stock.ma150Slope != null
-        ? `<span class="${stock.ma150Slope > 0 ? "up" : "down"}">${stock.ma150Slope > 0 ? "▲" : "▼"}</span>`
-        : "—";
-
-      // 거래량 비율
-      const volStr = stock.volRatio != null
-        ? `<span class="${stock.volRatio >= 1.5 ? "up" : "neutral-color"}">${stock.volRatio.toFixed(1)}x</span>`
         : "—";
 
       return `
@@ -1003,15 +1026,15 @@ export function renderGate5Block(candidates: Phase2Stock[]): string {
           <td>${industryStr}</td>
           <td>${escapeHtml(String(stock.rsScore))}</td>
           <td>${highStr}</td>
-          <td>${slopeStr}</td>
-          <td>${volStr}</td>
+          <td style="text-align:center;">${g1}${g2}${g3}${g4}${g5}</td>
+          <td style="text-align:center;">${gateCount}/5</td>
         </tr>`;
     })
     .join("");
 
   return `
     <h3>5중 게이트 후보 (${escapeHtml(String(count))}종목)</h3>
-    <p style="font-size:0.82rem;color:var(--text-muted);margin:-4px 0 12px;">Phase 2 + RS 60+ + SEPA S/A 통과. 업종RS·thesis는 에이전트가 판단 후 등록.</p>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin:-4px 0 12px;">게이트: P2=Phase2 · RS=RS60+ · S=SEPA S/A · 업=업종RS▲ · T=thesis. ?=에이전트 판단 대기.</p>
     <table>
       <thead>
         <tr>
@@ -1019,8 +1042,8 @@ export function renderGate5Block(candidates: Phase2Stock[]): string {
           <th>업종</th>
           <th>RS</th>
           <th>고점대비</th>
-          <th>MA150</th>
-          <th>거래량</th>
+          <th>게이트 (P2·RS·S·업·T)</th>
+          <th>통과</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -1064,7 +1087,7 @@ export function buildWeeklyHtml(
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
   const watchlistHtml = renderWatchlistSection(data.watchlist);
-  const gate5Html = renderGate5Block(data.gate5Candidates);
+  const gate5Html = renderGate5Block(data.gate5Candidates, data.industryTop10);
 
   // 해석 블록: LLM 텍스트 → marked HTML
   const sectorRotationHtml = mdToHtml(insight.sectorRotationNarrative);
