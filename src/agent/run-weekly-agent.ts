@@ -271,7 +271,7 @@ async function main() {
       searchCatalyst,
       readReportHistory,
       readRegimePerformance,
-      saveWatchlist,
+      dataCollector.wrap(saveWatchlist, "watchlistChanges"),
       saveRecommendations,
       readRecommendationPerformance,
       // 해석 캡처 도구 — 에이전트가 마지막에 정확히 1회 호출
