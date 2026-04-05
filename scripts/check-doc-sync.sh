@@ -6,15 +6,21 @@
 
 set -euo pipefail
 
-BASE_BRANCH="main"
+# PR 베이스 브랜치를 stdin JSON에서 읽어옴 (없으면 main 기본값)
+# mcp__github__create_pull_request 호출 시 tool_input.base 포함
+STDIN_JSON=$(cat)
+BASE_BRANCH=$(echo "$STDIN_JSON" | grep -o '"base"\s*:\s*"[^"]*"' | head -1 | sed 's/.*"base"\s*:\s*"\([^"]*\)".*/\1/' || echo "")
+if [ -z "$BASE_BRANCH" ]; then
+  BASE_BRANCH="main"
+fi
 
-# 현재 브랜치가 main이면 체크 불필요
+# 현재 브랜치가 베이스와 동일하면 체크 불필요
 CURRENT_BRANCH=$(git branch --show-current)
 if [ "$CURRENT_BRANCH" = "$BASE_BRANCH" ]; then
   exit 0
 fi
 
-# main 대비 변경된 파일 목록
+# 베이스 대비 변경된 파일 목록
 CHANGED_FILES=$(git diff "$BASE_BRANCH"...HEAD --name-only 2>/dev/null || echo "")
 
 if [ -z "$CHANGED_FILES" ]; then
