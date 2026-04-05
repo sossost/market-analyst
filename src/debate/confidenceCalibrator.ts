@@ -527,21 +527,40 @@ export function formatModeratorPerformanceContext(
     "",
     "아래는 각 분석가의 과거 thesis 적중률(CONFIRMED / (CONFIRMED + INVALIDATED + EXPIRED))입니다.",
     "**합의 도출 시 적중률이 높은 분석가의 의견에 더 큰 비중을 두세요.**",
-    "적중률 50% 미만 분석가의 단독 의견은 다른 분석가의 근거로 보강되지 않는 한 합의에 반영하지 마세요.",
     "",
     "| 분석가 | 적중 | 기각 | 만료 | 적중률 | 신뢰도 |",
     "|--------|------|------|------|--------|--------|",
   ];
+
+  const lowReliabilityPersonas: string[] = [];
 
   for (const hr of sorted) {
     const label = PERSONA_LABEL_KR[hr.persona] ?? hr.persona;
     const total = hr.confirmed + hr.invalidated + hr.expired;
     const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
     let reliability: string;
-    if (total < 3) reliability = "데이터 부족";
-    else if (hr.hitRate != null && hr.hitRate < LOW_HIT_RATE_THRESHOLD) reliability = "⚠️ 저신뢰";
-    else reliability = "정상";
+    if (total < 3) {
+      reliability = "데이터 부족";
+    } else if (hr.hitRate != null && hr.hitRate < LOW_HIT_RATE_THRESHOLD) {
+      reliability = "⚠️ 저신뢰";
+      lowReliabilityPersonas.push(label);
+    } else {
+      reliability = "정상";
+    }
     lines.push(`| ${label} | ${hr.confirmed} | ${hr.invalidated} | ${hr.expired} | ${rateStr} | ${reliability} |`);
+  }
+
+  // #620: 저신뢰 에이전트에 대한 정량적 가중치 지시 추가
+  if (lowReliabilityPersonas.length > 0) {
+    lines.push("");
+    lines.push("### ⚠️ 저신뢰 분석가 가중치 규칙");
+    lines.push(`**${lowReliabilityPersonas.join(", ")}**의 적중률이 50% 미만입니다. 아래 규칙을 적용하세요:`);
+    lines.push("1. 이 분석가의 의견은 **0.5배 가중치**로 취급하세요.");
+    lines.push("2. 이 분석가의 **단독 의견**(다른 분석가가 동의하지 않는)은 합의에서 **완전 제외**하세요.");
+    lines.push("3. 다른 분석가의 근거로 보강될 때만 합의에 반영하되, 비중은 보강한 분석가의 적중률 기준으로 설정하세요.");
+    if (lowReliabilityPersonas.includes(PERSONA_LABEL_KR.sentiment)) {
+      lines.push(`4. **${PERSONA_LABEL_KR.sentiment}**의 thesis confidence는 시스템에서 자동 하향됩니다. 모더레이터가 추가 상향하지 마세요.`);
+    }
   }
 
   return lines.join("\n");
