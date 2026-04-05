@@ -308,7 +308,7 @@ export class WeeklyDataCollector {
         ? parsed.message
         : "";
 
-    if (!this._data.watchlistChanges) {
+    if (this._data.watchlistChanges == null) {
       this._data.watchlistChanges = { registered: [], exited: [], pending4of5: [] };
     }
 

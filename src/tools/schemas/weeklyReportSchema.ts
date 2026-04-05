@@ -195,7 +195,7 @@ export interface Phase2Stock {
   breakoutSignal: string;
   sector: string | null;
   industry: string | null;
-  sepaGrade: string | null;
+  sepaGrade: 'S' | 'A' | 'B' | 'C' | 'F' | null;
 }
 
 export interface WatchlistChange {
