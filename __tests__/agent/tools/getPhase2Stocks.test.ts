@@ -100,7 +100,23 @@ describe("getPhase2Stocks", () => {
     const queryArgs = mockQuery.mock.calls[0][1];
     // [date, minRs, maxRs, limit, MIN_MARKET_CAP]
     expect(queryArgs[1]).toBe(60); // default min_rs
-    expect(queryArgs[3]).toBe(30); // default limit
+    expect(queryArgs[3]).toBe(200); // default limit (SEPA 필터 완화로 200으로 확장)
+  });
+
+  it("returns sepaGrade field in each stock", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        makeRow({ symbol: "NVDA", sepa_grade: "S" }),
+        makeRow({ symbol: "AMD", sepa_grade: null }),
+      ],
+    });
+
+    const result = JSON.parse(
+      await getPhase2Stocks.execute({ date: "2026-03-10" }),
+    );
+
+    expect(result.stocks[0].sepaGrade).toBe("S");
+    expect(result.stocks[1].sepaGrade).toBeNull();
   });
 
   it("counts newPhase2 correctly", async () => {
