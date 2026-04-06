@@ -793,7 +793,7 @@ export function renderSectorTable(data: DailySectorItem[]): string {
 }
 
 /**
- * 업종 RS 상승 Top 10 테이블을 렌더링한다.
+ * 업종 RS Top 10 테이블을 렌더링한다.
  * changeWeek(전주 대비 RS 변화량) 기준 정렬 결과를 그대로 수용한다.
  */
 export function renderIndustryTop10Table(data: DailyIndustryItem[]): string {
@@ -1218,10 +1218,10 @@ export function buildDailyHtml(
         ${sectorTableHtml}
       </section>
 
-      <!-- 섹션 5: 업종 RS 상승 Top 10 -->
+      <!-- 섹션 5: 업종 RS Top 10 -->
       <section>
-        <h2>업종 RS 상승 Top 10</h2>
-        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px;">(섹터당 최대 2개)</p>
+        <h2>업종 RS Top 10</h2>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px;">(절대 RS 상위, 섹터당 최대 2개)</p>
         ${industryTop10Html}
       </section>
 

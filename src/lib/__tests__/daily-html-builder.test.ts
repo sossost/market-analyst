@@ -750,7 +750,7 @@ describe("buildDailyHtml", () => {
     expect(html).toContain("지수 현황");
     expect(html).toContain("Phase 분포");
     expect(html).toContain("섹터 RS 랭킹");
-    expect(html).toContain("업종 RS 상승 Top 10");
+    expect(html).toContain("업종 RS Top 10");
     expect(html).toContain("특이종목");
     // risingRS가 1건 이상이면 섹션이 렌더링된다
     expect(html).toContain("RS 상승 초기 종목");

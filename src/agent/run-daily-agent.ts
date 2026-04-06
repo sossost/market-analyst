@@ -13,6 +13,12 @@ import { getUnusualStocks } from "@/tools/getUnusualStocks";
 import { getRisingRS } from "@/tools/getRisingRS";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
 
+// 업종 RS — 일간은 절대 RS 상위 + 섹터캡 (주간의 변화량 정렬과 분리)
+import { findTopIndustriesGlobal } from "@/db/repositories/index";
+import { applyIndustrySectorCap } from "@/lib/industryFilter";
+import { toNum } from "@/etl/utils/common";
+import { clampPercent } from "@/tools/validation";
+
 // Schema + Builder
 import type {
   DailyReportData,
@@ -102,8 +108,11 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       logger.warn("Tool", `getLeadingSectors(sector) 실패: ${err instanceof Error ? err.message : String(err)}`);
       return JSON.stringify({ sectors: [] });
     }),
-    getLeadingSectors.execute({ mode: "industry", limit: 10, date: targetDate }).catch((err: unknown) => {
-      logger.warn("Tool", `getLeadingSectors(industry) 실패: ${err instanceof Error ? err.message : String(err)}`);
+    // 업종은 도구 대신 직접 쿼리 — 일간은 절대 RS 상위 + 섹터캡, 주간의 변화량 경로와 분리
+    findTopIndustriesGlobal(targetDate, 50).then((rows) =>
+      JSON.stringify({ industries: rows }),
+    ).catch((err: unknown) => {
+      logger.warn("Tool", `findTopIndustriesGlobal 실패: ${err instanceof Error ? err.message : String(err)}`);
       return JSON.stringify({ industries: [] });
     }),
     getUnusualStocks.execute({ date: targetDate }).catch((err: unknown) => {
@@ -141,7 +150,28 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       ? { ...EMPTY_BREADTH_SNAPSHOT, date: targetDate }
       : (breadthData.snapshot ?? breadthData) as DailyBreadthSnapshot,
     sectorRanking: (Array.isArray(sectorData.sectors) ? sectorData.sectors : []) as DailyReportData["sectorRanking"],
-    industryTop10: (Array.isArray(industryData.industries) ? industryData.industries : []) as DailyReportData["industryTop10"],
+    industryTop10: applyIndustrySectorCap(
+      (Array.isArray(industryData.industries) ? industryData.industries : []).map((i: Record<string, unknown>) => ({
+        industry: String(i.industry ?? ""),
+        sector: String(i.sector ?? ""),
+        avgRs: toNum(i.avg_rs ?? i.avgRs ?? 0),
+        rsRank: Number(i.rs_rank ?? i.rsRank ?? 0),
+        groupPhase: Number(i.group_phase ?? i.groupPhase ?? 0),
+        phase2Ratio: clampPercent(
+          Number((toNum(i.phase2_ratio ?? i.phase2Ratio ?? 0) * (String(i.phase2_ratio ?? "").includes(".") && toNum(i.phase2_ratio ?? 0) < 1 ? 100 : 1)).toFixed(1)),
+          `industry:${i.industry}:phase2Ratio`,
+        ),
+        change4w: i.change_4w != null || i.change4w != null ? toNum(i.change_4w ?? i.change4w ?? 0) : null,
+        change8w: i.change_8w != null || i.change8w != null ? toNum(i.change_8w ?? i.change8w ?? 0) : null,
+        change12w: i.change_12w != null || i.change12w != null ? toNum(i.change_12w ?? i.change12w ?? 0) : null,
+        sectorAvgRs: i.sector_avg_rs != null || i.sectorAvgRs != null ? toNum(i.sector_avg_rs ?? i.sectorAvgRs ?? 0) : null,
+        sectorRsRank: i.sector_rs_rank != null || i.sectorRsRank != null ? Number(i.sector_rs_rank ?? i.sectorRsRank ?? 0) : null,
+        divergence: null,
+        changeWeek: null,
+      })),
+      2,
+      10,
+    ) as DailyReportData["industryTop10"],
     unusualStocks: filteredUnusualStocks,
     risingRS: (Array.isArray(risingRsData.stocks) ? risingRsData.stocks : []) as DailyReportData["risingRS"],
     watchlist: {
