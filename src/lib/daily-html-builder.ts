@@ -1088,7 +1088,7 @@ export function renderRisingRSSection(
           <th>SEPA</th>
           <th>시총</th>
           <th>업종</th>
-          <th>52w 저점比</th>
+          <th>52w 저점 대비</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
