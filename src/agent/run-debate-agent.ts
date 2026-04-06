@@ -7,7 +7,7 @@ import { buildMemoryContext } from "@/debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "@/debate/marketDataLoader";
 import { collectNews, formatNewsForPersona } from "@/debate/newsCollector";
 import { loadNewsForPersona } from "@/debate/newsLoader";
-import { saveTheses, resolveOrExpireStaleTheses, getThesisStats } from "@/debate/thesisStore";
+import { saveTheses, resolveOrExpireStaleTheses, expireStalledTheses, getThesisStats } from "@/debate/thesisStore";
 import {
   validateRegimeInput,
   saveRegimePending,
@@ -523,6 +523,17 @@ async function main() {
       `만료 대상 처리: ${staleResult.resolved}개 정량 판정 해소, ${staleResult.expired}개 EXPIRED`,
     );
   }
+  // 2.7. 진행률 50%+ 무판정 thesis 안전망 만료 및 LLM 검증 실패 시에도 독립 동작
+  try {
+    const stalledCount = await expireStalledTheses(debateDate);
+    if (stalledCount > 0) {
+      logger.info("Thesis", `${stalledCount}개 thesis stale 만료 (진행률 50%+ 무판정)`);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("Thesis", `Stale thesis 안전망 만료 실패: ${reason}`);
+  }
+
   const stats = await getThesisStats();
   logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
 
