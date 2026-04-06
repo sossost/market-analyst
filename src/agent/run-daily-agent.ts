@@ -401,10 +401,7 @@ async function main() {
   logger.step("[6/8] Building and publishing report...");
   const html = buildDailyHtml(data, insight, targetDate);
 
-  // 로컬 프리뷰 저장
-  const { writeFileSync } = await import("fs");
-  writeFileSync("preview-daily-new.html", html);
-  logger.info("Preview", `preview-daily-new.html (${(html.length / 1024).toFixed(1)} KB)`);
+  logger.info("HTML", `Generated (${(html.length / 1024).toFixed(1)} KB)`);
 
   await publishDailyReport(html, insight, targetDate);
 

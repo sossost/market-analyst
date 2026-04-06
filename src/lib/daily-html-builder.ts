@@ -79,7 +79,7 @@ const DAILY_REPORT_CSS = `
     --accent: #0969da;
     --up: #cf222e;
     --down: #0969da;
-    --phase2: #1a7f37;
+    --phase2: #8250df;
     --yellow: #9a6700;
     --orange: #bc4c00;
     --purple: #8250df;
@@ -293,7 +293,7 @@ const DAILY_REPORT_CSS = `
     font-weight: 600;
   }
   .phase-badge.p1 { background: #eef1f4; color: var(--text-muted); }
-  .phase-badge.p2 { background: #dafbe1; color: var(--phase2); }
+  .phase-badge.p2 { background: #f0e6ff; color: var(--phase2); }
   .phase-badge.p3 { background: #fff8c5; color: var(--yellow); }
   .phase-badge.p4 { background: #ffebe9; color: var(--down); }
 
@@ -941,9 +941,9 @@ export function renderRisingRSSection(
           ? `<span class="${escapeHtml(rsChangeCls)}">${s.rsChange >= 0 ? "+" : ""}${s.rsChange.toFixed(1)}</span>`
           : "—";
       const pctFromLowStr =
-        s.pctFromLow52w != null
-          ? `<span class="up">+${s.pctFromLow52w.toFixed(0)}%</span>`
-          : "—";
+        s.isExtremePctFromLow || s.pctFromLow52w == null
+          ? "—"
+          : `<span class="up">+${s.pctFromLow52w.toFixed(0)}%</span>`;
       const industryStr = s.industry != null ? escapeHtml(s.industry) : "—";
 
       return `

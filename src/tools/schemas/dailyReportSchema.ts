@@ -284,37 +284,6 @@ export interface DailyReportInsight {
   discordMessage: string;
 }
 
-// ─── 런타임 유효성 검증 ────────────────────────────────────────────────────────
-
-/**
- * DailyReportInsight의 필수 필드가 모두 채워졌는지 검증한다.
- * 에이전트 응답을 DailyReportInsight로 캐스팅하기 전에 호출한다.
- */
-export function validateDailyReportInsight(
-  raw: Record<string, unknown>,
-): boolean {
-  const requiredFields: (keyof DailyReportInsight)[] = [
-    "marketTemperature",
-    "marketTemperatureLabel",
-    "marketTemperatureRationale",
-    "unusualStocksNarrative",
-    "risingRSNarrative",
-    "watchlistNarrative",
-    "todayInsight",
-    "discordMessage",
-  ];
-
-  for (const field of requiredFields) {
-    if (raw[field] == null || raw[field] === "") return false;
-  }
-
-  const temperature = raw["marketTemperature"];
-  const validTemperatures: MarketTemperature[] = ["bullish", "neutral", "bearish"];
-  if (!validTemperatures.includes(temperature as MarketTemperature)) return false;
-
-  return true;
-}
-
 /**
  * 누락된 해석 필드를 기본값으로 채운다.
  * 에이전트가 일부 필드를 생략한 경우 안전 폴백용.
