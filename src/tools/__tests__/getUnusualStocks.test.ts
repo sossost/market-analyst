@@ -111,24 +111,22 @@ describe("getUnusualStocks — splitSuspect 플래그", () => {
     vi.restoreAllMocks();
   });
 
-  it("daily_return이 +0.95(+95%)이면 splitSuspect: true를 반환한다", async () => {
+  it("splitSuspect: true 종목은 결과에서 제외된다 (daily_return +0.95)", async () => {
     const row = makeRow({ phase: 2, daily_return: "0.95" });
     mockQuery.mockResolvedValue({ rows: [row] });
 
     const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
 
-    expect(result.stocks).toHaveLength(1);
-    expect(result.stocks[0].splitSuspect).toBe(true);
+    expect(result.stocks).toHaveLength(0);
   });
 
-  it("daily_return이 -0.65(-65%)이면 splitSuspect: true를 반환한다", async () => {
+  it("splitSuspect: true 종목은 결과에서 제외된다 (daily_return -0.65)", async () => {
     const row = makeRow({ phase: 2, daily_return: "-0.65" });
     mockQuery.mockResolvedValue({ rows: [row] });
 
     const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
 
-    expect(result.stocks).toHaveLength(1);
-    expect(result.stocks[0].splitSuspect).toBe(true);
+    expect(result.stocks).toHaveLength(0);
   });
 
   it("daily_return이 +0.08(+8%)이면 splitSuspect: false를 반환한다", async () => {
@@ -142,24 +140,22 @@ describe("getUnusualStocks — splitSuspect 플래그", () => {
     expect(result.stocks[0].splitSuspect).toBe(false);
   });
 
-  it("경계값: daily_return이 정확히 +0.90이면 splitSuspect: true (경계 포함)", async () => {
+  it("splitSuspect: true 종목은 결과에서 제외된다 (경계값 +0.90)", async () => {
     const row = makeRow({ phase: 2, daily_return: "0.90" });
     mockQuery.mockResolvedValue({ rows: [row] });
 
     const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
 
-    expect(result.stocks).toHaveLength(1);
-    expect(result.stocks[0].splitSuspect).toBe(true);
+    expect(result.stocks).toHaveLength(0);
   });
 
-  it("경계값: daily_return이 정확히 -0.60이면 splitSuspect: true (경계 포함)", async () => {
+  it("splitSuspect: true 종목은 결과에서 제외된다 (경계값 -0.60)", async () => {
     const row = makeRow({ phase: 2, daily_return: "-0.60" });
     mockQuery.mockResolvedValue({ rows: [row] });
 
     const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
 
-    expect(result.stocks).toHaveLength(1);
-    expect(result.stocks[0].splitSuspect).toBe(true);
+    expect(result.stocks).toHaveLength(0);
   });
 });
 
@@ -195,6 +191,72 @@ describe("getUnusualStocks — MIN_CONDITIONS 필터 우회", () => {
       phase: 1,
       daily_return: "-0.06",  // big_move 충족 (1개)
       vol_ratio: "1.5",       // high_volume 미충족
+      prev_phase: null,       // phase_change 없음
+    });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(0);
+  });
+});
+
+describe("getUnusualStocks — 저유동성 필터", () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("volRatio 0.3 종목은 필터에서 제외된다", async () => {
+    const row = makeRow({
+      phase: 2,
+      daily_return: "0.06",   // big_move 충족
+      vol_ratio: "0.3",       // MIN_VOL_RATIO(1.0) 미달
+      prev_phase: 1,          // phase_change 충족 — conditions 2개
+    });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(0);
+  });
+
+  it("volRatio 정확히 1.0이면 필터를 통과한다 (경계값 포함)", async () => {
+    const row = makeRow({
+      phase: 2,
+      daily_return: "0.06",   // big_move 충족
+      vol_ratio: "1.0",       // MIN_VOL_RATIO(1.0) 경계값
+      prev_phase: 1,          // phase_change 충족 — conditions 2개
+    });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+  });
+
+  it("volRatio 2.5 종목은 필터를 통과한다", async () => {
+    const row = makeRow({
+      phase: 2,
+      daily_return: "0.06",   // big_move 충족
+      vol_ratio: "2.5",       // MIN_VOL_RATIO(1.0) 이상
+      prev_phase: 1,          // phase_change 충족 — conditions 2개
+    });
+    mockQuery.mockResolvedValue({ rows: [row] });
+
+    const result = JSON.parse(await getUnusualStocks.execute({ date: "2025-01-10" }));
+
+    expect(result.stocks).toHaveLength(1);
+  });
+
+  it("phase2WithDrop이어도 volRatio 0.5면 필터에서 제외된다", async () => {
+    const row = makeRow({
+      phase: 2,
+      daily_return: "-0.06",  // big_move 충족 + phase2WithDrop=true
+      vol_ratio: "0.5",       // MIN_VOL_RATIO(1.0) 미달
       prev_phase: null,       // phase_change 없음
     });
     mockQuery.mockResolvedValue({ rows: [row] });
