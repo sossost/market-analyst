@@ -523,7 +523,7 @@ async function main() {
       `만료 대상 처리: ${staleResult.resolved}개 정량 판정 해소, ${staleResult.expired}개 EXPIRED`,
     );
   }
-  // 2.7. 진행률 50%+ 무판정 thesis 안���망 만료 �� LLM ���증 실패 시에�� 독립 동작
+  // 2.7. 진행률 50%+ 무판정 thesis 안전망 만료 및 LLM 검증 실패 시에도 독립 동작
   try {
     const stalledCount = await expireStalledTheses(debateDate);
     if (stalledCount > 0) {

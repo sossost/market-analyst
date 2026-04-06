@@ -143,7 +143,7 @@ export async function verifyTheses(
 
 - HOLD는 timeframe이 남아 있어 판단이 **시기상조**인 경우로만 사용.
 - 진행률이 높고 시장 방향이 전망과 다르면 HOLD가 아닌 INVALIDATED로 판정.
-- **진행률 80% 이상 thesis는 HOLD 금지.** 반드시 CONFIRMED 또는 INVALIDATED를 선택. 근거가 불충분하면 "근거 불충분" 사유와 함께 INVALIDATED 부여.
+- **진행률 50% 이상 thesis는 HOLD 금지.** 반드시 CONFIRMED 또는 INVALIDATED를 선택. 근거가 불충분하면 "근거 불충분" 사유와 함께 INVALIDATED 부여.
 - 각 판정에 1~2줄의 구체적 근거를 포함.
 - 반드시 JSON 배열로만 응답. 다른 텍스트 없이.
 
@@ -198,7 +198,7 @@ ${thesesText}
     tokensUsed = llmResult.tokensUsed;
   }
 
-  // 진행률 80%+ HOLD → 강제 만료 (학습 루프 적체 방지)
+  // 진행률 50%+ HOLD → 강제 만료 (학습 루프 적체 방지)
   const llmHeld = llmJudgments.filter((j) => j.verdict === "HOLD");
   const llmThesisMap = new Map(llmTheses.map((t) => [t.id, t]));
   const forceExpireIds = findHighProgressHolds(llmHeld, llmThesisMap, debateDate);
@@ -217,7 +217,7 @@ ${thesesText}
   const forceExpiredCount = await forceExpireTheses(
     forceExpireIds,
     debateDate,
-    "진행률 80% 이상 + LLM 판정 유보 → 강제 만료",
+    "진행률 50% 이상 + LLM 판정 유보 → 강제 만료",
   );
 
   // Combine all resolved for stats and causal analysis
@@ -375,7 +375,7 @@ export function parseJudgments(
 }
 
 /**
- * HOLD 판정 중 진행률 80% 이상인 thesis ID를 추출 (강제 만료 대상).
+ * HOLD 판정 중 진행률 50% 이상인 thesis ID를 추출 (강제 만료 대상).
  * 순수 함수 — DB 접근 없음.
  */
 export function findHighProgressHolds(
