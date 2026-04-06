@@ -2,7 +2,7 @@
 
 **Status:** Active (운영 중)
 **Created:** 2026-03-04
-**Last Updated:** 2026-04-02
+**Last Updated:** 2026-04-06
 
 ---
 
@@ -230,7 +230,7 @@ Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
 | 토론 시스템 | 4명 애널리스트 × 3라운드 | 매크로/테크/지정학/심리 교차 검증 |
 | 학습 루프 | thesis 검증 + 패턴 승격 | 이항 검정(p < 0.05 + Cohen's h ≥ 0.3) 유의성 필터 |
 | 펀더멘탈 | Minervini SEPA 기준 | EPS/매출 YoY >25%, 가속, 마진확대 |
-| 비용 | ~$15/월 (전체 API 비용, 프롬프트 캐싱 적용 후) | 약 34회/월 실행 × ~$0.45/회. 캐시 읽기 90% 할인($0.30/M). N-1 프롬프트 확장 후 미측정 — 재측정 필요 |
+| 비용 | ~$15/월 (전체 API 비용, 프롬프트 캐싱 적용 후) | 주간 에이전트: runAgentLoop × ~$0.45/회. 일간 에이전트: CLI 단발 호출 → API 비용 $0. 캐시 읽기 90% 할인($0.30/M). |
 
 ---
 
@@ -330,7 +330,9 @@ market-analyst/
 │   │   ├── statisticalTests.ts      # 이항 검정 + Cohen's h
 │   │   ├── biasDetector.ts          # bull-bias 편향 감지
 │   │   ├── narrativeChainStats.ts   # 병목 체인 통계
-│   │   └── sectorLagStats.ts        # 섹터 시차 통계 + 선행 경보
+│   │   ├── sectorLagStats.ts        # 섹터 시차 통계 + 선행 경보
+│   │   ├── daily-html-builder.ts    # 일간 리포트 프로그래밍 HTML 렌더러 (데이터/인사이트 분리)
+│   │   └── weekly-html-builder.ts  # 주간 리포트 프로그래밍 HTML 렌더러
 │   ├── db/                 # Drizzle ORM 스키마
 │   └── types/              # 공유 타입 정의
 ├── data/
