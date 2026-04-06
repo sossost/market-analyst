@@ -153,7 +153,8 @@ async function main() {
       : (breadthData.snapshot ?? breadthData) as DailyBreadthSnapshot,
     sectorRanking: (Array.isArray(sectorData.sectors) ? sectorData.sectors : []) as DailyReportData["sectorRanking"],
     industryTop10: (Array.isArray(industryData.industries) ? industryData.industries : []) as DailyReportData["industryTop10"],
-    unusualStocks: (Array.isArray(unusualData.stocks) ? unusualData.stocks : []) as DailyReportData["unusualStocks"],
+    unusualStocks: (Array.isArray(unusualData.stocks) ? unusualData.stocks : [] as DailyReportData["unusualStocks"])
+      .filter((s: DailyReportData["unusualStocks"][number]) => s.volRatio >= 1.0 && !s.splitSuspect),
     risingRS: (Array.isArray(risingRsData.stocks) ? risingRsData.stocks : []) as DailyReportData["risingRS"],
     watchlist: {
       summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
