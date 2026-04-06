@@ -4,6 +4,7 @@ import type {
   PhaseDistributionRow,
   WeeklyTrendRow,
   Phase1to2TransitionsRow,
+  PhaseTransitionCount1dRow,
   PrevPhase2RatioRow,
   MarketAvgRsRow,
   AdvanceDeclineRow,
@@ -470,6 +471,52 @@ export async function findLatestDataDate(
   return rows[0] ?? { date: requestedDate };
 }
 
+/**
+ * 당일 Phase 1→2 신규 진입 종목 수를 집계한다.
+ * prev_phase IS NULL은 제외 — 신규 상장 노이즈 방지.
+ */
+export async function findPhase1To2Count1d(
+  date: string,
+): Promise<PhaseTransitionCount1dRow> {
+  const { rows } = await pool.query<PhaseTransitionCount1dRow>(
+    `SELECT COUNT(*)::text AS count
+     FROM stock_phases sp
+     JOIN symbols s ON sp.symbol = s.symbol
+     WHERE sp.date = $1
+       AND sp.phase = 2
+       AND sp.prev_phase IS NOT NULL
+       AND sp.prev_phase != 2
+       AND s.is_actively_trading = true
+       AND s.is_etf = false
+       AND s.is_fund = false`,
+    [date],
+  );
+
+  return rows[0] ?? { count: "0" };
+}
+
+/**
+ * 당일 Phase 2→3 이탈 종목 수를 집계한다 (폴백 경로 전용).
+ */
+export async function findPhase2To3Count1d(
+  date: string,
+): Promise<PhaseTransitionCount1dRow> {
+  const { rows } = await pool.query<PhaseTransitionCount1dRow>(
+    `SELECT COUNT(*)::text AS count
+     FROM stock_phases sp
+     JOIN symbols s ON sp.symbol = s.symbol
+     WHERE sp.date = $1
+       AND sp.phase = 3
+       AND sp.prev_phase = 2
+       AND s.is_actively_trading = true
+       AND s.is_etf = false
+       AND s.is_fund = false`,
+    [date],
+  );
+
+  return rows[0] ?? { count: "0" };
+}
+
 // ─── market_breadth_daily 스냅샷 조회 ─────────────────────────────────────────
 
 /**
@@ -490,6 +537,8 @@ export async function findMarketBreadthSnapshot(
        phase2_ratio::text,
        phase2_ratio_change::text,
        phase1_to2_count_5d,
+       phase1_to2_count_1d,
+       phase2_to3_count_1d,
        market_avg_rs::text,
        advancers,
        decliners,
@@ -533,6 +582,8 @@ export async function findMarketBreadthSnapshots(
        phase2_ratio::text,
        phase2_ratio_change::text,
        phase1_to2_count_5d,
+       phase1_to2_count_1d,
+       phase2_to3_count_1d,
        market_avg_rs::text,
        advancers,
        decliners,

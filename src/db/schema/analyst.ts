@@ -1191,6 +1191,8 @@ export const marketBreadthDaily = pgTable("market_breadth_daily", {
   phase2Ratio:         numeric("phase2_ratio", { precision: 5, scale: 2 }).notNull(),
   phase2RatioChange:   numeric("phase2_ratio_change", { precision: 5, scale: 2 }),
   phase1To2Count5d:    integer("phase1_to2_count_5d"),
+  phase1To2Count1d:    integer("phase1_to2_count_1d"),
+  phase2To3Count1d:    integer("phase2_to3_count_1d"),
   marketAvgRs:         numeric("market_avg_rs", { precision: 5, scale: 2 }),
   advancers:           integer("advancers"),
   decliners:           integer("decliners"),
