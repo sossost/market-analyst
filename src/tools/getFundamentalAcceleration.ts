@@ -12,6 +12,9 @@ const MIN_QUARTERS = 3;
  *  SEPA 필수 기준 25%의 60% — noise 필터 목적.
  *  5%→8%→12% 같은 저성장 가속은 제외. */
 const MIN_ACCELERATION_GROWTH = 15;
+/** 이전 분기 최소 성장률 floor (%).
+ *  SEPA 25%의 ~30% — 저성장 기반 단발 반등(+2→+3→+15) 오탐 차단. */
+const MIN_PRIOR_GROWTH = 8;
 
 type QuarterRow = FundamentalAccelerationRow;
 
@@ -133,19 +136,21 @@ export function computeYoYGrowths(
 }
 
 /**
- * 가속 패턴 감지: 최근 3개 분기의 YoY 성장률이 연속 증가.
+ * 가속 패턴 감지: 최신 분기 성장률이 이전 2개 분기 평균을 상회.
+ * fundamental-scorer.ts의 checkEpsAcceleration() 로직을 기반으로 하되, 저성장 오탐 방지를 위한 floor 조건을 추가함.
  * growths는 최신순.
  */
 export function isAccelerating(growths: { yoyGrowth: number }[]): boolean {
   if (growths.length < MIN_QUARTERS) return false;
 
-  // 최근 3개: growths[0] > growths[1] > growths[2] (최신이 가장 높음)
-  // 조건 1: 최신 성장률이 MIN_ACCELERATION_GROWTH 이상 (의미 있는 규모의 성장)
-  // 조건 2: strictly monotonic increasing (가속 패턴)
   const [latest, prev, older] = growths;
+  // 조건 1: 최신 성장률이 MIN_ACCELERATION_GROWTH 이상 (의미 있는 규모의 성장)
+  // 조건 2: 이전 분기가 MIN_PRIOR_GROWTH 이상 (저성장 기반 단발 반등 차단)
+  // 조건 3: 최신 > 이전 2개 평균 (가속 패턴 — strictly monotonic 대신 완화)
+  const priorAvg = (prev.yoyGrowth + older.yoyGrowth) / 2;
   return (
     latest.yoyGrowth >= MIN_ACCELERATION_GROWTH &&
-    latest.yoyGrowth > prev.yoyGrowth &&
-    prev.yoyGrowth > older.yoyGrowth
+    prev.yoyGrowth >= MIN_PRIOR_GROWTH &&
+    latest.yoyGrowth > priorAvg
   );
 }
