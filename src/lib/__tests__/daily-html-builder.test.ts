@@ -160,6 +160,8 @@ function createMockRisingRSStock(
     sectorAvgRs: 58.3,
     sectorChange4w: 5.2,
     sectorGroupPhase: 2,
+    sepaGrade: "S",
+    marketCap: 150_000_000_000,
     ...overrides,
   };
 }
@@ -658,6 +660,43 @@ describe("renderRisingRSSection", () => {
     const stock = createMockRisingRSStock({ industry: null });
     const html = renderRisingRSSection([stock], "해당 없음");
     expect(html).toContain("—");
+  });
+
+  it("SEPA 등급을 테이블에 표시한다", () => {
+    const stock = createMockRisingRSStock({ sepaGrade: "S" });
+    const html = renderRisingRSSection([stock], "해당 없음");
+    expect(html).toContain("SEPA");
+    expect(html).toContain("S");
+  });
+
+  it("sepaGrade가 null이면 대시를 표시한다", () => {
+    const stock = createMockRisingRSStock({ sepaGrade: null });
+    const html = renderRisingRSSection([stock], "해당 없음");
+    expect(html).toContain("SEPA");
+  });
+
+  it("시총 Large 구간을 표시한다", () => {
+    const stock = createMockRisingRSStock({ marketCap: 50_000_000_000 });
+    const html = renderRisingRSSection([stock], "해당 없음");
+    expect(html).toContain("Large");
+  });
+
+  it("시총 Mid 구간을 표시한다", () => {
+    const stock = createMockRisingRSStock({ marketCap: 5_000_000_000 });
+    const html = renderRisingRSSection([stock], "해당 없음");
+    expect(html).toContain("Mid");
+  });
+
+  it("시총 Small 구간을 표시한다", () => {
+    const stock = createMockRisingRSStock({ marketCap: 1_000_000_000 });
+    const html = renderRisingRSSection([stock], "해당 없음");
+    expect(html).toContain("Small");
+  });
+
+  it("marketCap이 null이면 대시를 표시한다", () => {
+    const stock = createMockRisingRSStock({ marketCap: null });
+    const html = renderRisingRSSection([stock], "해당 없음");
+    expect(html).toContain("시총");
   });
 });
 

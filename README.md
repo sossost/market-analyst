@@ -194,7 +194,7 @@ yarn db:studio              # Drizzle Studio UI
 | `getLeadingSectors` | O | O | RS 상위 섹터/업종 (주간: 전주 대비 순위 변동 + 신규 진입/이탈; industry 모드: 전체 업종 RS 랭킹 + divergence; Phase 전환 섹터: 업종 드릴다운 자동 포함) |
 | `getPhase2Stocks` | | O | Phase 2 초입 종목 리스트 (RS 필터링) |
 | `getPhase1LateStocks` | O | O | Phase 1 후기 종목 — Volume Dry-Up(VDU) + 거래량 회복 패턴으로 Phase 2 진입 1~3개월 선행 포착 |
-| `getRisingRS` | O | O | RS 30~60 상승 가속 종목 — 초기 모멘텀 포착 |
+| `getRisingRS` | O | O | RS 30~70 상승 가속 종목 — 초기 모멘텀 포착 (SEPA 등급 + 시총 구간 포함) |
 | `getFundamentalAcceleration` | | O | EPS/매출 성장 가속 종목 (Phase 1~2 대상) |
 | `getUnusualStocks` | O | | 복합 조건 특이종목 스크리닝 (등락률·거래량·Phase 전환) |
 | `getStockDetail` | O | O | 개별 종목 상세 분석 (Phase, RS, MA, 섹터 컨텍스트) |

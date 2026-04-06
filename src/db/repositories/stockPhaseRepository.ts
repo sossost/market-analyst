@@ -307,7 +307,9 @@ export async function findRisingRsStocks(params: {
        s.sector, s.industry,
        srd.avg_rs::text AS sector_avg_rs,
        srd.change_4w::text AS sector_change_4w,
-       srd.group_phase AS sector_group_phase
+       srd.group_phase AS sector_group_phase,
+       fs.grade AS sepa_grade,
+       s.market_cap
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
      JOIN latest_scores fs ON fs.symbol = sp.symbol

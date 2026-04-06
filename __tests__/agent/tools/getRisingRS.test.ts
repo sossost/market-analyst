@@ -37,6 +37,8 @@ const makeRow = (overrides: Record<string, unknown> = {}) => ({
   sector_avg_rs: "55",
   sector_change_4w: "3.5",
   sector_group_phase: 2,
+  sepa_grade: "S",
+  market_cap: "150000000000",
   ...overrides,
 });
 
@@ -96,7 +98,7 @@ describe("getRisingRS", () => {
     expect(queryArgs).toContain(300_000_000);
   });
 
-  it("returns stocks with correct shape", async () => {
+  it("returns stocks with correct shape including sepaGrade and marketCap", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [makeRow()],
     });
@@ -111,6 +113,8 @@ describe("getRisingRS", () => {
       rsScore: 45,
       rsScore4wAgo: 35,
       rsChange: 10,
+      sepaGrade: "S",
+      marketCap: 150000000000,
     });
   });
 
@@ -158,6 +162,8 @@ describe("getRisingRS", () => {
           sector_change_4w: null,
           rs_score_4w_ago: null,
           rs_change: 0,
+          sepa_grade: null,
+          market_cap: null,
         }),
       ],
     });
@@ -171,6 +177,8 @@ describe("getRisingRS", () => {
     expect(result.stocks[0].sectorChange4w).toBeNull();
     expect(result.stocks[0].rsScore4wAgo).toBeNull();
     expect(result.stocks[0].rsChange).toBe(0);
+    expect(result.stocks[0].sepaGrade).toBeNull();
+    expect(result.stocks[0].marketCap).toBeNull();
   });
 
   it("handles multiple stocks correctly", async () => {
@@ -190,6 +198,16 @@ describe("getRisingRS", () => {
       "MSFT",
       "GOOG",
     ]);
+  });
+
+  it("SQL includes sepa_grade and market_cap in SELECT", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getRisingRS.execute({ date: "2025-01-15" });
+
+    const sql: string = mockQuery.mock.calls[0][0];
+    expect(sql).toContain("fs.grade AS sepa_grade");
+    expect(sql).toContain("s.market_cap");
   });
 
   it("marks extreme pctFromLow correctly", async () => {

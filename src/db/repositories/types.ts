@@ -440,6 +440,8 @@ export interface RisingRsStockRow {
   sector_avg_rs: string | null;
   sector_change_4w: string | null;
   sector_group_phase: number | null;
+  sepa_grade: string | null;
+  market_cap: string | null;
 }
 
 export interface Phase1LateStockRow {
