@@ -33,8 +33,8 @@ describe("buildDailySystemPrompt", () => {
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("미국 주식 시장 분석 전문가 Agent");
-    expect(result).toContain("시장 온도");
+    expect(result).toContain("미국 주식 시장 분석 전문가입니다");
+    expect(result).toContain("marketTemperatureRationale");
     expect(mockBuildMandatoryRules).not.toHaveBeenCalled();
     expect(mockBuildAdvisoryFeedback).not.toHaveBeenCalled();
   });
@@ -56,9 +56,9 @@ describe("buildDailySystemPrompt", () => {
 
     expect(result).toContain("## 필수 규칙 (반복 지적 기반)");
     expect(result).toContain("밸류에이션 리스크 경고 부족");
-    // 필수 규칙이 규칙 섹션 앞에 있는지 확인
+    // 필수 규칙이 작성 규칙 섹션 앞에 있는지 확인
     const mandatoryIdx = result.indexOf("## 필수 규칙");
-    const rulesIdx = result.indexOf("## 규칙");
+    const rulesIdx = result.indexOf("## 작성 규칙");
     expect(mandatoryIdx).toBeLessThan(rulesIdx);
   });
 
@@ -175,7 +175,7 @@ describe("buildDailySystemPrompt", () => {
     expect(result).toContain('<narrative-chains trust="internal">');
     expect(result).toContain("HBM 공급 부족");
     expect(result).toContain("서사 체인 태그 (종목 분류 참조)");
-    expect(result).toContain("RESOLVING 상태 체인에 연결된 종목은 반드시");
+    expect(result).toContain("RESOLVING 상태 체인에 연결된 종목은");
   });
 
   it("sanitizes XML-like tags in narrative chains context", () => {
@@ -204,61 +204,61 @@ describe("buildDailySystemPrompt", () => {
     expect(result).not.toContain("<narrative-chains");
   });
 
-  it("includes data timestamp rules section", () => {
+  it("includes data sourcing rules in judgment principles section", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("## 데이터 시점 규칙");
-    expect(result).toContain("실시간 조회 불가 지표(WTI, 금, 은, DXY, 원화환율 등)");
-    expect(result).toContain("학습 데이터 내 수치를 추론하거나 기억에서 가져오는 행위는 엄격히 금지");
+    expect(result).toContain("## 판단 원칙");
+    expect(result).toContain("실시간 조회 불가 지표(WTI, 금, DXY 등)");
+    expect(result).toContain("학습 데이터에서 추론하거나 기억에서 가져오는 행위 금지");
   });
 
-  it("includes message-markdownContent consistency rule", () => {
+  it("includes JSON output structure with required fields", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("message와 markdownContent 수치 일치");
-    expect(result).toContain("불일치가 있으면 markdownContent 기준으로 통일");
+    expect(result).toContain("## 출력 JSON 스키마");
+    expect(result).toContain('"marketTemperature"');
+    expect(result).toContain('"discordMessage"');
+    expect(result).toContain("반드시 유효한 JSON만 출력");
   });
 
-  it("includes numeric basis rule requiring period/basis for percent values", () => {
+  it("includes pctFromLow52w display rule in judgment principles", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("모든 퍼센트 수치에 기준을 명시하세요");
-    expect(result).toContain("AXTI(+105.7%)");
-    expect(result).toContain("+X.X%(일간)");
-    expect(result).toContain("+X.X%(5일)");
-    expect(result).toContain("+X.X%(20일)");
+    expect(result).toContain("pctFromLow52w");
     expect(result).toContain("52주 저점 대비 +XX%");
+    expect(result).toContain("Phase 2 비율은 이미 퍼센트(0~100)다");
   });
 
-  it("includes conditional glossary section for daily subscribers", () => {
+  it("includes glossary section with key terms", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("## 용어 설명 (정기 발송 제외)");
-    expect(result).toContain("MD 파일 하단의 \"용어 설명\" 섹션을 생략하세요");
-    expect(result).toContain("괄호 내 약어 설명(예: RS(상대강도))은 유지");
+    expect(result).toContain("## 용어");
+    expect(result).toContain("Stan Weinstein Stage Analysis");
+    expect(result).toContain("RS (상대강도)");
+    expect(result).toContain("MA150");
   });
 
-  it("places data timestamp rules after Bull-Bias guardrail", () => {
+  it("places Bull-Bias guardrail after judgment principles", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildDailySystemPrompt();
 
+    const judgmentIdx = result.indexOf("## 판단 원칙");
     const bullBiasIdx = result.indexOf("## Bull-Bias 가드레일");
-    const dataTimestampIdx = result.indexOf("## 데이터 시점 규칙");
+    expect(judgmentIdx).toBeGreaterThan(-1);
     expect(bullBiasIdx).toBeGreaterThan(-1);
-    expect(dataTimestampIdx).toBeGreaterThan(-1);
-    expect(dataTimestampIdx).toBeGreaterThan(bullBiasIdx);
+    expect(bullBiasIdx).toBeGreaterThan(judgmentIdx);
   });
 
-  it("maintains Bull-Bias → data timestamp order with thesesContext and narrativeChainsContext", () => {
+  it("maintains judgment principles → Bull-Bias order with thesesContext and narrativeChainsContext", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildDailySystemPrompt({
@@ -266,19 +266,20 @@ describe("buildDailySystemPrompt", () => {
       narrativeChainsContext: "| HBM 공급 부족 | AI인프라 | ACTIVE | 45일 |",
     });
 
+    const judgmentIdx = result.indexOf("## 판단 원칙");
     const bullBiasIdx = result.indexOf("## Bull-Bias 가드레일");
-    const dataTimestampIdx = result.indexOf("## 데이터 시점 규칙");
+    expect(judgmentIdx).toBeGreaterThan(-1);
     expect(bullBiasIdx).toBeGreaterThan(-1);
-    expect(dataTimestampIdx).toBeGreaterThan(-1);
-    expect(dataTimestampIdx).toBeGreaterThan(bullBiasIdx);
+    expect(bullBiasIdx).toBeGreaterThan(judgmentIdx);
   });
 
-  it("uses expanded fallback text for commodity/macro indicators", () => {
+  it("prohibits direct mention of realtime-unavailable commodity/macro indicators", () => {
     mockLoadRecentFeedback.mockReturnValue([]);
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("원자재/거시 지표 동향은 당일 시장 데이터 미수집으로 생략");
+    expect(result).toContain("실시간 조회 불가 지표(WTI, 금, DXY 등)");
+    expect(result).toContain("수치를 직접 언급하지 마라");
   });
 });
 
