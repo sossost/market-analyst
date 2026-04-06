@@ -142,6 +142,7 @@ const DAILY_REPORT_CSS = `
     height: 8px;
     margin: 12px 0 16px;
   }
+  /* temperature-bar 제거됨 — 정량 기준 없는 3분할 바 */
   .temperature-bar .seg-bearish {
     background: var(--down);
     opacity: 0.3;
@@ -1090,12 +1091,10 @@ export function renderWatchlistSection(
 }
 
 /**
- * 시장 온도 + 토론 인사이트 섹션을 렌더링한다.
- * 온도계 스타일 바 (bullish=빨강, neutral=회색, bearish=파랑).
+ * 시장 온도 + 토론 인��이트 섹션을 렌더링한다.
+ * 배지 + 판단 근거 텍스트만. 정량 기준 없는 3분할 바는 제거.
  */
 export function renderInsightSection(insight: DailyReportInsight): string {
-  const temperatureBarHtml = buildTemperatureBar(insight.marketTemperature);
-
   const rationaleHtml = insight.marketTemperatureRationale.trim() !== ""
     ? `<div class="insight-rationale">${mdToHtml(insight.marketTemperatureRationale)}</div>`
     : "";
@@ -1108,29 +1107,10 @@ export function renderInsightSection(insight: DailyReportInsight): string {
       : "";
 
   return `
-    ${temperatureBarHtml}
     <div class="insight-card">
       ${rationaleHtml}
     </div>
     ${todayInsightHtml}`;
-}
-
-function buildTemperatureBar(temperature: DailyReportInsight["marketTemperature"]): string {
-  const SEGMENT_WIDTH = {
-    bearish: "33%",
-    neutral: "34%",
-    bullish: "33%",
-  } as const;
-
-  const activeClass = (segment: "bearish" | "neutral" | "bullish"): string =>
-    segment === temperature ? " seg-active" : "";
-
-  return `
-    <div class="temperature-bar">
-      <div class="seg-bearish${activeClass("bearish")}" style="width:${SEGMENT_WIDTH.bearish}"></div>
-      <div class="seg-neutral${activeClass("neutral")}" style="width:${SEGMENT_WIDTH.neutral}"></div>
-      <div class="seg-bullish${activeClass("bullish")}" style="width:${SEGMENT_WIDTH.bullish}"></div>
-    </div>`;
 }
 
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────

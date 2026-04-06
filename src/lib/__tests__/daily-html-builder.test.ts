@@ -657,28 +657,10 @@ describe("renderInsightSection", () => {
     expect(html).toContain("지수는 혼조세를 보이고 있으며");
   });
 
-  it("temperature-bar를 렌더링한다", () => {
+  it("temperature-bar가 제거되었다 (정량 기준 없는 시각화)", () => {
     const insight = createMockInsight();
     const html = renderInsightSection(insight);
-    expect(html).toContain("temperature-bar");
-  });
-
-  it("bullish 온도 시 seg-bullish에 seg-active가 붙는다", () => {
-    const insight = createMockInsight({ marketTemperature: "bullish" });
-    const html = renderInsightSection(insight);
-    expect(html).toContain("seg-bullish seg-active");
-  });
-
-  it("bearish 온도 시 seg-bearish에 seg-active가 붙는다", () => {
-    const insight = createMockInsight({ marketTemperature: "bearish" });
-    const html = renderInsightSection(insight);
-    expect(html).toContain("seg-bearish seg-active");
-  });
-
-  it("neutral 온도 시 seg-neutral에 seg-active가 붙는다", () => {
-    const insight = createMockInsight({ marketTemperature: "neutral" });
-    const html = renderInsightSection(insight);
-    expect(html).toContain("seg-neutral seg-active");
+    expect(html).not.toContain("temperature-bar");
   });
 
   it("todayInsight가 '해당 없음'이면 오늘의 인사이트 섹션을 렌더링하지 않는다", () => {
