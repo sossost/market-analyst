@@ -81,6 +81,10 @@ const EMPTY_BREADTH_SNAPSHOT: DailyBreadthSnapshot = {
   breadthScore: null,
   divergenceSignal: null,
   topSectors: [],
+  phase1to2Count1d: null,
+  phase2to3Count1d: null,
+  phase2NetFlow: null,
+  phase2EntryAvg5d: null,
 };
 
 async function collectDailyData(targetDate: string): Promise<DailyReportData> {

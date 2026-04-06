@@ -74,6 +74,14 @@ export interface DailyBreadthSnapshot {
   breadthScore: number | null;
   divergenceSignal: string | null;
   topSectors: DailyBreadthTopSector[];
+  /** 당일 Phase 1→2 신규 진입 종목 수. null = 데이터 없음 */
+  phase1to2Count1d: number | null;
+  /** 당일 Phase 2→3 이탈 종목 수. null = 데이터 없음 */
+  phase2to3Count1d: number | null;
+  /** Phase 2 순유입 = 진입 - 이탈. null = 데이터 없음 */
+  phase2NetFlow: number | null;
+  /** 5일 일평균 진입 수 (phase1_to2_count_5d / 5). 하이라이트 기준 */
+  phase2EntryAvg5d: number | null;
 }
 
 interface DailySectorTopIndustry {

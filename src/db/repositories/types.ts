@@ -161,6 +161,10 @@ export interface Phase1to2TransitionsRow {
   transitions: string;
 }
 
+export interface PhaseTransitionCount1dRow {
+  count: string;
+}
+
 export interface PhaseDistributionRow {
   phase: number;
   count: string;
