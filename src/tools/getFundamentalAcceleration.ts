@@ -137,7 +137,7 @@ export function computeYoYGrowths(
 
 /**
  * 가속 패턴 감지: 최신 분기 성장률이 이전 2개 분기 평균을 상회.
- * fundamental-scorer.ts의 checkEpsAcceleration()과 동일한 기준.
+ * fundamental-scorer.ts의 checkEpsAcceleration() 로직을 기반으로 하되, 저성장 오탐 방지를 위한 floor 조건을 추가함.
  * growths는 최신순.
  */
 export function isAccelerating(growths: { yoyGrowth: number }[]): boolean {

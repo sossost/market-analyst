@@ -239,11 +239,11 @@ describe("isAccelerating", () => {
   });
 
   it("accepts when latest exceeds prior average but not each individually", () => {
-    // latest(30) > avg(25,20)=22.5, prev(25) >= 8 — valid acceleration
+    // latest(30) > avg(25,32)=28.5, prev(25) >= 8 — valid acceleration even if latest < older
     const growths = [
       { yoyGrowth: 30 },
       { yoyGrowth: 25 },
-      { yoyGrowth: 20 },
+      { yoyGrowth: 32 },
     ];
 
     expect(isAccelerating(growths)).toBe(true);
