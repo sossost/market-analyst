@@ -480,10 +480,16 @@ describe("renderSectorTable", () => {
     expect(html).toContain("—");
   });
 
-  it("RS 변화 양수에 up 클래스를 적용한다", () => {
-    const sector = createMockSectorItem({ rsChange: 2.3 });
+  it("change4w가 null이면 대시를 표시한다", () => {
+    const sector = createMockSectorItem({ change4w: null });
     const html = renderSectorTable([sector]);
-    expect(html).toContain("+2.3");
+    expect(html).toContain("—");
+  });
+
+  it("RS 변화(4주) 양수에 up 클래스를 적용한다", () => {
+    const sector = createMockSectorItem({ change4w: 5.2 });
+    const html = renderSectorTable([sector]);
+    expect(html).toContain("+5.2");
   });
 });
 
