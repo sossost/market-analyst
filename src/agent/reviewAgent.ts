@@ -6,8 +6,6 @@ import { logger } from "@/lib/logger";
 import { saveReviewFeedback, type ReviewVerdict, type FeedbackReportType } from "@/lib/reviewFeedback";
 import { SEND_DISCORD_REPORT_SCHEMA } from "@/tools/sendDiscordReport";
 import type { AgentTool } from "@/tools/types";
-import { buildHtmlReport } from "@/lib/htmlReport";
-import { publishHtmlReport, type ReportType } from "@/lib/reportPublisher";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -504,14 +502,11 @@ export async function extractDataOnly(
 
 /**
  * 최종 확정된 draft를 Discord로 발송한다.
- * date가 주어지면 HTML 변환 → Supabase Storage 업로드를 우선 시도한다.
- * Storage 업로드 실패 시 Gist fallback, Gist도 실패 시 파일 첨부로 내려간다.
+ * markdownContent가 있으면 Gist 업로드를 시도하고, 실패 시 파일 첨부로 내려간다.
  */
 export async function sendDrafts(
   drafts: ReportDraft[],
   webhookEnvVar: string,
-  date?: string,
-  reportType?: ReportType,
 ): Promise<void> {
   const webhookUrl = process.env[webhookEnvVar];
   if (webhookUrl == null || webhookUrl === "") {
@@ -523,23 +518,7 @@ export async function sendDrafts(
     const filename = draft.filename ?? "report.md";
 
     if (draft.markdownContent != null) {
-      // Storage 업로드 시도 (date가 있을 때만)
-      if (date != null) {
-        const storageUrl = await tryPublishHtmlReport(
-          draft.markdownContent,
-          draft.message,
-          date,
-          reportType,
-        );
-
-        if (storageUrl != null) {
-          const messageWithLink = `${draft.message}\n\n📊 상세 리포트: ${storageUrl}`;
-          await sendDiscordMessage(messageWithLink, webhookEnvVar);
-          continue;
-        }
-      }
-
-      // Storage 실패 또는 date 없음 → Gist fallback
+      // Gist fallback
       const gistDescription = draft.message.slice(0, 200);
       const gist = await createGist(
         filename,
@@ -566,28 +545,6 @@ export async function sendDrafts(
   logger.info("SendDrafts", `${drafts.length} draft(s) sent to Discord`);
 }
 
-/**
- * 마크다운을 HTML로 변환하여 Storage에 업로드한다.
- * 에러가 발생하면 null을 반환한다 — 절대 throw하지 않는다.
- */
-async function tryPublishHtmlReport(
-  markdownContent: string,
-  draftMessage: string,
-  date: string,
-  reportType?: ReportType,
-): Promise<string | null> {
-  try {
-    const defaultTitle = reportType === "weekly" ? "Weekly Report" : "Daily Report";
-    const title = draftMessage.split("\n").find(line => line.trim() !== "")?.slice(0, 100) ?? defaultTitle;
-    const html = buildHtmlReport(markdownContent, title, date);
-    return await publishHtmlReport(html, date, reportType);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.warn("SendDrafts", `HTML 발행 실패 — Gist fallback: ${reason}`);
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Review Pipeline (orchestrator)
 // ---------------------------------------------------------------------------
@@ -599,7 +556,7 @@ async function tryPublishHtmlReport(
 export async function runReviewPipeline(
   drafts: ReportDraft[],
   webhookEnvVar: string,
-  options?: { skipCooldown?: boolean; reportType?: FeedbackReportType; date?: string },
+  options?: { skipCooldown?: boolean; reportType?: FeedbackReportType },
 ): Promise<ReportDraft[]> {
   if (drafts.length === 0) {
     logger.warn("ReviewPipeline", "No report drafts captured");
@@ -670,11 +627,7 @@ export async function runReviewPipeline(
     finalDrafts = drafts;
   }
 
-  const publishType: ReportType | undefined =
-    options?.reportType === "daily" || options?.reportType === "weekly"
-      ? options.reportType
-      : undefined;
-  await sendDrafts(finalDrafts, webhookEnvVar, options?.date, publishType);
+  await sendDrafts(finalDrafts, webhookEnvVar);
   logger.step("--- Review Pipeline Complete ---\n");
 
   return finalDrafts;
