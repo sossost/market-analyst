@@ -143,12 +143,12 @@ describe("isAccelerating", () => {
     expect(isAccelerating(growths)).toBe(false);
   });
 
-  it("accepts acceleration exactly at 15% hurdle", () => {
-    // 15% > 10% > 5% — exactly at hurdle threshold
+  it("accepts acceleration exactly at 15% hurdle with prior above floor", () => {
+    // 15% > avg(10, 8) = 9%, prev(10) >= 8 — passes all conditions
     const growths = [
       { yoyGrowth: 15 },
       { yoyGrowth: 10 },
-      { yoyGrowth: 5 },
+      { yoyGrowth: 8 },
     ];
 
     expect(isAccelerating(growths)).toBe(true);
@@ -198,6 +198,52 @@ describe("isAccelerating", () => {
       { yoyGrowth: 80 },
       { yoyGrowth: 50 },
       { yoyGrowth: 200 }, // ignored
+    ];
+
+    expect(isAccelerating(growths)).toBe(true);
+  });
+
+  it("accepts re-acceleration pattern (dip then surge)", () => {
+    // Q1 +35% → Q2 +30% → Q3 +40%: latest(40) > avg(30,35)=32.5
+    // Previously rejected by strictly monotonic; now accepted
+    const growths = [
+      { yoyGrowth: 40 },
+      { yoyGrowth: 30 },
+      { yoyGrowth: 35 },
+    ];
+
+    expect(isAccelerating(growths)).toBe(true);
+  });
+
+  it("rejects low-growth base false positive", () => {
+    // +2% → +3% → +15%: prev(3) < MIN_PRIOR_GROWTH(8)
+    // Previously accepted; now rejected
+    const growths = [
+      { yoyGrowth: 15 },
+      { yoyGrowth: 3 },
+      { yoyGrowth: 2 },
+    ];
+
+    expect(isAccelerating(growths)).toBe(false);
+  });
+
+  it("rejects when prev is below MIN_PRIOR_GROWTH floor", () => {
+    // Latest 20% is high, but prev 5% below floor
+    const growths = [
+      { yoyGrowth: 20 },
+      { yoyGrowth: 5 },
+      { yoyGrowth: 3 },
+    ];
+
+    expect(isAccelerating(growths)).toBe(false);
+  });
+
+  it("accepts when latest exceeds prior average but not each individually", () => {
+    // latest(30) > avg(25,20)=22.5, prev(25) >= 8 — valid acceleration
+    const growths = [
+      { yoyGrowth: 30 },
+      { yoyGrowth: 25 },
+      { yoyGrowth: 20 },
     ];
 
     expect(isAccelerating(growths)).toBe(true);
