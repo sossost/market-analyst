@@ -77,6 +77,8 @@ export const getRisingRS: AgentTool = {
       sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
       sectorChange4w: r.sector_change_4w != null ? toNum(r.sector_change_4w) : null,
       sectorGroupPhase: r.sector_group_phase,
+      sepaGrade: r.sepa_grade,
+      marketCap: r.market_cap != null ? toNum(r.market_cap) : null,
     };
     });
 

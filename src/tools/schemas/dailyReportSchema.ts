@@ -185,6 +185,8 @@ export interface DailyRisingRSStock {
   sectorAvgRs: number | null;
   sectorChange4w: number | null;
   sectorGroupPhase: number | null;
+  sepaGrade: string | null;
+  marketCap: number | null;
 }
 
 interface DailyWatchlistPhaseChange {

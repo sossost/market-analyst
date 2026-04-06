@@ -551,6 +551,16 @@ function phaseBadgeClass(phase: number): string {
   return map[phase] ?? "p1";
 }
 
+const LARGE_CAP_THRESHOLD = 10_000_000_000;
+const MID_CAP_THRESHOLD = 2_000_000_000;
+
+function marketCapLabel(cap: number | null): string {
+  if (cap == null) return "—";
+  if (cap >= LARGE_CAP_THRESHOLD) return "Large";
+  if (cap >= MID_CAP_THRESHOLD) return "Mid";
+  return "Small";
+}
+
 /**
  * 마크다운 텍스트를 HTML로 변환한다.
  * raw HTML은 이스케이프 처리하여 XSS를 방지한다.
@@ -1006,6 +1016,8 @@ export function renderRisingRSSection(
           ? "—"
           : `<span class="up">+${s.pctFromLow52w.toFixed(0)}%</span>`;
       const industryStr = s.industry != null ? escapeHtml(s.industry) : "—";
+      const sepaStr = s.sepaGrade != null ? escapeHtml(s.sepaGrade) : "—";
+      const capStr = marketCapLabel(s.marketCap);
 
       return `
         <tr>
@@ -1013,6 +1025,8 @@ export function renderRisingRSSection(
           <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(s.phase))}</span></td>
           <td>${escapeHtml(s.rsScore.toFixed(0))}</td>
           <td>${rsChangeStr}</td>
+          <td>${escapeHtml(sepaStr)}</td>
+          <td>${escapeHtml(capStr)}</td>
           <td>${industryStr}</td>
           <td>${pctFromLowStr}</td>
         </tr>`;
@@ -1027,6 +1041,8 @@ export function renderRisingRSSection(
           <th>Phase</th>
           <th>RS</th>
           <th>RS 4주 변화</th>
+          <th>SEPA</th>
+          <th>시총</th>
           <th>업종</th>
           <th>52w 저점比</th>
         </tr>

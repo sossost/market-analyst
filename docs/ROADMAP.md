@@ -61,6 +61,7 @@
 | 딜리버리 | Discord + Gist, 일간/주간 스케줄 |
 | Phase 전환 드릴다운 | 섹터 Phase 전환 감지 시 업종 드릴다운 자동 포함 — RS 변화 상위 업종, Phase 역행 업종, Phase2 비율 (#522) |
 | 업종 RS 섹터 캡 | industry 모드 Top 10에서 섹터당 최대 2개 제한 — 단일 섹터 독식 방지, 다양성 확보 (#616) |
+| RS 상승 초기 SEPA+시총 | `getRisingRS` 반환값에 SEPA 등급 + 시총 구간(Large/Mid/Small) 추가 — Phase 2 초입 최고 시그널 판별 강화 (#656) |
 
 ### Layer 3: 추적 시스템 (F4) — Done
 추천 종목의 성과를 추적하여 시스템 자체의 실적을 측정.
