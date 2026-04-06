@@ -628,6 +628,44 @@ function renderVixIndexCard(idx: DailyIndexReturn): string {
     </div>`;
 }
 
+/**
+ * US 10Y Treasury 전용 카드.
+ * 종가는 yield(%) 표시, 변화량은 bp(basis point) 단위.
+ */
+function renderUs10yCard(idx: DailyIndexReturn): string {
+  const cls = colorClass(idx.changePercent);
+  const bpChange = idx.change * 100;
+  const bpStr = `${bpChange >= 0 ? "+" : ""}${bpChange.toFixed(1)}bp`;
+
+  return `
+    <div class="index-card">
+      <div class="label">${escapeHtml(idx.name)}</div>
+      <div class="value">${escapeHtml(idx.close.toFixed(2))}%</div>
+      <div class="change ${escapeHtml(cls)}">${escapeHtml(formatPercent(idx.changePercent))}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+        ${escapeHtml(bpStr)}
+      </div>
+    </div>`;
+}
+
+/**
+ * DXY(달러 인덱스) 전용 카드.
+ * 종가는 포인트 표시, 변화량은 포인트 + % 병기.
+ */
+function renderDxyCard(idx: DailyIndexReturn): string {
+  const cls = colorClass(idx.changePercent);
+
+  return `
+    <div class="index-card">
+      <div class="label">${escapeHtml(idx.name)}</div>
+      <div class="value">${escapeHtml(formatNumber(idx.close))}</div>
+      <div class="change ${escapeHtml(cls)}">${escapeHtml(formatPercent(idx.changePercent))}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+        ${escapeHtml(idx.change >= 0 ? "+" : "")}${escapeHtml(idx.change.toFixed(2))}pt
+      </div>
+    </div>`;
+}
+
 // ─── 렌더링 함수들 ────────────────────────────────────────────────────────────
 
 /**
@@ -646,6 +684,12 @@ export function renderIndexTable(
     .map((idx) => {
       if (idx.symbol === "^VIX") {
         return renderVixIndexCard(idx);
+      }
+      if (idx.symbol === "^TNX") {
+        return renderUs10yCard(idx);
+      }
+      if (idx.symbol === "DX-Y.NYB") {
+        return renderDxyCard(idx);
       }
 
       const cls = colorClass(idx.changePercent);

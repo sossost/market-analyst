@@ -210,7 +210,7 @@ describe("buildDailySystemPrompt", () => {
     const result = buildDailySystemPrompt();
 
     expect(result).toContain("## 판단 원칙");
-    expect(result).toContain("실시간 조회 불가 지표(WTI, 금, DXY 등)");
+    expect(result).toContain("실시간 조회 불가 지표(WTI, 금 등)");
     expect(result).toContain("학습 데이터에서 추론하거나 기억에서 가져오는 행위 금지");
   });
 
@@ -278,7 +278,7 @@ describe("buildDailySystemPrompt", () => {
 
     const result = buildDailySystemPrompt();
 
-    expect(result).toContain("실시간 조회 불가 지표(WTI, 금, DXY 등)");
+    expect(result).toContain("실시간 조회 불가 지표(WTI, 금 등)");
     expect(result).toContain("수치를 직접 언급하지 마라");
   });
 });
