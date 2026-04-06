@@ -105,7 +105,7 @@ describe("findHighProgressHolds", () => {
     reason: "데이터 부족",
   });
 
-  it("진행률 80% 이상 HOLD thesis ID를 반환한다", () => {
+  it("진행률 50% 이상 HOLD thesis ID를 반환한다", () => {
     const thesisMap = new Map([
       [1, { debateDate: "2025-01-01", timeframeDays: 30 }], // 25일 경과 = 83%
     ]);
@@ -115,22 +115,22 @@ describe("findHighProgressHolds", () => {
     expect(result).toEqual([1]);
   });
 
-  it("진행률 80% 미만 HOLD thesis는 포함하지 않는다", () => {
+  it("진행률 50% 미만 HOLD thesis는 포함하지 않는다", () => {
+    const thesisMap = new Map([
+      [1, { debateDate: "2025-01-01", timeframeDays: 30 }], // 10일 경과 = 33%
+    ]);
+
+    const result = findHighProgressHolds([makeHeld(1)], thesisMap, "2025-01-11");
+
+    expect(result).toEqual([]);
+  });
+
+  it("정확히 50%인 thesis는 강제 만료 대상이다", () => {
     const thesisMap = new Map([
       [1, { debateDate: "2025-01-01", timeframeDays: 30 }], // 15일 경과 = 50%
     ]);
 
     const result = findHighProgressHolds([makeHeld(1)], thesisMap, "2025-01-16");
-
-    expect(result).toEqual([]);
-  });
-
-  it("정확히 80%인 thesis는 강제 만료 대상이다", () => {
-    const thesisMap = new Map([
-      [1, { debateDate: "2025-01-01", timeframeDays: 30 }], // 24일 경과 = 80%
-    ]);
-
-    const result = findHighProgressHolds([makeHeld(1)], thesisMap, "2025-01-25");
 
     expect(result).toEqual([1]);
   });

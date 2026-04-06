@@ -7,6 +7,7 @@ import { recordNarrativeChain } from "./narrativeChainService.js";
 import { tryQuantitativeVerification, parseQuantitativeCondition } from "./quantitativeVerifier.js";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { AgentPersona } from "@/types/debate";
+import { THESIS_EXPIRE_PROGRESS } from "./thesisConstants.js";
 
 /**
  * 에이전트당 ACTIVE thesis 상한.
@@ -535,6 +536,53 @@ export async function getConfidenceHitRates(): Promise<
       hitRate: total > 0 ? r.confirmed / total : null,
     };
   });
+}
+
+/**
+ * Stale thesis 강제 만료 진행률 임계.
+ * THESIS_EXPIRE_PROGRESS와 동일 값을 사용하여 LLM 경로와 안전망 경로가
+ * 같은 임계치에서 동작하도록 한다.
+ * verifyTheses()가 실패해도 독립적으로 동작하는 안전망.
+ */
+export const STALE_EXPIRE_PROGRESS = THESIS_EXPIRE_PROGRESS;
+
+/**
+ * ACTIVE thesis 중 진행률이 STALE_EXPIRE_PROGRESS 이상이면서
+ * 아직 timeframe을 초과하지 않은 thesis를 만료한다.
+ *
+ * timeframe 초과 thesis는 expireStaleTheses()가 별도 처리하므로 여기선 제외.
+ * LLM 검증 실패 시에도 독립적으로 stale thesis를 포착하는 안전망 역할.
+ *
+ * Returns: 만료 처리된 thesis 수
+ */
+export async function expireStalledTheses(today: string): Promise<number> {
+  const result = await db
+    .update(theses)
+    .set({
+      status: "EXPIRED",
+      verificationDate: today,
+      verificationResult: `진행률 ${STALE_EXPIRE_PROGRESS * 100}%+ 무판정 — 안전망 만료`,
+      closeReason: "stale_no_resolution",
+    })
+    .where(
+      and(
+        eq(theses.status, "ACTIVE"),
+        // 진행률 >= STALE_EXPIRE_PROGRESS (50%) — FLOOR로 정수 일수 변환
+        sql`${theses.debateDate}::date + FLOOR(${theses.timeframeDays} * ${STALE_EXPIRE_PROGRESS})::int * interval '1 day' <= ${today}::date`,
+        // timeframe 미초과 (초과분은 expireStaleTheses가 처리)
+        sql`${theses.debateDate}::date + ${theses.timeframeDays} * interval '1 day' > ${today}::date`,
+      ),
+    )
+    .returning({ id: theses.id });
+
+  if (result.length > 0) {
+    logger.info(
+      "ThesisStore",
+      `${result.length}개 thesis stale 만료 (진행률 ${STALE_EXPIRE_PROGRESS * 100}%+ 무판정): [${result.map((r) => r.id).join(", ")}]`,
+    );
+  }
+
+  return result.length;
 }
 
 const PERSONA_LABEL: Record<string, string> = {

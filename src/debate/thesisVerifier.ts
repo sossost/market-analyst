@@ -1,6 +1,7 @@
 import { loadActiveTheses, resolveThesis, saveCausalAnalysis, forceExpireTheses } from "./thesisStore.js";
 import { analyzeCauses } from "./causalAnalyzer.js";
 import { tryQuantitativeVerification } from "./quantitativeVerifier.js";
+import { THESIS_EXPIRE_PROGRESS } from "./thesisConstants.js";
 import { logger } from "@/lib/logger";
 import { createProvider } from "./llm/providerFactory.js";
 import type { LLMProvider } from "./llm/types.js";
@@ -31,7 +32,11 @@ interface VerificationResult {
   tokensUsed: { input: number; output: number };
 }
 
-const HOLD_EXPIRE_PROGRESS = 0.8;
+/**
+ * HOLD 판정 강제 만료 임계 진행률.
+ * thesisConstants.ts에서 공유 — thesisStore.ts의 안전망과 동일 임계치 사용.
+ */
+const HOLD_EXPIRE_PROGRESS = THESIS_EXPIRE_PROGRESS;
 
 /**
  * LLM 기반 thesis 자동 검증.

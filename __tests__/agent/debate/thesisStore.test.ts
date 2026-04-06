@@ -17,6 +17,11 @@ const mockUpdateReturning = vi.fn();
 const mockGroupBy = vi.fn();
 const mockOrderBy = vi.fn();
 
+// Mock thesisConstants — shared constant for stale thesis expiration
+vi.mock("@/debate/thesisConstants.js", () => ({
+  THESIS_EXPIRE_PROGRESS: 0.5,
+}));
+
 // Mock narrativeChainService — error-isolated, no-op in thesis tests
 vi.mock("@/debate/narrativeChainService.js", () => ({
   recordNarrativeChain: vi.fn().mockResolvedValue(undefined),
@@ -111,12 +116,14 @@ import {
   loadActiveTheses,
   formatThesesForPrompt,
   expireStaleTheses,
+  expireStalledTheses,
   resolveThesis,
   getThesisStats,
   getThesisStatsByCategory,
   getConsensusByHitRate,
   forceExpireTheses,
   getThesisStatsByPersona,
+  STALE_EXPIRE_PROGRESS,
 } from "@/debate/thesisStore.js";
 
 describe("thesisStore", () => {
@@ -786,6 +793,37 @@ describe("thesisStore", () => {
       expect(mockWhere).toHaveBeenCalled();
       expect(mockGroupBy).toHaveBeenCalled();
       expect(mockOrderBy).toHaveBeenCalled();
+    });
+  });
+
+  describe("expireStalledTheses", () => {
+    it("진행률 50%+ 무판정 thesis를 EXPIRED 처리하고 개수를 반환한다", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([{ id: 5 }, { id: 8 }]);
+
+      const count = await expireStalledTheses("2026-04-20");
+
+      expect(count).toBe(2);
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "EXPIRED",
+          verificationDate: "2026-04-20",
+          verificationResult: expect.stringContaining("안전망 만료"),
+          closeReason: "stale_no_resolution",
+        }),
+      );
+    });
+
+    it("해당하는 thesis가 없으면 0을 반환한다", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([]);
+
+      const count = await expireStalledTheses("2026-04-06");
+
+      expect(count).toBe(0);
+    });
+
+    it("STALE_EXPIRE_PROGRESS 상수가 0.5이다", () => {
+      expect(STALE_EXPIRE_PROGRESS).toBe(0.5);
     });
   });
 });
