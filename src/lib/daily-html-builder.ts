@@ -793,7 +793,7 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
 
 /**
  * 섹터 RS 랭킹 테이블을 렌더링한다.
- * 전일 대비 RS 변화와 순위 변동 포함.
+ * 4주 RS 변화(change4w)와 순위 변동 포함.
  */
 export function renderSectorTable(data: DailySectorItem[]): string {
   if (data.length === 0) {
@@ -813,10 +813,10 @@ export function renderSectorTable(data: DailySectorItem[]): string {
               : `<span class="neutral-color">—</span>`
           : "—";
 
-      const rsChangeCls = s.rsChange != null ? colorClass(s.rsChange) : "neutral-color";
-      const rsChangeStr =
-        s.rsChange != null
-          ? `<span class="${escapeHtml(rsChangeCls)}">${s.rsChange >= 0 ? "+" : ""}${s.rsChange.toFixed(2)}</span>`
+      const change4wCls = s.change4w != null ? colorClass(s.change4w) : "neutral-color";
+      const change4wStr =
+        s.change4w != null
+          ? `<span class="${escapeHtml(change4wCls)}">${s.change4w >= 0 ? "+" : ""}${s.change4w.toFixed(1)}</span>`
           : "—";
 
       const p2Str = `${s.phase2Ratio.toFixed(1)}%`;
@@ -827,7 +827,7 @@ export function renderSectorTable(data: DailySectorItem[]): string {
           <td>${escapeHtml(s.avgRs.toFixed(1))}</td>
           <td>${escapeHtml(String(s.rsRank))}</td>
           <td>${rankChangeStr}</td>
-          <td>${rsChangeStr}</td>
+          <td>${change4wStr}</td>
           <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(s.groupPhase))}</span></td>
           <td>${escapeHtml(p2Str)}</td>
         </tr>`;
@@ -842,7 +842,7 @@ export function renderSectorTable(data: DailySectorItem[]): string {
           <th>RS</th>
           <th>순위</th>
           <th>순위변동</th>
-          <th>RS변화(전일)</th>
+          <th>RS변화(4주)</th>
           <th>Phase</th>
           <th>P2 비율</th>
         </tr>
