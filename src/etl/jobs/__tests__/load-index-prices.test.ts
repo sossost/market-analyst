@@ -61,21 +61,27 @@ describe("load-index-prices", () => {
     delete process.env.FMP_API_KEY;
   });
 
-  it("5개 지수의 가격 데이터를 fetch하고 UPSERT한다", async () => {
+  it("7개 지수의 가격 데이터를 fetch하고 UPSERT한다", async () => {
     mockFetchJson.mockResolvedValue({ historical: MOCK_HISTORICAL });
 
     await loadIndexPrices();
 
-    // 5개 지수에 대해 각 1회 fetch
-    expect(mockFetchJson).toHaveBeenCalledTimes(5);
+    // 7개 지수에 대해 각 1회 fetch
+    expect(mockFetchJson).toHaveBeenCalledTimes(7);
     expect(mockFetchJson).toHaveBeenCalledWith(
       expect.stringContaining("/api/v3/historical-price-full/%5EGSPC"),
     );
     expect(mockFetchJson).toHaveBeenCalledWith(
       expect.stringContaining("/api/v3/historical-price-full/%5EIXIC"),
     );
-    // 5개 지수에 대해 각 1회 insert
-    expect(mockInsert).toHaveBeenCalledTimes(5);
+    expect(mockFetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v3/historical-price-full/%5ETNX"),
+    );
+    expect(mockFetchJson).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v3/historical-price-full/DX-Y.NYB"),
+    );
+    // 7개 지수에 대해 각 1회 insert
+    expect(mockInsert).toHaveBeenCalledTimes(7);
   });
 
   it("빈 historical 응답이면 해당 지수를 skip한다", async () => {
@@ -99,8 +105,8 @@ describe("load-index-prices", () => {
 
     await loadIndexPrices();
 
-    // 첫 번째 지수는 빈 응답으로 skip, 나머지 4개는 성공
-    expect(mockInsert).toHaveBeenCalledTimes(4);
+    // 첫 번째 지수는 빈 응답으로 skip, 나머지 6개는 성공
+    expect(mockInsert).toHaveBeenCalledTimes(6);
   });
 
   it("FMP URL에 올바른 심볼과 apikey가 포함된다", async () => {

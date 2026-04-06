@@ -260,6 +260,8 @@ const INDEX_SYMBOL_NAMES: Record<string, string> = {
   "^DJI": "DOW 30",
   "^RUT": "Russell 2000",
   "^VIX": "VIX",
+  "^TNX": "US 10Y",
+  "DX-Y.NYB": "DXY",
 };
 
 /**
