@@ -54,8 +54,8 @@ function setupDbMock(rowsBySymbol: Record<string, ReturnType<typeof makeDbRows>>
   mockSelect.mockReturnValue({ from: fromFn });
 
   // symbol은 where 절에서 eq(indexPrices.symbol, symbol)로 전달됨
-  // 5개 지수 호출에 대해 순서대로 응답
-  const symbols = ["^GSPC", "^IXIC", "^DJI", "^RUT", "^VIX"];
+  // 7개 지수 호출에 대해 순서대로 응답
+  const symbols = ["^GSPC", "^IXIC", "^DJI", "^RUT", "^VIX", "^TNX", "DX-Y.NYB"];
   let callIndex = 0;
   limitFn.mockImplementation(() => {
     const sym = symbols[callIndex % symbols.length];
@@ -113,6 +113,8 @@ describe("getIndexReturns", () => {
         "^DJI": rows,
         "^RUT": rows,
         "^VIX": rows,
+        "^TNX": rows,
+        "DX-Y.NYB": rows,
       };
       setupDbMock(allSymbolRows);
 
@@ -125,7 +127,7 @@ describe("getIndexReturns", () => {
 
       const result = JSON.parse(await getIndexReturns.execute({}));
 
-      expect(result.indices).toHaveLength(5);
+      expect(result.indices).toHaveLength(7);
       expect(result.indices[0]).toHaveProperty("close", 5050);
       expect(result.indices[0]).toHaveProperty("change", 50);
       expect(result.indices[0]).toHaveProperty("changePercent", 1);
@@ -136,7 +138,7 @@ describe("getIndexReturns", () => {
     it("mode: 'daily' 명시 시에도 daily 동작", async () => {
       const rows = makeDbRows([5050, 5000]);
       setupDbMock({
-        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows, "^TNX": rows, "DX-Y.NYB": rows,
       });
 
       mockFetch.mockImplementation(async (url: string) => {
@@ -150,7 +152,7 @@ describe("getIndexReturns", () => {
         await getIndexReturns.execute({ mode: "daily" }),
       );
 
-      expect(result.indices).toHaveLength(5);
+      expect(result.indices).toHaveLength(7);
       expect(result.indices[0]).toHaveProperty("changePercent");
       expect(result.indices[0]).not.toHaveProperty("weeklyChangePercent");
     });
@@ -163,6 +165,8 @@ describe("getIndexReturns", () => {
         "^DJI": makeDbRows([5050]),
         "^RUT": makeDbRows([5050]),
         "^VIX": makeDbRows([5050]),
+        "^TNX": makeDbRows([5050]),
+        "DX-Y.NYB": makeDbRows([5050]),
       };
       setupDbMock(allSymbolRows);
 
@@ -183,8 +187,8 @@ describe("getIndexReturns", () => {
 
       const result = JSON.parse(await getIndexReturns.execute({}));
 
-      expect(result.indices).toHaveLength(5);
-      expect(mockFetchJson).toHaveBeenCalledTimes(5);
+      expect(result.indices).toHaveLength(7);
+      expect(mockFetchJson).toHaveBeenCalledTimes(7);
       expect(result.indices[0].change).toBe(50);
     });
   });
@@ -206,7 +210,7 @@ describe("getIndexReturns", () => {
       ];
 
       setupDbMock({
-        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows, "^TNX": rows, "DX-Y.NYB": rows,
       });
 
       mockFetch.mockImplementation(async (url: string) => {
@@ -221,7 +225,7 @@ describe("getIndexReturns", () => {
       );
 
       expect(result.mode).toBe("weekly");
-      expect(result.indices).toHaveLength(5);
+      expect(result.indices).toHaveLength(7);
 
       const index = result.indices[0];
       // weekStartClose = 전주 금요일 2026-03-27 close = 5000
@@ -248,7 +252,7 @@ describe("getIndexReturns", () => {
       ];
 
       setupDbMock({
-        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows, "^TNX": rows, "DX-Y.NYB": rows,
       });
 
       mockFetch.mockImplementation(async (url: string) => {
@@ -275,7 +279,7 @@ describe("getIndexReturns", () => {
       ];
 
       setupDbMock({
-        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows, "^TNX": rows, "DX-Y.NYB": rows,
       });
 
       mockFetch.mockImplementation(async (url: string) => {
@@ -302,7 +306,7 @@ describe("getIndexReturns", () => {
       ];
 
       setupDbMock({
-        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows, "^TNX": rows, "DX-Y.NYB": rows,
       });
 
       mockFetch.mockImplementation(async (url: string) => {
@@ -325,7 +329,7 @@ describe("getIndexReturns", () => {
       ];
 
       setupDbMock({
-        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows, "^TNX": rows, "DX-Y.NYB": rows,
       });
 
       // FMP fallback도 1건만 반환
@@ -353,7 +357,7 @@ describe("getIndexReturns", () => {
     it("weekly 모드에서도 fearGreed가 포함된다", async () => {
       const rows = makeDbRows([5100, 5050, 5000]);
       setupDbMock({
-        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows,
+        "^GSPC": rows, "^IXIC": rows, "^DJI": rows, "^RUT": rows, "^VIX": rows, "^TNX": rows, "DX-Y.NYB": rows,
       });
 
       mockFetch.mockImplementation(async (url: string) => {
@@ -379,7 +383,7 @@ describe("getIndexReturns", () => {
     it("모든 지수 실패 + fearGreed 실패 시 에러를 반환한다", async () => {
       // DB 빈 결과 + FMP도 빈 결과
       setupDbMock({
-        "^GSPC": [], "^IXIC": [], "^DJI": [], "^RUT": [], "^VIX": [],
+        "^GSPC": [], "^IXIC": [], "^DJI": [], "^RUT": [], "^VIX": [], "^TNX": [], "DX-Y.NYB": [],
       });
       mockFetchJson.mockResolvedValue({ historical: [] });
       mockFetch.mockImplementation(async () => makeFailedResponse());

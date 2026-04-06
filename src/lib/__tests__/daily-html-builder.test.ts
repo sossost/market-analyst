@@ -315,6 +315,33 @@ describe("renderIndexTable", () => {
     expect(html).toContain("공포 임계선 도달");
   });
 
+  it("US 10Y 카드는 yield(%)와 bp 변화량을 표시한다", () => {
+    const us10y = createMockDailyIndexReturn({
+      symbol: "^TNX",
+      name: "US 10Y",
+      close: 4.25,
+      change: -0.05,
+      changePercent: -1.18,
+    });
+    const html = renderIndexTable([us10y], null);
+    expect(html).toContain("US 10Y");
+    expect(html).toContain("4.25%");
+    expect(html).toContain("-5.0bp");
+  });
+
+  it("DXY 카드는 포인트 변화량을 표시한다", () => {
+    const dxy = createMockDailyIndexReturn({
+      symbol: "DX-Y.NYB",
+      name: "DXY",
+      close: 104.52,
+      change: 0.38,
+      changePercent: 0.36,
+    });
+    const html = renderIndexTable([dxy], null);
+    expect(html).toContain("DXY");
+    expect(html).toContain("+0.38pt");
+  });
+
   it("XSS 공격 문자를 이스케이프한다", () => {
     const idx = createMockDailyIndexReturn({ name: '<script>alert("xss")</script>' });
     const html = renderIndexTable([idx], null);

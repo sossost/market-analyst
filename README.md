@@ -189,7 +189,7 @@ yarn db:studio              # Drizzle Studio UI
 
 | 도구 | 일간 | 주간 | 설명 |
 |------|:----:|:----:|------|
-| `getIndexReturns` | O | O | 4대 지수 + VIX + 공포탐욕지수 — FMP 데이터 기반, DB 우선 조회 (주간: 누적 + 고저 위치) |
+| `getIndexReturns` | O | O | 4대 지수 + VIX + US 10Y + DXY + 공포탐욕지수 — FMP 데이터 기반, DB 우선 조회 (주간: 누적 + 고저 위치) |
 | `getMarketBreadth` | O | O | Phase 분포, Phase 2 비율, A/D ratio (주간: 5일 추이 + Phase 1→2 전환) |
 | `getLeadingSectors` | O | O | RS 상위 섹터/업종 (주간: 전주 대비 순위 변동 + 신규 진입/이탈; industry 모드: 전체 업종 RS 랭킹 + divergence; Phase 전환 섹터: 업종 드릴다운 자동 포함) |
 | `getPhase2Stocks` | | O | Phase 2 초입 종목 리스트 (RS 필터링) |
@@ -323,7 +323,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 ### Core Features (완료)
 
-- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스, 돌파/노이즈 신호)
+- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스, 돌파/노이즈 신호, US10Y/DXY)
 - [x] **F2** Agent Core — Claude agentic loop + 16개 도구 + 일간/주간 분리
 - [ ] ~~**F3** Industry Intelligence~~ — 폐기. F6 토론 엔진이 시장 분석 역할을 대체
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지

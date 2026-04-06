@@ -29,6 +29,8 @@ const INDEX_SYMBOLS: ReadonlyArray<{ fmpSymbol: string; dbSymbol: string; name: 
   { fmpSymbol: "%5EDJI", dbSymbol: "^DJI", name: "DOW 30" },
   { fmpSymbol: "%5ERUT", dbSymbol: "^RUT", name: "Russell 2000" },
   { fmpSymbol: "%5EVIX", dbSymbol: "^VIX", name: "VIX" },
+  { fmpSymbol: "%5ETNX", dbSymbol: "^TNX", name: "US 10Y" },
+  { fmpSymbol: "DX-Y.NYB", dbSymbol: "DX-Y.NYB", name: "DXY" },
 ];
 
 interface FmpHistoricalRow {

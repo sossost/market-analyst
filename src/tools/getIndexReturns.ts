@@ -46,6 +46,8 @@ const INDEX_SYMBOLS: Readonly<Record<string, string>> = {
   "^DJI": "DOW 30",
   "^RUT": "Russell 2000",
   "^VIX": "VIX",
+  "^TNX": "US 10Y",
+  "DX-Y.NYB": "DXY",
 } as const;
 
 const FMP_SYMBOL_MAP: Readonly<Record<string, string>> = {
@@ -54,6 +56,8 @@ const FMP_SYMBOL_MAP: Readonly<Record<string, string>> = {
   "^DJI": "%5EDJI",
   "^RUT": "%5ERUT",
   "^VIX": "%5EVIX",
+  "^TNX": "%5ETNX",
+  "DX-Y.NYB": "DX-Y.NYB",
 } as const;
 
 interface IndexPriceRow {
@@ -322,7 +326,7 @@ export const getIndexReturns: AgentTool = {
   definition: {
     name: "get_index_returns",
     description:
-      "주요 미국 지수(S&P 500, NASDAQ, DOW, Russell 2000, VIX)의 등락률과 CNN 공포탐욕지수를 조회합니다. daily(기본): 일간 등락률, weekly: 주간 누적 등락률 + 주간 고저 위치. 시장 전반의 방향성과 심리 파악에 사용하세요.",
+      "주요 미국 지수(S&P 500, NASDAQ, DOW, Russell 2000, VIX, US 10Y, DXY)의 등락률과 CNN 공포탐욕지수를 조회합니다. daily(기본): 일간 등락률, weekly: 주간 누적 등락률 + 주간 고저 위치. 시장 전반의 방향성과 심리 파악에 사용하세요.",
     input_schema: {
       type: "object" as const,
       properties: {
