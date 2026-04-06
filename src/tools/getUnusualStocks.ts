@@ -10,6 +10,7 @@ const BIG_MOVE_THRESHOLD = 0.05;
 const HIGH_VOLUME_RATIO = 2.0;
 const MIN_CONDITIONS = 2;
 const MIN_RS_SCORE = 40;
+// 거래량 비율 최소 기준 — 30일 평균 대비 1배 미만은 저유동성 노이즈
 const MIN_VOL_RATIO = 1.0;
 const MAX_RESULTS = 15;
 
@@ -97,7 +98,7 @@ export const getUnusualStocks: AgentTool = {
           (s.conditions.length >= MIN_CONDITIONS || s.phase2WithDrop === true) &&
           s.rsScore >= MIN_RS_SCORE &&
           s.volRatio >= MIN_VOL_RATIO &&
-          !s.splitSuspect,
+          s.splitSuspect === false,
       )
       .sort((a, b) => {
         // Phase 2 우선, 같은 Phase면 RS 높은 순
