@@ -842,7 +842,7 @@ export function renderSectorTable(data: DailySectorItem[]): string {
           <th>RS</th>
           <th>순위</th>
           <th>순위변동</th>
-          <th>RS변화(4주)</th>
+          <th>4주 변화</th>
           <th>Phase</th>
           <th>P2 비율</th>
         </tr>
