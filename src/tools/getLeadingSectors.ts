@@ -23,7 +23,7 @@ import { clampPercent, validateDate, validateNumber } from "./validation";
 import { applyIndustrySectorCap } from "@/lib/industryFilter.js";
 
 /** DB에서 가져올 업종 상위 N개 (섹터당 제한 적용 전 후보군) */
-const INDUSTRY_FETCH_LIMIT = 50;
+const INDUSTRY_FETCH_LIMIT_DEFAULT = 50;
 
 /** 최종 반환할 업종 개수 */
 const INDUSTRY_TOP_N = 10;
@@ -256,10 +256,10 @@ export const getLeadingSectors: AgentTool = {
         // changeWeek + divergence 계산을 위해 두 쿼리 병렬 조회
         const [weeklyRows, globalRows] = await Promise.all([
           retryDatabaseOperation(() =>
-            findIndustriesWeeklyChange(date, prevWeekDate, INDUSTRY_FETCH_LIMIT),
+            findIndustriesWeeklyChange(date, prevWeekDate, Math.max(industryLimit, INDUSTRY_FETCH_LIMIT_DEFAULT)),
           ),
           retryDatabaseOperation(() =>
-            findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
+            findTopIndustriesGlobal(date, Math.max(industryLimit, INDUSTRY_FETCH_LIMIT_DEFAULT)),
           ),
         ]);
         const globalMap = new Map<string, IndustryRsGlobalRow>();
@@ -299,7 +299,7 @@ export const getLeadingSectors: AgentTool = {
         });
       } else {
         const globalRows = await retryDatabaseOperation(() =>
-          findTopIndustriesGlobal(date, INDUSTRY_FETCH_LIMIT),
+          findTopIndustriesGlobal(date, Math.max(industryLimit, INDUSTRY_FETCH_LIMIT_DEFAULT)),
         );
         allIndustries = globalRows.map((i: IndustryRsGlobalRow) => ({
           industry: i.industry,
@@ -337,21 +337,17 @@ export const getLeadingSectors: AgentTool = {
             );
 
       if (prevWeekDate != null) {
-        // 주간 변화 경로: plain 마크다운 텍스트로 반환 — JSON이 아님
-        // 에이전트가 재구성하지 않고 그대로 리포트에 붙여넣기하도록
+        // 주간 변화 경로: JSON으로 반환하여 weeklyDataCollector가 industries를 캡처할 수 있게 한다.
+        // weeklyChangeTable은 에이전트가 narrative 작성에 활용하도록 포함한다.
         const weeklyChangeTable = buildWeeklyChangeTable(industries);
-        const top3 = industries.slice(0, 3).map(i =>
-          `- **${i.industry}** (${i.sector}) — RS ${i.avgRs}, 주간 변화 ${i.changeWeek != null ? (i.changeWeek >= 0 ? `+${i.changeWeek}` : `${i.changeWeek}`) : "—"}, Phase ${i.groupPhase}, P2 비율 ${i.phase2Ratio ?? "—"}%`
-        ).join("\n");
-
-        return `[업종 RS 주간 변화 Top 10 — ${date} 기준, 전주 ${prevWeekDate} 대비]
-
-아래 테이블을 섹션 2 "업종 RS 주간 변화 Top 10"에 그대로 사용하세요.
-
-${weeklyChangeTable}
-
-상위 3개 업종 요약:
-${top3}`;
+        return JSON.stringify({
+          _note: "phase2Ratio는 이미 퍼센트(0~100). weeklyChangeTable을 섹션 2에 그대로 사용하세요.",
+          date,
+          prevWeekDate,
+          mode: "industry",
+          industries,
+          weeklyChangeTable,
+        });
       }
 
       return JSON.stringify({
