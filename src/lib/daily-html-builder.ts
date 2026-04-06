@@ -1025,7 +1025,7 @@ export function renderRisingRSSection(
           <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(s.phase))}</span></td>
           <td>${escapeHtml(s.rsScore.toFixed(0))}</td>
           <td>${rsChangeStr}</td>
-          <td>${escapeHtml(sepaStr)}</td>
+          <td>${sepaStr}</td>
           <td>${escapeHtml(capStr)}</td>
           <td>${industryStr}</td>
           <td>${pctFromLowStr}</td>
