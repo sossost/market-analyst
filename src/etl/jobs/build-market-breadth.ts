@@ -31,6 +31,14 @@ interface Phase1To2Count5dResult {
   count: number;
 }
 
+interface Phase1To2Count1dResult {
+  count: number;
+}
+
+interface Phase2To3Count1dResult {
+  count: number;
+}
+
 interface PrevPhase2RatioResult {
   phase2Ratio: number | null;
 }
@@ -297,6 +305,40 @@ async function fetchPhase1To2Count5d(date: string): Promise<Phase1To2Count5dResu
   return { count: toNum(rows[0]?.count ?? "0") };
 }
 
+async function fetchPhase1To2Count1d(date: string): Promise<Phase1To2Count1dResult> {
+  const { rows } = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM stock_phases sp
+     JOIN symbols s ON sp.symbol = s.symbol
+     WHERE sp.date = $1
+       AND sp.phase = 2
+       AND sp.prev_phase != 2
+       AND s.is_actively_trading = true
+       AND s.is_etf = false
+       AND s.is_fund = false`,
+    [date],
+  );
+
+  return { count: toNum(rows[0]?.count ?? "0") };
+}
+
+async function fetchPhase2To3Count1d(date: string): Promise<Phase2To3Count1dResult> {
+  const { rows } = await pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM stock_phases sp
+     JOIN symbols s ON sp.symbol = s.symbol
+     WHERE sp.date = $1
+       AND sp.phase = 3
+       AND sp.prev_phase = 2
+       AND s.is_actively_trading = true
+       AND s.is_etf = false
+       AND s.is_fund = false`,
+    [date],
+  );
+
+  return { count: toNum(rows[0]?.count ?? "0") };
+}
+
 async function fetchAdvanceDecline(date: string): Promise<AdvanceDeclineResult> {
   const { rows } = await pool.query<{
     advancers: string;
@@ -441,6 +483,16 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     fetchPhase1To2Count5d(targetDate),
   );
 
+  // 3-1. 당일 Phase 1→2 신규 진입 수
+  const p1to2Count1dData = await retryDatabaseOperation(() =>
+    fetchPhase1To2Count1d(targetDate),
+  );
+
+  // 3-2. 당일 Phase 2→3 이탈 수
+  const p2to3Count1dData = await retryDatabaseOperation(() =>
+    fetchPhase2To3Count1d(targetDate),
+  );
+
   // 4. Advance/Decline
   const adData = await retryDatabaseOperation(() =>
     fetchAdvanceDecline(targetDate),
@@ -502,6 +554,8 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     phase2Ratio: String(phaseData.phase2Ratio),
     phase2RatioChange: phase2RatioChange != null ? String(phase2RatioChange) : null,
     phase1To2Count5d: p1to2Data.count,
+    phase1To2Count1d: p1to2Count1dData.count,
+    phase2To3Count1d: p2to3Count1dData.count,
     marketAvgRs: phaseData.marketAvgRs != null ? String(phaseData.marketAvgRs) : null,
     advancers: adData.advancers,
     decliners: adData.decliners,
@@ -533,6 +587,8 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
           phase2Ratio: sql`EXCLUDED.phase2_ratio`,
           phase2RatioChange: sql`EXCLUDED.phase2_ratio_change`,
           phase1To2Count5d: sql`EXCLUDED.phase1_to2_count_5d`,
+          phase1To2Count1d: sql`EXCLUDED.phase1_to2_count_1d`,
+          phase2To3Count1d: sql`EXCLUDED.phase2_to3_count_1d`,
           marketAvgRs: sql`EXCLUDED.market_avg_rs`,
           advancers: sql`EXCLUDED.advancers`,
           decliners: sql`EXCLUDED.decliners`,
