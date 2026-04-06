@@ -646,7 +646,7 @@ export function renderIndexTable(
           <div class="value">${escapeHtml(formatNumber(idx.close))}</div>
           <div class="change ${escapeHtml(cls)}">${escapeHtml(changeStr)}</div>
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
-            전일比 ${escapeHtml(idx.change >= 0 ? "+" : "")}${escapeHtml(formatNumber(idx.change))}
+            전일 대비 ${escapeHtml(idx.change >= 0 ? "+" : "")}${escapeHtml(formatNumber(idx.change))}
           </div>
         </div>`;
     })
@@ -668,9 +668,12 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
   const p3Pct = ((data.phaseDistribution.phase3 / total) * 100).toFixed(1);
   const p4Pct = ((data.phaseDistribution.phase4 / total) * 100).toFixed(1);
 
+  const PHASE2_FLAT_THRESHOLD = 0.05;
   const p2ChangeCls = colorClass(data.phase2RatioChange);
-  const p2ChangeSign = data.phase2RatioChange >= 0 ? "+" : "";
-  const p2ChangeStr = `${p2ChangeSign}${data.phase2RatioChange.toFixed(1)}%p`;
+  const p2ChangeStr =
+    Math.abs(data.phase2RatioChange) < PHASE2_FLAT_THRESHOLD
+      ? "보합"
+      : `${data.phase2RatioChange >= 0 ? "+" : ""}${data.phase2RatioChange.toFixed(2)}%p`;
 
   const phaseBar = `
     <div class="phase-bar">
@@ -787,8 +790,8 @@ export function renderSectorTable(data: DailySectorItem[]): string {
 }
 
 /**
- * 업종 RS Top 10 테이블을 렌더링한다.
- * changeWeek(4주 변화) 기준 정렬 결과를 그대로 수용한다.
+ * 업종 RS 상승 Top 10 테이블을 렌더링한다.
+ * changeWeek(전주 대비 RS 변화량) 기준 정렬 결과를 그대로 수용한다.
  */
 export function renderIndustryTop10Table(data: DailyIndustryItem[]): string {
   if (data.length === 0) {
@@ -929,8 +932,14 @@ export function renderRisingRSSection(
     : "";
 
   if (stocks.length === 0) {
-    return `<div class="empty-state">해당 없음 — RS 상승 초기 종목 없음</div>${narrativeHtml}`;
+    return "";
   }
+
+  const RISING_RS_SPARSE_THRESHOLD = 3;
+  const sparseNoticeHtml =
+    stocks.length < RISING_RS_SPARSE_THRESHOLD
+      ? `<p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px;">(시장 상황에 따라 종목 수가 적을 수 있습니다)</p>`
+      : "";
 
   const rows = stocks
     .map((s) => {
@@ -973,7 +982,7 @@ export function renderRisingRSSection(
       <tbody>${rows}</tbody>
     </table>`;
 
-  return `${table}${narrativeHtml}`;
+  return `${sparseNoticeHtml}${table}${narrativeHtml}`;
 }
 
 /**
@@ -1206,9 +1215,10 @@ export function buildDailyHtml(
         ${sectorTableHtml}
       </section>
 
-      <!-- 섹션 5: 업종 RS Top 10 -->
+      <!-- 섹션 5: 업종 RS 상승 Top 10 -->
       <section>
-        <h2>업종 RS Top 10</h2>
+        <h2>업종 RS 상승 Top 10</h2>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px;">(전주 대비 RS 변화량 기준, 섹터당 최대 2개)</p>
         ${industryTop10Html}
       </section>
 
@@ -1218,11 +1228,12 @@ export function buildDailyHtml(
         ${unusualStocksHtml}
       </section>
 
-      <!-- 섹션 7: RS 상승 초기 종목 -->
+      <!-- 섹션 7: RS 상승 초기 종목 (종목 없으면 섹션 미출력) -->
+      ${risingRSHtml !== "" ? `
       <section>
         <h2>RS 상승 초기 종목</h2>
         ${risingRSHtml}
-      </section>
+      </section>` : ""}
 
       <!-- 섹션 8: 관심종목 현황 -->
       <section>

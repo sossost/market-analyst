@@ -128,6 +128,12 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
   const risingRsData = parse(risingRsRaw);
   const watchlistData = parse(watchlistRaw);
 
+  const MIN_VOL_RATIO = 1.0;
+  const rawUnusualStocks = (Array.isArray(unusualData.stocks) ? unusualData.stocks : []) as DailyReportData["unusualStocks"];
+  const filteredUnusualStocks = rawUnusualStocks.filter(
+    (s) => s.volRatio >= MIN_VOL_RATIO && !s.splitSuspect,
+  );
+
   const data: DailyReportData = {
     indexReturns: Array.isArray(indexData.indices) ? indexData.indices as DailyReportData["indexReturns"] : [],
     fearGreed: (indexData.fearGreed ?? null) as DailyReportData["fearGreed"],
@@ -136,7 +142,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       : (breadthData.snapshot ?? breadthData) as DailyBreadthSnapshot,
     sectorRanking: (Array.isArray(sectorData.sectors) ? sectorData.sectors : []) as DailyReportData["sectorRanking"],
     industryTop10: (Array.isArray(industryData.industries) ? industryData.industries : []) as DailyReportData["industryTop10"],
-    unusualStocks: (Array.isArray(unusualData.stocks) ? unusualData.stocks : []) as DailyReportData["unusualStocks"],
+    unusualStocks: filteredUnusualStocks,
     risingRS: (Array.isArray(risingRsData.stocks) ? risingRsData.stocks : []) as DailyReportData["risingRS"],
     watchlist: {
       summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
@@ -146,7 +152,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
 
   logger.info(
     "Data",
-    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length} | RS상승 ${data.risingRS.length} | 관심종목 ${data.watchlist.summary.totalActive}`,
+    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 관심종목 ${data.watchlist.summary.totalActive}`,
   );
 
   return data;

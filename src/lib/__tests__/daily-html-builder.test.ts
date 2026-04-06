@@ -340,11 +340,15 @@ describe("renderPhaseDistribution", () => {
   it("Phase 2 비율 변화에 올바른 색상 클래스를 적용한다", () => {
     const snapshotUp = createMockBreadthSnapshot({ phase2RatioChange: 1.5 });
     const htmlUp = renderPhaseDistribution(snapshotUp);
-    expect(htmlUp).toContain("+1.5%p");
+    expect(htmlUp).toContain("+1.50%p");
 
     const snapshotDown = createMockBreadthSnapshot({ phase2RatioChange: -2.1 });
     const htmlDown = renderPhaseDistribution(snapshotDown);
-    expect(htmlDown).toContain("-2.1%p");
+    expect(htmlDown).toContain("-2.10%p");
+
+    const snapshotFlat = createMockBreadthSnapshot({ phase2RatioChange: 0.02 });
+    const htmlFlat = renderPhaseDistribution(snapshotFlat);
+    expect(htmlFlat).toContain("보합");
   });
 
   it("breadthScore가 null이면 해당 stat-chip을 렌더링하지 않는다", () => {
@@ -552,10 +556,9 @@ describe("renderRisingRSSection", () => {
     expect(html).toContain("Semiconductors");
   });
 
-  it("빈 배열이면 empty-state를 반환한다", () => {
+  it("빈 배열이면 빈 문자열을 반환한다 (섹션 자체를 숨김)", () => {
     const html = renderRisingRSSection([], "해당 없음");
-    expect(html).toContain("empty-state");
-    expect(html).toContain("RS 상승 초기 종목 없음");
+    expect(html).toBe("");
   });
 
   it("rsChange 양수에 up 클래스를 적용한다", () => {
@@ -745,8 +748,9 @@ describe("buildDailyHtml", () => {
     expect(html).toContain("지수 현황");
     expect(html).toContain("Phase 분포");
     expect(html).toContain("섹터 RS 랭킹");
-    expect(html).toContain("업종 RS Top 10");
+    expect(html).toContain("업종 RS 상승 Top 10");
     expect(html).toContain("특이종목");
+    // risingRS가 1건 이상이면 섹션이 렌더링된다
     expect(html).toContain("RS 상승 초기 종목");
     expect(html).toContain("관심종목 현황");
   });
