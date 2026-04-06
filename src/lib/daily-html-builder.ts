@@ -602,7 +602,7 @@ const VIX_FEAR_THRESHOLD = 25;
 
 function renderVixIndexCard(idx: DailyIndexReturn): string {
   const cls = vixColorClass(idx.changePercent);
-  const directionLabel = idx.changePercent > 0 ? "▲ 경계" : idx.changePercent < 0 ? "▼ 안도" : "—";
+  const directionLabel = idx.changePercent > 0 ? "▲" : idx.changePercent < 0 ? "▼" : "—";
   const fearBadge =
     idx.close >= VIX_FEAR_THRESHOLD
       ? `<div style="font-size:0.72rem;color:var(--orange);font-weight:600;margin-top:4px;">공포 임계선 도달</div>`
@@ -669,7 +669,10 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
   const p4Pct = ((data.phaseDistribution.phase4 / total) * 100).toFixed(1);
 
   const PHASE2_FLAT_THRESHOLD = 0.05;
-  const p2ChangeCls = colorClass(data.phase2RatioChange);
+  const p2ChangeCls =
+    Math.abs(data.phase2RatioChange) < PHASE2_FLAT_THRESHOLD
+      ? "neutral-color"
+      : colorClass(data.phase2RatioChange);
   const p2ChangeStr =
     Math.abs(data.phase2RatioChange) < PHASE2_FLAT_THRESHOLD
       ? "보합"
@@ -754,7 +757,7 @@ export function renderSectorTable(data: DailySectorItem[]): string {
       const rsChangeCls = s.rsChange != null ? colorClass(s.rsChange) : "neutral-color";
       const rsChangeStr =
         s.rsChange != null
-          ? `<span class="${escapeHtml(rsChangeCls)}">${s.rsChange >= 0 ? "+" : ""}${s.rsChange.toFixed(1)}</span>`
+          ? `<span class="${escapeHtml(rsChangeCls)}">${s.rsChange >= 0 ? "+" : ""}${s.rsChange.toFixed(2)}</span>`
           : "—";
 
       const p2Str = `${s.phase2Ratio.toFixed(1)}%`;
@@ -1218,7 +1221,7 @@ export function buildDailyHtml(
       <!-- 섹션 5: 업종 RS 상승 Top 10 -->
       <section>
         <h2>업종 RS 상승 Top 10</h2>
-        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px;">(전주 대비 RS 변화량 기준, 섹터당 최대 2개)</p>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px;">(섹터당 최대 2개)</p>
         ${industryTop10Html}
       </section>
 

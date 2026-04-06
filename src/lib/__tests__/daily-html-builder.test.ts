@@ -282,10 +282,11 @@ describe("renderIndexTable", () => {
       changePercent: 3.2,
     });
     const html = renderIndexTable([vix], null);
-    expect(html).toContain("경계");
+    expect(html).toContain("▲");
+    expect(html).not.toContain("경계");
   });
 
-  it("VIX 하락 시 안도 레이블을 표시한다", () => {
+  it("VIX 하락 시 방향 화살표만 표시한다", () => {
     const vix = createMockDailyIndexReturn({
       symbol: "^VIX",
       name: "VIX",
@@ -293,7 +294,8 @@ describe("renderIndexTable", () => {
       changePercent: -4.1,
     });
     const html = renderIndexTable([vix], null);
-    expect(html).toContain("안도");
+    expect(html).toContain("▼");
+    expect(html).not.toContain("안도");
   });
 
   it("VIX가 공포 임계선(25)을 넘으면 경고를 표시한다", () => {
