@@ -8,7 +8,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { extractThesesFromText, containsNumericPrediction, filterShortTermOutlookCap } from "../round3-synthesis.js";
+import { extractThesesFromText, containsNumericPrediction, containsPriceTarget, filterShortTermOutlookCap } from "../round3-synthesis.js";
 import { logger } from "@/lib/logger";
 
 // ─── Helper ──────��─────────────────────────────────────────────────────────────
@@ -722,5 +722,197 @@ describe("short_term_outlook 세션당 발행 건수 제한", () => {
     expect(result).toHaveLength(2);
     expect(result[0].thesis).toBe("전망 1");
     expect(result[1].thesis).toBe("서사 1");
+  });
+});
+
+// ─── containsPriceTarget 패턴 검출 (#645) ──────────────────────────────────
+
+describe("containsPriceTarget", () => {
+  it("$N 목표가 패턴을 검출한다", () => {
+    expect(containsPriceTarget("Broadcom $250 목표가")).toBe(true);
+  });
+
+  it("$N → $N 패턴을 검출한다", () => {
+    expect(containsPriceTarget("SOXX $185.2 → $208 목표")).toBe(true);
+  });
+
+  it("ARKQ $52.8 → $62 패턴을 검출한다", () => {
+    expect(containsPriceTarget("ARKQ $52.8 → $62 도달 전망")).toBe(true);
+  });
+
+  it("N% 상승 패턴을 검출한다", () => {
+    expect(containsPriceTarget("바이오텍 90일 내 20% 상승")).toBe(true);
+  });
+
+  it("N-N% 상승 패턴을 검출한다", () => {
+    expect(containsPriceTarget("방산 ETF 60일 내 15-20% 상승")).toBe(true);
+  });
+
+  it("N% 조정 패턴을 검출한다", () => {
+    expect(containsPriceTarget("NVIDIA 20-30% 조정 후 박스권")).toBe(true);
+  });
+
+  it("목표 가격 언급을 검출한다", () => {
+    expect(containsPriceTarget("반도체 ETF 목표 가격 상향")).toBe(true);
+  });
+
+  it("ETF + $ 가격 패턴을 검출한다", () => {
+    expect(containsPriceTarget("ITA $150 돌파 전망")).toBe(true);
+  });
+
+  it("N일 내 N% 패턴을 검출한다", () => {
+    expect(containsPriceTarget("30일 내 15% 상승 가능")).toBe(true);
+  });
+
+  it("신고점 돌파 목표를 검출한다", () => {
+    expect(containsPriceTarget("IREN RS 99 신고점 돌파 목표")).toBe(true);
+  });
+
+  // 비검출 케이스
+  it("구조적 전환 신호는 검출하지 않는다", () => {
+    expect(containsPriceTarget("AI capex 사이클 하드웨어→소프트웨어 전환 가속")).toBe(false);
+  });
+
+  it("밸류체인 분석은 검출하지 않는다", () => {
+    expect(containsPriceTarget("반도체 재고 사이클 저점 통과 신호")).toBe(false);
+  });
+
+  it("산업 구조 변화는 검출하지 않는다", () => {
+    expect(containsPriceTarget("SaaS 멀티플 재평가 시작")).toBe(false);
+  });
+
+  it("RS 기반 조건은 검출하지 않는다", () => {
+    expect(containsPriceTarget("Technology RS 상승 추세 유지")).toBe(false);
+  });
+
+  it("캐즘 분석은 검출하지 않는다", () => {
+    expect(containsPriceTarget("AI 기술 채택이 캐즘을 넘어 Early Majority 진입")).toBe(false);
+  });
+});
+
+// ─── tech 가격 목표 thesis 드롭 (#645) ──────────────────────────────────────
+
+describe("tech 가격 목표 thesis 드롭", () => {
+  it("tech의 short_term_outlook 가격 목표 thesis를 드롭한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "SOXX $185 → $208 목표 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(0);
+  });
+
+  it("tech의 short_term_outlook % 상승 thesis를 드롭한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "방산 ETF ITA 60일 내 15-20% 상승 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(0);
+  });
+
+  it("tech의 structural_narrative는 가격 패턴이 있어도 드롭하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "structural_narrative",
+        thesis: "AI 인프라 capex $100B 이상 투자 지속으로 밸류체인 확장",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+  });
+
+  it("tech의 short_term_outlook 구조적 전환 thesis는 통과한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "AI capex 사이클 하드웨어에서 소프트웨어로 전환 가속 신호",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+  });
+
+  it("macro의 가격 목표 thesis는 드롭하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "macro",
+        category: "structural_narrative",
+        thesis: "S&P 500 $6000 돌파 가능성",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+  });
+
+  it("가격 목표 드롭 시 로그를 남긴다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "Broadcom $250 목표가 도달 전망",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    extractThesesFromText(text);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Round3",
+      expect.stringContaining("가격 목표 thesis 드롭"),
+    );
+  });
+
+  it("여러 thesis에서 tech short_term_outlook 가격 목표만 드롭한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "SOXX $185 → $208 목표 전망",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "structural_narrative",
+        thesis: "AI 인프라 투자 가속으로 반도체 수요 구조적 증가",
+        timeframeDays: 60,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "반도체 재고 사이클 저점 통과 신호 감지",
+        timeframeDays: 30,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(2);
+    expect(result.theses.find((t) => t.thesis.includes("SOXX $185"))).toBeUndefined();
+    expect(result.theses.find((t) => t.thesis.includes("AI 인프라"))).toBeDefined();
+    expect(result.theses.find((t) => t.thesis.includes("반도체 재고"))).toBeDefined();
   });
 });
