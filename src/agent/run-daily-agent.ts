@@ -268,38 +268,55 @@ ${watchlistItemLines}
   return { system: systemPrompt, user: dataSummary };
 }
 
+interface InsightResult {
+  insight: DailyReportInsight;
+  tokensUsed: { input: number; output: number };
+}
+
+function extractJson(raw: string): string {
+  // 코드 펜스 제거
+  let s = raw.trim();
+  if (s.startsWith("```")) {
+    s = s.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  }
+  // 서론/결론이 붙어있을 경우 첫 번째 { ... 마지막 } 추출
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    return s.slice(start, end + 1);
+  }
+  return s;
+}
+
 async function generateInsight(
   data: DailyReportData,
   systemPrompt: string,
-): Promise<DailyReportInsight> {
+): Promise<InsightResult> {
   logger.step("[5/8] Generating insight via Claude CLI...");
 
-  const cli = new ClaudeCliProvider("claude-sonnet-4-6", 600_000); // 10분 타임아웃
+  const cli = new ClaudeCliProvider("claude-sonnet-4-6", 600_000);
   const { system, user } = buildInsightPrompt(data, systemPrompt);
 
   try {
     const result = await cli.call({ systemPrompt: system, userMessage: user });
-    logger.info("CLI", `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`);
+    const tokensUsed = result.tokensUsed;
+    logger.info("CLI", `Tokens: ${tokensUsed.input} input / ${tokensUsed.output} output`);
 
-    const content = result.content.trim();
-    // JSON 블록이 ```json ... ``` 로 감싸져 있을 수 있음
-    const jsonStr = content.startsWith("```")
-      ? content.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")
-      : content;
+    const jsonStr = extractJson(result.content);
 
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(jsonStr);
     } catch {
-      logger.warn("CLI", `JSON 파싱 실패 — 기본값으로 폴백. 응답 앞 200자: ${content.slice(0, 200)}`);
-      return fillInsightDefaults({});
+      logger.warn("CLI", `JSON 파싱 실패 — 기본값으로 폴백. 응답 앞 200자: ${result.content.trim().slice(0, 200)}`);
+      return { insight: fillInsightDefaults({}), tokensUsed };
     }
 
-    return fillInsightDefaults(parsed);
+    return { insight: fillInsightDefaults(parsed), tokensUsed };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.error("CLI", `LLM 호출 실패: ${reason}`);
-    return fillInsightDefaults({});
+    return { insight: fillInsightDefaults({}), tokensUsed: { input: 0, output: 0 } };
   }
 }
 
@@ -431,7 +448,8 @@ async function main() {
   const data = await collectDailyData(targetDate);
 
   // 5. LLM 인사이트 생성 (CLI 단발 호출)
-  const insight = await generateInsight(data, systemPrompt);
+  const startTime = Date.now();
+  const { insight, tokensUsed } = await generateInsight(data, systemPrompt);
 
   // 6. HTML 조립 + 발행
   logger.step("[6/8] Building and publishing report...");
@@ -443,11 +461,32 @@ async function main() {
 
   // 7. DB 저장
   logger.step("[7/8] Saving to DB...");
+  const executionTime = Date.now() - startTime;
+  const reportedSymbols = Array.from(new Set([
+    ...data.unusualStocks.map((s) => s.symbol),
+    ...data.risingRS.map((s) => s.symbol),
+    ...data.watchlist.items.map((w) => w.symbol),
+  ])).map((symbol) => {
+    const unusual = data.unusualStocks.find((s) => s.symbol === symbol);
+    const rising = data.risingRS.find((s) => s.symbol === symbol);
+    const watchItem = data.watchlist.items.find((w) => w.symbol === symbol);
+    return {
+      symbol,
+      phase: unusual?.phase ?? rising?.phase ?? watchItem?.currentPhase ?? watchItem?.entryPhase ?? 0,
+      prevPhase: unusual?.prevPhase ?? null,
+      rsScore: unusual?.rsScore ?? rising?.rsScore ?? watchItem?.currentRsScore ?? 0,
+      sector: unusual?.sector ?? rising?.sector ?? watchItem?.entrySector ?? "",
+      industry: unusual?.industry ?? rising?.industry ?? watchItem?.entryIndustry ?? "",
+      reason: unusual != null ? "특이종목" : rising != null ? "RS상승초기" : "관심종목",
+      firstReportedDate: targetDate,
+    };
+  });
+
   try {
     await saveReportLog({
       date: targetDate,
       type: "daily",
-      reportedSymbols: [],
+      reportedSymbols,
       marketSummary: {
         phase2Ratio: data.marketBreadth.phase2Ratio,
         leadingSectors: data.sectorRanking.slice(0, 3).map((s) => s.sector),
@@ -459,9 +498,9 @@ async function main() {
       fullContent: null,
       metadata: {
         model: "claude-sonnet-4-6 (CLI)",
-        tokensUsed: { input: 0, output: 0 },
-        toolCalls: 0,
-        executionTime: 0,
+        tokensUsed,
+        toolCalls: 7,
+        executionTime,
       },
     });
     await updateReportFullContent(targetDate, "daily", html);

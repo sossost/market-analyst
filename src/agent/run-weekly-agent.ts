@@ -256,6 +256,8 @@ async function generateInsight(
     const reason = err instanceof Error ? err.message : String(err);
     logger.error("CLI", `LLM 호출 실패: ${reason}`);
     return fillInsightDefaults({});
+  } finally {
+    cli.dispose();
   }
 }
 
