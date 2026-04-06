@@ -706,6 +706,49 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
       ? data.breadthScore.toFixed(1)
       : "—";
 
+  const PHASE2_HIGHLIGHT_MULTIPLIER = 1.5;
+  const isPhase2EntryHighlighted =
+    data.phase1to2Count1d != null &&
+    data.phase2EntryAvg5d != null &&
+    data.phase2EntryAvg5d > 0 &&
+    data.phase1to2Count1d > data.phase2EntryAvg5d * PHASE2_HIGHLIGHT_MULTIPLIER;
+
+  const phase2EntryChip =
+    data.phase1to2Count1d != null
+      ? (() => {
+          const entryValue = escapeHtml(String(data.phase1to2Count1d));
+          const highlightCls = isPhase2EntryHighlighted ? " up" : "";
+          const subText =
+            isPhase2EntryHighlighted && data.phase2EntryAvg5d != null
+              ? `<span class="stat-sub up">↑평균 대비 ${escapeHtml((data.phase1to2Count1d / data.phase2EntryAvg5d).toFixed(1))}배</span>`
+              : "";
+          return `<div class="stat-chip">
+              <span class="stat-label">Phase 2 진입</span>
+              <span class="stat-value${highlightCls}">${entryValue}건${subText}</span>
+            </div>`;
+        })()
+      : "";
+
+  const phase2ExitChip =
+    data.phase2to3Count1d != null
+      ? `<div class="stat-chip">
+            <span class="stat-label">Phase 2 이탈</span>
+            <span class="stat-value">${escapeHtml(String(data.phase2to3Count1d))}건</span>
+          </div>`
+      : "";
+
+  const phase2NetFlowChip =
+    data.phase2NetFlow != null
+      ? (() => {
+          const netFlowCls = data.phase2NetFlow > 0 ? "up" : data.phase2NetFlow < 0 ? "down" : "neutral-color";
+          const netFlowStr = `${data.phase2NetFlow >= 0 ? "+" : ""}${escapeHtml(String(data.phase2NetFlow))}건`;
+          return `<div class="stat-chip">
+            <span class="stat-label">순유입</span>
+            <span class="stat-value ${escapeHtml(netFlowCls)}">${netFlowStr}</span>
+          </div>`;
+        })()
+      : "";
+
   const statsHtml = `
     <div class="stat-row">
       <div class="stat-chip">
@@ -728,7 +771,12 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
             </div>`
           : ""
       }
-    </div>`;
+    </div>
+    ${
+      phase2EntryChip !== "" || phase2ExitChip !== "" || phase2NetFlowChip !== ""
+        ? `<div class="stat-row">${phase2EntryChip}${phase2ExitChip}${phase2NetFlowChip}</div>`
+        : ""
+    }`;
 
   return `${phaseBar}${statsHtml}`;
 }
