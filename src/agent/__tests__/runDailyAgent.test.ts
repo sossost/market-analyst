@@ -1,120 +1,77 @@
+/**
+ * run-daily-agent — 데이터 수집 + 인사이트 생성 파이프라인 단위 테스트.
+ *
+ * withQAWarning / dailyQA 로직은 CLI 모드 전환 (Phase 2-B,C) 에서 제거됨.
+ * LLM은 클린 JSON → fillInsightDefaults 폴백으로 대체됨.
+ */
+
 import { describe, it, expect } from "vitest";
-import { withQAWarning } from "../run-daily-agent";
-import type { ReportDraft } from "../reviewAgent";
-import type { DailyQAResult } from "../dailyQA";
+import {
+  fillInsightDefaults,
+  type DailyReportInsight,
+} from "@/tools/schemas/dailyReportSchema";
 
 // ────────────────────────────────────────────
-// Fixtures
+// fillInsightDefaults
 // ────────────────────────────────────────────
 
-function makeDraft(message: string): ReportDraft {
-  return { message };
-}
+describe("fillInsightDefaults", () => {
+  it("빈 객체 → 모든 필드 기본값으로 채움", () => {
+    const result = fillInsightDefaults({});
 
-function makeQAResult(
-  severity: DailyQAResult["severity"],
-  mismatches: DailyQAResult["mismatches"] = [],
-): DailyQAResult {
-  return {
-    date: "2026-03-12",
-    severity,
-    mismatches,
-    checkedItems: mismatches.length,
-    checkedAt: new Date().toISOString(),
-  };
-}
-
-// ────────────────────────────────────────────
-// withQAWarning
-// ────────────────────────────────────────────
-
-describe("withQAWarning", () => {
-  it("drafts가 빈 배열이면 원본 반환", () => {
-    const qaResult = makeQAResult("warn", [
-      { type: "phase2_ratio", field: "phase2Ratio", expected: 30.0, actual: 2850.0, severity: "warn" },
-    ]);
-
-    const result = withQAWarning([], qaResult);
-
-    expect(result).toHaveLength(0);
+    expect(result.marketTemperature).toBe("neutral");
+    expect(result.marketTemperatureLabel).toBe("중립 — 관망");
+    expect(result.unusualStocksNarrative).toBe("해당 없음");
+    expect(result.risingRSNarrative).toBe("해당 없음");
+    expect(result.watchlistNarrative).toBe("해당 없음");
+    expect(result.todayInsight).toBe("해당 없음");
+    expect(result.discordMessage).toBe("");
   });
 
-  it("warn severity — 첫 번째 draft 앞에 경고 블록 삽입", () => {
-    const drafts = [makeDraft("original message")];
-    const qaResult = makeQAResult("warn", [
-      { type: "phase2_ratio", field: "phase2Ratio", expected: 30.0, actual: 2850.0, severity: "warn" },
-    ]);
+  it("유효한 marketTemperature 값은 그대로 유지", () => {
+    const bullish = fillInsightDefaults({ marketTemperature: "bullish" });
+    const bearish = fillInsightDefaults({ marketTemperature: "bearish" });
 
-    const result = withQAWarning(drafts, qaResult);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].message).toContain("⚠️ **[데이터 정합성 경고]**");
-    expect(result[0].message).toContain("phase2Ratio");
-    expect(result[0].message).toContain("original message");
+    expect(bullish.marketTemperature).toBe("bullish");
+    expect(bearish.marketTemperature).toBe("bearish");
   });
 
-  it("block severity — 첫 번째 draft 앞에 경고 블록 삽입", () => {
-    const drafts = [makeDraft("original message")];
-    const qaResult = makeQAResult("block", [
-      { type: "sector_list", field: "leadingSectors", expected: "Technology,Energy", actual: "Healthcare,Utilities", severity: "block" },
-    ]);
+  it("유효하지 않은 marketTemperature → neutral로 폴백", () => {
+    const result = fillInsightDefaults({ marketTemperature: "extreme_fear" });
 
-    const result = withQAWarning(drafts, qaResult);
-
-    expect(result[0].message).toContain("⚠️ **[데이터 정합성 경고]**");
-    expect(result[0].message).toContain("leadingSectors");
+    expect(result.marketTemperature).toBe("neutral");
   });
 
-  it("여러 draft 중 첫 번째에만 경고 삽입, 나머지는 원본 유지", () => {
-    const drafts = [makeDraft("first"), makeDraft("second"), makeDraft("third")];
-    const qaResult = makeQAResult("warn", [
-      { type: "phase2_ratio", field: "phase2Ratio", expected: 30.0, actual: 2850.0, severity: "warn" },
-    ]);
+  it("제공된 문자열 필드는 유지", () => {
+    const raw = {
+      marketTemperature: "bearish",
+      marketTemperatureLabel: "약세 — 하락 3일째",
+      marketTemperatureRationale: "S&P 500이 하락하며 Phase 2 비율이 감소 중이다.",
+      unusualStocksNarrative: "반도체 업종 집중 매도세.",
+      risingRSNarrative: "에너지 업종 중소형주 RS 가속.",
+      watchlistNarrative: "NVDA Phase 2 유지.",
+      todayInsight: "토론과 일치 — 약세장 전환 신호 확인.",
+      discordMessage: "📊 2026-04-06\nS&P500 -1.5%\nPhase 2: 32.1%",
+    };
 
-    const result = withQAWarning(drafts, qaResult);
+    const result: DailyReportInsight = fillInsightDefaults(raw);
 
-    expect(result).toHaveLength(3);
-    expect(result[0].message).toContain("⚠️");
-    expect(result[1].message).toBe("second");
-    expect(result[2].message).toBe("third");
+    expect(result.marketTemperature).toBe("bearish");
+    expect(result.marketTemperatureLabel).toBe("약세 — 하락 3일째");
+    expect(result.unusualStocksNarrative).toBe("반도체 업종 집중 매도세.");
+    expect(result.discordMessage).toBe("📊 2026-04-06\nS&P500 -1.5%\nPhase 2: 32.1%");
   });
 
-  it("여러 mismatch — 모두 경고 블록에 포함", () => {
-    const drafts = [makeDraft("message")];
-    const qaResult = makeQAResult("warn", [
-      { type: "phase2_ratio", field: "phase2Ratio", expected: 30.0, actual: 2850.0, severity: "warn" },
-      { type: "sector_list", field: "leadingSectors", expected: "Technology", actual: "Healthcare", severity: "warn" },
-    ]);
+  it("빈 문자열 필드는 기본값으로 대체되지 않음 (빈 string 허용)", () => {
+    const result = fillInsightDefaults({ marketTemperatureRationale: "" });
 
-    const result = withQAWarning(drafts, qaResult);
-
-    expect(result[0].message).toContain("phase2Ratio");
-    expect(result[0].message).toContain("leadingSectors");
+    expect(result.marketTemperatureRationale).toBe("");
   });
 
-  it("원본 drafts 배열을 변경하지 않는다 (불변성)", () => {
-    const original = "original message";
-    const drafts = [makeDraft(original)];
-    const qaResult = makeQAResult("warn", [
-      { type: "phase2_ratio", field: "phase2Ratio", expected: 30.0, actual: 100.0, severity: "warn" },
-    ]);
+  it("원본 객체를 변경하지 않는다 (불변성)", () => {
+    const raw: Record<string, unknown> = { marketTemperature: "bullish" };
+    fillInsightDefaults(raw);
 
-    withQAWarning(drafts, qaResult);
-
-    expect(drafts[0].message).toBe(original);
-  });
-
-  it("markdownContent와 filename은 첫 번째 draft에서 유지", () => {
-    const drafts = [
-      { message: "original", markdownContent: "# Report", filename: "daily-2026-03-12.md" },
-    ];
-    const qaResult = makeQAResult("warn", [
-      { type: "phase2_ratio", field: "phase2Ratio", expected: 30.0, actual: 2850.0, severity: "warn" },
-    ]);
-
-    const result = withQAWarning(drafts, qaResult);
-
-    expect(result[0].markdownContent).toBe("# Report");
-    expect(result[0].filename).toBe("daily-2026-03-12.md");
+    expect(Object.keys(raw)).toHaveLength(1);
   });
 });

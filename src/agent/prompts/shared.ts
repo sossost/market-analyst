@@ -29,9 +29,9 @@ export function injectFeedbackLayers(
 
   let result = base;
 
-  // 반복 패턴은 "## 규칙" 섹션 바로 앞에 삽입 (높은 우선순위)
+  // 반복 패턴은 "## 작성 규칙" 섹션 바로 앞에 삽입 (높은 우선순위)
   if (mandatory !== "") {
-    const rulesSectionIndex = result.indexOf("\n## 규칙");
+    const rulesSectionIndex = result.indexOf("\n## 작성 규칙");
     if (rulesSectionIndex !== -1) {
       result =
         result.slice(0, rulesSectionIndex) +
