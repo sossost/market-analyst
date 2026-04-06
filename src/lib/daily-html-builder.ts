@@ -744,7 +744,7 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
           const netFlowStr = `${data.phase2NetFlow >= 0 ? "+" : ""}${escapeHtml(String(data.phase2NetFlow))}건`;
           return `<div class="stat-chip">
             <span class="stat-label">순유입</span>
-            <span class="stat-value ${escapeHtml(netFlowCls)}">${netFlowStr}</span>
+            <span class="stat-value ${netFlowCls}">${netFlowStr}</span>
           </div>`;
         })()
       : "";

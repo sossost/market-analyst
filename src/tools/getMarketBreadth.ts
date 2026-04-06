@@ -347,6 +347,7 @@ async function executeDailyMode(date: string): Promise<string> {
     phase1to2Count1d: fallbackPhase1to2Count1d,
     phase2to3Count1d: fallbackPhase2to3Count1d,
     phase2NetFlow: fallbackPhase2NetFlow,
+    // phase1_to2_count_5d는 market_breadth_daily 스냅샷에만 존재 — 폴백 경로에서 계산 불가
     phase2EntryAvg5d: null,
     topSectors: topSectors.map((s) => ({
       sector: s.sector,

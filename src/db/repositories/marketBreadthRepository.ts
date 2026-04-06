@@ -472,7 +472,7 @@ export async function findLatestDataDate(
 }
 
 /**
- * 당일 Phase 1→2 신규 진입 종목 수를 집계한다 (폴백 경로 전용).
+ * 당일 Phase 1→2 신규 진입 종목 수를 집계한다.
  * prev_phase IS NULL은 제외 — 신규 상장 노이즈 방지.
  */
 export async function findPhase1To2Count1d(
@@ -484,6 +484,7 @@ export async function findPhase1To2Count1d(
      JOIN symbols s ON sp.symbol = s.symbol
      WHERE sp.date = $1
        AND sp.phase = 2
+       AND sp.prev_phase IS NOT NULL
        AND sp.prev_phase != 2
        AND s.is_actively_trading = true
        AND s.is_etf = false
