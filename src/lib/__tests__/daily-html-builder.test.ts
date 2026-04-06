@@ -66,6 +66,10 @@ function createMockBreadthSnapshot(
     breadthScore: 62.5,
     divergenceSignal: null,
     topSectors: [],
+    phase1to2Count1d: 25,
+    phase2to3Count1d: 10,
+    phase2NetFlow: 15,
+    phase2EntryAvg5d: 20.0,
     ...overrides,
   };
 }
@@ -373,6 +377,66 @@ describe("renderPhaseDistribution", () => {
     });
     const html = renderPhaseDistribution(snapshot);
     expect(html).toContain("phase-bar");
+  });
+
+  it("Phase 2 진입/이탈/순유입 stat-chip을 렌더링한다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      phase1to2Count1d: 25,
+      phase2to3Count1d: 10,
+      phase2NetFlow: 15,
+      phase2EntryAvg5d: 20.0,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("Phase 2 진입");
+    expect(html).toContain("25건");
+    expect(html).toContain("Phase 2 이탈");
+    expect(html).toContain("10건");
+    expect(html).toContain("순유입");
+    expect(html).toContain("+15건");
+  });
+
+  it("진입 수가 5일 평균의 1.5배를 초과하면 하이라이트 처리된다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      phase1to2Count1d: 40,
+      phase2EntryAvg5d: 20.0,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("↑평균 대비");
+    expect(html).toContain("2.0배");
+  });
+
+  it("진입 수가 5일 평균의 1.5배 이하이면 하이라이트 없음", () => {
+    const snapshot = createMockBreadthSnapshot({
+      phase1to2Count1d: 25,
+      phase2EntryAvg5d: 20.0,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).not.toContain("↑평균 대비");
+  });
+
+  it("phase1to2Count1d가 null이면 진입/이탈 stat-chip을 렌더링하지 않는다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      phase1to2Count1d: null,
+      phase2to3Count1d: null,
+      phase2NetFlow: null,
+      phase2EntryAvg5d: null,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).not.toContain("Phase 2 진입");
+    expect(html).not.toContain("Phase 2 이탈");
+    expect(html).not.toContain("순유입");
+  });
+
+  it("순유입이 음수이면 down 클래스를 적용한다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      phase1to2Count1d: 5,
+      phase2to3Count1d: 20,
+      phase2NetFlow: -15,
+      phase2EntryAvg5d: 10.0,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("-15건");
+    expect(html).toContain("down");
   });
 });
 

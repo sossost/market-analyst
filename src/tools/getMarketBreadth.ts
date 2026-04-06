@@ -14,6 +14,8 @@ import {
   findBreadthTopSectors,
   findMarketBreadthSnapshot,
   findMarketBreadthSnapshots,
+  findPhase1To2Count1d,
+  findPhase2To3Count1d,
 } from "@/db/repositories/index.js";
 
 /**
@@ -233,6 +235,17 @@ async function executeDailyMode(date: string): Promise<string> {
       findBreadthTopSectors(date, 5),
     );
 
+    const phase1to2Count1d = snapshot.phase1_to2_count_1d ?? null;
+    const phase2to3Count1d = snapshot.phase2_to3_count_1d ?? null;
+    const phase2NetFlow =
+      phase1to2Count1d != null && phase2to3Count1d != null
+        ? phase1to2Count1d - phase2to3Count1d
+        : null;
+    const phase2EntryAvg5d =
+      snapshot.phase1_to2_count_5d != null
+        ? Number((snapshot.phase1_to2_count_5d / 5).toFixed(1))
+        : null;
+
     return JSON.stringify({
       _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
       date,
@@ -245,6 +258,10 @@ async function executeDailyMode(date: string): Promise<string> {
       newHighLow: { newHighs, newLows, ratio: hlRatio },
       breadthScore,
       divergenceSignal,
+      phase1to2Count1d,
+      phase2to3Count1d,
+      phase2NetFlow,
+      phase2EntryAvg5d,
       topSectors: topSectors.map((s) => ({
         sector: s.sector,
         avgRs: toNum(s.avg_rs),
@@ -297,6 +314,21 @@ async function executeDailyMode(date: string): Promise<string> {
     findBreadthTopSectors(date, 5),
   );
 
+  const p1to2Count1dRow = await retryDatabaseOperation(() =>
+    findPhase1To2Count1d(date),
+  ).catch(() => null);
+
+  const p2to3Count1dRow = await retryDatabaseOperation(() =>
+    findPhase2To3Count1d(date),
+  ).catch(() => null);
+
+  const fallbackPhase1to2Count1d = p1to2Count1dRow != null ? toNum(p1to2Count1dRow.count) : null;
+  const fallbackPhase2to3Count1d = p2to3Count1dRow != null ? toNum(p2to3Count1dRow.count) : null;
+  const fallbackPhase2NetFlow =
+    fallbackPhase1to2Count1d != null && fallbackPhase2to3Count1d != null
+      ? fallbackPhase1to2Count1d - fallbackPhase2to3Count1d
+      : null;
+
   return JSON.stringify({
     _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
     date,
@@ -312,6 +344,11 @@ async function executeDailyMode(date: string): Promise<string> {
     marketAvgRs: toNum(rsRow.avg_rs),
     advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
     newHighLow: { newHighs, newLows, ratio: newLows > 0 ? Number((newHighs / newLows).toFixed(2)) : null },
+    phase1to2Count1d: fallbackPhase1to2Count1d,
+    phase2to3Count1d: fallbackPhase2to3Count1d,
+    phase2NetFlow: fallbackPhase2NetFlow,
+    // phase1_to2_count_5d는 market_breadth_daily 스냅샷에만 존재 — 폴백 경로에서 계산 불가
+    phase2EntryAvg5d: null,
     topSectors: topSectors.map((s) => ({
       sector: s.sector,
       avgRs: toNum(s.avg_rs),

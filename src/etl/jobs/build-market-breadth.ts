@@ -9,6 +9,10 @@ import { toNum } from "@/etl/utils/common";
 import { sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { CNN_FEAR_GREED_URL, CNN_FEAR_GREED_REFERER } from "@/lib/constants";
+import {
+  findPhase1To2Count1d,
+  findPhase2To3Count1d,
+} from "@/db/repositories/index.js";
 
 const TAG = "BUILD_MARKET_BREADTH";
 
@@ -441,6 +445,16 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     fetchPhase1To2Count5d(targetDate),
   );
 
+  // 3-1. 당일 Phase 1→2 신규 진입 수
+  const p1to2Count1dData = await retryDatabaseOperation(() =>
+    findPhase1To2Count1d(targetDate),
+  );
+
+  // 3-2. 당일 Phase 2→3 이탈 수
+  const p2to3Count1dData = await retryDatabaseOperation(() =>
+    findPhase2To3Count1d(targetDate),
+  );
+
   // 4. Advance/Decline
   const adData = await retryDatabaseOperation(() =>
     fetchAdvanceDecline(targetDate),
@@ -502,6 +516,8 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     phase2Ratio: String(phaseData.phase2Ratio),
     phase2RatioChange: phase2RatioChange != null ? String(phase2RatioChange) : null,
     phase1To2Count5d: p1to2Data.count,
+    phase1To2Count1d: toNum(p1to2Count1dData.count),
+    phase2To3Count1d: toNum(p2to3Count1dData.count),
     marketAvgRs: phaseData.marketAvgRs != null ? String(phaseData.marketAvgRs) : null,
     advancers: adData.advancers,
     decliners: adData.decliners,
@@ -533,6 +549,8 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
           phase2Ratio: sql`EXCLUDED.phase2_ratio`,
           phase2RatioChange: sql`EXCLUDED.phase2_ratio_change`,
           phase1To2Count5d: sql`EXCLUDED.phase1_to2_count_5d`,
+          phase1To2Count1d: sql`EXCLUDED.phase1_to2_count_1d`,
+          phase2To3Count1d: sql`EXCLUDED.phase2_to3_count_1d`,
           marketAvgRs: sql`EXCLUDED.market_avg_rs`,
           advancers: sql`EXCLUDED.advancers`,
           decliners: sql`EXCLUDED.decliners`,

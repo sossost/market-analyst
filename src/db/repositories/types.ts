@@ -161,6 +161,10 @@ export interface Phase1to2TransitionsRow {
   transitions: string;
 }
 
+export interface PhaseTransitionCount1dRow {
+  count: string;
+}
+
 export interface PhaseDistributionRow {
   phase: number;
   count: string;
@@ -260,6 +264,8 @@ export interface MarketBreadthDailyRow {
   phase2_ratio: string;
   phase2_ratio_change: string | null;
   phase1_to2_count_5d: number | null;
+  phase1_to2_count_1d: number | null;
+  phase2_to3_count_1d: number | null;
   market_avg_rs: string | null;
   advancers: number | null;
   decliners: number | null;
