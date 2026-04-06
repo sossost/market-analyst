@@ -1,32 +1,35 @@
 import "dotenv/config";
 import { pool } from "@/db/client";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
-import { runAgentLoop } from "./agentLoop";
 import { buildWeeklySystemPrompt } from "./systemPrompt";
 import { sendDiscordError, sendDiscordMessage } from "@/lib/discord";
 import { logger } from "@/lib/logger";
-import type { AgentConfig } from "@/tools/types";
 
-// Tools
+// Tools — 데이터 수집용 직접 호출
 import { getIndexReturns } from "@/tools/getIndexReturns";
 import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getPhase2Stocks } from "@/tools/getPhase2Stocks";
-import { getPhase1LateStocks } from "@/tools/getPhase1LateStocks";
-import { getRisingRS } from "@/tools/getRisingRS";
-import { getFundamentalAcceleration } from "@/tools/getFundamentalAcceleration";
-import { getStockDetail } from "@/tools/getStockDetail";
-import { searchCatalyst } from "@/tools/searchCatalyst";
-import { readReportHistory } from "@/tools/readReportHistory";
-import { saveReportLogTool } from "@/tools/saveReportLog";
-import { saveRecommendations } from "@/tools/saveRecommendations";
-import { readRecommendationPerformance } from "@/tools/readRecommendationPerformance";
-import { saveWatchlist } from "@/tools/saveWatchlist";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
-import { readRegimePerformance } from "@/tools/readRegimePerformance";
-import { createWeeklyDataCollector } from "@/tools/weeklyDataCollector";
-import { createCaptureWeeklyInsightTool } from "@/tools/captureWeeklyInsight";
-import type { WeeklyReportInsight } from "@/tools/schemas/weeklyReportSchema";
+
+// Schema + Builder
+import type {
+  WeeklyReportData,
+  WeeklyReportInsight,
+  MarketBreadthData,
+  IndustryItem,
+} from "@/tools/schemas/weeklyReportSchema";
+import { fillInsightDefaults } from "@/tools/schemas/weeklyReportSchema";
+import { buildWeeklyHtml } from "@/lib/weekly-html-builder";
+
+// LLM Provider — CLI 단발 호출 (API $0)
+import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider";
+
+// Publish + DB
+import { publishHtmlReport } from "@/lib/reportPublisher";
+import { saveReportLog, updateReportFullContent } from "@/lib/reportLog";
+
+// Context loaders
 import {
   runFundamentalValidation,
   formatFundamentalSupplement,
@@ -44,152 +47,305 @@ import {
   loadPendingRegimes,
   formatRegimeForPrompt,
 } from "@/debate/regimeStore";
-import { buildWeeklyHtml } from "@/lib/weekly-html-builder";
-import { publishHtmlReport } from "@/lib/reportPublisher";
-import { saveReportLog, updateReportFullContent } from "@/lib/reportLog";
 
-import { CLAUDE_SONNET } from "@/lib/models.js";
+// ─── 유틸 ───────────────────────────────────────────────────────────────────
 
-const MODEL = CLAUDE_SONNET;
-const MAX_TOKENS = 8192;
-const MAX_ITERATIONS = 15;
+function parse(json: string): Record<string, unknown> {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return { error: `JSON parse failed` };
+  }
+}
 
-// Sonnet 4 pricing (USD per 1M tokens, as of 2026-03)
-const SONNET_INPUT_COST_PER_M = 3;
-const SONNET_OUTPUT_COST_PER_M = 15;
+function colorClass(value: number): "up" | "down" | "neutral-color" {
+  if (value > 0) return "up";
+  if (value < 0) return "down";
+  return "neutral-color";
+}
 
-// Optional env vars (not validated here):
-// - DISCORD_ERROR_WEBHOOK_URL: routes errors to a separate channel.
-// - BRAVE_API_KEY: for catalyst search. If unset, catalyst search returns empty.
-function validateAgentEnvironment(): void {
-  const required = [
-    "DATABASE_URL",
-    "ANTHROPIC_API_KEY",
-    "DISCORD_WEEKLY_WEBHOOK_URL",
-  ];
+function validateEnvironment(): void {
+  const required = ["DATABASE_URL", "DISCORD_WEEKLY_WEBHOOK_URL"];
   const missing = required.filter(
     (key) => process.env[key] == null || process.env[key] === "",
   );
-
   if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(", ")}`,
-    );
+    throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+  }
+  // ANTHROPIC_API_KEY는 더 이상 필수가 아님 — CLI 사용
+}
+
+// ─── 데이터 수집 ────────────────────────────────────────────────────────────
+
+async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> {
+  logger.step("[4/7] Collecting data from tools...");
+
+  // 병렬 호출
+  const [indexRaw, breadthRaw, sectorRaw, industryRaw, watchlistRaw, phase2Raw, allIndustryRaw] =
+    await Promise.all([
+      getIndexReturns.execute({ mode: "weekly", date: targetDate }),
+      getMarketBreadth.execute({ mode: "weekly", date: targetDate }),
+      getLeadingSectors.execute({ mode: "weekly", date: targetDate }),
+      getLeadingSectors.execute({ mode: "industry", limit: 10, date: targetDate }),
+      getWatchlistStatus.execute({ include_trajectory: true, date: targetDate }),
+      getPhase2Stocks.execute({ min_rs: 60, date: targetDate }),
+      getLeadingSectors.execute({ mode: "industry", limit: 200, date: targetDate }),
+    ]);
+
+  const indexData = parse(indexRaw);
+  const breadthData = parse(breadthRaw);
+  const sectorData = parse(sectorRaw);
+  const industryData = parse(industryRaw);
+  const watchlistData = parse(watchlistRaw);
+  const phase2Data = parse(phase2Raw);
+  const allIndustryData = parse(allIndustryRaw);
+
+  const indices = Array.isArray(indexData.indices) ? indexData.indices : [];
+  const allIndustries = Array.isArray(allIndustryData.industries) ? allIndustryData.industries : [];
+
+  // 4/5 예비종목 판정
+  const industryChangeMap = new Map<string, number>();
+  for (const ind of allIndustries as Array<{ industry: string; changeWeek: number | null }>) {
+    if (ind.changeWeek != null) industryChangeMap.set(ind.industry, ind.changeWeek);
+  }
+
+  const stocks = Array.isArray(phase2Data.stocks) ? phase2Data.stocks : [];
+  const pending4of5 = (stocks as Array<{ symbol: string; industry: string | null; rsScore: number; sepaGrade: string | null }>)
+    .filter((s) => {
+      if (s.industry == null) return false;
+      if (s.sepaGrade !== "S" && s.sepaGrade !== "A") return false;
+      const change = industryChangeMap.get(s.industry);
+      return change != null && change > 0;
+    })
+    .map((s) => ({
+      symbol: s.symbol,
+      action: "register" as const,
+      reason: `4/5 통과 (thesis 미확인) — RS ${s.rsScore}, ${s.industry}`,
+    }));
+
+  const EMPTY_BREADTH: MarketBreadthData = {
+    weeklyTrend: [], phase1to2Transitions: 0,
+    latestSnapshot: {
+      date: targetDate, totalStocks: 0,
+      phaseDistribution: { phase1: 0, phase2: 0, phase3: 0, phase4: 0 },
+      phase2Ratio: 0, phase2RatioChange: 0, marketAvgRs: 0,
+      advanceDecline: { advancers: 0, decliners: 0, unchanged: 0, ratio: null },
+      newHighLow: { newHighs: 0, newLows: 0, ratio: null },
+      breadthScore: null, divergenceSignal: null, topSectors: [],
+    },
+  };
+
+  const data: WeeklyReportData = {
+    indexReturns: indices as WeeklyReportData["indexReturns"],
+    fearGreed: (indexData.fearGreed ?? null) as WeeklyReportData["fearGreed"],
+    marketBreadth: breadthData.error
+      ? EMPTY_BREADTH
+      : {
+          weeklyTrend: Array.isArray(breadthData.weeklyTrend) ? breadthData.weeklyTrend : [],
+          phase1to2Transitions: Number(breadthData.phase1to2Transitions ?? 0),
+          latestSnapshot: (breadthData.latestSnapshot ?? EMPTY_BREADTH.latestSnapshot) as MarketBreadthData["latestSnapshot"],
+        },
+    sectorRanking: (Array.isArray(sectorData.sectors) ? sectorData.sectors : []) as WeeklyReportData["sectorRanking"],
+    industryTop10: allIndustries as WeeklyReportData["industryTop10"],
+    watchlist: {
+      summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as WeeklyReportData["watchlist"]["summary"],
+      items: Array.isArray(watchlistData.items) ? watchlistData.items : [],
+    },
+    gate5Candidates: stocks as WeeklyReportData["gate5Candidates"],
+    watchlistChanges: {
+      registered: [],
+      exited: [],
+      pending4of5,
+    },
+  };
+
+  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | 예비 ${pending4of5.length}`);
+
+  return data;
+}
+
+// ─── LLM 인사이트 생성 ─────────────────────────────────────────────────────
+
+function buildInsightPrompt(data: WeeklyReportData, systemPrompt: string): { system: string; user: string } {
+  // 데이터 요약을 user message에 주입
+  const dataSummary = `
+아래는 이번 주 수집된 시장 데이터입니다. 이 데이터를 기반으로 해석을 작성하세요.
+
+## 지수 수익률
+${data.indexReturns.map((i) => `${i.name}: ${i.weekEndClose} (${i.weeklyChangePercent >= 0 ? "+" : ""}${i.weeklyChangePercent.toFixed(2)}%)`).join("\n")}
+${data.fearGreed != null ? `Fear & Greed: ${data.fearGreed.score} (${data.fearGreed.rating})` : ""}
+
+## Phase 2 비율
+${data.marketBreadth.weeklyTrend.map((t) => `${t.date}: ${t.phase2Ratio.toFixed(1)}%`).join(" → ")}
+Phase 분포: P1 ${data.marketBreadth.latestSnapshot.phaseDistribution.phase1} / P2 ${data.marketBreadth.latestSnapshot.phaseDistribution.phase2} / P3 ${data.marketBreadth.latestSnapshot.phaseDistribution.phase3} / P4 ${data.marketBreadth.latestSnapshot.phaseDistribution.phase4}
+
+## 섹터 로테이션 (11개)
+${data.sectorRanking.map((s) => `${s.rsRank}. ${s.sector}: RS ${s.avgRs.toFixed(1)} (${s.rsChange != null && s.rsChange >= 0 ? "+" : ""}${s.rsChange?.toFixed(1) ?? "—"}) Phase ${s.groupPhase} P2비율 ${s.phase2Ratio.toFixed(1)}%`).join("\n")}
+
+## 업종 RS Top 10
+${data.industryTop10.slice(0, 10).map((i, idx) => `${idx + 1}. ${i.industry} (${i.sector}): RS ${i.avgRs.toFixed(1)} 주간변화 ${i.changeWeek != null ? (i.changeWeek >= 0 ? "+" : "") + i.changeWeek.toFixed(1) : "—"}`).join("\n")}
+
+## 관심종목
+ACTIVE: ${data.watchlist.summary.totalActive}개
+${data.watchlist.items.map((w) => `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%`).join("\n") || "없음"}
+
+## 예비 관심종목 (4/5 통과, thesis 미충족)
+${data.watchlistChanges.pending4of5.map((p) => `${p.symbol}: ${p.reason}`).join("\n") || "없음"}
+
+---
+
+위 데이터를 분석하여 아래 JSON으로 응답하세요.
+
+## 작성 규칙 (반드시 준수)
+- **간결하게.** 각 필드 2~3문장 이내. 장황한 설명 금지.
+- 판단과 근거만 쓴다. 데이터 나열/반복하지 않는다 (데이터는 이미 테이블로 보여줌).
+- 정보가 없거나 할 말이 없으면 "해당 없음" 한 줄. 억지로 늘리지 않는다.
+- 숫자를 인용할 때는 위 데이터에 있는 정확한 값만 사용한다. 추정/반올림 금지.
+- 반드시 유효한 JSON만 출력. 다른 텍스트를 앞뒤에 붙이지 마라.
+
+{
+  "marketTemperature": "bullish | neutral | bearish",
+  "marketTemperatureLabel": "한 줄. 예: '약세 — EARLY_BEAR 지속'",
+  "sectorRotationNarrative": "2~3문장. 구조적 상승 vs 일회성 반등 판단 + 핵심 근거 1개.",
+  "industryFlowNarrative": "2~3문장. Top 10 업종의 공통 테마 또는 자금 집중 방향.",
+  "watchlistNarrative": "1~2문장. ACTIVE 종목의 서사 유효성. 없으면 '해당 없음'.",
+  "gate5Summary": "1~2문장. 등록/해제 판단 요약. 없으면 '이번 주 신규 등록/해제 없음'.",
+  "riskFactors": "핵심 리스크 2~3개. 각 1문장.",
+  "nextWeekWatchpoints": "확인할 시그널 2~3개. 각 1문장.",
+  "thesisScenarios": "ACTIVE thesis별 다음 주 확인 포인트. 각 1문장.",
+  "debateInsight": "2~3문장. thesis 간 충돌/강화 핵심만.",
+  "narrativeEvolution": "2~3문장. 서사 체인 변화 핵심만. 변화 없으면 '유의미한 변화 없음'.",
+  "thesisAccuracy": "1~2문장. 최근 적중/실패 사례 1개씩.",
+  "regimeContext": "1~2문장. 현재 레짐과 전략 포지셔닝.",
+  "discordMessage": "3~5줄. 지수 변화 + Phase2 비율 + 등록/해제 건수."
+}`;
+
+  return { system: systemPrompt, user: dataSummary };
+}
+
+async function generateInsight(
+  data: WeeklyReportData,
+  systemPrompt: string,
+): Promise<WeeklyReportInsight> {
+  logger.step("[5/7] Generating insight via Claude CLI...");
+
+  const cli = new ClaudeCliProvider("claude-sonnet-4-6", 600_000); // 10분 타임아웃
+  const { system, user } = buildInsightPrompt(data, systemPrompt);
+
+  try {
+    const result = await cli.call({ systemPrompt: system, userMessage: user });
+    logger.info("CLI", `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`);
+
+    // JSON 파싱
+    const content = result.content.trim();
+    // JSON 블록이 ```json ... ``` 로 감싸져 있을 수 있음
+    const jsonStr = content.startsWith("```")
+      ? content.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")
+      : content;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      logger.warn("CLI", `JSON 파싱 실패 — 기본값으로 폴백. 응답 앞 200자: ${content.slice(0, 200)}`);
+      return fillInsightDefaults({});
+    }
+
+    return fillInsightDefaults(parsed);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error("CLI", `LLM 호출 실패: ${reason}`);
+    return fillInsightDefaults({});
+  } finally {
+    cli.dispose();
   }
 }
+
+// ─── 발행 ───────────────────────────────────────────────────────────────────
 
 async function publishWeeklyReport(
   html: string,
   insight: WeeklyReportInsight,
   targetDate: string,
 ): Promise<void> {
-  const webhookEnvVar = "DISCORD_WEEKLY_WEBHOOK_URL";
-
-  // Supabase Storage 업로드 시도
   const storageUrl = await (async (): Promise<string | null> => {
     try {
       return await publishHtmlReport(html, targetDate, "weekly");
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      logger.warn("WeeklyAgent", `HTML 업로드 실패 — Discord 메시지만 발송: ${reason}`);
+      logger.warn("Publish", `HTML 업로드 실패 — Discord 메시지만 발송: ${reason}`);
       return null;
     }
   })();
 
-  // Discord 발송
   const discordText = storageUrl != null
     ? `${insight.discordMessage}\n\n📊 상세 리포트: ${storageUrl}`
     : insight.discordMessage;
 
-  await sendDiscordMessage(discordText, webhookEnvVar);
+  await sendDiscordMessage(discordText, "DISCORD_WEEKLY_WEBHOOK_URL");
 }
 
+// ─── 메인 ───────────────────────────────────────────────────────────────────
+
 async function main() {
-  logger.step("=== Agent Core: Weekly Market Analysis ===\n");
+  logger.step("=== Weekly Market Analysis (CLI Mode) ===\n");
 
   // 1. 환경변수 검증
-  validateAgentEnvironment();
+  validateEnvironment();
   logger.step("[1/7] Environment validated");
 
-  // 2. 최신 거래일 확인 (금요일 데이터)
+  // 2. 최신 거래일 확인
   const targetDate = await getLatestPriceDate();
   if (targetDate == null) {
     logger.step("No trade date found. Skipping.");
-    await sendDiscordMessage(
-      "📊 거래 데이터가 없습니다. 주간 Agent 실행을 스킵합니다.",
-      "DISCORD_WEEKLY_WEBHOOK_URL",
-    );
+    await sendDiscordMessage("📊 거래 데이터가 없습니다.", "DISCORD_WEEKLY_WEBHOOK_URL");
     await pool.end();
     return;
   }
   logger.step(`[2/7] Target date: ${targetDate}`);
 
-  // 3. 펀더멘탈 검증 (전체 활성 종목 SEPA 스코어링 → DB 저장)
-  logger.step("[3/7] Running fundamental validation...");
+  // 3. 컨텍스트 로딩
+  logger.step("[3/7] Loading contexts...");
 
   let fundamentalSupplement = "";
   try {
     const validationResult = await runFundamentalValidation();
     fundamentalSupplement = formatFundamentalSupplement(validationResult.scores, { includeHeader: false });
-
     logger.info("Fundamental", `${validationResult.scores.length}개 종목 검증 완료`);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.error("Fundamental", `검증 실패 (에이전트는 계속 진행): ${reason}`);
+    logger.error("Fundamental", `검증 실패: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 3.5. 애널리스트 토론 전망 로드
   let thesesContext = "";
   try {
     const activeTheses = await loadActiveTheses();
     thesesContext = formatThesesForPrompt(activeTheses);
-    if (activeTheses.length > 0) {
-      logger.info("Theses", `${activeTheses.length}개 ACTIVE thesis 로드 완료`);
-    } else {
-      logger.info("Theses", "ACTIVE thesis 없음 — 토론 컨텍스트 생략");
-    }
+    if (activeTheses.length > 0) logger.info("Theses", `${activeTheses.length}개 ACTIVE thesis`);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.error("Theses", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+    logger.error("Theses", `실패: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 3.6. 활성 병목 체인 로드
   let narrativeChainsSummary = "";
   try {
     narrativeChainsSummary = await formatChainsSummaryForPrompt();
-    if (narrativeChainsSummary !== "") {
-      logger.info("NarrativeChain", "활성 병목 체인 요약 로드 완료");
-    }
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.error("NarrativeChain", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+    logger.error("NarrativeChain", `실패: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 3.7. 섹터 시차 경보 로드
   let sectorLagContext = "";
   try {
     sectorLagContext = await formatLeadingSectorsForPrompt(targetDate);
-    if (sectorLagContext !== "") {
-      logger.info("SectorLag", "선행 섹터 시차 경보 로드 완료");
-    }
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.error("SectorLag", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+    logger.error("SectorLag", `실패: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 3.7-B. 업종 클러스터 컨텍스트 로드 (fail-open — 없으면 빈 문자열)
   let sectorClusterContext = "";
   try {
     sectorClusterContext = await loadSectorClusterContext(targetDate);
-    if (sectorClusterContext !== "") {
-      logger.info("SectorCluster", "업종 클러스터 컨텍스트 로드 완료");
-    }
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.warn("SectorCluster", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+    logger.warn("SectorCluster", `실패: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 3.8. 시장 레짐 히스토리 로드 (confirmed + pending)
   let regimeContext = "";
   try {
     const [recentRegimes, pendingRegimes] = await Promise.all([
@@ -197,150 +353,54 @@ async function main() {
       loadPendingRegimes(),
     ]);
     regimeContext = formatRegimeForPrompt(recentRegimes, pendingRegimes);
-    if (regimeContext !== "") {
-      logger.info("Regime", "최근 레짐 히스토리 로드 완료");
-    }
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.error("Regime", `로드 실패 (에이전트는 계속 진행): ${reason}`);
+    logger.error("Regime", `실패: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 3.9. 시그널 성과 로드
   const signalPerformance = loadSignalPerformanceSummary();
-  if (signalPerformance !== "") {
-    logger.info("Signal", "백테스트 성과 요약 로드 완료");
-  }
 
-  // 3.10. 관심종목 현황 사전 로드 (에이전트 컨텍스트 주입용 — 에이전트도 get_watchlist_status로 재조회)
   let watchlistContext = "";
   try {
     const watchlistRaw = await getWatchlistStatus.execute({ include_trajectory: false });
-    const watchlistData = JSON.parse(watchlistRaw) as {
-      count?: number;
-      summary?: { totalActive: number; phaseChanges: unknown[] };
-      items?: unknown[];
-    };
-    const totalActive = watchlistData.summary?.totalActive ?? watchlistData.count ?? 0;
+    const wd = JSON.parse(watchlistRaw) as { summary?: { totalActive: number; phaseChanges: unknown[] } };
+    const totalActive = wd.summary?.totalActive ?? 0;
     if (totalActive > 0) {
       watchlistContext = `현재 ACTIVE 관심종목 ${totalActive}개 추적 중`;
-      const phaseChanges = watchlistData.summary?.phaseChanges;
-      if (Array.isArray(phaseChanges) && phaseChanges.length > 0) {
-        watchlistContext += ` (Phase 전이 ${phaseChanges.length}건 감지)`;
-      }
-      logger.info("Watchlist", `관심종목 현황 로드 완료: ACTIVE ${totalActive}개`);
-    } else {
-      logger.info("Watchlist", "ACTIVE 관심종목 없음 — 컨텍스트 생략");
     }
-  } catch (err) {
-    logger.warn("Watchlist", `관심종목 현황 로드 실패 (에이전트는 계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+  } catch {
+    // fail-open
   }
 
-  // 4. 데이터 컬렉터 + 인사이트 캡처 컨테이너 초기화
-  logger.step("[4/7] Running agent loop...\n");
+  const systemPrompt = buildWeeklySystemPrompt({
+    fundamentalSupplement,
+    thesesContext,
+    signalPerformance,
+    narrativeChainsSummary,
+    sectorLagContext,
+    regimeContext,
+    watchlistContext,
+    sectorClusterContext,
+  });
 
-  const dataCollector = createWeeklyDataCollector();
-  const capturedInsight: { insight: WeeklyReportInsight | null } = { insight: null };
+  // 4. 데이터 수집 (도구 직접 호출 — LLM 불필요)
+  const data = await collectWeeklyData(targetDate);
 
-  const config: AgentConfig = {
-    targetDate,
-    systemPrompt: buildWeeklySystemPrompt({
-      fundamentalSupplement,
-      thesesContext,
-      signalPerformance,
-      narrativeChainsSummary,
-      sectorLagContext,
-      regimeContext,
-      watchlistContext,
-      sectorClusterContext,
-    }),
-    tools: [
-      // 데이터 캡처 래핑 도구들
-      dataCollector.wrap(getIndexReturns, "indexReturns"),
-      dataCollector.wrap(getMarketBreadth, "marketBreadth"),
-      // getLeadingSectors는 mode에 따라 sectorRanking 또는 industryTop10으로 분기
-      // 에이전트가 mode: "weekly"로 호출하면 sectorRanking 캡처
-      // 에이전트가 mode: "industry"로 호출하면 industryTop10 캡처 시도 (텍스트 반환 시 생략)
-      dataCollector.wrap(getLeadingSectors, "sectorRanking"),
-      dataCollector.wrap(getWatchlistStatus, "watchlist"),
-      dataCollector.wrap(getPhase2Stocks, "gate5Candidates"),
-      // 비캡처 도구들 (agentLoop 분석에 사용)
-      getPhase1LateStocks,
-      getRisingRS,
-      getFundamentalAcceleration,
-      getStockDetail,
-      searchCatalyst,
-      readReportHistory,
-      readRegimePerformance,
-      dataCollector.wrap(saveWatchlist, "watchlistChanges"),
-      saveRecommendations,
-      readRecommendationPerformance,
-      // 해석 캡처 도구 — 에이전트가 마지막에 정확히 1회 호출
-      createCaptureWeeklyInsightTool(capturedInsight),
-      saveReportLogTool,
-    ],
-    model: MODEL,
-    maxTokens: MAX_TOKENS,
-    maxIterations: MAX_ITERATIONS,
-  };
-
-  // 에이전트 루프 실행
-  let loopError: string | null = null;
-  try {
-    const result = await runAgentLoop(config);
-
-    logger.step("\n[5/7] Agent result:");
-    logger.info("Result", `Success: ${result.success}`);
-    logger.info(
-      "Result",
-      `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`,
-    );
-    if (result.tokensUsed.cacheRead > 0 || result.tokensUsed.cacheCreation > 0) {
-      logger.info(
-        "Result",
-        `Cache: ${result.tokensUsed.cacheCreation} creation / ${result.tokensUsed.cacheRead} read`,
-      );
-    }
-    logger.info("Result", `Tool calls: ${result.toolCalls}`);
-    logger.info("Result", `Iterations: ${result.iterationCount}`);
-    logger.info(
-      "Result",
-      `Time: ${(result.executionTimeMs / 1000).toFixed(1)}s`,
-    );
-
-    // 비용 계산: 캐시 읽기는 90% 할인, 캐시 쓰기는 25% 할증
-    const CACHE_WRITE_COST_PER_M = SONNET_INPUT_COST_PER_M * 1.25;
-    const CACHE_READ_COST_PER_M = SONNET_INPUT_COST_PER_M * 0.1;
-    const inputCost =
-      (result.tokensUsed.input / 1_000_000) * SONNET_INPUT_COST_PER_M +
-      (result.tokensUsed.cacheCreation / 1_000_000) * CACHE_WRITE_COST_PER_M +
-      (result.tokensUsed.cacheRead / 1_000_000) * CACHE_READ_COST_PER_M;
-    const outputCost =
-      (result.tokensUsed.output / 1_000_000) * SONNET_OUTPUT_COST_PER_M;
-    logger.info(
-      "Result",
-      `Estimated cost: $${(inputCost + outputCost).toFixed(3)}`,
-    );
-
-    if (result.success === false) {
-      loopError = result.error ?? "Unknown error";
-      logger.error("Agent", `Agent loop failed: ${loopError}`);
-    }
-  } catch (err) {
-    loopError = err instanceof Error ? err.message : String(err);
-    logger.error("Agent", `Agent loop crashed: ${loopError}`);
-  }
+  // 5. LLM 인사이트 생성 (CLI 단발 호출)
+  const insight = await generateInsight(data, systemPrompt);
 
   // 6. HTML 조립 + 발행
-  logger.step("[6/7] Publishing weekly report...");
+  logger.step("[6/7] Building and publishing report...");
+  const html = buildWeeklyHtml(data, insight, targetDate);
 
-  if (capturedInsight.insight != null) {
-    const reportData = dataCollector.toWeeklyReportData();
-    const html = buildWeeklyHtml(reportData, capturedInsight.insight, targetDate);
+  // 로컬 프리뷰 저장 (항상)
+  const { writeFileSync } = await import("fs");
+  writeFileSync("preview-weekly-new.html", html);
+  logger.info("Preview", `preview-weekly-new.html (${(html.length / 1024).toFixed(1)} KB)`);
 
-    // HTML 발행 + Discord 발송
-    await publishWeeklyReport(html, capturedInsight.insight, targetDate);
+  await publishWeeklyReport(html, insight, targetDate);
 
-    // DB 저장
+  // DB 저장
+  try {
     await saveReportLog({
       date: targetDate,
       type: "weekly",
@@ -348,19 +408,15 @@ async function main() {
       marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
       fullContent: null,
       metadata: {
-        model: MODEL,
+        model: "claude-sonnet-4-6 (CLI)",
         tokensUsed: { input: 0, output: 0 },
         toolCalls: 0,
         executionTime: 0,
       },
     });
     await updateReportFullContent(targetDate, "weekly", html);
-
-    logger.step("[6/7] Weekly report published successfully.");
-  } else if (loopError != null) {
-    throw new Error(`Agent failed with no insight captured: ${loopError}`);
-  } else {
-    logger.warn("Agent", "No insight captured — capture_weekly_insight was not called");
+  } catch (err) {
+    logger.warn("DB", `리포트 저장 실패 (발행은 완료): ${err instanceof Error ? err.message : String(err)}`);
   }
 
   await pool.end();
