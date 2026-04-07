@@ -272,13 +272,15 @@ ${round2Section}
   - 특정 기한 내 수치 도달 예측: "30일 내 VIX 20 하회", "2주 내 공포탐욕지수 25 회복"
   - 심리/변동성 지표의 절대 수준 예측: "VIX 20 이하 진입", "공포탐욕지수 25 이상 회복"
   - 단기 가격 반등/하락 타이밍 예측: "상승 전환 비율 35% 돌파", "3주 내 반등 시작"
-  - 핵심: **"언제까지 X가 Y에 도달"** 형식은 전부 금지
+  - **구체적 가격 목표/% 수익률 예측** (특히 tech 에이전트): "SOXX $185 → $208", "Broadcom $250 목표가", "ETF X가 60일 내 15-20% 상승", "ARKQ $52.8 → $62", "90일 내 20% 상승"
+  - 핵심: **"언제까지 X가 Y에 도달"** 및 **"$N 목표가"**, **"N% 상승/하락"** 형식은 전부 금지
 
 - **허용 패턴 (이런 형식만 thesis로 추출하세요):**
   - 구조적 전환 방향성: "risk-off에서 risk-on으로의 전환 초기 신호 감지"
   - 조건부 형식: "VIX 30 기준, 25 이하로 안정되면 기술주 반등 가능" (시점이 아닌 조건)
   - 레짐 전환 감지: "EARLY_BEAR에서 EARLY_BULL 전환 조건 형성 중"
-  - 핵심: **"어떤 조건이 충족되면"** 형식으로 작성
+  - **tech 에이전트 구조적 전환 신호**: "AI capex 사이클 하드웨어→소프트웨어 전환 가속", "반도체 재고 사이클 저점 통과 신호", "SaaS 멀티플 재평가 시작", "밸류체인 병목 해소로 인한 마진 확대 국면 진입"
+  - 핵심: **"어떤 조건이 충족되면"** 또는 **"구조적 전환이 진행 중"** 형식으로 작성
 
 **에이전트별 카테고리 제한:**
 - **sentiment** 에이전트의 thesis는 \`structural_narrative\` 또는 \`sector_rotation\`만 허용됩니다. sentiment의 방향성 예측(지수 목표치, VIX 하락 예측 등)은 thesis로 추출하지 마세요. sentiment의 분석은 포지셔닝 과밀/자금 흐름 구조 관점에서만 thesis화하세요.
@@ -509,6 +511,52 @@ const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
 const CONFIDENCE_DOWNGRADE_CATEGORIES = new Set<ThesisCategory>(["short_term_outlook"]);
 
 /**
+ * tech 에이전트의 short_term_outlook thesis에 가격 목표 패턴이 포함되어 있는지 검사한다.
+ * "$N", "$N → $N", "N% 상승/하락", "목표가/목표 가격" 등 구체적 가격 예측 패턴을 검출.
+ * 순수 함수 — 테스트 용이.
+ * #645: tech의 short_term_outlook EXPIRED 8/10건 — 가격 목표 thesis 남발 패턴 차단.
+ */
+const TECH_PRICE_TARGET_PATTERNS: RegExp[] = [
+  // $N 목표가 / $N → $N 패턴 (예: "$250 목표가", "SOXX $185 → $208")
+  /\$\d+[\d,.]*\s*(?:→|->|목표|도달|돌파)/,
+  /\$\d+[\d,.]*\s*.*?\s*\$\d+[\d,.]*/,
+  // N% 상승/하락 패턴 (예: "20% 상승", "15-20% 상승", "20-30% 조정")
+  /\d+[-~]\d+%\s*(?:상승|하락|조정|반등|급등|급락|수익률)/,
+  /\d+%\s*(?:상승|하락|조정|반등|급등|급락|수익률)/,
+  // 목표가/목표 가격 직접 언급
+  /목표\s*(?:가|가격|수준|레벨)/,
+  // "N일/주/개월 내 N% 상승/하락" 패턴
+  /\d+\s*(?:일|주|개월|day|week|month)\s*(?:내|이내|안에).*?\d+%/i,
+  // ETF/종목 + 가격 도달 패턴 (예: "ARKQ $52.8 → $62", "BRK.B $400")
+  /\b[A-Z]{2,5}(?:\.[A-Z]+)?\s+\$\d+/,
+  // 신고점/신저점 + 목표 결합
+  /(?:신고점|신저점|고점|저점)\s*(?:돌파|갱신|도달|목표)/,
+];
+
+export function containsPriceTarget(thesis: string): boolean {
+  return TECH_PRICE_TARGET_PATTERNS.some((pattern) => pattern.test(thesis));
+}
+
+/**
+ * tech 에이전트의 short_term_outlook 가격 목표 thesis를 필터링(드롭)한다.
+ * tech + short_term_outlook 이외의 thesis는 통과.
+ * #645: 프롬프트 제약이 무시된 전적 — 코드 레벨 가드레일.
+ */
+function filterTechPriceTargets(theses: Thesis[]): Thesis[] {
+  return theses.filter((t) => {
+    if (t.agentPersona !== "tech" || t.category !== "short_term_outlook") return true;
+    if (containsPriceTarget(t.thesis)) {
+      logger.info(
+        "Round3",
+        `tech의 가격 목표 thesis 드롭: "${t.thesis.slice(0, 60)}..." (#645 가드레일)`,
+      );
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
  * sentiment 에이전트의 thesis에 수치 예측 패턴이 포함되어 있는지 검사한다.
  * VIX/F&G/RS 등 지표 + 구체적 수치 + 예측 표현(전망, 도달, 회복, 하회 등) 조합을 검출.
  * 순수 함수 — 테스트 용이.
@@ -712,14 +760,22 @@ export function extractThesesFromText(text: string): ExtractionResult {
     if (validated.length < parsed.length) {
       logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
     }
-    const filtered = filterNumericPredictions(validated);
-    const capped = filterShortTermOutlookCap(filtered);
-    return { theses: capped, cleanReport };
+    return { theses: applyThesisFilters(validated), cleanReport };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
     return { theses: [], cleanReport };
   }
+}
+
+/**
+ * 공통 thesis 필터 파이프라인.
+ * extractThesesFromText / extractDebateOutput 양쪽에서 동일한 필터를 적용한다.
+ */
+function applyThesisFilters(theses: Thesis[]): Thesis[] {
+  const filtered = filterNumericPredictions(theses);
+  const priceTargetFiltered = filterTechPriceTargets(filtered);
+  return filterShortTermOutlookCap(priceTargetFiltered);
 }
 
 /**
@@ -750,8 +806,7 @@ export function extractDebateOutput(text: string): DebateExtractionResult {
       if (validated.length < parsed.length) {
         logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
       }
-      const filtered = filterNumericPredictions(validated);
-      return filterShortTermOutlookCap(filtered);
+      return applyThesisFilters(validated);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
