@@ -246,6 +246,32 @@ describe("getMarketPosition", () => {
       expect(gateHl.detail).toBe("30 vs 80");
     });
 
+    it("new_highs가 null이면 passed=false, detail='데이터 부족'", async () => {
+      setupMocks({
+        breadthRow: { date: "2026-04-04", ad_ratio: "1.39", new_highs: null, new_lows: 56 },
+      });
+
+      const result = await getMarketPosition("2026-04-04");
+
+      expect(result).not.toBeNull();
+      const gateHl = result!.gates[2];
+      expect(gateHl.passed).toBe(false);
+      expect(gateHl.detail).toBe("데이터 부족");
+    });
+
+    it("new_lows가 null이면 passed=false, detail='데이터 부족'", async () => {
+      setupMocks({
+        breadthRow: { date: "2026-04-04", ad_ratio: "1.39", new_highs: 66, new_lows: null },
+      });
+
+      const result = await getMarketPosition("2026-04-04");
+
+      expect(result).not.toBeNull();
+      const gateHl = result!.gates[2];
+      expect(gateHl.passed).toBe(false);
+      expect(gateHl.detail).toBe("데이터 부족");
+    });
+
     it("breadthRow가 null이면 게이트 passed=false, detail='—'", async () => {
       setupMocks({ breadthRow: null });
 
@@ -267,14 +293,22 @@ describe("getMarketPosition", () => {
       expect(result).toBeNull();
     });
 
-    it("market_breadth_daily 쿼리 실패 시 breadth 게이트 passed=false로 나머지 정상 반환", async () => {
-      setupMocks({ breadthQueryThrows: true });
+    it("market_breadth_daily 쿼리 실패 시 MA 게이트는 정상, breadth 게이트만 실패", async () => {
+      const prices = makePrices(250, 5000);
+      prices[0] = { date: "2026-04-04", close: "5200" };
+      setupMocks({ priceRows: prices, breadthQueryThrows: true });
 
       const result = await getMarketPosition("2026-04-04");
 
-      // breadth 쿼리 실패여도 prices는 성공했으면 null이 아니라 게이트 포함 결과 반환
-      // (DB 오류를 catch하여 null 반환하므로 전체 null)
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      // MA 게이트는 정상 작동
+      expect(result!.gates[0].label).toBe("S&P 500 > 200MA");
+      expect(result!.gates[0].detail).not.toBe("—");
+      // breadth 게이트는 실패
+      expect(result!.gates[2].passed).toBe(false);
+      expect(result!.gates[2].detail).toBe("—");
+      expect(result!.gates[3].passed).toBe(false);
+      expect(result!.gates[3].detail).toBe("—");
     });
   });
 

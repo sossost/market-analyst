@@ -140,13 +140,14 @@ function buildNewHighLowGate(breadth: BreadthRow | null): MarketPositionGate {
     return { label: "신고가 > 신저가", passed: false, detail: "—" };
   }
 
-  const newHighs = breadth.new_highs ?? 0;
-  const newLows = breadth.new_lows ?? 0;
+  if (breadth.new_highs == null || breadth.new_lows == null) {
+    return { label: "신고가 > 신저가", passed: false, detail: "데이터 부족" };
+  }
 
   return {
     label: "신고가 > 신저가",
-    passed: newHighs > newLows,
-    detail: `${newHighs} vs ${newLows}`,
+    passed: breadth.new_highs > breadth.new_lows,
+    detail: `${breadth.new_highs} vs ${breadth.new_lows}`,
   };
 }
 
@@ -186,8 +187,8 @@ export async function getMarketPosition(
 ): Promise<MarketPositionData | null> {
   try {
     const [prices, breadth] = await Promise.all([
-      fetchSP500Prices(targetDate),
-      fetchBreadthData(targetDate),
+      fetchSP500Prices(targetDate).catch(() => [] as number[]),
+      fetchBreadthData(targetDate).catch(() => null),
     ]);
 
     if (prices.length === 0) {
@@ -207,7 +208,11 @@ export async function getMarketPosition(
       totalCount: gates.length,
       date: targetDate,
     };
-  } catch {
+  } catch (err) {
+    console.warn(
+      "[getMarketPosition] 예외:",
+      err instanceof Error ? err.message : String(err),
+    );
     return null;
   }
 }
