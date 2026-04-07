@@ -1,5 +1,5 @@
 import type { LLMProvider } from "./llm/index.js";
-import { loadConfirmedRegime, type MarketRegimeRow } from "./regimeStore.js";
+import { loadConfirmedRegime, ALLOWED_TRANSITIONS, type MarketRegimeRow } from "./regimeStore.js";
 import { logger } from "@/lib/logger";
 import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, MinorityViewPosition, AgentPersona, Confidence, NarrativeChainFields } from "@/types/debate";
 import type { FundamentalScore } from "@/types/fundamental";
@@ -64,16 +64,13 @@ export function formatFundamentalContext(scores: FundamentalScore[]): string {
 }
 
 /**
- * 허용된 레짐 전환 경로 (regimeStore.ts의 ALLOWED_TRANSITIONS와 동기).
- * 프롬프트에 텍스트로 삽입하여 LLM이 비허용 전환을 사전 차단하도록 안내.
+ * regimeStore.ts의 ALLOWED_TRANSITIONS(Set)를 프롬프트용 문자열 배열로 변환.
+ * 단일 진실 공급원(SSOT)을 유지하여 전환 규칙 불일치를 방지.
  */
-const ALLOWED_TRANSITIONS_TEXT: Readonly<Record<MarketRegimeType, readonly string[]>> = {
-  EARLY_BULL: ["MID_BULL", "EARLY_BEAR"],
-  MID_BULL: ["LATE_BULL", "EARLY_BULL", "EARLY_BEAR"],
-  LATE_BULL: ["MID_BULL", "EARLY_BEAR"],
-  EARLY_BEAR: ["BEAR", "EARLY_BULL"],
-  BEAR: ["EARLY_BEAR"],
-};
+const ALLOWED_TRANSITIONS_TEXT: Readonly<Record<MarketRegimeType, readonly string[]>> =
+  Object.fromEntries(
+    Object.entries(ALLOWED_TRANSITIONS).map(([from, toSet]) => [from, Array.from(toSet)]),
+  ) as Record<MarketRegimeType, readonly string[]>;
 
 /**
  * 이전 확정 레짐 정보를 프롬프트용 텍스트로 포매팅.
