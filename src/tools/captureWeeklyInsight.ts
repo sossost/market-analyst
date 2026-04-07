@@ -78,6 +78,10 @@ export function createCaptureWeeklyInsightTool(
             type: "string",
             description: "thesis 적중률 피드백: 과거 thesis 검증 결과가 현재 thesis 신뢰도에 미치는 영향. 적중/실패 사례.",
           },
+          breadthNarrative: {
+            type: "string",
+            description: "브레드스 해석. Phase 2 비율 주간 궤적 + A/D + 신고가/저가 종합하여 시장 폭의 확장/수축 판단. 5거래일 추이를 기반으로 방향과 속도를 해석.",
+          },
           regimeContext: {
             type: "string",
             description: "현재 시장 레짐 맥락. 레짐별 전략적 포지셔닝.",

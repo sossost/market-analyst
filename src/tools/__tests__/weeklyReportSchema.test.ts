@@ -306,8 +306,26 @@ describe("fillInsightDefaults", () => {
     expect(result.riskFactors).toBe("");
     expect(result.nextWeekWatchpoints).toBe("");
     expect(result.thesisScenarios).toBe("");
+    expect(result.breadthNarrative).toBe("");
     expect(result.regimeContext).toBe("");
     expect(result.discordMessage).toBe("");
+  });
+
+  it("breadthNarrative 존재 시 원본 값을 유지한다", () => {
+    const raw = createValidRaw();
+    raw["breadthNarrative"] = "시장 폭 확장 중";
+
+    const result = fillInsightDefaults(raw);
+
+    expect(result.breadthNarrative).toBe("시장 폭 확장 중");
+  });
+
+  it("breadthNarrative 누락 시 빈 문자열 기본값을 채운다", () => {
+    const raw = createValidRaw();
+
+    const result = fillInsightDefaults(raw);
+
+    expect(result.breadthNarrative).toBe("");
   });
 
   it("반환 타입이 WeeklyReportInsight 구조를 만족한다", () => {

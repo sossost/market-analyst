@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   renderIndexTable,
+  renderWeeklyTrendTable,
   renderPhase2TrendTable,
   renderSectorTable,
   renderIndustryTop10Table,
@@ -245,20 +246,22 @@ describe("renderIndexTable", () => {
     expect(result).not.toContain("index-card");
   });
 
-  it("fearGreed 포함: 점수/등급을 표시한다", () => {
+  it("fearGreed 포함: 그리드 내 카드로 점수/등급을 표시한다", () => {
     const fg = createMockFearGreed({ score: 72, rating: "Greed" });
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    expect(result).toContain("fear-greed-row");
+    expect(result).toContain("공포탐욕");
     expect(result).toContain("72");
     expect(result).toContain("Greed");
+    // 그리드 내 index-card로 통합됨 (fear-greed-row 아님)
+    expect(result).not.toContain("fear-greed-row");
   });
 
-  it("fearGreed null: fear-greed-row가 없다", () => {
+  it("fearGreed null: 공포탐욕 카드가 없다", () => {
     const result = renderIndexTable([createMockIndexReturn()], null);
 
-    expect(result).not.toContain("fear-greed-row");
+    expect(result).not.toContain("공포탐욕");
   });
 
   it("양수 변화율에 up 클래스가 적용된다", () => {
@@ -427,22 +430,206 @@ describe("renderIndexTable — Fear & Greed 방향 레이블", () => {
     expect(result).toContain("변동 없음");
   });
 
-  it("previous1Week null: 방향 레이블 없이 기존 방식으로 표시된다", () => {
+  it("previous1Week null: 방향 레이블(탐욕 심화/공포 심화 등)이 없다", () => {
     const fg = createMockFearGreed({ score: 50, previous1Week: null });
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    expect(result).not.toContain("탐욕");
+    // "공포탐욕"은 카드 제목이므로 항상 존재. 방향 레이블만 없어야 함.
+    expect(result).not.toContain("탐욕 심화");
+    expect(result).not.toContain("탐욕 약화");
     expect(result).not.toContain("공포 심화");
     expect(result).not.toContain("공포 완화");
   });
 
-  it("previous1Week가 있을 때 '1주전 → 현재' 형식으로 표시된다", () => {
+  it("previous1Week가 있을 때 '1주전' 수치가 표시된다", () => {
     const fg = createMockFearGreed({ score: 45.2, previous1Week: 31.5 });
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    expect(result).toContain("1주전 31.5 → 현재 45.2");
+    expect(result).toContain("1주전 31.5");
+  });
+});
+
+// ─── renderIndexTable — 10Y / DXY / FearGreed 카드 ────────────────────────────
+
+describe("renderIndexTable — 10Y/DXY/FearGreed 카드", () => {
+  it("^TNX 심볼: yield(%) 포맷 + bp 변화를 표시한다", () => {
+    const tnx = createMockIndexReturn({
+      symbol: "^TNX",
+      name: "US 10Y",
+      weekStartClose: 4.25,
+      weekEndClose: 4.35,
+      weeklyChangePercent: 2.35,
+    });
+
+    const result = renderIndexTable([tnx], null);
+
+    expect(result).toContain("US 10Y");
+    expect(result).toContain("4.35%");
+    expect(result).toContain("+10.0bp");
+  });
+
+  it("DX-Y.NYB 심볼: 포인트 + % 변화를 표시한다", () => {
+    const dxy = createMockIndexReturn({
+      symbol: "DX-Y.NYB",
+      name: "DXY",
+      weekStartClose: 104.5,
+      weekEndClose: 105.2,
+      weeklyChangePercent: 0.67,
+    });
+
+    const result = renderIndexTable([dxy], null);
+
+    expect(result).toContain("DXY");
+    expect(result).toContain("105.2");
+    expect(result).toContain("+0.70pt");
+  });
+
+  it("FearGreed 카드가 그리드 내에 배치된다", () => {
+    const fg = createMockFearGreed({ score: 42, rating: "Fear" });
+
+    const result = renderIndexTable([createMockIndexReturn()], fg);
+
+    // 그리드 안에 공포탐욕 카드가 있어야 함
+    const gridContent = result.match(/class="index-grid">([\s\S]*)<\/div>/)?.[1] ?? "";
+    expect(gridContent).toContain("공포탐욕");
+  });
+
+  it("4×2 배치: 8개 항목(4지수+VIX+10Y+DXY+FearGreed) 모두 index-card로 렌더링된다", () => {
+    const indices = [
+      createMockIndexReturn({ symbol: "^GSPC", name: "S&P 500" }),
+      createMockIndexReturn({ symbol: "^IXIC", name: "NASDAQ" }),
+      createMockIndexReturn({ symbol: "^DJI", name: "DOW" }),
+      createMockIndexReturn({ symbol: "^RUT", name: "Russell" }),
+      createMockIndexReturn({ symbol: "^VIX", name: "VIX", weekStartClose: 20, weekEndClose: 22 }),
+      createMockIndexReturn({ symbol: "^TNX", name: "US 10Y", weekStartClose: 4.2, weekEndClose: 4.3, weeklyChangePercent: 2.38 }),
+      createMockIndexReturn({ symbol: "DX-Y.NYB", name: "DXY", weekStartClose: 104, weekEndClose: 105, weeklyChangePercent: 0.96 }),
+    ];
+    const fg = createMockFearGreed();
+
+    const result = renderIndexTable(indices, fg);
+
+    const cardCount = (result.match(/class="index-card"/g) ?? []).length;
+    expect(cardCount).toBe(8); // 7 indices + 1 fear greed card
+  });
+});
+
+// ─── renderWeeklyTrendTable ─────────────────────────────────────────────────
+
+describe("renderWeeklyTrendTable", () => {
+  it("정상: 날짜/비율/전일 대비를 포함하는 테이블을 렌더링한다", () => {
+    const trend = [
+      { date: "2026-03-31", phase2Ratio: 30.5, marketAvgRs: 48.0 },
+      { date: "2026-04-01", phase2Ratio: 31.2, marketAvgRs: 48.5 },
+      { date: "2026-04-02", phase2Ratio: 30.8, marketAvgRs: 48.3 },
+      { date: "2026-04-03", phase2Ratio: 31.5, marketAvgRs: 49.0 },
+      { date: "2026-04-04", phase2Ratio: 32.1, marketAvgRs: 49.5 },
+    ];
+
+    const result = renderWeeklyTrendTable(trend);
+
+    expect(result).toContain("Phase 2 비율 주간 추이");
+    expect(result).toContain("weekly-trend-table");
+    expect(result).toContain("3/31");
+    expect(result).toContain("4/4");
+    expect(result).toContain("30.5%");
+    expect(result).toContain("32.1%");
+  });
+
+  it("첫 행은 전일 대비가 —로 표시된다", () => {
+    const trend = [
+      { date: "2026-04-01", phase2Ratio: 30.0, marketAvgRs: 48.0 },
+      { date: "2026-04-02", phase2Ratio: 31.0, marketAvgRs: 48.5 },
+    ];
+
+    const result = renderWeeklyTrendTable(trend);
+
+    expect(result).toContain("—");
+  });
+
+  it("양수 변화에 up 클래스가 적용된다", () => {
+    const trend = [
+      { date: "2026-04-01", phase2Ratio: 30.0, marketAvgRs: 48.0 },
+      { date: "2026-04-02", phase2Ratio: 32.0, marketAvgRs: 49.0 },
+    ];
+
+    const result = renderWeeklyTrendTable(trend);
+
+    expect(result).toContain('class="up"');
+    expect(result).toContain("+2.0%p");
+  });
+
+  it("음수 변화에 down 클래스가 적용된다", () => {
+    const trend = [
+      { date: "2026-04-01", phase2Ratio: 32.0, marketAvgRs: 49.0 },
+      { date: "2026-04-02", phase2Ratio: 30.0, marketAvgRs: 48.0 },
+    ];
+
+    const result = renderWeeklyTrendTable(trend);
+
+    expect(result).toContain('class="down"');
+    expect(result).toContain("-2.0%p");
+  });
+
+  it("데이터 1일 미만: 빈 문자열을 반환한다", () => {
+    const result = renderWeeklyTrendTable([
+      { date: "2026-04-01", phase2Ratio: 30.0, marketAvgRs: 48.0 },
+    ]);
+
+    expect(result).toBe("");
+  });
+
+  it("빈 배열: 빈 문자열을 반환한다", () => {
+    const result = renderWeeklyTrendTable([]);
+
+    expect(result).toBe("");
+  });
+});
+
+// ─── renderPhase2TrendTable — breadthNarrative ──────────────────────────────
+
+describe("renderPhase2TrendTable — breadthNarrative", () => {
+  it("breadthNarrative가 있으면 content-block으로 렌더링된다", () => {
+    const breadth = createMockMarketBreadth();
+
+    const result = renderPhase2TrendTable(breadth, "시장 폭이 확장 중입니다.");
+
+    expect(result).toContain("content-block");
+    expect(result).toContain("시장 폭이 확장 중입니다.");
+  });
+
+  it("breadthNarrative가 undefined이면 content-block이 없다", () => {
+    const breadth = createMockMarketBreadth();
+
+    const result = renderPhase2TrendTable(breadth);
+
+    expect(result).not.toContain("content-block");
+  });
+
+  it("breadthNarrative가 빈 문자열이면 content-block이 없다", () => {
+    const breadth = createMockMarketBreadth();
+
+    const result = renderPhase2TrendTable(breadth, "");
+
+    expect(result).not.toContain("content-block");
+  });
+
+  it("weeklyTrend가 5일일 때 추이 테이블이 포함된다", () => {
+    const breadth = createMockMarketBreadth({
+      weeklyTrend: [
+        { date: "2026-03-31", phase2Ratio: 30.0, marketAvgRs: 48.0 },
+        { date: "2026-04-01", phase2Ratio: 30.5, marketAvgRs: 48.2 },
+        { date: "2026-04-02", phase2Ratio: 31.0, marketAvgRs: 48.5 },
+        { date: "2026-04-03", phase2Ratio: 31.5, marketAvgRs: 49.0 },
+        { date: "2026-04-04", phase2Ratio: 32.1, marketAvgRs: 49.5 },
+      ],
+    });
+
+    const result = renderPhase2TrendTable(breadth);
+
+    expect(result).toContain("weekly-trend-table");
+    expect(result).toContain("Phase 2 비율 주간 추이");
   });
 });
 
@@ -789,6 +976,7 @@ describe("buildWeeklyHtml", () => {
     const result = buildWeeklyHtml(data, insight, "2026-04-04");
 
     expect(result).toMatch(/^<!DOCTYPE html>/);
+    expect(result).toContain("시장 브레드스");
     expect(result).toContain("섹터 로테이션");
     expect(result).toContain("업종 RS");
     expect(result).toContain("관심종목");

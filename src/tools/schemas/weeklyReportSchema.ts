@@ -270,6 +270,8 @@ export interface WeeklyReportInsight {
   thesisAccuracy: string;
   /** 레짐 맥락 해석: 현재 시장 레짐과 전략적 포지셔닝 */
   regimeContext: string;
+  /** 브레드스 해석: Phase 2 비율 주간 궤적 + A/D + 신고가/저가 종합 → 확장/수축 판단 */
+  breadthNarrative?: string;
   /** Discord 핵심 요약 (3~5줄). 텍스트 전용, 링크 금지 */
   discordMessage: string;
 }
@@ -331,6 +333,7 @@ export function fillInsightDefaults(
     debateInsight: "",
     narrativeEvolution: "",
     thesisAccuracy: "",
+    breadthNarrative: "",
     regimeContext: "",
     discordMessage: "",
   };
@@ -386,6 +389,10 @@ export function fillInsightDefaults(
       typeof raw["thesisAccuracy"] === "string"
         ? raw["thesisAccuracy"]
         : defaults.thesisAccuracy,
+    breadthNarrative:
+      typeof raw["breadthNarrative"] === "string"
+        ? raw["breadthNarrative"]
+        : defaults.breadthNarrative,
     regimeContext:
       typeof raw["regimeContext"] === "string"
         ? raw["regimeContext"]
