@@ -184,7 +184,7 @@ const DAILY_REPORT_CSS = `
   /* Index Cards */
   .index-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 20px;
   }
@@ -560,6 +560,11 @@ const DAILY_REPORT_CSS = `
   }
 `;
 
+// ─── 상수 ─────────────────────────────────────────────────────────────────────
+
+/** 특이종목 섹션 최대 표시 건수. 노이즈 제한용. */
+const MAX_UNUSUAL_STOCKS = 8;
+
 // ─── 유틸리티 ─────────────────────────────────────────────────────────────────
 
 function formatPercent(value: number, decimals = 2): string {
@@ -655,28 +660,28 @@ export function renderMarketPositionGates(
     </div>`;
 }
 
-function renderFearGreed(fg: FearGreedData): string {
+function renderFearGreedCard(fg: FearGreedData): string {
   // 공포(낮은 점수)=파랑(down), 탐욕(높은 점수)=빨강(up)
   const scoreCls = fg.score <= 25 ? "down" : fg.score >= 75 ? "up" : "";
-  const prev1wStr =
+  const directionStr =
     fg.previous1Week != null
-      ? `1주전 ${fg.previous1Week.toFixed(1)} → 현재 ${fg.score.toFixed(1)} (${getFearGreedDirectionLabel(fg.score, fg.previous1Week)})`
+      ? escapeHtml(getFearGreedDirectionLabel(fg.score, fg.previous1Week))
       : "";
-  const prev1mStr =
-    fg.previous1Month != null
-      ? `1달전 ${fg.previous1Month.toFixed(1)}`
+  const prev1wSub =
+    fg.previous1Week != null
+      ? `1주전 ${escapeHtml(fg.previous1Week.toFixed(1))}`
       : "";
 
   return `
-    <div class="fear-greed-row">
-      <div>
-        <div class="fg-label-main">Fear &amp; Greed</div>
-        <div class="fg-score ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
-        <div class="fg-rating">${escapeHtml(fg.rating)}</div>
-      </div>
-      <div class="fg-compare">
-        ${escapeHtml([prev1wStr, prev1mStr].filter(Boolean).join(" | "))}
-      </div>
+    <div class="index-card">
+      <div class="label">공포탐욕</div>
+      <div class="value ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
+      <div class="change">${escapeHtml(fg.rating)}</div>
+      ${directionStr !== "" || prev1wSub !== ""
+        ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+            ${[directionStr, prev1wSub].filter(Boolean).join(" · ")}
+          </div>`
+        : ""}
     </div>`;
 }
 
@@ -778,16 +783,16 @@ export function renderIndexTable(
     })
     .join("");
 
-  const fearGreedHtml = fearGreed != null ? renderFearGreed(fearGreed) : "";
+  const fearGreedHtml = fearGreed != null ? renderFearGreedCard(fearGreed) : "";
 
-  return `<div class="index-grid">${cards}</div>${fearGreedHtml}`;
+  return `<div class="index-grid">${cards}${fearGreedHtml}</div>`;
 }
 
 /**
  * 일간 Phase 분포 바 + 지표 행을 렌더링한다.
  * 주간 빌더의 renderPhase2TrendTable과 달리 단일 스냅샷 기준.
  */
-export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
+export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: string): string {
   const total = data.totalStocks > 0 ? data.totalStocks : 1;
   const p1Pct = ((data.phaseDistribution.phase1 / total) * 100).toFixed(1);
   const p2Pct = ((data.phaseDistribution.phase2 / total) * 100).toFixed(1);
@@ -803,6 +808,8 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
     Math.abs(data.phase2RatioChange) < PHASE2_FLAT_THRESHOLD
       ? "보합"
       : `${data.phase2RatioChange >= 0 ? "+" : ""}${data.phase2RatioChange.toFixed(2)}%p`;
+
+  const subtitle = `<h3>Phase 분포</h3>`;
 
   const phaseBar = `
     <div class="phase-bar">
@@ -903,7 +910,12 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot): string {
         : ""
     }`;
 
-  return `${phaseBar}${statsHtml}`;
+  const narrativeHtml =
+    narrative != null && narrative !== "해당 없음" && narrative.trim() !== ""
+      ? `<div class="content-block">${mdToHtml(narrative)}</div>`
+      : "";
+
+  return `${subtitle}${phaseBar}${statsHtml}${narrativeHtml}`;
 }
 
 /**
@@ -1026,6 +1038,7 @@ export function renderIndustryTop10Table(data: DailyIndustryItem[]): string {
 export function renderUnusualStocksSection(
   stocks: DailyUnusualStock[],
   narrative: string,
+  overflowCount?: number,
 ): string {
   const narrativeHtml = narrative !== "해당 없음" && narrative.trim() !== ""
     ? `<div class="content-block">${mdToHtml(narrative)}</div>`
@@ -1093,7 +1106,12 @@ export function renderUnusualStocksSection(
     })
     .join("");
 
-  return `<div class="unusual-grid">${cards}</div>${narrativeHtml}`;
+  const overflowHtml =
+    overflowCount != null && overflowCount > 0
+      ? `<div style="font-size:0.82rem;color:var(--text-muted);text-align:center;margin-top:8px;">(외 ${escapeHtml(String(overflowCount))}건)</div>`
+      : "";
+
+  return `<div class="unusual-grid">${cards}</div>${overflowHtml}${narrativeHtml}`;
 }
 
 /**
@@ -1321,12 +1339,23 @@ export function buildDailyHtml(
   // 데이터 블록 렌더링
   const indexTableHtml = renderIndexTable(data.indexReturns, data.fearGreed);
   const marketPositionHtml = renderMarketPositionGates(data.marketPosition);
-  const phaseDistributionHtml = renderPhaseDistribution(data.marketBreadth);
+  const phaseDistributionHtml = renderPhaseDistribution(data.marketBreadth, insight.breadthNarrative);
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
+  // 특이종목 정렬: Phase 전환 우선 → 거래량비 내림차순 → 수익률 절대값 내림차순
+  const sortedUnusualStocks = [...data.unusualStocks].sort((a, b) => {
+    const aHasPhaseChange = a.conditions.includes("phase_change") ? 1 : 0;
+    const bHasPhaseChange = b.conditions.includes("phase_change") ? 1 : 0;
+    if (bHasPhaseChange !== aHasPhaseChange) return bHasPhaseChange - aHasPhaseChange;
+    if (b.volRatio !== a.volRatio) return b.volRatio - a.volRatio;
+    return Math.abs(b.dailyReturn) - Math.abs(a.dailyReturn);
+  });
+  const truncatedUnusualStocks = sortedUnusualStocks.slice(0, MAX_UNUSUAL_STOCKS);
+  const unusualOverflowCount = data.unusualStocks.length - truncatedUnusualStocks.length;
   const unusualStocksHtml = renderUnusualStocksSection(
-    data.unusualStocks,
+    truncatedUnusualStocks,
     insight.unusualStocksNarrative,
+    unusualOverflowCount,
   );
   const risingRSHtml = renderRisingRSSection(
     data.risingRS,
@@ -1367,9 +1396,9 @@ export function buildDailyHtml(
         ${marketPositionHtml}
       </section>
 
-      <!-- 섹션 3: Phase 분포 -->
+      <!-- 섹션 3: 시장 브레드스 -->
       <section>
-        <h2>Phase 분포</h2>
+        <h2>시장 브레드스</h2>
         ${phaseDistributionHtml}
       </section>
 
