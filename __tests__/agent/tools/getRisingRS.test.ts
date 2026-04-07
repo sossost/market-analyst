@@ -210,6 +210,26 @@ describe("getRisingRS", () => {
     expect(sql).toContain("s.market_cap");
   });
 
+  it("SQL includes SEPA B grade in filter (S/A/B allowed)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await getRisingRS.execute({ date: "2025-01-15" });
+
+    const sql: string = mockQuery.mock.calls[0][0];
+    expect(sql).toContain("fs.grade IN ('S', 'A', 'B')");
+  });
+
+  it("returns B-grade stocks correctly", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [makeRow({ symbol: "EARLY", sepa_grade: "B" })],
+    });
+
+    const result = JSON.parse(await getRisingRS.execute({ date: "2025-01-15" }));
+
+    expect(result.stocks[0].symbol).toBe("EARLY");
+    expect(result.stocks[0].sepaGrade).toBe("B");
+  });
+
   it("marks extreme pctFromLow correctly", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [makeRow({ pct_from_low_52w: "6.0" })],

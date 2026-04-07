@@ -11,7 +11,7 @@ import { toNum as toNumForScorer } from "@/etl/utils/common";
 import type { QuarterlyData, FundamentalGrade } from "@/types/fundamental.js";
 
 /** 카테고리별 최대 종목 수 — 토큰 절약 */
-const MAX_PER_CATEGORY = 10;
+const MAX_PER_CATEGORY = 15;
 const RS_MIN = 30;
 const RS_MAX = 70;
 const MIN_RS_CHANGE = 5;
