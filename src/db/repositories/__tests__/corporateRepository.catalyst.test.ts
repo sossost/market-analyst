@@ -5,8 +5,8 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import type { Pool } from "pg";
-import { findStockNews, findUpcomingEarnings } from "../corporateRepository.js";
-import type { CorporateStockNewsRow, CorporateEarningCalendarRow } from "../types.js";
+import { findStockNews, findUpcomingEarnings, findMarketRegimeByDate } from "../corporateRepository.js";
+import type { CorporateStockNewsRow, CorporateEarningCalendarRow, CorporateMarketRegimeRow } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Pool mock 헬퍼
@@ -144,5 +144,45 @@ describe("findUpcomingEarnings", () => {
     expect(result).toHaveLength(3);
     expect(result[0].date).toBe("2026-04-10");
     expect(result[2].date).toBe("2026-04-28");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findMarketRegimeByDate
+// ---------------------------------------------------------------------------
+
+describe("findMarketRegimeByDate", () => {
+  it("recommendationDate를 파라미터로 전달하고 rows를 반환한다", async () => {
+    const MOCK_ROWS: CorporateMarketRegimeRow[] = [
+      { regime: "EARLY_BEAR", rationale: "Breadth deteriorating", confidence: "high" },
+    ];
+    const pool = makePool(MOCK_ROWS);
+
+    const result = await findMarketRegimeByDate("2026-04-01", pool);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].regime).toBe("EARLY_BEAR");
+    expect(result[0].rationale).toBe("Breadth deteriorating");
+    expect(result[0].confidence).toBe("high");
+  });
+
+  it("쿼리에 is_confirmed = true 필터가 포함된다", async () => {
+    const pool = makePool<CorporateMarketRegimeRow>([]);
+
+    await findMarketRegimeByDate("2026-04-07", pool);
+
+    const queryMock = pool.query as ReturnType<typeof vi.fn>;
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).toContain("is_confirmed = true");
+    expect(params).toEqual(["2026-04-07"]);
+  });
+
+  it("결과가 없으면 빈 배열을 반환한다", async () => {
+    const pool = makePool<CorporateMarketRegimeRow>([]);
+
+    const result = await findMarketRegimeByDate("2026-01-01", pool);
+
+    expect(result).toHaveLength(0);
   });
 });
