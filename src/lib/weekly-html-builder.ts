@@ -155,7 +155,7 @@ const WEEKLY_REPORT_CSS = `
   /* Index Cards */
   .index-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 20px;
   }
@@ -527,6 +527,33 @@ const WEEKLY_REPORT_CSS = `
     text-align: center;
   }
 
+  /* Weekly Trend mini-table */
+  .weekly-trend-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin: 12px 0;
+  }
+
+  .weekly-trend-table thead th {
+    background: var(--surface);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: center;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--border);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .weekly-trend-table tbody td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+    vertical-align: middle;
+  }
+
   /* Responsive */
   @media (max-width: 600px) {
     .container { padding: 16px 12px; }
@@ -582,6 +609,73 @@ function renderVixCard(idx: IndexReturn): string {
     </div>`;
 }
 
+/**
+ * US 10Y Treasury 전용 카드 (주간 데이터 기반).
+ * weekEndClose = yield(%), 변화량은 bp(basis point) 단위.
+ */
+function renderUs10yCard(idx: IndexReturn): string {
+  const yieldChange = idx.weekEndClose - idx.weekStartClose;
+  const cls = colorClass(idx.weeklyChangePercent);
+  const bpChange = yieldChange * 100;
+  const bpStr = `${bpChange >= 0 ? "+" : ""}${bpChange.toFixed(1)}bp`;
+
+  return `
+    <div class="index-card">
+      <div class="label">${escapeHtml(idx.name)}</div>
+      <div class="value">${escapeHtml(idx.weekEndClose.toFixed(2))}%</div>
+      <div class="change ${escapeHtml(cls)}">${escapeHtml(formatPercent(idx.weeklyChangePercent))}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+        ${escapeHtml(bpStr)}
+      </div>
+    </div>`;
+}
+
+/**
+ * DXY(달러 인덱스) 전용 카드 (주간 데이터 기반).
+ * 종가는 포인트 표시, 변화량은 포인트 + % 병기.
+ */
+function renderDxyCard(idx: IndexReturn): string {
+  const cls = colorClass(idx.weeklyChangePercent);
+  const ptChange = idx.weekEndClose - idx.weekStartClose;
+
+  return `
+    <div class="index-card">
+      <div class="label">${escapeHtml(idx.name)}</div>
+      <div class="value">${escapeHtml(formatNumber(idx.weekEndClose))}</div>
+      <div class="change ${escapeHtml(cls)}">${escapeHtml(formatPercent(idx.weeklyChangePercent))}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+        ${escapeHtml(ptChange >= 0 ? "+" : "")}${escapeHtml(ptChange.toFixed(2))}pt
+      </div>
+    </div>`;
+}
+
+/**
+ * 공포탐욕지수를 .index-card 형태로 렌더링 (그리드 내 배치용).
+ */
+function renderFearGreedCard(fg: FearGreedData): string {
+  const scoreCls = fg.score <= 25 ? "down" : fg.score >= 75 ? "up" : "";
+  const directionStr =
+    fg.previous1Week != null
+      ? escapeHtml(getFearGreedDirectionLabel(fg.score, fg.previous1Week))
+      : "";
+  const prev1wSub =
+    fg.previous1Week != null
+      ? `1주전 ${escapeHtml(fg.previous1Week.toFixed(1))}`
+      : "";
+
+  return `
+    <div class="index-card">
+      <div class="label">공포탐욕</div>
+      <div class="value ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
+      <div class="change">${escapeHtml(fg.rating)}</div>
+      ${directionStr !== "" || prev1wSub !== ""
+        ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+            ${[directionStr, prev1wSub].filter(Boolean).join(" · ")}
+          </div>`
+        : ""}
+    </div>`;
+}
+
 function phaseBadgeClass(phase: number): string {
   const map: Record<number, string> = { 1: "p1", 2: "p2", 3: "p3", 4: "p4" };
   return map[phase] ?? "p1";
@@ -628,6 +722,12 @@ export function renderIndexTable(
       if (idx.symbol === "^VIX") {
         return renderVixCard(idx);
       }
+      if (idx.symbol === "^TNX") {
+        return renderUs10yCard(idx);
+      }
+      if (idx.symbol === "DX-Y.NYB") {
+        return renderDxyCard(idx);
+      }
 
       const cls = colorClass(idx.weeklyChangePercent);
       const changeStr = formatPercent(idx.weeklyChangePercent);
@@ -646,9 +746,9 @@ export function renderIndexTable(
     .join("");
 
   const fearGreedHtml =
-    fearGreed != null ? renderFearGreed(fearGreed) : "";
+    fearGreed != null ? renderFearGreedCard(fearGreed) : "";
 
-  return `<div class="index-grid">${cards}</div>${fearGreedHtml}`;
+  return `<div class="index-grid">${cards}${fearGreedHtml}</div>`;
 }
 
 function getFearGreedDirectionLabel(score: number, previous1Week: number): string {
@@ -663,35 +763,58 @@ function getFearGreedDirectionLabel(score: number, previous1Week: number): strin
   return "탐욕 약화";
 }
 
-function renderFearGreed(fg: FearGreedData): string {
-  // 공포(낮은 점수)=파랑(down), 탐욕(높은 점수)=빨강(up)
-  const scoreCls = fg.score <= 25 ? "down" : fg.score >= 75 ? "up" : "";
-  const prev1wStr =
-    fg.previous1Week != null
-      ? `1주전 ${fg.previous1Week.toFixed(1)} → 현재 ${fg.score.toFixed(1)} (${getFearGreedDirectionLabel(fg.score, fg.previous1Week)})`
-      : "";
-  const prev1mStr =
-    fg.previous1Month != null
-      ? `1달전 ${fg.previous1Month.toFixed(1)}`
-      : "";
+/**
+ * weeklyTrend 5일 Phase 2 비율 추이를 mini-table로 시각화한다.
+ * 2일 미만 데이터는 빈 문자열을 반환한다.
+ */
+export function renderWeeklyTrendTable(
+  weeklyTrend: MarketBreadthData["weeklyTrend"],
+): string {
+  if (weeklyTrend.length < 2) return "";
+
+  const rows = weeklyTrend
+    .map((point, idx) => {
+      const dateParts = point.date.split("-");
+      const dateLabel = `${Number(dateParts[1])}/${Number(dateParts[2])}`;
+
+      const ratioStr = `${point.phase2Ratio.toFixed(1)}%`;
+
+      let changeStr = "—";
+      let changeCls = "neutral-color";
+      if (idx > 0) {
+        const prevRatio = weeklyTrend[idx - 1].phase2Ratio;
+        const diff = point.phase2Ratio - prevRatio;
+        changeCls = colorClass(diff);
+        changeStr = `${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%p`;
+      }
+
+      return `
+        <tr>
+          <td>${escapeHtml(dateLabel)}</td>
+          <td>${escapeHtml(ratioStr)}</td>
+          <td class="${escapeHtml(changeCls)}">${escapeHtml(changeStr)}</td>
+        </tr>`;
+    })
+    .join("");
 
   return `
-    <div class="fear-greed-row">
-      <div>
-        <div class="fg-label-main">Fear &amp; Greed</div>
-        <div class="fg-score ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
-        <div class="fg-rating">${escapeHtml(fg.rating)}</div>
-      </div>
-      <div class="fg-compare">
-        ${escapeHtml([prev1wStr, prev1mStr].filter(Boolean).join(" | "))}
-      </div>
-    </div>`;
+    <h3>Phase 2 비율 주간 추이</h3>
+    <table class="weekly-trend-table">
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th>Phase 2 비율</th>
+          <th>전일 대비</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 /**
  * Phase 2 비율 주간 추이 테이블 + Phase 분포 바 + 지표 행을 렌더링한다.
  */
-export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
+export function renderPhase2TrendTable(breadth: MarketBreadthData, breadthNarrative?: string): string {
   const { weeklyTrend, phase1to2Transitions, latestSnapshot } = breadth;
 
   // Phase 분포 바 + 주간 변화 (중복 제거: 바 하나에 변화량만 주석)
@@ -775,7 +898,14 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData): string {
       }
     </div>`;
 
-  return `${phaseBar}${statsHtml}`;
+  const trendTableHtml = renderWeeklyTrendTable(weeklyTrend);
+
+  const narrativeHtml =
+    breadthNarrative != null && breadthNarrative.trim() !== ""
+      ? `<div class="content-block">${mdToHtml(breadthNarrative)}</div>`
+      : "";
+
+  return `${phaseBar}${statsHtml}${trendTableHtml}${narrativeHtml}`;
 }
 
 /**
@@ -1140,7 +1270,7 @@ export function buildWeeklyHtml(
 
   // 데이터 블록 렌더링
   const indexTableHtml = renderIndexTable(data.indexReturns, data.fearGreed);
-  const phase2TrendHtml = renderPhase2TrendTable(data.marketBreadth);
+  const phase2TrendHtml = renderPhase2TrendTable(data.marketBreadth, insight.breadthNarrative);
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
   const watchlistHtml = renderWatchlistSection(data.watchlist);
@@ -1179,6 +1309,11 @@ export function buildWeeklyHtml(
       <section>
         <h2>📊 주간 시장 구조 변화</h2>
         ${indexTableHtml}
+      </section>
+
+      <!-- 섹션 1-1: 시장 브레드스 -->
+      <section>
+        <h2>📊 시장 브레드스</h2>
         ${phase2TrendHtml}
       </section>
 

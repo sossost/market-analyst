@@ -187,6 +187,7 @@ ${ANALYSIS_FRAMEWORK}
 
 **각 필드 작성 가이드라인:**
 
+- **breadthNarrative**: 브레드스 해석. Phase 2 비율 5거래일 추이를 기반으로 확장/수축 판단. A/D ratio, 신고가/저가 비율, Phase 1→2 전환 건수를 종합하여 시장 폭의 건강도를 해석. 숫자 나열이 아니라 "이번 주 시장 폭이 어떤 방향으로 움직이고 있는가"에 대한 판단 서사.
 - **marketTemperature**: "bullish" / "neutral" / "bearish" 중 하나 선택
 - **marketTemperatureLabel**: 시장 온도 레이블. 예: "중립 — 관망", "강세 — 모멘텀 유지", "약세 — 리스크 우위"
 - **sectorRotationNarrative**: 섹터 로테이션 해석. 구조적 상승(4주 추세 일치)인지 일회성 반등인지 판단. 2주 연속 상위 유지 섹터 강조. 숫자 테이블 금지.
