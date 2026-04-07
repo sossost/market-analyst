@@ -104,7 +104,7 @@ export async function findMarketRegimeByDate(
   const { rows } = await pool.query<CorporateMarketRegimeRow>(
     `SELECT regime, rationale, confidence
      FROM market_regimes
-     WHERE regime_date <= $1
+     WHERE regime_date <= $1 AND is_confirmed = true
      ORDER BY regime_date DESC
      LIMIT 1`,
     [recommendationDate],
