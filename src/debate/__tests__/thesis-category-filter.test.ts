@@ -184,13 +184,30 @@ describe("sentiment short_term_outlook 카테고리 필터", () => {
 // ─── sentiment confidence 자동 하향 ─────────────────────────────────────────
 
 describe("sentiment confidence 자동 하향", () => {
-  it("sentiment의 high confidence를 low로 2단계 하향한다", () => {
+  it("sentiment의 structural_narrative는 confidence 원본을 유지한다 (#669)", () => {
     const text = wrapThesesInText([
       makeThesis({
         agentPersona: "sentiment",
         category: "structural_narrative",
         confidence: "high",
         thesis: "포지셔닝 과밀 분석",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("sentiment의 sector_rotation high confidence를 low로 2단계 하향한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        confidence: "high",
+        thesis: "자금 Technology → Defensive 로테이션",
         timeframeDays: 60,
       }),
     ]);

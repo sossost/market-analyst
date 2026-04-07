@@ -586,6 +586,81 @@ describe("formatModeratorPerformanceContext", () => {
 
     expect(output).not.toContain("저신뢰 분석가 가중치 규칙");
   });
+
+  // #669: 레짐 전환기 테스트
+  it("EARLY_BEAR 전환기에 저신뢰 분석가에 1.0x 가중치를 적용한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "macro", confirmed: 6, invalidated: 2, expired: 0, hitRate: 0.75 },
+      { persona: "sentiment", confirmed: 4, invalidated: 5, expired: 0, hitRate: 0.44 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates, "EARLY_BEAR");
+
+    expect(output).toContain("레짐 전환기");
+    expect(output).toContain("1.0배 가중치");
+    expect(output).toContain("단독 의견");
+    expect(output).toContain("고려 대상");
+    expect(output).not.toContain("0.5배 가중치");
+    expect(output).not.toContain("완전 제외");
+  });
+
+  it("EARLY_BULL 전환기에도 가중치 완화를 적용한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "sentiment", confirmed: 4, invalidated: 5, expired: 0, hitRate: 0.44 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates, "EARLY_BULL");
+
+    expect(output).toContain("레짐 전환기");
+    expect(output).toContain("1.0배 가중치");
+    expect(output).toContain("EARLY_BULL");
+  });
+
+  it("MID_BULL(비전환기)에는 기존 0.5x 규칙을 유지한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "sentiment", confirmed: 4, invalidated: 5, expired: 0, hitRate: 0.44 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates, "MID_BULL");
+
+    expect(output).toContain("0.5배 가중치");
+    expect(output).toContain("완전 제외");
+    expect(output).not.toContain("레짐 전환기");
+  });
+
+  it("레짐 정보 없으면(null) 기존 규칙을 유지한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "sentiment", confirmed: 4, invalidated: 5, expired: 0, hitRate: 0.44 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates, null);
+
+    expect(output).toContain("0.5배 가중치");
+    expect(output).not.toContain("레짐 전환기");
+  });
+
+  it("전환기에도 방향성 수치 예측 배제를 명시한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "sentiment", confirmed: 4, invalidated: 5, expired: 0, hitRate: 0.44 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates, "EARLY_BEAR");
+
+    expect(output).toContain("방향성 수치 예측");
+    expect(output).toContain("배제");
+    expect(output).toContain("구조적 관찰");
+  });
+
+  it("전환기에 sentiment 포함 시 조건부 confidence 하향 안내를 표시한다", () => {
+    const hitRates: PersonaHitRate[] = [
+      { persona: "sentiment", confirmed: 4, invalidated: 5, expired: 0, hitRate: 0.44 },
+    ];
+
+    const output = formatModeratorPerformanceContext(hitRates, "EARLY_BEAR");
+
+    expect(output).toContain("구조적 서사: 원본 유지");
+    expect(output).toContain("섹터 로테이션: 하향");
+  });
 });
 
 // ─── formatCategoryHitRateContext ─────────────────────────────────────────────
