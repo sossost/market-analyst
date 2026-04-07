@@ -1,7 +1,9 @@
 import type { LLMProvider } from "./llm/index.js";
+import { loadConfirmedRegime, type MarketRegimeRow } from "./regimeStore.js";
 import { logger } from "@/lib/logger";
 import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, MinorityViewPosition, AgentPersona, Confidence, NarrativeChainFields } from "@/types/debate";
 import type { FundamentalScore } from "@/types/fundamental";
+import type { MarketRegimeType } from "@/db/schema/analyst";
 
 const MODERATOR_MAX_TOKENS = 8192;
 
@@ -61,6 +63,55 @@ export function formatFundamentalContext(scores: FundamentalScore[]): string {
   ].join("\n");
 }
 
+/**
+ * 허용된 레짐 전환 경로 (regimeStore.ts의 ALLOWED_TRANSITIONS와 동기).
+ * 프롬프트에 텍스트로 삽입하여 LLM이 비허용 전환을 사전 차단하도록 안내.
+ */
+const ALLOWED_TRANSITIONS_TEXT: Readonly<Record<MarketRegimeType, readonly string[]>> = {
+  EARLY_BULL: ["MID_BULL", "EARLY_BEAR"],
+  MID_BULL: ["LATE_BULL", "EARLY_BULL", "EARLY_BEAR"],
+  LATE_BULL: ["MID_BULL", "EARLY_BEAR"],
+  EARLY_BEAR: ["BEAR", "EARLY_BULL"],
+  BEAR: ["EARLY_BEAR"],
+};
+
+/**
+ * 이전 확정 레짐 정보를 프롬프트용 텍스트로 포매팅.
+ * - regime이 null이면 "확정된 레짐 없음 — 제약 없이 판정" 안내.
+ * - regime이 있으면 확정 레짐, 경과일수, 허용 전환 경로를 포함.
+ *
+ * @param regime 최근 확정 레짐 (null이면 초기 상태)
+ * @param today YYYY-MM-DD 형식의 오늘 날짜
+ */
+export function formatRegimeContext(regime: MarketRegimeRow | null, today: string): string {
+  if (regime == null) {
+    return [
+      "### 이전 확정 레짐",
+      "현재 확정된 레짐이 없습니다 (초기 상태). 제약 없이 판정하세요.",
+    ].join("\n");
+  }
+
+  const confirmedDate = new Date(`${regime.regimeDate}T00:00:00Z`);
+  const todayDate = new Date(`${today}T00:00:00Z`);
+  const daysSince = Math.floor((todayDate.getTime() - confirmedDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  const allowed = ALLOWED_TRANSITIONS_TEXT[regime.regime];
+  const transitionTable = Object.entries(ALLOWED_TRANSITIONS_TEXT)
+    .map(([from, to]) => `  ${from} → ${(to as readonly string[]).join(" / ")}`)
+    .join("\n");
+
+  return [
+    "### 이전 확정 레짐",
+    `- **현재 확정 레짐**: ${regime.regime} (${regime.regimeDate} 확정, ${daysSince}일 경과)`,
+    `- **허용 전환 경로**: ${regime.regime} → ${allowed.join(" / ")}`,
+    `- 위 경로 외의 전환(예: EARLY_BEAR → LATE_BULL)은 **금지**입니다.`,
+    `- 급격한 전환이 필요하다면, rationale에 **명시적 근거**를 반드시 포함하세요.`,
+    "",
+    "**전체 허용 전환 매트릭스:**",
+    transitionTable,
+  ].join("\n");
+}
+
 export function buildSynthesisPrompt(
   round1Outputs: RoundOutput[],
   round2Outputs: RoundOutput[],
@@ -70,6 +121,7 @@ export function buildSynthesisPrompt(
   agentPerformanceContext?: string,
   earlyDetectionContext?: string,
   catalystContext?: string,
+  regimeContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -375,7 +427,7 @@ ${round2Section}
 리포트 마지막에 아래 JSON 블록을 **별도의 코드블록**으로 추가하세요.
 이 데이터는 시스템이 자동 파싱합니다.
 
-레짐 분류 기준:
+${regimeContext != null && regimeContext.length > 0 ? regimeContext + "\n\n" : ""}레짐 분류 기준:
 - EARLY_BULL: 브레드스 반전 신호, 상승 전환 비율 상승 초기, 지수 바닥 확인 구간
 - MID_BULL: 다수 섹터 상승 전환, RS 상위 종목 다수, 추천 적극성 정상
 - LATE_BULL: 소수 종목만 주도, 브레드스 피크 후 하락, 과열 신호
@@ -882,7 +934,12 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
   const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext } = input;
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext);
+  // 이전 확정 레짐을 조회하여 프롬프트에 주입 — LLM이 맥락 없이 판정하는 것을 방지
+  const confirmedRegime = await loadConfirmedRegime();
+  const today = new Date().toISOString().slice(0, 10);
+  const regimeContext = formatRegimeContext(confirmedRegime, today);
+
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, regimeContext);
   const result = await provider.call({
     systemPrompt: moderator.systemPrompt,
     userMessage,

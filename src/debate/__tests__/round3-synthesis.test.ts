@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { formatFundamentalContext, buildSynthesisPrompt } from "../round3-synthesis.js";
+import { formatFundamentalContext, buildSynthesisPrompt, formatRegimeContext } from "../round3-synthesis.js";
+import type { MarketRegimeRow } from "../regimeStore.js";
 import type { FundamentalScore } from "@/types/fundamental";
 import type { RoundOutput, AgentPersona } from "@/types/debate";
 
@@ -214,5 +215,110 @@ describe("buildSynthesisPrompt", () => {
     // 허용 패턴 예시
     expect(result).toContain("어떤 조건이 충족되면");
     expect(result).toContain("조건부 형식");
+  });
+
+  it("regimeContext가 주어지면 레짐 판정 섹션에 포함된다", () => {
+    const regimeCtx = "### 이전 확정 레짐\n- **현재 확정 레짐**: EARLY_BEAR";
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, regimeCtx);
+
+    expect(result).toContain("이전 확정 레짐");
+    expect(result).toContain("EARLY_BEAR");
+  });
+
+  it("regimeContext가 undefined이면 이전 레짐 섹션이 포함되지 않는다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question);
+
+    expect(result).not.toContain("이전 확정 레짐");
+  });
+
+  it("regimeContext가 빈 문자열이면 이전 레짐 섹션이 포함되지 않는다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, "");
+
+    expect(result).not.toContain("이전 확정 레짐");
+  });
+
+  it("regimeContext는 레짐 분류 기준 바로 앞에 위치한다", () => {
+    const regimeCtx = "### 이전 확정 레짐\n- MID_BULL 확정";
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, regimeCtx);
+
+    const regimeCtxIdx = result.indexOf("이전 확정 레짐");
+    const classificationIdx = result.indexOf("레짐 분류 기준:");
+    expect(regimeCtxIdx).toBeGreaterThan(-1);
+    expect(classificationIdx).toBeGreaterThan(-1);
+    expect(regimeCtxIdx).toBeLessThan(classificationIdx);
+  });
+});
+
+// ─── formatRegimeContext ─────────────────────────────────────────────────────
+
+describe("formatRegimeContext", () => {
+  it("regime이 null이면 초기 상태 안내를 반환한다", () => {
+    const result = formatRegimeContext(null, "2026-04-07");
+
+    expect(result).toContain("이전 확정 레짐");
+    expect(result).toContain("확정된 레짐이 없습니다");
+    expect(result).toContain("제약 없이 판정");
+  });
+
+  it("regime이 있으면 확정 레짐명과 경과일수를 포함한다", () => {
+    const regime: MarketRegimeRow = {
+      regimeDate: "2026-04-03",
+      regime: "EARLY_BEAR",
+      rationale: "브레드스 급락",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-04-03",
+    };
+    const result = formatRegimeContext(regime, "2026-04-07");
+
+    expect(result).toContain("EARLY_BEAR");
+    expect(result).toContain("2026-04-03 확정");
+    expect(result).toContain("4일 경과");
+  });
+
+  it("허용 전환 경로를 포함한다", () => {
+    const regime: MarketRegimeRow = {
+      regimeDate: "2026-04-05",
+      regime: "EARLY_BEAR",
+      rationale: "테스트",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-04-05",
+    };
+    const result = formatRegimeContext(regime, "2026-04-07");
+
+    expect(result).toContain("EARLY_BEAR → BEAR / EARLY_BULL");
+    expect(result).toContain("금지");
+  });
+
+  it("전체 허용 전환 매트릭스를 포함한다", () => {
+    const regime: MarketRegimeRow = {
+      regimeDate: "2026-04-05",
+      regime: "MID_BULL",
+      rationale: "테스트",
+      confidence: "medium",
+      isConfirmed: true,
+      confirmedAt: "2026-04-05",
+    };
+    const result = formatRegimeContext(regime, "2026-04-07");
+
+    expect(result).toContain("전체 허용 전환 매트릭스");
+    expect(result).toContain("EARLY_BULL → MID_BULL / EARLY_BEAR");
+    expect(result).toContain("LATE_BULL → MID_BULL / EARLY_BEAR");
+    expect(result).toContain("BEAR → EARLY_BEAR");
+  });
+
+  it("경과일수가 0일이면 0일 경과로 표시한다", () => {
+    const regime: MarketRegimeRow = {
+      regimeDate: "2026-04-07",
+      regime: "MID_BULL",
+      rationale: "테스트",
+      confidence: "high",
+      isConfirmed: true,
+      confirmedAt: "2026-04-07",
+    };
+    const result = formatRegimeContext(regime, "2026-04-07");
+
+    expect(result).toContain("0일 경과");
   });
 });
