@@ -23,6 +23,7 @@ import type {
   DailyWatchlistData,
   DailyReportData,
   DailyReportInsight,
+  MarketPositionData,
 } from "@/tools/schemas/dailyReportSchema.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
@@ -509,6 +510,48 @@ const DAILY_REPORT_CSS = `
     text-align: center;
   }
 
+  /* Market Position Gates */
+  .gate-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-top: 16px;
+  }
+
+  .gate-header {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+
+  .gate-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 0.85rem;
+  }
+
+  .gate-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .gate-dot.pass { background: var(--up); }
+  .gate-dot.fail { background: var(--down); }
+
+  .gate-detail {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-left: auto;
+  }
+
   /* Responsive */
   @media (max-width: 600px) {
     .container { padding: 16px 12px; }
@@ -582,6 +625,34 @@ function getFearGreedDirectionLabel(score: number, previous1Week: number): strin
   if (isRising && !isGreedZone) return "공포 완화";
   if (!isRising && !isGreedZone) return "공포 심화";
   return "탐욕 약화";
+}
+
+/**
+ * 시장 환경 멀티게이트 블록을 렌더링한다.
+ * data가 null이면 빈 문자열 반환 — 섹션 레이아웃에 영향 없음.
+ */
+export function renderMarketPositionGates(
+  data: MarketPositionData | null,
+): string {
+  if (data == null) return "";
+
+  const rows = data.gates
+    .map((g) => {
+      const dotCls = g.passed ? "pass" : "fail";
+      return `
+        <div class="gate-row">
+          <div class="gate-dot ${escapeHtml(dotCls)}"></div>
+          <span>${escapeHtml(g.label)}</span>
+          <span class="gate-detail">${escapeHtml(g.detail)}</span>
+        </div>`;
+    })
+    .join("");
+
+  return `
+    <div class="gate-block">
+      <div class="gate-header">시장 환경 (${escapeHtml(String(data.passCount))}/${escapeHtml(String(data.totalCount))})</div>
+      ${rows}
+    </div>`;
 }
 
 function renderFearGreed(fg: FearGreedData): string {
@@ -1249,6 +1320,7 @@ export function buildDailyHtml(
 
   // 데이터 블록 렌더링
   const indexTableHtml = renderIndexTable(data.indexReturns, data.fearGreed);
+  const marketPositionHtml = renderMarketPositionGates(data.marketPosition);
   const phaseDistributionHtml = renderPhaseDistribution(data.marketBreadth);
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
@@ -1292,6 +1364,7 @@ export function buildDailyHtml(
       <section>
         <h2>지수 현황</h2>
         ${indexTableHtml}
+        ${marketPositionHtml}
       </section>
 
       <!-- 섹션 3: Phase 분포 -->

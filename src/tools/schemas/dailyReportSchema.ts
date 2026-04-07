@@ -240,6 +240,29 @@ export interface DailyWatchlistData {
   items: DailyWatchlistItem[];
 }
 
+// ─── 시장 환경 멀티게이트 ────────────────────────────────────────────────────
+
+/**
+ * 단일 시장 환경 게이트 결과.
+ * passed: 조건 충족 여부. detail: 화면 표시용 수치 문자열.
+ */
+export interface MarketPositionGate {
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+/**
+ * getMarketPosition 도구 반환값.
+ * 4개 게이트(MA200, MA50, 신고가>신저가, A/D>1.0)의 집계.
+ */
+export interface MarketPositionData {
+  gates: MarketPositionGate[];
+  passCount: number;
+  totalCount: number;
+  date: string;
+}
+
 // ─── 데이터 컨테이너 (도구 반환값 직접 매핑) ──────────────────────────────────
 
 /**
@@ -264,6 +287,8 @@ export interface DailyReportData {
   risingRS: DailyRisingRSStock[];
   /** get_watchlist_status(include_trajectory: false) 반환값 */
   watchlist: DailyWatchlistData;
+  /** getMarketPosition 반환값. 수집 실패 시 null */
+  marketPosition: MarketPositionData | null;
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────
