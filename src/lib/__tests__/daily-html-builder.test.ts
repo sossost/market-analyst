@@ -215,6 +215,7 @@ function createMockInsight(
     unusualStocksNarrative: "반도체 업종 중심의 급락이 관찰된다.",
     risingRSNarrative: "에너지 업종에서 RS 가속 패턴이 포착된다.",
     watchlistNarrative: "NVDA는 Phase 2를 유지하고 있다.",
+    breadthNarrative: "Phase 2 비율이 소폭 확대되며 시장 참여 폭이 넓어지고 있다.",
     todayInsight: "섹터 로테이션 조짐이 보인다.",
     discordMessage: "S&P 500 +0.88% · Phase2 30.4% · 특이종목 3건",
     ...overrides,
@@ -269,16 +270,18 @@ describe("renderIndexTable", () => {
     expect(html).toContain("지수 데이터를 가져올 수 없습니다");
   });
 
-  it("fearGreed가 null이면 Fear & Greed 행을 렌더링하지 않는다", () => {
+  it("fearGreed가 null이면 공포탐욕 카드를 렌더링하지 않는다", () => {
     const html = renderIndexTable([createMockDailyIndexReturn()], null);
-    expect(html).not.toContain("Fear &amp; Greed");
+    expect(html).not.toContain("공포탐욕");
   });
 
-  it("fearGreed가 있으면 Fear & Greed 행을 렌더링한다", () => {
+  it("fearGreed가 있으면 공포탐욕 카드를 그리드 안에 렌더링한다", () => {
     const fg = createMockFearGreed({ score: 55, rating: "Greed" });
     const html = renderIndexTable([createMockDailyIndexReturn()], fg);
-    expect(html).toContain("Fear &amp; Greed");
+    expect(html).toContain("공포탐욕");
     expect(html).toContain("Greed");
+    // 그리드 안에 포함되어야 함 (별도 행 아님)
+    expect(html).toContain('class="index-card"');
   });
 
   it("VIX 종목은 VIX 전용 렌더링을 사용한다", () => {
@@ -348,6 +351,27 @@ describe("renderIndexTable", () => {
     const html = renderIndexTable([idx], null);
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("공포탐욕 카드에 score, rating, 방향 레이블을 표시한다", () => {
+    const fg = createMockFearGreed({ score: 25, rating: "Extreme Fear", previous1Week: 30 });
+    const html = renderIndexTable([createMockDailyIndexReturn()], fg);
+    expect(html).toContain("25");
+    expect(html).toContain("Extreme Fear");
+    expect(html).toContain("공포 심화");
+    expect(html).toContain("1주전 30.0");
+  });
+
+  it("공포탐욕 극도 공포(≤25) 시 down 색상을 적용한다", () => {
+    const fg = createMockFearGreed({ score: 20 });
+    const html = renderIndexTable([createMockDailyIndexReturn()], fg);
+    expect(html).toContain('class="value down"');
+  });
+
+  it("공포탐욕 극도 탐욕(≥75) 시 up 색상을 적용한다", () => {
+    const fg = createMockFearGreed({ score: 80 });
+    const html = renderIndexTable([createMockDailyIndexReturn()], fg);
+    expect(html).toContain('class="value up"');
   });
 });
 
@@ -467,6 +491,30 @@ describe("renderPhaseDistribution", () => {
     const html = renderPhaseDistribution(snapshot);
     expect(html).toContain("-15건");
     expect(html).toContain("down");
+  });
+
+  it("Phase 분포 서브타이틀을 렌더링한다", () => {
+    const html = renderPhaseDistribution(createMockBreadthSnapshot());
+    expect(html).toContain("<h3>Phase 분포</h3>");
+  });
+
+  it("narrative가 있으면 content-block을 렌더링한다", () => {
+    const html = renderPhaseDistribution(
+      createMockBreadthSnapshot(),
+      "Phase 2 비율이 확대되며 참여 폭이 넓어지고 있다.",
+    );
+    expect(html).toContain("content-block");
+    expect(html).toContain("Phase 2 비율이 확대되며");
+  });
+
+  it("narrative가 '해당 없음'이면 content-block을 렌더링하지 않는다", () => {
+    const html = renderPhaseDistribution(createMockBreadthSnapshot(), "해당 없음");
+    expect(html).not.toContain("content-block");
+  });
+
+  it("narrative가 undefined이면 content-block을 렌더링하지 않는다", () => {
+    const html = renderPhaseDistribution(createMockBreadthSnapshot());
+    expect(html).not.toContain("content-block");
   });
 });
 
@@ -644,6 +692,24 @@ describe("renderUnusualStocksSection", () => {
     const stock = createMockUnusualStock({ industry: null, sector: null });
     const html = renderUnusualStocksSection([stock], "해당 없음");
     expect(html).toContain("—");
+  });
+
+  it("overflowCount가 양수이면 '(외 N건)' 표시를 렌더링한다", () => {
+    const html = renderUnusualStocksSection(
+      [createMockUnusualStock()],
+      "해당 없음",
+      7,
+    );
+    expect(html).toContain("(외 7건)");
+  });
+
+  it("overflowCount가 0이면 '(외 N건)' 표시를 렌더링하지 않는다", () => {
+    const html = renderUnusualStocksSection(
+      [createMockUnusualStock()],
+      "해당 없음",
+      0,
+    );
+    expect(html).not.toContain("(외");
   });
 });
 
@@ -867,7 +933,7 @@ describe("buildDailyHtml", () => {
     );
     expect(html).toContain("시장 온도");
     expect(html).toContain("지수 현황");
-    expect(html).toContain("Phase 분포");
+    expect(html).toContain("시장 브레드스");
     expect(html).toContain("섹터 RS 랭킹");
     expect(html).toContain("업종 RS Top 10");
     expect(html).toContain("특이종목");
@@ -917,5 +983,66 @@ describe("buildDailyHtml", () => {
     );
     expect(html).toContain("report-footer");
     expect(html).toContain("2026-04-04");
+  });
+
+  it("특이종목이 8건 초과이면 상한 적용 후 '(외 N건)' 표시한다", () => {
+    const stocks = Array.from({ length: 12 }, (_, i) =>
+      createMockUnusualStock({ symbol: `STOCK${i}`, volRatio: 3.0 - i * 0.1 }),
+    );
+    const data = createMockDailyReportData({ unusualStocks: stocks });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    // 12건 중 8건만 렌더링, 나머지 4건은 overflow
+    expect(html).toContain("(외 4건)");
+    expect(html).toContain("STOCK0");
+    expect(html).toContain("STOCK7");
+    expect(html).not.toContain("STOCK8");
+  });
+
+  it("특이종목 정렬: Phase 전환 종목이 우선 배치된다", () => {
+    const phaseChangeStock = createMockUnusualStock({
+      symbol: "PHASE_CHANGE",
+      conditions: ["phase_change", "big_move"],
+      volRatio: 1.0,
+    });
+    const highVolStock = createMockUnusualStock({
+      symbol: "HIGH_VOL",
+      conditions: ["big_move", "high_volume"],
+      volRatio: 5.0,
+    });
+    const data = createMockDailyReportData({
+      unusualStocks: [highVolStock, phaseChangeStock],
+    });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    const phaseIdx = html.indexOf("PHASE_CHANGE");
+    const volIdx = html.indexOf("HIGH_VOL");
+    expect(phaseIdx).toBeLessThan(volIdx);
+  });
+
+  it("특이종목 8건 이하이면 '(외 N건)' 표시 없음", () => {
+    const stocks = Array.from({ length: 5 }, (_, i) =>
+      createMockUnusualStock({ symbol: `S${i}` }),
+    );
+    const data = createMockDailyReportData({ unusualStocks: stocks });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    expect(html).not.toContain("(외");
+  });
+
+  it("지표 그리드가 4열 고정이다", () => {
+    const html = buildDailyHtml(
+      createMockDailyReportData(),
+      createMockInsight(),
+      "2026-04-04",
+    );
+    expect(html).toContain("repeat(4, 1fr)");
+  });
+
+  it("브레드스 섹션 타이틀이 '시장 브레드스'이고 서브타이틀 'Phase 분포'를 포함한다", () => {
+    const html = buildDailyHtml(
+      createMockDailyReportData(),
+      createMockInsight(),
+      "2026-04-04",
+    );
+    expect(html).toContain("<h2>시장 브레드스</h2>");
+    expect(html).toContain("<h3>Phase 분포</h3>");
   });
 });

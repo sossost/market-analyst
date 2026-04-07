@@ -315,6 +315,8 @@ export interface DailyReportInsight {
   watchlistNarrative: string;
   /** 토론 인사이트가 있는 경우 2~3문장 핵심만. 없으면 "해당 없음". */
   todayInsight: string;
+  /** 브레드스 추세 + 맥락 한줄 해석. 1~2문장. 없으면 "해당 없음". */
+  breadthNarrative: string;
   /** Discord 핵심 요약. 3~5줄. 지수 변화 + Phase2 비율 + 특이종목 수 요약. 링크 금지. */
   discordMessage: string;
 }
@@ -334,6 +336,7 @@ export function fillInsightDefaults(
     risingRSNarrative: "해당 없음",
     watchlistNarrative: "해당 없음",
     todayInsight: "해당 없음",
+    breadthNarrative: "해당 없음",
     discordMessage: "",
   };
 
@@ -368,6 +371,10 @@ export function fillInsightDefaults(
       typeof raw["todayInsight"] === "string"
         ? raw["todayInsight"]
         : defaults.todayInsight,
+    breadthNarrative:
+      typeof raw["breadthNarrative"] === "string"
+        ? raw["breadthNarrative"]
+        : defaults.breadthNarrative,
     discordMessage:
       typeof raw["discordMessage"] === "string"
         ? raw["discordMessage"]
