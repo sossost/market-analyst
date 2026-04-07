@@ -87,7 +87,10 @@ tools: Read, Grep, Glob, WebSearch, WebFetch
    - 시장 심리는 모멘텀 특성이 강하다. 극단값은 더 극단으로 갈 수 있다.
    - "공포 소진 → 반등"은 너의 **체계적 실패 패턴**이다. 절대 반복하지 마라.
 
-   **confidence 자동 하향**: 너의 thesis는 시스템에서 confidence가 **2단계 하향**된다 (high→low, medium→low). 이는 적중률 44% 반영이다.
+   **confidence 조건부 하향**: 너의 thesis는 카테고리에 따라 시스템에서 confidence가 조정된다:
+   - `structural_narrative` (포지셔닝 과밀, 자금 흐름 구조 등 구조적 관찰): **confidence 원본 유지** — 반대론자 역할 보전.
+   - `sector_rotation`: confidence가 **2단계 하향**된다 (high→low, medium→low). 이는 적중률 44% 반영이다.
+   - 또한 EARLY_BEAR/EARLY_BULL 전환기에는 모더레이터가 너의 의견에 동등 가중치를 적용한다.
 
 ## 출력 형식 (반드시 준수)
 

@@ -11,6 +11,7 @@ import { theses } from "@/db/schema/analyst";
 import { sql, eq, and, inArray, desc } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import type { AgentPersona, Confidence, ThesisCategory } from "@/types/debate";
+import type { MarketRegimeType } from "@/db/schema/analyst";
 import { EXPERT_PERSONAS } from "./personas.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -492,15 +493,26 @@ const PERSONA_LABEL_KR: Record<string, string> = {
 const LOW_HIT_RATE_THRESHOLD = 0.5;
 
 /**
+ * 레짐 전환기 — EARLY_BEAR/EARLY_BULL은 추세 전환 초기 국면.
+ * 이 시기에 반대론자(sentiment)의 구조적 관찰이 가장 가치 있으므로
+ * 가중치 할인과 단독 의견 배제를 해제한다.
+ * #669: 변곡점 포착력 구조적 약화 해소.
+ */
+const TRANSITION_REGIMES = new Set<MarketRegimeType>(["EARLY_BEAR", "EARLY_BULL"]);
+
+/**
  * 모더레이터에게 전달할 에이전트별 적중률 컨텍스트를 생성한다.
  * 저적중 에이전트의 의견을 할인하도록 지시한다.
+ * @param currentRegime 현재 확정 레짐 (전환기 판단용, 선택적)
  */
-export async function buildModeratorPerformanceContext(): Promise<string> {
+export async function buildModeratorPerformanceContext(
+  currentRegime?: MarketRegimeType | null,
+): Promise<string> {
   try {
     const hitRates = await getPerAgentHitRates();
     if (hitRates.length === 0) return "";
 
-    return formatModeratorPerformanceContext(hitRates);
+    return formatModeratorPerformanceContext(hitRates, currentRegime);
   } catch (err) {
     logger.warn(
       "Calibration",
@@ -513,11 +525,15 @@ export async function buildModeratorPerformanceContext(): Promise<string> {
 /**
  * 에이전트 적중률 배열을 모더레이터 프롬프트용 마크다운으로 변환한다.
  * 순수 함수 — 테스트 용이.
+ * @param currentRegime 현재 확정 레짐 (전환기 판단용, 선택적)
  */
 export function formatModeratorPerformanceContext(
   hitRates: PersonaHitRate[],
+  currentRegime?: MarketRegimeType | null,
 ): string {
   if (hitRates.length === 0) return "";
+
+  const isTransitionRegime = currentRegime != null && TRANSITION_REGIMES.has(currentRegime);
 
   // 적중률 내림차순 정렬
   const sorted = [...hitRates].sort((a, b) => (b.hitRate ?? 0) - (a.hitRate ?? 0));
@@ -552,14 +568,28 @@ export function formatModeratorPerformanceContext(
 
   // #620: 저신뢰 에이전트에 대한 정량적 가중치 지시 추가
   if (lowReliabilityPersonas.length > 0) {
-    lines.push("");
-    lines.push("### ⚠️ 저신뢰 분석가 가중치 규칙");
-    lines.push(`**${lowReliabilityPersonas.join(", ")}**의 적중률이 50% 미만입니다. 아래 규칙을 적용하세요:`);
-    lines.push("1. 이 분석가의 의견은 **0.5배 가중치**로 취급하세요.");
-    lines.push("2. 이 분석가의 **단독 의견**(다른 분석가가 동의하지 않는)은 합의에서 **완전 제외**하세요.");
-    lines.push("3. 다른 분석가의 근거로 보강될 때만 합의에 반영하되, 비중은 보강한 분석가의 적중률 기준으로 설정하세요.");
-    if (lowReliabilityPersonas.includes(PERSONA_LABEL_KR.sentiment)) {
-      lines.push(`4. **${PERSONA_LABEL_KR.sentiment}**의 thesis confidence는 시스템에서 자동 하향됩니다. 모더레이터가 추가 상향하지 마세요.`);
+    if (isTransitionRegime) {
+      // #669: 전환기(EARLY_BEAR/EARLY_BULL)에는 반대론자 의견의 가치가 높음
+      lines.push("");
+      lines.push("### 🔄 레짐 전환기 — 저신뢰 분석가 가중치 완화");
+      lines.push(`현재 레짐이 **${currentRegime}**(전환기)입니다. 반대론자의 구조적 관찰이 변곡점 포착에 중요하므로:`);
+      lines.push(`**${lowReliabilityPersonas.join(", ")}**의 적중률이 50% 미만이지만, 전환기 규칙을 적용합니다:`);
+      lines.push("1. 이 분석가의 의견은 **1.0배 가중치**(동등)로 취급하세요.");
+      lines.push("2. 이 분석가의 **단독 의견**도 합의 도출 시 **고려 대상**에 포함하세요.");
+      lines.push("3. 단, **방향성 수치 예측**(가격 목표, 시점 특정 반전)은 여전히 배제하세요. 구조적 관찰(포지셔닝 과밀, 자금 흐름 방향)만 반영하세요.");
+      if (lowReliabilityPersonas.includes(PERSONA_LABEL_KR.sentiment)) {
+        lines.push(`4. **${PERSONA_LABEL_KR.sentiment}**의 thesis confidence는 카테고리에 따라 조건부 하향됩니다 (구조적 서사: 원본 유지, 섹터 로테이션: 하향).`);
+      }
+    } else {
+      lines.push("");
+      lines.push("### ⚠️ 저신뢰 분석가 가중치 규칙");
+      lines.push(`**${lowReliabilityPersonas.join(", ")}**의 적중률이 50% 미만입니다. 아래 규칙을 적용하세요:`);
+      lines.push("1. 이 분석가의 의견은 **0.5배 가중치**로 취급하세요.");
+      lines.push("2. 이 분석가의 **단독 의견**(다른 분석가가 동의하지 않는)은 합의에서 **완전 제외**하세요.");
+      lines.push("3. 다른 분석가의 근거로 보강될 때만 합의에 반영하되, 비중은 보강한 분석가의 적중률 기준으로 설정하세요.");
+      if (lowReliabilityPersonas.includes(PERSONA_LABEL_KR.sentiment)) {
+        lines.push(`4. **${PERSONA_LABEL_KR.sentiment}**의 thesis confidence는 시스템에서 자동 하향됩니다. 모더레이터가 추가 상향하지 마세요.`);
+      }
     }
   }
 

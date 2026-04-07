@@ -586,12 +586,15 @@ async function main() {
   }
 
   // 레짐별 thesis 적중률 로드 (에러 격리)
+  // #669: confirmedRegime을 캘리브레이션 블록에서도 사용하므로 스코프를 상위로 호이스트
   let regimePerformanceContext = "";
+  let confirmedRegimeType: import("@/db/schema/analyst").MarketRegimeType | null = null;
   try {
     const [regimeSummary, confirmedRegime] = await Promise.all([
       getRegimePerformanceSummary(),
       loadConfirmedRegime(),
     ]);
+    confirmedRegimeType = confirmedRegime?.regime ?? null;
     if (regimeSummary.totalResolved > 0) {
       regimePerformanceContext = formatRegimePerformanceForPrompt(
         regimeSummary,
@@ -618,7 +621,7 @@ async function main() {
     const [calibrationResult, perAgentContexts, moderatorPerfContext, categoryContext] = await Promise.all([
       getCalibrationResult(),
       buildEnhancedPerAgentCalibrationContexts(),
-      buildModeratorPerformanceContext(),
+      buildModeratorPerformanceContext(confirmedRegimeType),
       buildCategoryHitRateContext(),
     ]);
     calibrationContext = formatCalibrationForPrompt(calibrationResult);

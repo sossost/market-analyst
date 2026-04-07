@@ -602,3 +602,59 @@ ${makeRegimeJson()}`;
     expect(cleanReport).not.toContain("시장 레짐 판정");
   });
 });
+
+// ─── #669: sentiment confidence 조건부 하향 테스트 ─────────────────────────
+
+describe("sentiment confidence 조건부 하향 (#669)", () => {
+  it("sentiment의 structural_narrative thesis는 confidence 원본을 유지한다", () => {
+    const text = makeThesisJson({
+      agentPersona: "sentiment",
+      thesis: "Tech 섹터 포지셔닝 과밀 — 자금 흐름 defensive 이동 구조",
+      category: "structural_narrative",
+      confidence: "high",
+    });
+
+    const { theses } = extractThesesFromText(text);
+    expect(theses).toHaveLength(1);
+    expect(theses[0].confidence).toBe("high");
+  });
+
+  it("sentiment의 structural_narrative medium confidence도 원본을 유지한다", () => {
+    const text = makeThesisJson({
+      agentPersona: "sentiment",
+      thesis: "성장주 포지셔닝 경직 — 유동성 위축 시 해소 압력",
+      category: "structural_narrative",
+      confidence: "medium",
+    });
+
+    const { theses } = extractThesesFromText(text);
+    expect(theses).toHaveLength(1);
+    expect(theses[0].confidence).toBe("medium");
+  });
+
+  it("sentiment의 sector_rotation thesis는 기존대로 low로 하향된다", () => {
+    const text = makeThesisJson({
+      agentPersona: "sentiment",
+      thesis: "자금 Technology → Healthcare 로테이션",
+      category: "sector_rotation",
+      confidence: "high",
+    });
+
+    const { theses } = extractThesesFromText(text);
+    expect(theses).toHaveLength(1);
+    expect(theses[0].confidence).toBe("low");
+  });
+
+  it("macro의 structural_narrative thesis는 하향 대상이 아니므로 원본 유지", () => {
+    const text = makeThesisJson({
+      agentPersona: "macro",
+      thesis: "AI 인프라 수요 구조적 성장",
+      category: "structural_narrative",
+      confidence: "high",
+    });
+
+    const { theses } = extractThesesFromText(text);
+    expect(theses).toHaveLength(1);
+    expect(theses[0].confidence).toBe("high");
+  });
+});

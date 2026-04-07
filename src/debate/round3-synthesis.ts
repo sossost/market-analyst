@@ -498,6 +498,15 @@ const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
 const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
 
 /**
+ * confidence 하향 면제 카테고리.
+ * structural_narrative는 구조적 포지셔닝 관찰(포지셔닝 과밀, 자금 흐름 구조)이므로
+ * 방향성 예측이 아닌 구조 분석에 해당하여 confidence 원본을 유지한다.
+ * sector_rotation은 방향성 판단 요소가 있어 기존 하향을 유지.
+ * #669: 반대론자(contrarian) 역할의 구조적 관찰까지 억제되는 문제 해소.
+ */
+const CONFIDENCE_DOWNGRADE_EXEMPT_CATEGORIES = new Set<ThesisCategory>(["structural_narrative"]);
+
+/**
  * confidence 자동 하향 대상 카테고리.
  * 적중률 50% 미만 카테고리를 등록한다.
  * #627: short_term_outlook 적중률 41.7% — 전 에이전트 단기 전망 역신호.
@@ -653,11 +662,13 @@ function normalizeThesisFields(
   }
 
   // 저적중 에이전트 confidence 자동 하향
+  // #669: structural_narrative는 구조적 관찰이므로 하향 면제 (반대론자 역할 보전)
   let confidence = (obj.confidence as string) ?? "low";
   if (
     persona != null &&
     CONFIDENCE_DOWNGRADE_PERSONAS.has(persona) &&
-    VALID_CONFIDENCE.has(confidence)
+    VALID_CONFIDENCE.has(confidence) &&
+    !CONFIDENCE_DOWNGRADE_EXEMPT_CATEGORIES.has(category)
   ) {
     const downgraded = CONFIDENCE_DOWNGRADE[confidence];
     if (downgraded != null && downgraded !== confidence) {
