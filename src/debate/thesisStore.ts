@@ -568,7 +568,7 @@ export async function expireStalledTheses(today: string): Promise<number> {
       and(
         eq(theses.status, "ACTIVE"),
         // 진행률 >= STALE_EXPIRE_PROGRESS (50%) — FLOOR로 정수 일수 변환
-        sql`${theses.debateDate}::date + FLOOR(${theses.timeframeDays} * ${sql.raw(String(STALE_EXPIRE_PROGRESS))})::int * interval '1 day' <= ${today}::date`,
+        sql`${theses.debateDate}::date + FLOOR(${theses.timeframeDays} * ${STALE_EXPIRE_PROGRESS}::numeric)::int * interval '1 day' <= ${today}::date`,
         // timeframe 미초과 (초과분은 expireStaleTheses가 처리)
         sql`${theses.debateDate}::date + ${theses.timeframeDays} * interval '1 day' > ${today}::date`,
       ),
