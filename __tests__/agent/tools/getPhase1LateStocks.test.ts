@@ -167,6 +167,15 @@ describe("getPhase1LateStocks", () => {
     expect(queryArgs).toContain(300_000_000);
   });
 
+  it("SQL includes SEPA B grade in filter (S/A/B allowed)", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await getPhase1LateStocks.execute({ date: "2026-03-07" });
+
+    const sqlArg: string = mockQuery.mock.calls[0][0];
+    expect(sqlArg).toContain("fs.grade IN ('S', 'A', 'B')");
+  });
+
   it("returns totalFound equal to number of stocks", async () => {
     mockQuery.mockResolvedValue({
       rows: [makeRow({ symbol: "A" }), makeRow({ symbol: "B" })],

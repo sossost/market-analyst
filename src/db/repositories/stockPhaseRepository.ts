@@ -322,7 +322,7 @@ export async function findRisingRsStocks(params: {
        AND sp.phase = ANY($6::int[])
        AND s.market_cap::numeric >= $7
        AND s.country = 'US'
-       AND fs.grade IN ('S', 'A')
+       AND fs.grade IN ('S', 'A', 'B')
      ORDER BY
        CASE WHEN srd.change_4w::numeric > 0 THEN 0 ELSE 1 END,
        (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) DESC,
@@ -375,7 +375,7 @@ export async function findPhase1LateStocks(
        AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.0
        AND s.market_cap::numeric >= $3
        AND s.country = 'US'
-       AND fs.grade IN ('S', 'A')
+       AND fs.grade IN ('S', 'A', 'B')
        AND (
          SELECT COUNT(*)
          FROM stock_phases sp2
