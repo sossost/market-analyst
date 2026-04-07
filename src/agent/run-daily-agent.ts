@@ -12,6 +12,7 @@ import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getUnusualStocks } from "@/tools/getUnusualStocks";
 import { getRisingRS } from "@/tools/getRisingRS";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
+import { getMarketPosition } from "@/tools/getMarketPosition";
 
 // 업종 RS — 일간은 절대 RS 상위 + 섹터캡 (주간의 변화량 정렬과 분리)
 import { findTopIndustriesGlobal } from "@/db/repositories/index";
@@ -99,6 +100,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     unusualRaw,
     risingRsRaw,
     watchlistRaw,
+    marketPositionRaw,
   ] = await Promise.all([
     getIndexReturns.execute({ mode: "daily", date: targetDate }).catch((err: unknown) => {
       logger.warn("Tool", `getIndexReturns 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -130,6 +132,10 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     getWatchlistStatus.execute({ include_trajectory: false, date: targetDate }).catch((err: unknown) => {
       logger.warn("Tool", `getWatchlistStatus 실패: ${err instanceof Error ? err.message : String(err)}`);
       return JSON.stringify({ summary: { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }, items: [] });
+    }),
+    getMarketPosition(targetDate).catch((err: unknown) => {
+      logger.warn("Tool", `getMarketPosition 실패: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
     }),
   ]);
 
@@ -182,12 +188,17 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
       items: Array.isArray(watchlistData.items) ? watchlistData.items as DailyReportData["watchlist"]["items"] : [],
     },
-    marketPosition: null,
+    marketPosition: marketPositionRaw,
   };
+
+  const gateLabel =
+    data.marketPosition != null
+      ? `게이트: ${data.marketPosition.passCount}/${data.marketPosition.totalCount}`
+      : "게이트: 수집 실패";
 
   logger.info(
     "Data",
-    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 관심종목 ${data.watchlist.summary.totalActive}`,
+    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 관심종목 ${data.watchlist.summary.totalActive} | ${gateLabel}`,
   );
 
   return data;
