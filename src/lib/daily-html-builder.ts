@@ -618,6 +618,30 @@ function mdToHtml(markdown: string): string {
   return markedInstance.parse(markdown) as string;
 }
 
+/**
+ * 해석(narrative) 블록을 HTML로 렌더링한다.
+ * 비어 있거나 "해당 없음"이면 빈 문자열을 반환한다.
+ */
+function renderNarrativeBlock(narrative: string | null | undefined): string {
+  if (narrative == null || narrative === "해당 없음" || narrative.trim() === "") {
+    return "";
+  }
+  return `<div class="content-block">${mdToHtml(narrative)}</div>`;
+}
+
+/**
+ * 특이종목 정렬: Phase 전환 우선 → 거래량비 내림차순 → 수익률 절대값 내림차순
+ */
+function sortUnusualStocks(stocks: DailyUnusualStock[]): DailyUnusualStock[] {
+  return [...stocks].sort((a, b) => {
+    const aHasPhaseChange = a.conditions.includes("phase_change") ? 1 : 0;
+    const bHasPhaseChange = b.conditions.includes("phase_change") ? 1 : 0;
+    if (bHasPhaseChange !== aHasPhaseChange) return bHasPhaseChange - aHasPhaseChange;
+    if (b.volRatio !== a.volRatio) return b.volRatio - a.volRatio;
+    return Math.abs(b.dailyReturn) - Math.abs(a.dailyReturn);
+  });
+}
+
 // ─── Fear & Greed 내부 헬퍼 ────────────────────────────────────────────────────
 
 function getFearGreedDirectionLabel(score: number, previous1Week: number): string {
@@ -910,10 +934,7 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
         : ""
     }`;
 
-  const narrativeHtml =
-    narrative != null && narrative !== "해당 없음" && narrative.trim() !== ""
-      ? `<div class="content-block">${mdToHtml(narrative)}</div>`
-      : "";
+  const narrativeHtml = renderNarrativeBlock(narrative);
 
   return `${subtitle}${phaseBar}${statsHtml}${narrativeHtml}`;
 }
@@ -1040,9 +1061,7 @@ export function renderUnusualStocksSection(
   narrative: string,
   overflowCount?: number,
 ): string {
-  const narrativeHtml = narrative !== "해당 없음" && narrative.trim() !== ""
-    ? `<div class="content-block">${mdToHtml(narrative)}</div>`
-    : "";
+  const narrativeHtml = renderNarrativeBlock(narrative);
 
   if (stocks.length === 0) {
     return `<div class="empty-state">해당 없음 — 특이종목 없음</div>${narrativeHtml}`;
@@ -1122,9 +1141,7 @@ export function renderRisingRSSection(
   stocks: DailyRisingRSStock[],
   narrative: string,
 ): string {
-  const narrativeHtml = narrative !== "해당 없음" && narrative.trim() !== ""
-    ? `<div class="content-block">${mdToHtml(narrative)}</div>`
-    : "";
+  const narrativeHtml = renderNarrativeBlock(narrative);
 
   if (stocks.length === 0) {
     return "";
@@ -1194,9 +1211,7 @@ export function renderWatchlistSection(
   data: DailyWatchlistData,
   narrative: string,
 ): string {
-  const narrativeHtml = narrative !== "해당 없음" && narrative.trim() !== ""
-    ? `<div class="content-block">${mdToHtml(narrative)}</div>`
-    : "";
+  const narrativeHtml = renderNarrativeBlock(narrative);
 
   if (data.items.length === 0) {
     return `<div class="empty-state">현재 ACTIVE 관심종목 없음</div>${narrativeHtml}`;
@@ -1342,14 +1357,7 @@ export function buildDailyHtml(
   const phaseDistributionHtml = renderPhaseDistribution(data.marketBreadth, insight.breadthNarrative);
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
-  // 특이종목 정렬: Phase 전환 우선 → 거래량비 내림차순 → 수익률 절대값 내림차순
-  const sortedUnusualStocks = [...data.unusualStocks].sort((a, b) => {
-    const aHasPhaseChange = a.conditions.includes("phase_change") ? 1 : 0;
-    const bHasPhaseChange = b.conditions.includes("phase_change") ? 1 : 0;
-    if (bHasPhaseChange !== aHasPhaseChange) return bHasPhaseChange - aHasPhaseChange;
-    if (b.volRatio !== a.volRatio) return b.volRatio - a.volRatio;
-    return Math.abs(b.dailyReturn) - Math.abs(a.dailyReturn);
-  });
+  const sortedUnusualStocks = sortUnusualStocks(data.unusualStocks);
   const truncatedUnusualStocks = sortedUnusualStocks.slice(0, MAX_UNUSUAL_STOCKS);
   const unusualOverflowCount = data.unusualStocks.length - truncatedUnusualStocks.length;
   const unusualStocksHtml = renderUnusualStocksSection(
