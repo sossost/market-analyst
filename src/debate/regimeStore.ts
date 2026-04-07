@@ -64,7 +64,7 @@ const MIN_HOLD_CALENDAR_DAYS = 14;
  * - 약세 회복: BEAR → EARLY_BEAR → EARLY_BULL (단계적)
  * - 건너뜀 차단: LATE_BULL → EARLY_BULL, EARLY_BEAR → LATE_BULL 불가
  */
-const ALLOWED_TRANSITIONS: Readonly<Record<MarketRegimeType, ReadonlySet<MarketRegimeType>>> = {
+export const ALLOWED_TRANSITIONS: Readonly<Record<MarketRegimeType, ReadonlySet<MarketRegimeType>>> = {
   EARLY_BULL: new Set<MarketRegimeType>(["MID_BULL", "EARLY_BEAR"]),
   MID_BULL: new Set<MarketRegimeType>(["LATE_BULL", "EARLY_BULL", "EARLY_BEAR"]),
   LATE_BULL: new Set<MarketRegimeType>(["MID_BULL", "EARLY_BEAR"]),
