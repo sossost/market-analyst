@@ -233,6 +233,7 @@ function createMockDailyReportData(
     unusualStocks: [createMockUnusualStock()],
     risingRS: [createMockRisingRSStock()],
     watchlist: createMockWatchlistData(),
+    marketPosition: null,
     ...overrides,
   };
 }

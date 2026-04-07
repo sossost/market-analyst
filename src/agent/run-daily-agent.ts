@@ -182,6 +182,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
       items: Array.isArray(watchlistData.items) ? watchlistData.items as DailyReportData["watchlist"]["items"] : [],
     },
+    marketPosition: null,
   };
 
   logger.info(
