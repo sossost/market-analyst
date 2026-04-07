@@ -588,7 +588,7 @@ export function formatModeratorPerformanceContext(
       lines.push("2. 이 분석가의 **단독 의견**(다른 분석가가 동의하지 않는)은 합의에서 **완전 제외**하세요.");
       lines.push("3. 다른 분석가의 근거로 보강될 때만 합의에 반영하되, 비중은 보강한 분석가의 적중률 기준으로 설정하세요.");
       if (lowReliabilityPersonas.includes(PERSONA_LABEL_KR.sentiment)) {
-        lines.push(`4. **${PERSONA_LABEL_KR.sentiment}**의 thesis confidence는 시스템에서 자동 하향됩니다. 모더레이터가 추가 상향하지 마세요.`);
+        lines.push(`4. **${PERSONA_LABEL_KR.sentiment}**의 thesis confidence는 카테고리에 따라 조건부 하향됩니다 (구조적 서사: 원본 유지, 섹터 로테이션: 하향). 모더레이터가 추가 상향하지 마세요.`);
       }
     }
   }
