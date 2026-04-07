@@ -145,6 +145,7 @@ export const dailyPrices = pgTable(
   (t) => ({
     uq: unique("uq_daily_prices_symbol_date").on(t.symbol, t.date),
     idx_sym_date: index("idx_daily_prices_symbol_date").on(t.symbol, t.date),
+    idx_date: index("idx_daily_prices_date").on(t.date),
   }),
 );
 
