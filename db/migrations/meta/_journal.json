@@ -218,6 +218,13 @@
       "when": 1775196411315,
       "tag": "0030_known_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1775528857990,
+      "tag": "0031_add_daily_prices_date_index",
+      "breakpoints": true
     }
   ]
 }
