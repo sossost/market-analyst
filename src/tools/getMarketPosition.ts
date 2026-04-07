@@ -11,6 +11,7 @@
  */
 
 import { pool } from "@/db/client";
+import { logger } from "@/lib/logger";
 import type { MarketPositionData, MarketPositionGate } from "@/tools/schemas/dailyReportSchema.js";
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -187,8 +188,14 @@ export async function getMarketPosition(
 ): Promise<MarketPositionData | null> {
   try {
     const [prices, breadth] = await Promise.all([
-      fetchSP500Prices(targetDate).catch(() => [] as number[]),
-      fetchBreadthData(targetDate).catch(() => null),
+      fetchSP500Prices(targetDate).catch((err: unknown) => {
+        logger.warn("Tool", `fetchSP500Prices 실패: ${err instanceof Error ? err.message : String(err)}`);
+        return [] as number[];
+      }),
+      fetchBreadthData(targetDate).catch((err: unknown) => {
+        logger.warn("Tool", `fetchBreadthData 실패: ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }),
     ]);
 
     if (prices.length === 0) {
@@ -209,10 +216,7 @@ export async function getMarketPosition(
       date: targetDate,
     };
   } catch (err) {
-    console.warn(
-      "[getMarketPosition] 예외:",
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.warn("Tool", `getMarketPosition 예외: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
