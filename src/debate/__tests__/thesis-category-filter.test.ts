@@ -8,7 +8,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { extractThesesFromText, containsNumericPrediction, containsPriceTarget, filterShortTermOutlookCap } from "../round3-synthesis.js";
+import { extractThesesFromText, extractDebateOutput, containsNumericPrediction, containsPriceTarget, filterShortTermOutlookCap } from "../round3-synthesis.js";
 import { logger } from "@/lib/logger";
 
 // ─── Helper ──────��─────────────────────────────────────────────────────────────
@@ -914,5 +914,71 @@ describe("tech 가격 목표 thesis 드롭", () => {
     expect(result.theses.find((t) => t.thesis.includes("SOXX $185"))).toBeUndefined();
     expect(result.theses.find((t) => t.thesis.includes("AI 인프라"))).toBeDefined();
     expect(result.theses.find((t) => t.thesis.includes("반도체 재고"))).toBeDefined();
+  });
+});
+
+// ─── extractDebateOutput 필터 파이프라인 검증 ─────────────────────────────────
+
+describe("extractDebateOutput 필터 파이프라인", () => {
+  it("tech short_term_outlook 가격 목표 thesis를 드롭한다", () => {
+    const theses = [
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "SOXX $185 → $208 목표 전망",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "structural_narrative",
+        thesis: "AI 인프라 투자 가속으로 반도체 수요 구조적 증가",
+        timeframeDays: 60,
+      }),
+    ];
+    const text = `리포트 내용\n\n\`\`\`json\n${JSON.stringify(theses)}\n\`\`\``;
+
+    const result = extractDebateOutput(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].thesis).toContain("AI 인프라");
+  });
+
+  it("sentiment 수치 예측 thesis를 드롭한다", () => {
+    const theses = [
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        thesis: "VIX 20 하회 안착 전망",
+        timeframeDays: 30,
+      }),
+    ];
+    const text = `리포트 내용\n\n\`\`\`json\n${JSON.stringify(theses)}\n\`\`\``;
+
+    const result = extractDebateOutput(text);
+
+    expect(result.theses).toHaveLength(0);
+  });
+
+  it("short_term_outlook 2건 중 1건만 유지한다", () => {
+    const theses = [
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "첫 번째 단기 전망",
+        timeframeDays: 30,
+      }),
+      makeThesis({
+        agentPersona: "tech",
+        category: "short_term_outlook",
+        thesis: "두 번째 단기 전망",
+        timeframeDays: 30,
+      }),
+    ];
+    const text = `리포트 내용\n\n\`\`\`json\n${JSON.stringify(theses)}\n\`\`\``;
+
+    const result = extractDebateOutput(text);
+
+    const shortTermTheses = result.theses.filter((t) => t.category === "short_term_outlook");
+    expect(shortTermTheses).toHaveLength(1);
   });
 });

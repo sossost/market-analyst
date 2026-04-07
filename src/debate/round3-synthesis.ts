@@ -519,16 +519,16 @@ const CONFIDENCE_DOWNGRADE_CATEGORIES = new Set<ThesisCategory>(["short_term_out
 const TECH_PRICE_TARGET_PATTERNS: RegExp[] = [
   // $N 목표가 / $N → $N 패턴 (예: "$250 목표가", "SOXX $185 → $208")
   /\$\d+[\d,.]*\s*(?:→|->|목표|도달|돌파)/,
-  /\$\d+[\d,.]*\s*.*\s*\$\d+[\d,.]*/,
+  /\$\d+[\d,.]*\s*.*?\s*\$\d+[\d,.]*/,
   // N% 상승/하락 패턴 (예: "20% 상승", "15-20% 상승", "20-30% 조정")
   /\d+[-~]\d+%\s*(?:상승|하락|조정|반등|급등|급락|수익률)/,
   /\d+%\s*(?:상승|하락|조정|반등|급등|급락|수익률)/,
   // 목표가/목표 가격 직접 언급
   /목표\s*(?:가|가격|수준|레벨)/,
   // "N일/주/개월 내 N% 상승/하락" 패턴
-  /\d+\s*(?:일|주|개월|day|week|month)\s*(?:내|이내|안에).*\d+%/i,
-  // ETF/종목 + 가격 도달 패턴 (예: "ARKQ $52.8 → $62", "IBB 20% 상승")
-  /[A-Z]{2,5}\s+\$\d+/,
+  /\d+\s*(?:일|주|개월|day|week|month)\s*(?:내|이내|안에).*?\d+%/i,
+  // ETF/종목 + 가격 도달 패턴 (예: "ARKQ $52.8 → $62", "BRK.B $400")
+  /\b[A-Z]{2,5}(?:\.[A-Z]+)?\s+\$\d+/,
   // 신고점/신저점 + 목표 결합
   /(?:신고점|신저점|고점|저점)\s*(?:돌파|갱신|도달|목표)/,
 ];
@@ -760,15 +760,22 @@ export function extractThesesFromText(text: string): ExtractionResult {
     if (validated.length < parsed.length) {
       logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
     }
-    const filtered = filterNumericPredictions(validated);
-    const priceTargetFiltered = filterTechPriceTargets(filtered);
-    const capped = filterShortTermOutlookCap(priceTargetFiltered);
-    return { theses: capped, cleanReport };
+    return { theses: applyThesisFilters(validated), cleanReport };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
     return { theses: [], cleanReport };
   }
+}
+
+/**
+ * 공통 thesis 필터 파이프라인.
+ * extractThesesFromText / extractDebateOutput 양쪽에서 동일한 필터를 적용한다.
+ */
+function applyThesisFilters(theses: Thesis[]): Thesis[] {
+  const filtered = filterNumericPredictions(theses);
+  const priceTargetFiltered = filterTechPriceTargets(filtered);
+  return filterShortTermOutlookCap(priceTargetFiltered);
 }
 
 /**
@@ -799,8 +806,7 @@ export function extractDebateOutput(text: string): DebateExtractionResult {
       if (validated.length < parsed.length) {
         logger.warn("Round3", `Filtered ${parsed.length - validated.length} invalid theses`);
       }
-      const filtered = filterNumericPredictions(validated);
-      return filterShortTermOutlookCap(filtered);
+      return applyThesisFilters(validated);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn("Round3", `Failed to parse thesis JSON: ${msg}`);
