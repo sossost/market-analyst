@@ -9,5 +9,7 @@ logs/
 data/
 memory/
 .claude/agent-memory/
+.claude/commands/
+docs/features/
 reports/
 wiki/
