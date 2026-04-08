@@ -265,6 +265,25 @@ export interface MarketPositionData {
   date: string;
 }
 
+// ─── Thesis-Aligned Candidates ────────────────────────────────────────────────
+
+/**
+ * ACTIVE thesis/narrative_chain의 수혜 종목 중 기술적 준비 완료(Phase ≥ 2, RS ≥ 70) 종목.
+ * narrative_chains.beneficiary_tickers × stock_phases 조인 결과.
+ */
+export interface ThesisAlignedCandidate {
+  symbol: string;
+  phase: number;
+  rsScore: number;
+  sepaGrade: string | null;
+  sector: string | null;
+  industry: string | null;
+  marketCap: number | null;
+  megatrend: string;
+  bottleneck: string;
+  chainStatus: string;
+}
+
 // ─── 데이터 컨테이너 (도구 반환값 직접 매핑) ──────────────────────────────────
 
 /**
@@ -291,6 +310,8 @@ export interface DailyReportData {
   watchlist: DailyWatchlistData;
   /** getMarketPosition 반환값. 수집 실패 시 null */
   marketPosition: MarketPositionData | null;
+  /** ACTIVE thesis 수혜주 중 기술적 준비 완료 종목. 수집 실패 시 빈 배열 */
+  thesisAlignedCandidates: ThesisAlignedCandidate[];
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────
@@ -319,6 +340,8 @@ export interface DailyReportInsight {
   todayInsight: string;
   /** 브레드스 추세 + 맥락 한줄 해석. 1~2문장. 없으면 "해당 없음". */
   breadthNarrative: string;
+  /** thesis 수혜주 기술적 상태 종합 해석. 1~2문장. 없으면 "해당 없음". */
+  thesisAlignedNarrative: string;
   /** Discord 핵심 요약. 3~5줄. 지수 변화 + Phase2 비율 + 특이종목 수 요약. 링크 금지. */
   discordMessage: string;
 }
@@ -339,6 +362,7 @@ export function fillInsightDefaults(
     watchlistNarrative: "해당 없음",
     todayInsight: "해당 없음",
     breadthNarrative: "해당 없음",
+    thesisAlignedNarrative: "해당 없음",
     discordMessage: "",
   };
 
@@ -377,6 +401,10 @@ export function fillInsightDefaults(
       typeof raw["breadthNarrative"] === "string"
         ? raw["breadthNarrative"]
         : defaults.breadthNarrative,
+    thesisAlignedNarrative:
+      typeof raw["thesisAlignedNarrative"] === "string"
+        ? raw["thesisAlignedNarrative"]
+        : defaults.thesisAlignedNarrative,
     discordMessage:
       typeof raw["discordMessage"] === "string"
         ? raw["discordMessage"]

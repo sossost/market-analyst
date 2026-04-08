@@ -8,6 +8,7 @@ import {
   renderRisingRSSection,
   renderWatchlistSection,
   renderInsightSection,
+  renderThesisAlignedSection,
   buildDailyHtml,
 } from "../daily-html-builder.js";
 import type {
@@ -21,6 +22,7 @@ import type {
   DailyWatchlistData,
   DailyReportData,
   DailyReportInsight,
+  ThesisAlignedCandidate,
 } from "@/tools/schemas/dailyReportSchema.js";
 
 // ─── 팩토리 함수 ──────────────────────────────────────────────────────────────
@@ -217,6 +219,7 @@ function createMockInsight(
     risingRSNarrative: "에너지 업종에서 RS 가속 패턴이 포착된다.",
     watchlistNarrative: "NVDA는 Phase 2를 유지하고 있다.",
     breadthNarrative: "Phase 2 비율이 소폭 확대되며 시장 참여 폭이 넓어지고 있다.",
+    thesisAlignedNarrative: "해당 없음",
     todayInsight: "섹터 로테이션 조짐이 보인다.",
     discordMessage: "S&P 500 +0.88% · Phase2 30.4% · 특이종목 3건",
     ...overrides,
@@ -236,6 +239,7 @@ function createMockDailyReportData(
     risingRS: [createMockRisingRSStock()],
     watchlist: createMockWatchlistData(),
     marketPosition: null,
+    thesisAlignedCandidates: [],
     ...overrides,
   };
 }
@@ -965,6 +969,82 @@ describe("renderInsightSection", () => {
   });
 });
 
+// ─── renderThesisAlignedSection ───────────────────────────────────────────────
+
+function createMockThesisAlignedCandidate(
+  overrides?: Partial<ThesisAlignedCandidate>,
+): ThesisAlignedCandidate {
+  return {
+    symbol: "AAOI",
+    phase: 2,
+    rsScore: 100,
+    sepaGrade: "A",
+    sector: "Technology",
+    industry: "Communication Equipment",
+    marketCap: 3_000_000_000,
+    megatrend: "AI 광통신",
+    bottleneck: "광트랜시버 대역폭 제한",
+    chainStatus: "ACTIVE",
+    ...overrides,
+  };
+}
+
+describe("renderThesisAlignedSection", () => {
+  it("종목이 없으면 빈 문자열을 반환한다", () => {
+    const html = renderThesisAlignedSection([], "해당 없음");
+    expect(html).toBe("");
+  });
+
+  it("종목이 있으면 megatrend별 그룹핑 테이블을 렌더링한다", () => {
+    const candidates = [
+      createMockThesisAlignedCandidate({ symbol: "AAOI", rsScore: 100 }),
+      createMockThesisAlignedCandidate({ symbol: "LITE", rsScore: 99 }),
+    ];
+    const html = renderThesisAlignedSection(candidates, "해당 없음");
+
+    expect(html).toContain("AAOI");
+    expect(html).toContain("LITE");
+    expect(html).toContain("AI 광통신");
+    expect(html).toContain("광트랜시버 대역폭 제한");
+    expect(html).toContain("Phase 2");
+  });
+
+  it("다른 megatrend의 종목은 별도 그룹으로 렌더링한다", () => {
+    const candidates = [
+      createMockThesisAlignedCandidate({ symbol: "AAOI", megatrend: "AI 광통신" }),
+      createMockThesisAlignedCandidate({ symbol: "CF", megatrend: "농업 투입재", bottleneck: "비료 공급 제약" }),
+    ];
+    const html = renderThesisAlignedSection(candidates, "해당 없음");
+
+    expect(html).toContain("AI 광통신");
+    expect(html).toContain("농업 투입재");
+    expect(html).toContain("비료 공급 제약");
+  });
+
+  it("SEPA grade가 null이면 — 표시한다", () => {
+    const candidates = [createMockThesisAlignedCandidate({ sepaGrade: null })];
+    const html = renderThesisAlignedSection(candidates, "해당 없음");
+    expect(html).toContain("—");
+  });
+
+  it("narrative가 있으면 해석 블록을 렌더링한다", () => {
+    const candidates = [createMockThesisAlignedCandidate()];
+    const html = renderThesisAlignedSection(candidates, "광통신 thesis 방향과 기술적 신호가 합치한다.");
+    expect(html).toContain("광통신 thesis 방향과 기술적 신호가 합치한다.");
+  });
+
+  it("RS 내림차순으로 정렬한다", () => {
+    const candidates = [
+      createMockThesisAlignedCandidate({ symbol: "LOW", rsScore: 75 }),
+      createMockThesisAlignedCandidate({ symbol: "HIGH", rsScore: 100 }),
+    ];
+    const html = renderThesisAlignedSection(candidates, "해당 없음");
+    const highIdx = html.indexOf("HIGH");
+    const lowIdx = html.indexOf("LOW");
+    expect(highIdx).toBeLessThan(lowIdx);
+  });
+});
+
 // ─── buildDailyHtml ───────────────────────────────────────────────────────────
 
 describe("buildDailyHtml", () => {
@@ -1119,6 +1199,22 @@ describe("buildDailyHtml", () => {
       "2026-04-04",
     );
     expect(html).toContain("repeat(4, 1fr)");
+  });
+
+  it("thesis-aligned candidates가 있으면 섹션이 렌더링된다", () => {
+    const data = createMockDailyReportData({
+      thesisAlignedCandidates: [createMockThesisAlignedCandidate()],
+    });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    expect(html).toContain("Thesis 수혜 종목");
+    expect(html).toContain("AAOI");
+    expect(html).toContain("AI 광통신");
+  });
+
+  it("thesis-aligned candidates가 없으면 섹션이 렌더링되지 않는다", () => {
+    const data = createMockDailyReportData({ thesisAlignedCandidates: [] });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    expect(html).not.toContain("<h2>Thesis 수혜 종목</h2>");
   });
 
   it("브레드스 섹션 타이틀이 '시장 브레드스'이고 서브타이틀 'Phase 분포'를 포함한다", () => {

@@ -24,6 +24,7 @@ import type {
   DailyReportData,
   DailyReportInsight,
   MarketPositionData,
+  ThesisAlignedCandidate,
 } from "@/tools/schemas/dailyReportSchema.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
@@ -1336,6 +1337,78 @@ export function renderInsightSection(insight: DailyReportInsight): string {
     ${todayInsightHtml}`;
 }
 
+/**
+ * ACTIVE thesis 수혜주 중 기술적 준비 완료 종목 테이블 + LLM 해석을 렌더링한다.
+ * thesis(megatrend) 별로 그룹핑하여 표시. 종목이 없으면 빈 문자열 반환.
+ */
+export function renderThesisAlignedSection(
+  candidates: ThesisAlignedCandidate[],
+  narrative: string,
+): string {
+  if (candidates.length === 0) {
+    return "";
+  }
+
+  const narrativeHtml = renderNarrativeBlock(narrative);
+
+  // megatrend별 그룹핑
+  const groups = new Map<string, ThesisAlignedCandidate[]>();
+  for (const c of candidates) {
+    const key = c.megatrend;
+    const existing = groups.get(key);
+    if (existing != null) {
+      existing.push(c);
+    } else {
+      groups.set(key, [c]);
+    }
+  }
+
+  const sections: string[] = [];
+
+  for (const [megatrend, items] of groups) {
+    const bottleneck = items[0].bottleneck;
+    const rows = items
+      .sort((a, b) => b.rsScore - a.rsScore)
+      .map((c) => {
+        const phaseCls = phaseBadgeClass(c.phase);
+        const sepaStr = c.sepaGrade != null ? escapeHtml(c.sepaGrade) : "—";
+        const capStr = marketCapLabel(c.marketCap);
+        const industryStr = c.industry != null ? escapeHtml(c.industry) : "—";
+
+        return `
+        <tr>
+          <td><strong>${escapeHtml(c.symbol)}</strong></td>
+          <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(c.phase))}</span></td>
+          <td>${escapeHtml(String(c.rsScore))}</td>
+          <td>${sepaStr}</td>
+          <td>${capStr}</td>
+          <td>${industryStr}</td>
+        </tr>`;
+      })
+      .join("");
+
+    sections.push(`
+      <div style="margin-bottom:16px;">
+        <h4 style="margin:0 0 6px;font-size:0.92rem;">${escapeHtml(megatrend)} <span style="font-weight:normal;color:var(--text-muted);font-size:0.82rem;">— ${escapeHtml(bottleneck)}</span></h4>
+        <table>
+          <thead>
+            <tr>
+              <th>종목</th>
+              <th>Phase</th>
+              <th>RS</th>
+              <th>SEPA</th>
+              <th>시총</th>
+              <th>업종</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`);
+  }
+
+  return `${sections.join("")}${narrativeHtml}`;
+}
+
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────
 
 /**
@@ -1379,6 +1452,10 @@ export function buildDailyHtml(
   const risingRSHtml = renderRisingRSSection(
     data.risingRS,
     insight.risingRSNarrative,
+  );
+  const thesisAlignedHtml = renderThesisAlignedSection(
+    data.thesisAlignedCandidates,
+    insight.thesisAlignedNarrative,
   );
   const watchlistHtml = renderWatchlistSection(
     data.watchlist,
@@ -1447,7 +1524,15 @@ export function buildDailyHtml(
         ${risingRSHtml}
       </section>` : ""}
 
-      <!-- 섹션 8: 관심종목 현황 -->
+      <!-- 섹션 8: Thesis 수혜 종목 (종목 없으면 섹션 미출력) -->
+      ${thesisAlignedHtml !== "" ? `
+      <section>
+        <h2>Thesis 수혜 종목</h2>
+        <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 10px;">(ACTIVE thesis 수혜주 중 Phase ≥ 2, RS ≥ 70)</p>
+        ${thesisAlignedHtml}
+      </section>` : ""}
+
+      <!-- 섹션 9: 관심종목 현황 -->
       <section>
         <h2>관심종목 현황</h2>
         ${watchlistHtml}

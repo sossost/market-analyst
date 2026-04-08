@@ -49,6 +49,7 @@ ${ANALYSIS_FRAMEWORK}
   "risingRSNarrative": "1~2문장. RS 상승 초기 종목군의 공통 업종/테마 관찰. 없으면 '해당 없음'.",
   "watchlistNarrative": "1~2문장. ACTIVE 관심종목 서사 유효성. Phase 전이 종목이 있으면 방향 언급. 없으면 '해당 없음'.",
   "breadthNarrative": "1~2문장. 브레드스 추세 + 맥락 해석. Phase 2 비율 방향, A/D ratio, 신고가/신저가 흐름을 종합한 한줄 판단. 없으면 '해당 없음'.",
+  "thesisAlignedNarrative": "1~2문장. ACTIVE thesis 수혜주 중 기술적 준비된 종목의 공통점·시사점. thesis 방향과 기술적 신호의 합치/괴리 해석. 없으면 '해당 없음'.",
   "todayInsight": "2~3문장. 토론 인사이트가 있는 경우 핵심만. 시장 데이터와 일치/상충 여부 포함. 없으면 '해당 없음'.",
   "discordMessage": "3~5줄. 지수 변화 + Phase2 비율 + 특이종목 수 요약. 링크 금지."
 }
@@ -63,6 +64,7 @@ ${ANALYSIS_FRAMEWORK}
 - **risingRSNarrative**: RS 상승 초기 종목군의 소속 업종·섹터 공통점과 자금 유입 방향. 없으면 "해당 없음".
 - **watchlistNarrative**: ACTIVE 관심종목의 오늘 서사 유효성. Phase 이탈 우려 종목이 있으면 간략히 언급. 없으면 "해당 없음".
 - **breadthNarrative**: 시장 브레드스 추세 한줄 해석. Phase 2 비율 방향(확대/축소/보합), A/D ratio 수준, 신고가·신저가 비율을 종합해 시장 참여 폭이 넓어지는지 좁아지는지 판단. 없으면 "해당 없음".
+- **thesisAlignedNarrative**: ACTIVE thesis 수혜주 중 Phase ≥ 2 + RS ≥ 70을 충족하는 종목이 있으면, thesis 방향(메가트렌드)과 기술적 신호의 합치/괴리를 1~2문장으로 해석. 수혜 종목이 없으면 "해당 없음".
 - **todayInsight**: 토론 인사이트(debateInsight 컨텍스트)가 제공된 경우에만 작성. 시장 데이터와 일치하면 "토론과 일치", 충돌하면 "토론과 상충" 명시. 없으면 "해당 없음".
 - **discordMessage**: 구독자에게 전달하는 핵심 요약. 텍스트만, 링크 금지. 예시:
   "📊 [날짜] S&P500 +X.XX%, NASDAQ -X.XX%

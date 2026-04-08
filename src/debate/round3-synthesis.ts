@@ -401,7 +401,8 @@ ${round2Section}
 - bottleneck: 현재 공급 병목 노드 1개만. 여러 개 나열 금지.
 
 **beneficiarySectors / beneficiaryTickers 작성 규칙:**
-- structural_narrative 카테고리에만 작성. 그 외 카테고리는 생략하거나 빈 배열.
+- structural_narrative 카테고리에서 **필수 필드** — 빈 배열 금지. 반드시 2개 이상의 섹터와 2~5개 종목을 기입하라.
+- 그 외 카테고리는 생략하거나 빈 배열.
 - beneficiarySectors: **현재 병목**의 수혜를 받는 섹터 (현재 서사의 직접 수혜자, 영문 GICS 기준). 예: ["Communication Equipment", "Fiber Optics"]
 - beneficiaryTickers: 현재 병목 수혜 섹터의 대표 종목 (2~5개). 예: ["CIEN", "LITE", "AAOI"]
 - nextBeneficiarySectors: N+1 병목이 해소될 때 수혜 섹터 (nextBottleneck과 연동). 예: ["Utilities", "Power Infrastructure"]

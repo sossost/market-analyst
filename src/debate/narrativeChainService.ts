@@ -90,6 +90,16 @@ export function buildChainFields(thesis: Thesis): BottleneckInfo | null {
     ? thesis.beneficiaryTickers
     : [];
 
+  // structural_narrative에서 beneficiary 비어 있으면 경고
+  if (thesis.category === "structural_narrative") {
+    if (beneficiarySectors.length === 0) {
+      logger.warn("NarrativeChain", `structural_narrative thesis에 beneficiarySectors 비어 있음: "${text.slice(0, 60)}..."`);
+    }
+    if (beneficiaryTickers.length === 0) {
+      logger.warn("NarrativeChain", `structural_narrative thesis에 beneficiaryTickers 비어 있음: "${text.slice(0, 60)}..."`);
+    }
+  }
+
   // New-style thesis: narrativeChain is populated by LLM
   if (thesis.narrativeChain != null) {
     return {

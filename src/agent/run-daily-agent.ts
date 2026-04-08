@@ -16,6 +16,7 @@ import { getMarketPosition } from "@/tools/getMarketPosition";
 
 // 업종 RS — 일간은 절대 RS 상위 + 섹터캡 (주간의 변화량 정렬과 분리)
 import { findTopIndustriesGlobal } from "@/db/repositories/index";
+import { findThesisAlignedCandidates } from "@/db/repositories/stockPhaseRepository";
 import { applyIndustrySectorCap } from "@/lib/industryFilter";
 import { toNum } from "@/etl/utils/common";
 import { clampPercent } from "@/tools/validation";
@@ -25,6 +26,7 @@ import type {
   DailyReportData,
   DailyReportInsight,
   DailyBreadthSnapshot,
+  ThesisAlignedCandidate,
 } from "@/tools/schemas/dailyReportSchema";
 import { fillInsightDefaults } from "@/tools/schemas/dailyReportSchema";
 import { buildDailyHtml } from "@/lib/daily-html-builder";
@@ -102,6 +104,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     risingRsRaw,
     watchlistRaw,
     marketPositionRaw,
+    thesisAlignedRaw,
   ] = await Promise.all([
     getIndexReturns.execute({ mode: "daily", date: targetDate }).catch((err: unknown) => {
       logger.warn("Tool", `getIndexReturns 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -137,6 +140,10 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     getMarketPosition(targetDate).catch((err: unknown) => {
       logger.warn("Tool", `getMarketPosition 실패: ${err instanceof Error ? err.message : String(err)}`);
       return null;
+    }),
+    findThesisAlignedCandidates(targetDate).catch((err: unknown) => {
+      logger.warn("Tool", `findThesisAlignedCandidates 실패: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
     }),
   ]);
 
@@ -190,6 +197,18 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       items: Array.isArray(watchlistData.items) ? watchlistData.items as DailyReportData["watchlist"]["items"] : [],
     },
     marketPosition: marketPositionRaw,
+    thesisAlignedCandidates: thesisAlignedRaw.map((r) => ({
+      symbol: r.symbol,
+      phase: r.phase,
+      rsScore: r.rs_score,
+      sepaGrade: r.sepa_grade,
+      sector: r.sector,
+      industry: r.industry,
+      marketCap: r.market_cap != null ? Number(r.market_cap) : null,
+      megatrend: r.megatrend,
+      bottleneck: r.bottleneck,
+      chainStatus: r.chain_status,
+    } satisfies ThesisAlignedCandidate)),
   };
 
   const gateLabel =
@@ -199,7 +218,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
 
   logger.info(
     "Data",
-    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 관심종목 ${data.watchlist.summary.totalActive} | ${gateLabel}`,
+    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | thesis수혜 ${data.thesisAlignedCandidates.length} | 관심종목 ${data.watchlist.summary.totalActive} | ${gateLabel}`,
   );
 
   return data;
@@ -253,6 +272,10 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
     .map((w) => `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%`)
     .join("\n") || "없음";
 
+  const thesisAlignedLines = data.thesisAlignedCandidates
+    .map((c) => `${c.symbol} [P${c.phase}] RS ${c.rsScore} SEPA ${c.sepaGrade ?? "—"} ${c.sector ?? "—"} / ${c.industry ?? "—"} ← ${c.megatrend} (${c.bottleneck})`)
+    .join("\n");
+
   const dataSummary = `아래는 오늘 수집된 시장 데이터입니다. 이 데이터를 기반으로 해석을 JSON으로 작성하세요.
 
 ## 지수 수익률
@@ -273,6 +296,9 @@ ${unusualLines || "없음"}
 
 ## RS 상승 초기 종목 (${data.risingRS.length}건)
 ${risingRsLines || "없음"}
+
+## Thesis 수혜 종목 (${data.thesisAlignedCandidates.length}건)
+${thesisAlignedLines || "없음"}
 
 ## 관심종목
 ${watchlistLine}
@@ -482,6 +508,7 @@ async function main() {
   const reportedSymbols = Array.from(new Set([
     ...data.unusualStocks.map((s) => s.symbol),
     ...data.risingRS.map((s) => s.symbol),
+    ...data.thesisAlignedCandidates.map((c) => c.symbol),
     ...data.watchlist.items.map((w) => w.symbol),
   ])).map((symbol) => {
     const unusual = data.unusualStocks.find((s) => s.symbol === symbol);

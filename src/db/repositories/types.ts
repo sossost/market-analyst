@@ -883,6 +883,21 @@ export interface WeeklyQaBiasMetricsRow {
   cnt: number;
 }
 
+// ─── thesis-aligned candidates ──────────────────────────────────────────────
+
+export interface ThesisAlignedCandidateRow {
+  symbol: string;
+  phase: number;
+  rs_score: number;
+  sepa_grade: string | null;
+  sector: string | null;
+  industry: string | null;
+  market_cap: string | null;
+  megatrend: string;
+  bottleneck: string;
+  chain_status: string;
+}
+
 // ─── sectorClusterRepository ────────────────────────────────────────────────
 
 export interface SectorClusterRow {

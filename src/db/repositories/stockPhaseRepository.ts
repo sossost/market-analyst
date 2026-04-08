@@ -38,6 +38,7 @@ import type {
   QaSectorPhaseRow,
   LagStatsSectorPhase2Row,
   LagStatsIndustryPhase2Row,
+  ThesisAlignedCandidateRow,
   CrossReportDailyRow,
   CrossReportThesisRow,
   ReportLogPhase2CountRow,
@@ -922,6 +923,55 @@ export async function findThesisBeneficiaryTickers(
        AND debate_date <= $1::text
        AND status = 'ACTIVE'
      ORDER BY debate_date DESC`,
+    [date],
+  );
+  return rows;
+}
+
+// ─── thesis-aligned candidates 전용 ─────────────────────────────────────────
+
+/**
+ * ACTIVE/RESOLVING narrative_chains의 beneficiary_tickers를 stock_phases와 조인하여
+ * 기술적으로 준비된(Phase ≥ 2, RS ≥ 70) 수혜 종목을 조회한다.
+ */
+export async function findThesisAlignedCandidates(
+  date: string,
+): Promise<ThesisAlignedCandidateRow[]> {
+  const { rows } = await pool.query<ThesisAlignedCandidateRow>(
+    `WITH chain_tickers AS (
+       SELECT
+         nc.megatrend,
+         nc.bottleneck,
+         nc.status AS chain_status,
+         jsonb_array_elements_text(nc.beneficiary_tickers) AS ticker
+       FROM narrative_chains nc
+       WHERE nc.status IN ('ACTIVE', 'RESOLVING')
+         AND nc.beneficiary_tickers IS NOT NULL
+         AND jsonb_array_length(nc.beneficiary_tickers) > 0
+     )
+     , latest_scores AS (
+       SELECT DISTINCT ON (symbol) symbol, grade
+       FROM fundamental_scores
+       ORDER BY symbol, scored_date DESC
+     )
+     SELECT
+       sp.symbol,
+       sp.phase,
+       sp.rs_score,
+       fs.grade AS sepa_grade,
+       s.sector,
+       s.industry,
+       s.market_cap::text AS market_cap,
+       ct.megatrend,
+       ct.bottleneck,
+       ct.chain_status
+     FROM chain_tickers ct
+     JOIN stock_phases sp ON sp.symbol = ct.ticker AND sp.date = $1
+     JOIN symbols s ON s.symbol = sp.symbol
+     LEFT JOIN latest_scores fs ON fs.symbol = sp.symbol
+     WHERE sp.phase >= 2
+       AND sp.rs_score >= 70
+     ORDER BY ct.megatrend, sp.rs_score DESC`,
     [date],
   );
   return rows;

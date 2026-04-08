@@ -24,6 +24,7 @@ describe("fillInsightDefaults", () => {
     expect(result.unusualStocksNarrative).toBe("해당 없음");
     expect(result.risingRSNarrative).toBe("해당 없음");
     expect(result.watchlistNarrative).toBe("해당 없음");
+    expect(result.thesisAlignedNarrative).toBe("해당 없음");
     expect(result.todayInsight).toBe("해당 없음");
     expect(result.discordMessage).toBe("");
   });
