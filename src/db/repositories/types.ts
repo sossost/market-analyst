@@ -283,6 +283,10 @@ export interface MarketBreadthDailyRow {
   created_at: string;
 }
 
+export interface PrevBreadthScoreRow {
+  breadth_score: string | null;
+}
+
 // ─── priceRepository ─────────────────────────────────────────────────────────
 
 export interface PriceRow {

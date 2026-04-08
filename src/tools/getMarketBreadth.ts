@@ -16,6 +16,7 @@ import {
   findMarketBreadthSnapshots,
   findPhase1To2Count1d,
   findPhase2To3Count1d,
+  findPrevDayBreadthScore,
 } from "@/db/repositories/index.js";
 
 /**
@@ -224,6 +225,18 @@ async function executeDailyMode(date: string): Promise<string> {
     const breadthScore = snapshot.breadth_score != null ? toNum(snapshot.breadth_score) : null;
     const divergenceSignal = toDivergenceSignal(snapshot.divergence_signal);
 
+    const prevBreadthScoreRow = await retryDatabaseOperation(() =>
+      findPrevDayBreadthScore(date),
+    );
+    const prevBreadthScore =
+      prevBreadthScoreRow.breadth_score != null
+        ? toNum(prevBreadthScoreRow.breadth_score)
+        : null;
+    const breadthScoreChange =
+      breadthScore != null && prevBreadthScore != null
+        ? Number((breadthScore - prevBreadthScore).toFixed(1))
+        : null;
+
     const phaseDistribution = {
       phase1: snapshot.phase1_count,
       phase2: snapshot.phase2_count,
@@ -257,6 +270,7 @@ async function executeDailyMode(date: string): Promise<string> {
       advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
       newHighLow: { newHighs, newLows, ratio: hlRatio },
       breadthScore,
+      breadthScoreChange,
       divergenceSignal,
       phase1to2Count1d,
       phase2to3Count1d,
@@ -329,6 +343,7 @@ async function executeDailyMode(date: string): Promise<string> {
       ? fallbackPhase1to2Count1d - fallbackPhase2to3Count1d
       : null;
 
+  // 폴백 경로: breadthScore는 집계 쿼리로 계산 불가 → breadthScoreChange도 null
   return JSON.stringify({
     _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
     date,
@@ -344,6 +359,8 @@ async function executeDailyMode(date: string): Promise<string> {
     marketAvgRs: toNum(rsRow.avg_rs),
     advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
     newHighLow: { newHighs, newLows, ratio: newLows > 0 ? Number((newHighs / newLows).toFixed(2)) : null },
+    breadthScore: null,
+    breadthScoreChange: null,
     phase1to2Count1d: fallbackPhase1to2Count1d,
     phase2to3Count1d: fallbackPhase2to3Count1d,
     phase2NetFlow: fallbackPhase2NetFlow,

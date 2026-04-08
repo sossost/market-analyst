@@ -72,6 +72,8 @@ export interface DailyBreadthSnapshot {
   advanceDecline: DailyAdvanceDecline;
   newHighLow: DailyNewHighLow;
   breadthScore: number | null;
+  /** 전일 대비 Breadth Score 변화. null = 전일 데이터 없음 */
+  breadthScoreChange: number | null;
   divergenceSignal: string | null;
   topSectors: DailyBreadthTopSector[];
   /** 당일 Phase 1→2 신규 진입 종목 수. null = 데이터 없음 */

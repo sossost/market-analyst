@@ -19,6 +19,7 @@ import type {
   Phase2StockRow,
   DataDateRow,
   MarketBreadthDailyRow,
+  PrevBreadthScoreRow,
 } from "./types.js";
 
 /**
@@ -606,4 +607,24 @@ export async function findMarketBreadthSnapshots(
   );
 
   return rows;
+}
+
+/**
+ * 지정 날짜 직전의 가장 최근 breadth_score를 조회한다.
+ * 전일 Breadth Score 변화 계산용.
+ * 해당 날짜 이전 데이터가 없으면 breadth_score = null을 반환한다.
+ */
+export async function findPrevDayBreadthScore(
+  date: string,
+): Promise<PrevBreadthScoreRow> {
+  const { rows } = await pool.query<PrevBreadthScoreRow>(
+    `SELECT breadth_score::text
+     FROM market_breadth_daily
+     WHERE date < $1
+     ORDER BY date DESC
+     LIMIT 1`,
+    [date],
+  );
+
+  return rows[0] ?? { breadth_score: null };
 }

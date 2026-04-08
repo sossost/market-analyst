@@ -80,6 +80,7 @@ const EMPTY_BREADTH_SNAPSHOT: DailyBreadthSnapshot = {
   advanceDecline: { advancers: 0, decliners: 0, unchanged: 0, ratio: null },
   newHighLow: { newHighs: 0, newLows: 0, ratio: null },
   breadthScore: null,
+  breadthScoreChange: null,
   divergenceSignal: null,
   topSectors: [],
   phase1to2Count1d: null,
