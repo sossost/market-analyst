@@ -11,6 +11,7 @@ import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getPhase2Stocks } from "@/tools/getPhase2Stocks";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
+import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
 
 // Schema + Builder
 import type {
@@ -81,7 +82,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   logger.step("[4/7] Collecting data from tools...");
 
   // 병렬 호출
-  const [indexRaw, breadthRaw, sectorRaw, industryRaw, watchlistRaw, phase2Raw, allIndustryRaw] =
+  const [indexRaw, breadthRaw, sectorRaw, industryRaw, watchlistRaw, phase2Raw, allIndustryRaw, thesisAlignedRaw] =
     await Promise.all([
       getIndexReturns.execute({ mode: "weekly", date: targetDate }),
       getMarketBreadth.execute({ mode: "weekly", date: targetDate }),
@@ -90,6 +91,10 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
       getWatchlistStatus.execute({ include_trajectory: true, date: targetDate }),
       getPhase2Stocks.execute({ min_rs: 60, date: targetDate }),
       getLeadingSectors.execute({ mode: "industry", limit: 200, date: targetDate }),
+      buildThesisAlignedCandidates(targetDate).catch((err: unknown) => {
+        logger.warn("ThesisAligned", `수집 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }),
     ]);
 
   const indexData = parse(indexRaw);
@@ -157,9 +162,13 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
       exited: [],
       pending4of5,
     },
+    thesisAlignedCandidates: thesisAlignedRaw,
   };
 
-  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | 예비 ${pending4of5.length}`);
+  const taLabel = thesisAlignedRaw != null
+    ? `서사수혜: 체인 ${thesisAlignedRaw.chains.length}, 후보 ${thesisAlignedRaw.totalCandidates}`
+    : "서사수혜: 수집 실패";
+  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | 예비 ${pending4of5.length} | ${taLabel}`);
 
   return data;
 }

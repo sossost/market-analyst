@@ -190,6 +190,7 @@ function createMockWeeklyReportData(
     watchlist: createMockWatchlistStatusData(),
     gate5Candidates: [createMockPhase2Stock()],
     watchlistChanges: { registered: [], exited: [], pending4of5: [] },
+    thesisAlignedCandidates: null,
     ...overrides,
   };
 }

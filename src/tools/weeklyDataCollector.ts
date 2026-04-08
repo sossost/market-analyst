@@ -114,6 +114,7 @@ export class WeeklyDataCollector {
         exited: [],
         pending4of5: [],
       },
+      thesisAlignedCandidates: (data.thesisAlignedCandidates as WeeklyReportData["thesisAlignedCandidates"] | undefined) ?? null,
     };
   }
 

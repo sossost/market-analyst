@@ -236,6 +236,7 @@ function createMockDailyReportData(
     risingRS: [createMockRisingRSStock()],
     watchlist: createMockWatchlistData(),
     marketPosition: null,
+    thesisAlignedCandidates: null,
     ...overrides,
   };
 }

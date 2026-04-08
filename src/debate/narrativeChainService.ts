@@ -3,7 +3,7 @@ import {
   narrativeChains,
   type NarrativeChainStatus,
 } from "@/db/schema/analyst";
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { sendDiscordMessage } from "@/lib/discord";
 import type { Thesis } from "@/types/debate";
@@ -209,6 +209,69 @@ export async function findMatchingChain(
   };
 }
 
+interface ChainBeneficiary {
+  beneficiarySectors: string[];
+  beneficiaryTickers: string[];
+}
+
+/**
+ * Find the most recently created ACTIVE/RESOLVING chain with matching megatrend
+ * keywords that has non-empty beneficiary data.
+ *
+ * Used as a fallback when a new chain is being inserted with empty beneficiary
+ * fields — inherits from the closest existing chain in the same narrative thread.
+ */
+async function findBeneficiaryFromSameNarrative(
+  megatrend: string,
+): Promise<ChainBeneficiary | null> {
+  const activeStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
+  const candidates = await db
+    .select({
+      megatrend: narrativeChains.megatrend,
+      beneficiarySectors: narrativeChains.beneficiarySectors,
+      beneficiaryTickers: narrativeChains.beneficiaryTickers,
+    })
+    .from(narrativeChains)
+    .where(inArray(narrativeChains.status, activeStatuses))
+    .orderBy(desc(narrativeChains.bottleneckIdentifiedAt));
+
+  const newKeywords = extractKeywords(megatrend);
+
+  let bestMatch: {
+    beneficiarySectors: string[];
+    beneficiaryTickers: string[];
+    overlap: number;
+  } | null = null;
+
+  for (const candidate of candidates) {
+    const sectors = (candidate.beneficiarySectors as string[] | null) ?? [];
+    const tickers = (candidate.beneficiaryTickers as string[] | null) ?? [];
+    const hasBeneficiaryData = sectors.length > 0 || tickers.length > 0;
+    if (!hasBeneficiaryData) continue;
+
+    const existingKeywords = extractKeywords(candidate.megatrend);
+
+    let overlap = 0;
+    for (const kw of newKeywords) {
+      if (existingKeywords.has(kw)) overlap++;
+    }
+
+    if (
+      overlap >= MIN_KEYWORD_OVERLAP &&
+      (bestMatch == null || overlap > bestMatch.overlap)
+    ) {
+      bestMatch = { beneficiarySectors: sectors, beneficiaryTickers: tickers, overlap };
+    }
+  }
+
+  if (bestMatch == null) return null;
+
+  return {
+    beneficiarySectors: bestMatch.beneficiarySectors,
+    beneficiaryTickers: bestMatch.beneficiaryTickers,
+  };
+}
+
 /**
  * Calculate resolution_days from identified_at to resolved_at.
  */
@@ -298,7 +361,26 @@ export async function recordNarrativeChain(
         `Updated chain #${existing.id} (status: ${info.status}, theses: ${updatedThesisIds.length}${alphaCompatible === false ? `, ${STRUCTURAL_OBSERVATION_TAG}` : ""})`,
       );
     } else {
-      // Create new chain
+      // Create new chain — if beneficiary is empty, attempt to inherit from
+      // an existing chain in the same narrative thread (same megatrend keywords).
+      let finalBeneficiarySectors = info.beneficiarySectors;
+      let finalBeneficiaryTickers = info.beneficiaryTickers;
+
+      const isBeneficiaryEmpty =
+        info.beneficiarySectors.length === 0 && info.beneficiaryTickers.length === 0;
+
+      if (isBeneficiaryEmpty) {
+        const inherited = await findBeneficiaryFromSameNarrative(info.megatrend);
+        if (inherited != null) {
+          finalBeneficiarySectors = inherited.beneficiarySectors;
+          finalBeneficiaryTickers = inherited.beneficiaryTickers;
+          logger.info(
+            "NarrativeChain",
+            `Inherited beneficiary data for new chain (megatrend: ${info.megatrend}): sectors=${finalBeneficiarySectors.join(",")}, tickers=${finalBeneficiaryTickers.join(",")}`,
+          );
+        }
+      }
+
       const result = await db
         .insert(narrativeChains)
         .values({
@@ -309,8 +391,8 @@ export async function recordNarrativeChain(
           bottleneckIdentifiedAt: new Date(),
           nextBottleneck: info.nextBottleneck,
           status: info.status,
-          beneficiarySectors: info.beneficiarySectors,
-          beneficiaryTickers: info.beneficiaryTickers,
+          beneficiarySectors: finalBeneficiarySectors,
+          beneficiaryTickers: finalBeneficiaryTickers,
           linkedThesisIds: [thesisId],
           ...(alphaCompatible != null && { alphaCompatible }),
         })
