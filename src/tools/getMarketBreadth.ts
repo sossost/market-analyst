@@ -81,6 +81,11 @@ async function executeWeeklyMode(date: string): Promise<string> {
     );
 
     const latestBreadthScore = latestSnap?.breadth_score != null ? toNum(latestSnap.breadth_score) : null;
+    const firstBreadthScore = firstSnap?.breadth_score != null ? toNum(firstSnap.breadth_score) : null;
+    const breadthScoreChange =
+      latestBreadthScore != null && firstBreadthScore != null
+        ? Number((latestBreadthScore - firstBreadthScore).toFixed(1))
+        : null;
     const latestDivergenceSignal = toDivergenceSignal(latestSnap?.divergence_signal);
 
     return JSON.stringify({
@@ -99,6 +104,7 @@ async function executeWeeklyMode(date: string): Promise<string> {
         advanceDecline: { advancers, decliners, unchanged, ratio: adRatio },
         newHighLow: { newHighs, newLows, ratio: hlRatio },
         breadthScore: latestBreadthScore,
+        breadthScoreChange,
         divergenceSignal: latestDivergenceSignal,
         topSectors: topSectors.map((s) => ({
           sector: s.sector,

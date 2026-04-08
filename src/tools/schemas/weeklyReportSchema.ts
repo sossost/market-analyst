@@ -1,3 +1,5 @@
+import type { ThesisAlignedData } from "@/lib/thesisAlignedCandidates.js";
+
 /**
  * 주간 리포트 스키마 — 데이터 필드 / 해석 필드 분리
  *
@@ -77,6 +79,7 @@ interface BreadthLatestSnapshot {
   advanceDecline: AdvanceDecline;
   newHighLow: NewHighLow;
   breadthScore: number | null;
+  breadthScoreChange: number | null;
   divergenceSignal: string | null;
   topSectors: BreadthTopSector[];
 }
@@ -232,6 +235,8 @@ export interface WeeklyReportData {
     exited: WatchlistChange[];
     pending4of5: WatchlistChange[];
   };
+  /** buildThesisAlignedCandidates 반환값. 수집 실패 시 null */
+  thesisAlignedCandidates: ThesisAlignedData | null;
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────
@@ -272,6 +277,8 @@ export interface WeeklyReportInsight {
   regimeContext: string;
   /** 브레드스 해석: Phase 2 비율 주간 궤적 + A/D + 신고가/저가 종합 → 확장/수축 판단 */
   breadthNarrative?: string;
+  /** 서사 수혜 후보 도입부: 현재 어떤 서사가 활성화 중이고, 수혜 후보의 의미 해석 */
+  thesisAlignedNarrative?: string;
   /** Discord 핵심 요약 (3~5줄). 텍스트 전용, 링크 금지 */
   discordMessage: string;
 }

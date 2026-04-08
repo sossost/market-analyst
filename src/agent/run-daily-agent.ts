@@ -14,6 +14,8 @@ import { getRisingRS } from "@/tools/getRisingRS";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
 import { getMarketPosition } from "@/tools/getMarketPosition";
 
+
+
 // 업종 RS — 일간은 절대 RS 상위 + 섹터캡 (주간의 변화량 정렬과 분리)
 import { findTopIndustriesGlobal } from "@/db/repositories/index";
 import { applyIndustrySectorCap } from "@/lib/industryFilter";
@@ -190,6 +192,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       items: Array.isArray(watchlistData.items) ? watchlistData.items as DailyReportData["watchlist"]["items"] : [],
     },
     marketPosition: marketPositionRaw,
+    thesisAlignedCandidates: null,
   };
 
   const gateLabel =

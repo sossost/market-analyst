@@ -23,6 +23,10 @@ import type {
   WeeklyReportData,
   WeeklyReportInsight,
 } from "@/tools/schemas/weeklyReportSchema.js";
+import type {
+  ThesisAlignedData,
+  ThesisAlignedChainGroup,
+} from "@/lib/thesisAlignedCandidates.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
 
@@ -575,6 +579,15 @@ function colorClass(value: number): "up" | "down" | "neutral-color" {
   return "neutral-color";
 }
 
+/** Breadth Score 구간별 상태 레이블 (0~100) */
+function getBreadthScoreLabel(score: number): string {
+  if (score >= 80) return "극강세";
+  if (score >= 60) return "강세";
+  if (score >= 40) return "보통";
+  if (score >= 20) return "약세";
+  return "극약세";
+}
+
 /**
  * VIX 전용 컬러 — 일반 지수와 반대.
  * VIX 상승 = 시장 불안 → 한국식 하락색(파랑, down)
@@ -665,7 +678,7 @@ function renderFearGreedCard(fg: FearGreedData): string {
 
   return `
     <div class="index-card">
-      <div class="label">공포탐욕</div>
+      <div class="label">Fear &amp; Greed</div>
       <div class="value ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
       <div class="change">${escapeHtml(fg.rating)}</div>
       ${directionStr !== "" || prev1wSub !== ""
@@ -679,6 +692,14 @@ function renderFearGreedCard(fg: FearGreedData): string {
 function phaseBadgeClass(phase: number): string {
   const map: Record<number, string> = { 1: "p1", 2: "p2", 3: "p3", 4: "p4" };
   return map[phase] ?? "p1";
+}
+
+function formatMarketCap(cap: number | null): string {
+  if (cap == null) return "\u2014";
+  if (cap >= 1_000_000_000_000) return `$${(cap / 1_000_000_000_000).toFixed(1)}T`;
+  if (cap >= 1_000_000_000) return `$${(cap / 1_000_000_000).toFixed(1)}B`;
+  if (cap >= 1_000_000) return `$${(cap / 1_000_000).toFixed(0)}M`;
+  return `$${cap.toLocaleString()}`;
 }
 
 function closePositionLabel(pos: "near_high" | "near_low" | "mid"): string {
@@ -864,6 +885,19 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData, breadthNarrat
     snap.breadthScore != null
       ? snap.breadthScore.toFixed(1)
       : "—";
+
+  const BREADTH_SCORE_FLAT_THRESHOLD = 0.5;
+  const breadthScoreChangeDisplay: string = (() => {
+    if (snap.breadthScoreChange == null) return "";
+    if (Math.abs(snap.breadthScoreChange) < BREADTH_SCORE_FLAT_THRESHOLD) return "보합";
+    return `${snap.breadthScoreChange >= 0 ? "+" : ""}${snap.breadthScoreChange.toFixed(1)}`;
+  })();
+  const breadthScoreChangeCls: string = (() => {
+    if (snap.breadthScoreChange == null) return "";
+    if (Math.abs(snap.breadthScoreChange) < BREADTH_SCORE_FLAT_THRESHOLD) return "neutral-color";
+    return colorClass(snap.breadthScoreChange);
+  })();
+
   const p2Change =
     snap.phase2RatioChange >= 0
       ? `+${snap.phase2RatioChange.toFixed(1)}%p`
@@ -892,7 +926,11 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData, breadthNarrat
         breadthScoreStr !== "—"
           ? `<div class="stat-chip">
               <span class="stat-label">Breadth Score</span>
-              <span class="stat-value">${escapeHtml(breadthScoreStr)}</span>
+              <span class="stat-value">${escapeHtml(breadthScoreStr)} <span class="stat-inline-label">${escapeHtml(getBreadthScoreLabel(snap.breadthScore!))}</span>${
+                breadthScoreChangeDisplay !== ""
+                  ? ` <span class="${escapeHtml(breadthScoreChangeCls)}" style="font-size:0.85rem;">${escapeHtml(breadthScoreChangeDisplay)}</span>`
+                  : ""
+              }</span>
             </div>`
           : ""
       }
@@ -1239,6 +1277,124 @@ function renderWatchlistChangeCard(
 
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────
 
+// ─── 서사 수혜 후보 ───────────────────────────────────────────────────────────
+
+function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
+  const statusCls = group.chainStatus === "ACTIVE" ? "up" : "neutral-color";
+
+  if (group.candidates.length === 0) {
+    return "";
+  }
+
+  const hasSeparateBottleneck =
+    group.bottleneck !== group.megatrend && group.bottleneck.trim() !== "";
+  const descriptionHtml = hasSeparateBottleneck
+    ? `\n    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">${escapeHtml(group.bottleneck)}</p>`
+    : "";
+
+  const headerHtml = `
+    <h3>
+      ${escapeHtml(group.megatrend)}
+      <span class="phase-badge p2"><span class="${escapeHtml(statusCls)}">${escapeHtml(group.chainStatus)}</span></span>
+      <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400;">${escapeHtml(String(group.daysSinceIdentified))}일 경과</span>
+    </h3>${descriptionHtml}`;
+
+  const rows = group.candidates
+    .map((c) => {
+      const phaseCls = c.phase != null ? phaseBadgeClass(c.phase) : "p1";
+      const phaseStr = c.phase != null ? `Phase ${escapeHtml(String(c.phase))}` : "\u2014";
+      const rsStr = c.rsScore != null ? escapeHtml(String(c.rsScore)) : "\u2014";
+      const sepaStr = c.sepaGrade != null
+        ? c.sepaGrade === "S"
+          ? `<span class="phase-badge" style="background:#ffe0d0;color:#bc4c00;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
+          : c.sepaGrade === "A"
+            ? `<span class="phase-badge" style="background:#ddf4ff;color:#0969da;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
+            : c.sepaGrade === "B"
+              ? `<span class="phase-badge" style="background:#e6f6e6;color:#1a7f37;">${escapeHtml(c.sepaGrade)}</span>`
+              : escapeHtml(c.sepaGrade)
+        : "\u2014";
+      const industryStr = c.industry != null ? escapeHtml(c.industry) : "\u2014";
+      const capStr = formatMarketCap(c.marketCap);
+      const gateStr = `${escapeHtml(String(c.gatePassCount))}/${escapeHtml(String(c.gateTotalCount))}`;
+      const aiTag = c.source === "llm"
+        ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);vertical-align:middle;">AI</span>`
+        : "";
+      return `
+        <tr>
+          <td><strong>${escapeHtml(c.symbol)}</strong>${aiTag}</td>
+          <td class="tc"><span class="phase-badge ${escapeHtml(phaseCls)}">${phaseStr}</span></td>
+          <td class="tc">${rsStr}</td>
+          <td class="tc">${sepaStr}</td>
+          <td class="tc">${escapeHtml(capStr)}</td>
+          <td>${industryStr}</td>
+          <td class="tc">${gateStr}</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `${headerHtml}
+    <table style="table-layout:fixed;">
+      <colgroup>
+        <col style="width:12%">
+        <col style="width:12%">
+        <col style="width:8%">
+        <col style="width:8%">
+        <col style="width:12%">
+        <col style="width:38%">
+        <col style="width:10%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th class="tc">Phase</th>
+          <th class="tc">RS</th>
+          <th class="tc">SEPA</th>
+          <th class="tc">시총</th>
+          <th>업종</th>
+          <th class="tc">게이트</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderThesisAlignedSection(
+  data: ThesisAlignedData | null | undefined,
+  narrative: string,
+): string {
+  if (data == null || data.chains.length === 0) {
+    return "";
+  }
+
+  const narrativeHtml = narrative.trim() !== ""
+    ? `<div class="content-block">${mdToHtml(narrative)}</div>`
+    : "";
+
+  const summaryHtml = `
+    <div class="stat-row">
+      <div class="stat-chip">
+        <span class="stat-label">활성 체인</span>
+        <span class="stat-value">${escapeHtml(String(data.chains.length))}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">수혜 후보</span>
+        <span class="stat-value">${escapeHtml(String(data.totalCandidates))}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Phase 2</span>
+        <span class="stat-value ${data.phase2Count > 0 ? "up" : "neutral-color"}">${escapeHtml(String(data.phase2Count))}</span>
+      </div>
+    </div>`;
+
+  const chainsHtml = data.chains
+    .map((group) => renderChainGroupCard(group))
+    .join("");
+
+  const noteHtml = `<p style="font-size:0.75rem;color:var(--text-muted);margin:12px 0 0;">게이트 = Phase2 + RS\u226560 + SEPA S/A + thesis연결 (업종RS 미포함, 4/4 만점) · 업종 탐색은 체인당 RS 상위 10개</p>`;
+
+  return `${narrativeHtml}${summaryHtml}${chainsHtml}${noteHtml}`;
+}
+
 /**
  * 주간 리포트 전체 HTML을 조립한다.
  * 데이터 블록은 프로그래밍 렌더링, 해석 블록은 marked 마크다운→HTML 변환.
@@ -1288,6 +1444,10 @@ export function buildWeeklyHtml(
   const narrativeEvolutionHtml = mdToHtml(insight.narrativeEvolution);
   const thesisAccuracyHtml = mdToHtml(insight.thesisAccuracy);
   const regimeContextHtml = mdToHtml(insight.regimeContext);
+  const thesisAlignedHtml = renderThesisAlignedSection(
+    data.thesisAlignedCandidates,
+    insight.thesisAlignedNarrative ?? "",
+  );
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -1341,6 +1501,13 @@ export function buildWeeklyHtml(
         <h3>Thesis 적중률 피드백</h3>
         <div class="content-block">${thesisAccuracyHtml}</div>
       </section>
+
+      <!-- 섹션 3.5: 서사 수혜 후보 (데이터 없으면 섹션 미출력) -->
+      ${thesisAlignedHtml !== "" ? `
+      <section>
+        <h2>🔗 서사 수혜 후보</h2>
+        ${thesisAlignedHtml}
+      </section>` : ""}
 
       <!-- 섹션 4: 관심종목 궤적 (ACTIVE) -->
       <section>

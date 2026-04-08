@@ -35,7 +35,13 @@ vi.mock("../../../src/db/client.js", () => ({
             where: (...wArgs: unknown[]) => {
               const result = mockWhere(...wArgs);
               if (result != null && typeof result.then === "function") {
-                return result;
+                // Make thenable result chainable with orderBy
+                const chainable = {
+                  orderBy: () => chainable,
+                  then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+                    result.then(resolve, reject),
+                };
+                return chainable;
               }
               return {
                 limit: (...lArgs: unknown[]) => mockLimit(...lArgs),
@@ -439,6 +445,8 @@ describe("narrativeChainService", () => {
 
       // findMatchingChain returns no candidates
       mockWhere.mockResolvedValueOnce([]);
+      // findBeneficiaryFromSameNarrative: thesis has empty beneficiary, no matching chain with data
+      mockWhere.mockResolvedValueOnce([]);
       // insert returns id
       mockReturning.mockResolvedValueOnce([{ id: 1 }]);
 
@@ -451,6 +459,91 @@ describe("narrativeChainService", () => {
           bottleneck: "GPU 공급 부족",
           nextBottleneck: "전력 인프라",
           linkedThesisIds: [100],
+        }),
+      );
+    });
+
+    it("inherits beneficiary from existing chain when new chain has empty beneficiary", async () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "AI 인프라 광트랜시버 공급 부족 심화",
+        timeframeDays: 60,
+        verificationMetric: "m",
+        targetCondition: "c",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        narrativeChain: {
+          megatrend: "AI 인프라",
+          demandDriver: "데이터센터 수요 증가",
+          supplyChain: "광트랜시버 공급망",
+          bottleneck: "광트랜시버 공급 부족",
+        },
+        // beneficiarySectors/Tickers omitted → empty arrays from buildChainFields
+      };
+
+      // findMatchingChain: no existing chain matches (new bottleneck)
+      mockWhere.mockResolvedValueOnce([]);
+      // findBeneficiaryFromSameNarrative: existing ACTIVE chain with same megatrend has beneficiary data
+      mockWhere.mockResolvedValueOnce([
+        {
+          megatrend: "AI 인프라 확장",
+          beneficiarySectors: ["Communication Equipment"],
+          beneficiaryTickers: ["CIEN", "LITE"],
+        },
+      ]);
+      // insert returns id
+      mockReturning.mockResolvedValueOnce([{ id: 2 }]);
+
+      await recordNarrativeChain(thesis, 101);
+
+      expect(mockInsert).toHaveBeenCalled();
+      expect(mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          beneficiarySectors: ["Communication Equipment"],
+          beneficiaryTickers: ["CIEN", "LITE"],
+        }),
+      );
+    });
+
+    it("keeps empty beneficiary when no existing chain has data", async () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "완전히 새로운 서사 병목 발생",
+        timeframeDays: 60,
+        verificationMetric: "m",
+        targetCondition: "c",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        narrativeChain: {
+          megatrend: "완전히 새로운 서사",
+          demandDriver: "새로운 수요",
+          supplyChain: "새로운 공급망",
+          bottleneck: "새로운 병목",
+        },
+      };
+
+      // findMatchingChain: no match
+      mockWhere.mockResolvedValueOnce([]);
+      // findBeneficiaryFromSameNarrative: all existing chains also have empty beneficiary
+      mockWhere.mockResolvedValueOnce([
+        {
+          megatrend: "완전히 새로운 서사",
+          beneficiarySectors: null,
+          beneficiaryTickers: null,
+        },
+      ]);
+      // insert returns id
+      mockReturning.mockResolvedValueOnce([{ id: 3 }]);
+
+      await recordNarrativeChain(thesis, 102);
+
+      expect(mockInsert).toHaveBeenCalled();
+      expect(mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          beneficiarySectors: [],
+          beneficiaryTickers: [],
         }),
       );
     });

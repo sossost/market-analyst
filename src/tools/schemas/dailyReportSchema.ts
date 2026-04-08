@@ -8,6 +8,8 @@
  *     도구 반환값(_note 필드)에도 동일 경고가 포함되어 있음.
  */
 
+import type { ThesisAlignedData } from "@/lib/thesisAlignedCandidates.js";
+
 // ─── 공통 서브타입 ────────────────────────────────────────────────────────────
 
 /**
@@ -291,6 +293,8 @@ export interface DailyReportData {
   watchlist: DailyWatchlistData;
   /** getMarketPosition 반환값. 수집 실패 시 null */
   marketPosition: MarketPositionData | null;
+  /** buildThesisAlignedCandidates 반환값. 수집 실패 시 null */
+  thesisAlignedCandidates: ThesisAlignedData | null;
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────

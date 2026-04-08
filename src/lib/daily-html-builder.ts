@@ -25,6 +25,10 @@ import type {
   DailyReportInsight,
   MarketPositionData,
 } from "@/tools/schemas/dailyReportSchema.js";
+import type {
+  ThesisAlignedData,
+  ThesisAlignedChainGroup,
+} from "@/lib/thesisAlignedCandidates.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
 
@@ -591,6 +595,15 @@ function colorClass(value: number): "up" | "down" | "neutral-color" {
   return "neutral-color";
 }
 
+/** Breadth Score 구간별 상태 레이블 (0~100) */
+function getBreadthScoreLabel(score: number): string {
+  if (score >= 80) return "극강세";
+  if (score >= 60) return "강세";
+  if (score >= 40) return "보통";
+  if (score >= 20) return "약세";
+  return "극약세";
+}
+
 /**
  * VIX 전용 컬러 — 일반 지수와 반대.
  * VIX 상승 = 시장 불안 → 한국식 하락색(파랑, down)
@@ -620,6 +633,14 @@ function marketCapLabel(cap: number | null): string {
   if (cap >= LARGE_CAP_THRESHOLD) return "Large";
   if (cap >= MID_CAP_THRESHOLD) return "Mid";
   return "Small";
+}
+
+function formatMarketCap(cap: number | null): string {
+  if (cap == null) return "—";
+  if (cap >= 1_000_000_000_000) return `$${(cap / 1_000_000_000_000).toFixed(1)}T`;
+  if (cap >= 1_000_000_000) return `$${(cap / 1_000_000_000).toFixed(1)}B`;
+  if (cap >= 1_000_000) return `$${(cap / 1_000_000).toFixed(0)}M`;
+  return `$${cap.toLocaleString()}`;
 }
 
 /**
@@ -929,10 +950,10 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
       ${
         breadthScoreStr !== "—"
           ? `<div class="stat-chip">
-              <span class="stat-label">Breadth Score <span class="stat-inline-label">(252일 퍼센타일)</span></span>
-              <span class="stat-value">${escapeHtml(breadthScoreStr)}${
+              <span class="stat-label">Breadth Score</span>
+              <span class="stat-value">${escapeHtml(breadthScoreStr)} <span class="stat-inline-label">${escapeHtml(getBreadthScoreLabel(data.breadthScore!))}</span>${
                 breadthScoreChangeDisplay !== ""
-                  ? ` <span class="${escapeHtml(breadthScoreChangeCls)}" style="font-size:0.85rem;">${escapeHtml(breadthScoreChangeDisplay)}</span> <span class="stat-inline-label">(전일 대비)</span>`
+                  ? ` <span class="${escapeHtml(breadthScoreChangeCls)}" style="font-size:0.85rem;">${escapeHtml(breadthScoreChangeDisplay)}</span>`
                   : ""
               }</span>
             </div>`
@@ -1314,9 +1335,129 @@ export function renderWatchlistSection(
 }
 
 /**
- * 시장 온도 + 토론 인��이트 섹션을 렌더링한다.
+ * 시장 온도 + 토론 인사이트 섹션을 렌더링한다.
  * 배지 + 판단 근거 텍스트만. 정량 기준 없는 3분할 바는 제거.
  */
+// ─── Thesis-Aligned Candidates 섹션 ─────────────────────────────────
+
+const PHASE_2_VALUE = 2;
+const RS_HIGHLIGHT_THRESHOLD = 60;
+
+/**
+ * 단일 체인 그룹의 후보 테이블을 렌더링한다.
+ */
+function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
+  const statusCls = group.chainStatus === "ACTIVE" ? "up" : "neutral-color";
+
+  if (group.candidates.length === 0) {
+    return "";
+  }
+
+  const headerHtml = `
+    <h3>
+      ${escapeHtml(group.megatrend)}
+      <span class="phase-badge p2"><span class="${escapeHtml(statusCls)}">${escapeHtml(group.chainStatus)}</span></span>
+      <span class="stat-inline-label">${escapeHtml(String(group.daysSinceIdentified))}일 경과</span>
+    </h3>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">${escapeHtml(group.bottleneck)}</p>`;
+
+  const rows = group.candidates
+    .map((c) => {
+      const phaseCls = c.phase != null ? phaseBadgeClass(c.phase) : "p1";
+      const phaseStr = c.phase != null ? `Phase ${escapeHtml(String(c.phase))}` : "\u2014";
+      const rsStr = c.rsScore != null ? escapeHtml(String(c.rsScore)) : "\u2014";
+      const sepaStr = c.sepaGrade != null
+        ? c.sepaGrade === "S"
+          ? `<span class="phase-badge" style="background:#ffe0d0;color:#bc4c00;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
+          : c.sepaGrade === "A"
+            ? `<span class="phase-badge" style="background:#ddf4ff;color:#0969da;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
+            : c.sepaGrade === "B"
+              ? `<span class="phase-badge" style="background:#e6f6e6;color:#1a7f37;">${escapeHtml(c.sepaGrade)}</span>`
+              : escapeHtml(c.sepaGrade)
+        : "\u2014";
+      const industryStr = c.industry != null ? escapeHtml(c.industry) : "\u2014";
+      const capStr = formatMarketCap(c.marketCap);
+      const gateStr = `${escapeHtml(String(c.gatePassCount))}/${escapeHtml(String(c.gateTotalCount))}`;
+      const aiTag = c.source === "llm"
+        ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);vertical-align:middle;">AI</span>`
+        : "";
+      return `
+        <tr>
+          <td><strong>${escapeHtml(c.symbol)}</strong>${aiTag}</td>
+          <td class="tc"><span class="phase-badge ${escapeHtml(phaseCls)}">${phaseStr}</span></td>
+          <td class="tc">${rsStr}</td>
+          <td class="tc">${sepaStr}</td>
+          <td class="tc">${escapeHtml(capStr)}</td>
+          <td>${industryStr}</td>
+          <td class="tc">${gateStr}</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `${headerHtml}
+    <table style="table-layout:fixed;">
+      <colgroup>
+        <col style="width:12%">
+        <col style="width:12%">
+        <col style="width:8%">
+        <col style="width:8%">
+        <col style="width:12%">
+        <col style="width:38%">
+        <col style="width:10%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th class="tc">Phase</th>
+          <th class="tc">RS</th>
+          <th class="tc">SEPA</th>
+          <th class="tc">시총</th>
+          <th>업종</th>
+          <th class="tc">게이트</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/**
+ * Thesis-Aligned Candidates 섹션을 렌더링한다.
+ * 데이터가 없으면 빈 문자열을 반환하여 섹션 자체를 미출력한다.
+ */
+export function renderThesisAlignedSection(
+  data: ThesisAlignedData | null | undefined,
+): string {
+  if (data == null || data.chains.length === 0) {
+    return "";
+  }
+
+  const summaryHtml = `
+    <div class="stat-row">
+      <div class="stat-chip">
+        <span class="stat-label">활성 체인</span>
+        <span class="stat-value">${escapeHtml(String(data.chains.length))}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">수혜 후보</span>
+        <span class="stat-value">${escapeHtml(String(data.totalCandidates))}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Phase 2</span>
+        <span class="stat-value ${data.phase2Count > 0 ? "up" : "neutral-color"}">${escapeHtml(String(data.phase2Count))}</span>
+      </div>
+    </div>`;
+
+  const chainsHtml = data.chains
+    .map((group) => renderChainGroupCard(group))
+    .join("");
+
+  const noteHtml = `<p style="font-size:0.75rem;color:var(--text-muted);margin:12px 0 0;">게이트 = Phase2 + RS\u226560 + SEPA S/A + thesis연결 (업종RS 미포함, 4/4 만점) · 업종 탐색은 체인당 RS 상위 10개</p>`;
+
+  return `${summaryHtml}${chainsHtml}${noteHtml}`;
+}
+
+// ─── 시장 온도 섹션 ─────────────────────────────────────────────────────────
+
 export function renderInsightSection(insight: DailyReportInsight): string {
   const rationaleHtml = insight.marketTemperatureRationale.trim() !== ""
     ? `<div class="insight-rationale">${mdToHtml(insight.marketTemperatureRationale)}</div>`
