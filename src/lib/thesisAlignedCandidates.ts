@@ -72,7 +72,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // ─── 게이트 판정 ───────────────────────────────────────────────────────────────
 
-function countGatePasses(
+export function countGatePasses(
   phase: number | null,
   rsScore: number | null,
   sepaGrade: string | null,
@@ -268,8 +268,6 @@ export async function buildThesisAlignedCandidates(
 
   // 5. 체인별 그룹 생성
   const now = new Date();
-  let totalCandidates = 0;
-  let phase2Count = 0;
 
   // chain별로 어떤 업종을 갖고 있는지 매핑
   const chainSectorsMap = new Map<number, Set<string>>();
@@ -319,6 +317,13 @@ export async function buildThesisAlignedCandidates(
         `SEPA 미등급으로 제외된 LLM 지목 종목: ${droppedLlm.map((c) => c.symbol).join(", ")}`,
       );
     }
+    const noSepa = allBeforeFilter.filter((c) => c.sepaGrade == null);
+    if (noSepa.length > 0) {
+      logger.warn(
+        "ThesisAligned",
+        `SEPA 없어 제외: ${noSepa.map((c) => c.symbol).join(", ")}`,
+      );
+    }
     // 같은 종목이 여러 체인에 중복 등장할 수 있음 (의도된 동작 — 체인별 독립 평가)
     const candidates = allBeforeFilter.filter((c) => c.sepaGrade != null);
 
@@ -331,11 +336,6 @@ export async function buildThesisAlignedCandidates(
       if (gradeA !== gradeB) return gradeA - gradeB;
       return (b.rsScore ?? 0) - (a.rsScore ?? 0);
     });
-
-    for (const c of candidates) {
-      if (c.phase === PHASE_2) phase2Count += 1;
-    }
-    totalCandidates += candidates.length;
 
     return {
       chainId: chain.id,
@@ -350,6 +350,20 @@ export async function buildThesisAlignedCandidates(
 
   // 후보가 0인 chain 제거
   const nonEmptyChains = chains.filter((c) => c.candidates.length > 0);
+
+  // totalCandidates: 전체 체인에 걸친 총 후보 수 (동일 종목이 여러 체인에 있으면 중복 카운트)
+  const totalCandidates = nonEmptyChains.reduce((sum, c) => sum + c.candidates.length, 0);
+
+  // phase2Count: 고유 심볼 기준 Phase 2 종목 수 (이중 카운트 방지)
+  const phase2Symbols = new Set<string>();
+  for (const chain of nonEmptyChains) {
+    for (const c of chain.candidates) {
+      if (c.phase === PHASE_2) {
+        phase2Symbols.add(c.symbol);
+      }
+    }
+  }
+  const phase2Count = phase2Symbols.size;
 
   logger.info(
     "ThesisAligned",
