@@ -1,6 +1,6 @@
 # Market Analyst — Roadmap
 
-**최종 업데이트:** 2026-04-02
+**최종 업데이트:** 2026-04-08
 
 ---
 
@@ -48,7 +48,7 @@
 | 추천 자동화 | scan-recommendation-candidates — Phase 2 전수 스캔 → 7개 게이트 통과 종목을 ETL Phase 3.8에서 자동 저장. 에이전트 호출 누락으로 인한 0건 리스크 제거 (#547) |
 | 시장 브레드스 스냅샷 | `market_breadth_daily` — Phase 분포·A/D ratio·52주 신고가/신저가·VIX(종가+일중고점)·공포탐욕 지수를 일별 스냅샷으로 축적. 대시보드 heavy join 제거 (#588, #590). `breadth_score`(5개 지표 252일 퍼센타일 가중합산 0~100) + `divergence_signal`(가격-브레드스 다이버전스 자동 감지) 컬럼 추가 (#600). `phase1_to2_count_1d`·`phase2_to3_count_1d`(당일 Phase 전환 카운트) 컬럼 추가 + 일간 리포트 HTML stat-chip 표시 (#657) |
 
-**파이프라인:** GitHub Actions + 맥미니 launchd, 일~금 UTC 23:30 (KST 08:30), ~50분 소요.
+**파이프라인:** 맥미니 launchd 단독, 화~토 KST 07:00 (= UTC 22:00 Mon-Fri), ~50분 소요.
 
 ### Layer 2: 에이전트 코어 (F2 + F5) — Done
 데이터를 읽고 리포트를 생성하는 Claude 에이전트.
