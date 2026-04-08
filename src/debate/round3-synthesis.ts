@@ -528,8 +528,8 @@ function normalizeMinorityView(raw: unknown): MinorityView | null {
 
 /**
  * sentiment 에이전트의 confidence를 2단계 하향한다.
- * 적중률 44% 반영 — high→low, medium→low, low는 유지.
- * #620: 1단계(high→medium)에서 2단계로 강화. 44% 적중률은 low 수준.
+ * 적중률 41% 반영 — high→low, medium→low, low는 유지.
+ * #620: 1단계(high→medium)에서 2단계로 강화. 41% 적중률은 low 수준.
  */
 const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
   high: "low",
@@ -542,7 +542,7 @@ const CONFIDENCE_DOWNGRADE: Record<string, Confidence> = {
  * 전체 적중률 50% 미만 에이전트를 등록한다.
  * macro(60%), geopolitics(62.5%)는 전체 적중률이 50% 이상이므로 대상 아님.
  * 이들은 카테고리 차단(ALLOWED_CATEGORIES_PER_PERSONA)으로 short_term_outlook만 억제.
- * #620: sentiment 적중률 44% — 2단계 하향(high→low, medium→low)으로 강화.
+ * #620→#687: sentiment 적중률 41% — 2단계 하향(high→low, medium→low)으로 강화.
  */
 const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
 

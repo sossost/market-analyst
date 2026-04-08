@@ -553,7 +553,7 @@ export function formatModeratorPerformanceContext(
   for (const hr of sorted) {
     const label = PERSONA_LABEL_KR[hr.persona] ?? hr.persona;
     const total = hr.confirmed + hr.invalidated + hr.expired;
-    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
+    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(1)}%` : "N/A";
     let reliability: string;
     if (total < 3) {
       reliability = "데이터 부족";
@@ -667,7 +667,7 @@ export function formatCategoryHitRateContext(
   for (const hr of sorted) {
     const label = CATEGORY_LABEL_KR[hr.category] ?? hr.category;
     const total = hr.confirmed + hr.invalidated + hr.expired;
-    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
+    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(1)}%` : "N/A";
     let reliability: string;
     if (total < 3) {
       reliability = "데이터 부족";
@@ -779,11 +779,11 @@ export function formatPersonaCategoryHitRates(
 
   for (const r of valid.sort((a, b) => (b.hitRate ?? 0) - (a.hitRate ?? 0))) {
     const label = CATEGORY_LABEL_KR[r.category] ?? r.category;
-    const rateStr = r.hitRate != null ? `${(r.hitRate * 100).toFixed(0)}%` : "-";
+    const rateStr = r.hitRate != null ? `${(r.hitRate * 100).toFixed(1)}%` : "N/A";
     lines.push(`| ${label} | ${r.confirmed} | ${r.invalidated} | ${r.expired} | ${rateStr} |`);
 
     if (r.hitRate != null && r.hitRate < CATEGORY_LOW_HIT_RATE_THRESHOLD) {
-      warnings.push(`**${label}** 카테고리 적중률 ${(r.hitRate * 100).toFixed(0)}% — 이 카테고리에서 방향성 예측을 자제하고 조건부 형식을 사용하세요.`);
+      warnings.push(`**${label}** 카테고리 적중률 ${(r.hitRate * 100).toFixed(1)}% — 이 카테고리에서 방향성 예측을 자제하고 조건부 형식을 사용하세요.`);
     }
   }
 
@@ -795,4 +795,122 @@ export function formatPersonaCategoryHitRates(
   }
 
   return lines.join("\n");
+}
+
+// ─── Moderator Cross-Calibration (agent×category) ─────────────────────────────
+
+export interface CrossCalibrationEntry {
+  persona: AgentPersona;
+  category: ThesisCategory;
+  confirmed: number;
+  invalidated: number;
+  expired: number;
+  hitRate: number | null;
+}
+
+const CROSS_LOW_HIT_RATE_THRESHOLD = 0.5;
+const CROSS_MIN_TOTAL = 3;
+
+/**
+ * 모든 에이전트의 카테고리별 적중률을 교차 매트릭스로 조회한다.
+ * 모더레이터가 특정 agent×category 조합의 신뢰도를 판단할 수 있도록 한다.
+ */
+export async function getAllCrossCalibrationRates(): Promise<CrossCalibrationEntry[]> {
+  const rows = await db
+    .select({
+      agentPersona: theses.agentPersona,
+      category: theses.category,
+      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
+      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
+    })
+    .from(theses)
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]))
+    .groupBy(theses.agentPersona, theses.category);
+
+  return rows.map((r) => {
+    const total = r.confirmed + r.invalidated + r.expired;
+    return {
+      persona: r.agentPersona as AgentPersona,
+      category: r.category as ThesisCategory,
+      confirmed: r.confirmed,
+      invalidated: r.invalidated,
+      expired: r.expired,
+      hitRate: total > 0 ? r.confirmed / total : null,
+    };
+  });
+}
+
+/**
+ * agent×category 교차 적중률을 모더레이터 프롬프트용 마크다운으로 변환한다.
+ * 저적중 조합에 대한 가중치 할인 지시를 포함한다.
+ * 순수 함수 — 테스트 용이.
+ */
+export function formatModeratorCrossCalibrationContext(
+  entries: CrossCalibrationEntry[],
+): string {
+  // 최소 건수 이상만 유효
+  const valid = entries.filter(
+    (e) => e.confirmed + e.invalidated + e.expired >= CROSS_MIN_TOTAL,
+  );
+  if (valid.length === 0) return "";
+
+  const sorted = [...valid].sort((a, b) => (a.hitRate ?? 0) - (b.hitRate ?? 0));
+
+  const lines: string[] = [
+    "## 에이전트×카테고리 교차 적중률",
+    "",
+    "아래는 각 분석가가 특정 카테고리에서 달성한 적중률입니다.",
+    "**특정 분석가×카테고리 조합의 적중률이 50% 미만이면 해당 조합의 thesis에 가중치를 낮추세요.**",
+    "",
+    "| 분석가 | 카테고리 | 적중 | 기각 | 만료 | 적중률 | 신뢰도 |",
+    "|--------|----------|------|------|------|--------|--------|",
+  ];
+
+  const lowCombinations: string[] = [];
+
+  for (const e of sorted) {
+    const personaLabel = PERSONA_LABEL_KR[e.persona] ?? e.persona;
+    const categoryLabel = CATEGORY_LABEL_KR[e.category] ?? e.category;
+    const total = e.confirmed + e.invalidated + e.expired;
+    const rateStr = e.hitRate != null ? `${(e.hitRate * 100).toFixed(1)}%` : "N/A";
+    let reliability: string;
+    if (total < CROSS_MIN_TOTAL) {
+      reliability = "데이터 부족";
+    } else if (e.hitRate != null && e.hitRate < CROSS_LOW_HIT_RATE_THRESHOLD) {
+      reliability = "⚠️ 저신뢰";
+      lowCombinations.push(`${personaLabel} × ${categoryLabel} (${rateStr})`);
+    } else {
+      reliability = "정상";
+    }
+    lines.push(`| ${personaLabel} | ${categoryLabel} | ${e.confirmed} | ${e.invalidated} | ${e.expired} | ${rateStr} | ${reliability} |`);
+  }
+
+  if (lowCombinations.length > 0) {
+    lines.push("");
+    lines.push("### ⚠️ 저적중 에이전트×카테고리 조합");
+    lines.push("아래 조합의 적중률이 50% 미만입니다. 해당 분석가가 해당 카테고리에서 제출한 thesis는 **가중치를 추가 할인**하세요:");
+    for (const combo of lowCombinations) {
+      lines.push(`- ${combo}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * 모더레이터에게 전달할 agent×category 교차 적중률 컨텍스트를 생성한다.
+ */
+export async function buildModeratorCrossCalibrationContext(): Promise<string> {
+  try {
+    const entries = await getAllCrossCalibrationRates();
+    if (entries.length === 0) return "";
+    return formatModeratorCrossCalibrationContext(entries);
+  } catch (err) {
+    logger.warn(
+      "Calibration",
+      `교차 적중률 컨텍스트 생성 실패: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return "";
+  }
 }

@@ -25,6 +25,7 @@ import {
   buildEnhancedPerAgentCalibrationContexts,
   buildModeratorPerformanceContext,
   buildCategoryHitRateContext,
+  buildModeratorCrossCalibrationContext,
 } from "@/debate/confidenceCalibrator";
 import { verifyTheses } from "@/debate/thesisVerifier";
 import { saveDebateSession, buildFewShotContext } from "@/debate/sessionStore";
@@ -618,16 +619,17 @@ async function main() {
   let perAgentCalibration: Record<string, string> = {};
   let agentPerformanceContext = "";
   try {
-    const [calibrationResult, perAgentContexts, moderatorPerfContext, categoryContext] = await Promise.all([
+    const [calibrationResult, perAgentContexts, moderatorPerfContext, categoryContext, crossCalibContext] = await Promise.all([
       getCalibrationResult(),
       buildEnhancedPerAgentCalibrationContexts(),
       buildModeratorPerformanceContext(confirmedRegimeType),
       buildCategoryHitRateContext(),
+      buildModeratorCrossCalibrationContext(),
     ]);
     calibrationContext = formatCalibrationForPrompt(calibrationResult);
     perAgentCalibration = perAgentContexts;
-    // 에이전트별 적중률 + 카테고리별 적중률을 합쳐서 모더레이터에 전달
-    agentPerformanceContext = [moderatorPerfContext, categoryContext]
+    // 에이전트별 적중률 + 카테고리별 적중률 + 교차 적중률을 합쳐서 모더레이터에 전달
+    agentPerformanceContext = [moderatorPerfContext, categoryContext, crossCalibContext]
       .filter((s) => s.length > 0)
       .join("\n\n");
     const agentCount = Object.keys(perAgentContexts).length;
