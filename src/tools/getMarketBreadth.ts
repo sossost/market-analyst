@@ -225,17 +225,21 @@ async function executeDailyMode(date: string): Promise<string> {
     const breadthScore = snapshot.breadth_score != null ? toNum(snapshot.breadth_score) : null;
     const divergenceSignal = toDivergenceSignal(snapshot.divergence_signal);
 
-    const prevBreadthScoreRow = await retryDatabaseOperation(() =>
-      findPrevDayBreadthScore(date),
-    );
-    const prevBreadthScore =
-      prevBreadthScoreRow.breadth_score != null
-        ? toNum(prevBreadthScoreRow.breadth_score)
-        : null;
-    const breadthScoreChange =
-      breadthScore != null && prevBreadthScore != null
-        ? Number((breadthScore - prevBreadthScore).toFixed(1))
-        : null;
+    // breadthScore가 null이면 변화량 계산 불가 — DB 쿼리 스킵
+    let breadthScoreChange: number | null = null;
+    if (breadthScore != null) {
+      const prevBreadthScoreRow = await retryDatabaseOperation(() =>
+        findPrevDayBreadthScore(date),
+      );
+      const prevBreadthScore =
+        prevBreadthScoreRow.breadth_score != null
+          ? toNum(prevBreadthScoreRow.breadth_score)
+          : null;
+      breadthScoreChange =
+        prevBreadthScore != null
+          ? Number((breadthScore - prevBreadthScore).toFixed(1))
+          : null;
+    }
 
     const phaseDistribution = {
       phase1: snapshot.phase1_count,
