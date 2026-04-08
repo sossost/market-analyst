@@ -568,6 +568,24 @@ describe("renderPhaseDistribution", () => {
     expect(html).toContain("보합");
   });
 
+  it("breadthScoreChange가 정확히 ±0.5이면 보합이 아니라 방향성으로 표시한다", () => {
+    const pos = createMockBreadthSnapshot({
+      breadthScore: 56.0,
+      breadthScoreChange: 0.5,
+    });
+    const posHtml = renderPhaseDistribution(pos);
+    expect(posHtml).toContain("+0.5");
+    expect(posHtml).not.toContain("보합");
+
+    const neg = createMockBreadthSnapshot({
+      breadthScore: 56.0,
+      breadthScoreChange: -0.5,
+    });
+    const negHtml = renderPhaseDistribution(neg);
+    expect(negHtml).toContain("-0.5");
+    expect(negHtml).not.toContain("보합");
+  });
+
   it("breadthScoreChange가 null이면 Breadth Score chip에 전일 변화를 표시하지 않는다", () => {
     const snapshot = createMockBreadthSnapshot({
       breadthScore: 62.5,
