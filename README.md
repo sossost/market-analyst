@@ -63,9 +63,10 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 가치 있는 인사이트만 GitHub 이슈로 생성 (최대 3건/일)
 
 9. 자율 운영
-   → Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
-   → Auto PR Reviewer: 이슈 프로세서가 생성한 PR을 Strategic + Code 리뷰어가 병렬 검토 → GitHub 코멘트 자동 게시
-   → 맥미니 서버 launchd 기반 스케줄링
+   → Issue Triage: 미트리아지 이슈 사전 분류 (매일 09:00)
+   → Issue Processor: triaged 이슈 → Claude Code CLI 자동 구현 → PR 생성 (10:00~02:00)
+   → PR Reviewer: PR Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (09:15~02:15)
+   → 맥미니 서버 launchd 기반 스케줄링 (10개 작업)
 ```
 
 ## Quick Start
