@@ -553,7 +553,7 @@ export function formatModeratorPerformanceContext(
   for (const hr of sorted) {
     const label = PERSONA_LABEL_KR[hr.persona] ?? hr.persona;
     const total = hr.confirmed + hr.invalidated + hr.expired;
-    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
+    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(1)}%` : "N/A";
     let reliability: string;
     if (total < 3) {
       reliability = "데이터 부족";
@@ -667,7 +667,7 @@ export function formatCategoryHitRateContext(
   for (const hr of sorted) {
     const label = CATEGORY_LABEL_KR[hr.category] ?? hr.category;
     const total = hr.confirmed + hr.invalidated + hr.expired;
-    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(0)}%` : "-";
+    const rateStr = hr.hitRate != null ? `${(hr.hitRate * 100).toFixed(1)}%` : "N/A";
     let reliability: string;
     if (total < 3) {
       reliability = "데이터 부족";
@@ -779,11 +779,11 @@ export function formatPersonaCategoryHitRates(
 
   for (const r of valid.sort((a, b) => (b.hitRate ?? 0) - (a.hitRate ?? 0))) {
     const label = CATEGORY_LABEL_KR[r.category] ?? r.category;
-    const rateStr = r.hitRate != null ? `${(r.hitRate * 100).toFixed(0)}%` : "-";
+    const rateStr = r.hitRate != null ? `${(r.hitRate * 100).toFixed(1)}%` : "N/A";
     lines.push(`| ${label} | ${r.confirmed} | ${r.invalidated} | ${r.expired} | ${rateStr} |`);
 
     if (r.hitRate != null && r.hitRate < CATEGORY_LOW_HIT_RATE_THRESHOLD) {
-      warnings.push(`**${label}** 카테고리 적중률 ${(r.hitRate * 100).toFixed(0)}% — 이 카테고리에서 방향성 예측을 자제하고 조건부 형식을 사용하세요.`);
+      warnings.push(`**${label}** 카테고리 적중률 ${(r.hitRate * 100).toFixed(1)}% — 이 카테고리에서 방향성 예측을 자제하고 조건부 형식을 사용하세요.`);
     }
   }
 
@@ -873,7 +873,7 @@ export function formatModeratorCrossCalibrationContext(
     const personaLabel = PERSONA_LABEL_KR[e.persona] ?? e.persona;
     const categoryLabel = CATEGORY_LABEL_KR[e.category] ?? e.category;
     const total = e.confirmed + e.invalidated + e.expired;
-    const rateStr = e.hitRate != null ? `${(e.hitRate * 100).toFixed(0)}%` : "-";
+    const rateStr = e.hitRate != null ? `${(e.hitRate * 100).toFixed(1)}%` : "N/A";
     let reliability: string;
     if (total < CROSS_MIN_TOTAL) {
       reliability = "데이터 부족";

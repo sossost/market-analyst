@@ -506,8 +506,8 @@ describe("formatModeratorPerformanceContext", () => {
     expect(output).toContain("지정학 전략가");
     expect(output).toContain("EXPIRED");
     expect(output).toContain("만료");
-    expect(output).toContain("100%");
-    expect(output).toContain("40%");
+    expect(output).toContain("100.0%");
+    expect(output).toContain("40.0%");
   });
 
   it("적중률 내림차순으로 정렬한다", () => {
@@ -686,8 +686,8 @@ describe("formatCategoryHitRateContext", () => {
     expect(output).toContain("섹터 로테이션");
     expect(output).toContain("단기 전망");
     expect(output).toContain("만료");
-    expect(output).toContain("86%"); // structural_narrative
-    expect(output).toContain("47%"); // short_term_outlook
+    expect(output).toContain("85.7%"); // structural_narrative
+    expect(output).toContain("47.1%"); // short_term_outlook
   });
 
   it("적중률 55% 미만 카테고리에 저적중 경고를 포함한다", () => {
@@ -749,7 +749,7 @@ describe("formatCategoryHitRateContext", () => {
 
     expect(output).toContain("만료");
     expect(output).toContain("| 9 |");
-    expect(output).toContain("28%");
+    expect(output).toContain("28.1%");
   });
 });
 
@@ -780,8 +780,8 @@ describe("formatPersonaCategoryHitRates", () => {
     expect(output).toContain("단기 전망");
     expect(output).toContain("구조적 서사");
     expect(output).toContain("만료");
-    expect(output).toContain("38%"); // short_term_outlook
-    expect(output).toContain("80%"); // structural_narrative
+    expect(output).toContain("37.5%"); // short_term_outlook
+    expect(output).toContain("80.0%"); // structural_narrative
   });
 
   it("55% 미만 카테고리에 경고를 포함한다", () => {
@@ -815,7 +815,7 @@ describe("formatPersonaCategoryHitRates", () => {
 
     // 1 + 0 + 2 = 3건 → 유효 데이터로 처리됨
     expect(output).toContain("만료");
-    expect(output).toContain("33%");
+    expect(output).toContain("33.3%");
   });
 });
 
@@ -900,6 +900,6 @@ describe("formatModeratorCrossCalibrationContext", () => {
 
     expect(output).toContain("만료");
     expect(output).toContain("| 2 |");
-    expect(output).toContain("33%");
+    expect(output).toContain("33.3%");
   });
 });
