@@ -64,6 +64,7 @@ function createMockBreadthSnapshot(
     advanceDecline: { advancers: 2500, decliners: 1800, unchanged: 300, ratio: 1.39 },
     newHighLow: { newHighs: 80, newLows: 55, ratio: 1.45 },
     breadthScore: 62.5,
+    breadthScoreChange: null,
     divergenceSignal: null,
     topSectors: [],
     phase1to2Count1d: 25,
@@ -433,7 +434,7 @@ describe("renderPhaseDistribution", () => {
     expect(html).toContain("phase-bar");
   });
 
-  it("Phase 2 진입/이탈/순유입 stat-chip을 렌더링한다", () => {
+  it("Phase 2 진입/이탈 stat-chip과 순유입 인라인 수치를 렌더링한다", () => {
     const snapshot = createMockBreadthSnapshot({
       phase1to2Count1d: 25,
       phase2to3Count1d: 10,
@@ -445,8 +446,9 @@ describe("renderPhaseDistribution", () => {
     expect(html).toContain("25건");
     expect(html).toContain("Phase 2 이탈");
     expect(html).toContain("10건");
-    expect(html).toContain("순유입");
+    // 순유입은 Phase 2 비율 chip에 인라인으로 표시
     expect(html).toContain("+15건");
+    expect(html).toContain("절대 수량");
   });
 
   it("진입 수가 5일 평균의 1.5배를 초과하면 하이라이트 처리된다", () => {
@@ -478,7 +480,8 @@ describe("renderPhaseDistribution", () => {
     const html = renderPhaseDistribution(snapshot);
     expect(html).not.toContain("Phase 2 진입");
     expect(html).not.toContain("Phase 2 이탈");
-    expect(html).not.toContain("순유입");
+    // phase2NetFlow가 null이면 인라인 순유입 수치도 미표시
+    expect(html).not.toContain("절대 수량");
   });
 
   it("순유입이 음수이면 down 클래스를 적용한다", () => {
@@ -515,6 +518,88 @@ describe("renderPhaseDistribution", () => {
   it("narrative가 undefined이면 content-block을 렌더링하지 않는다", () => {
     const html = renderPhaseDistribution(createMockBreadthSnapshot());
     expect(html).not.toContain("content-block");
+  });
+
+  it("A/D Ratio chip을 브레드스 섹션에 렌더링하지 않는다", () => {
+    const snapshot = createMockBreadthSnapshot();
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).not.toContain("A/D Ratio");
+  });
+
+  it("신고가/신저가 chip을 브레드스 섹션에 렌더링하지 않는다", () => {
+    const snapshot = createMockBreadthSnapshot();
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).not.toContain("신고가/신저가");
+  });
+
+  it("Phase 2 비율 chip에 비중 변화 인라인 레이블을 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({ phase2RatioChange: 1.5 });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("비중 변화");
+  });
+
+  it("breadthScoreChange가 non-null이면 Breadth Score chip에 전일 변화를 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      breadthScore: 62.5,
+      breadthScoreChange: 2.3,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("Breadth Score");
+    expect(html).toContain("+2.3");
+    expect(html).toContain("전일 대비");
+  });
+
+  it("breadthScoreChange가 음수이면 down 클래스로 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      breadthScore: 55.0,
+      breadthScoreChange: -1.5,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("-1.5");
+    expect(html).toContain("전일 대비");
+  });
+
+  it("breadthScoreChange가 ±0.5 미만이면 '보합'을 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      breadthScore: 56.0,
+      breadthScoreChange: 0.3,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("보합");
+  });
+
+  it("breadthScoreChange가 정확히 ±0.5이면 보합이 아니라 방향성으로 표시한다", () => {
+    const pos = createMockBreadthSnapshot({
+      breadthScore: 56.0,
+      breadthScoreChange: 0.5,
+    });
+    const posHtml = renderPhaseDistribution(pos);
+    expect(posHtml).toContain("+0.5");
+    expect(posHtml).not.toContain("보합");
+
+    const neg = createMockBreadthSnapshot({
+      breadthScore: 56.0,
+      breadthScoreChange: -0.5,
+    });
+    const negHtml = renderPhaseDistribution(neg);
+    expect(negHtml).toContain("-0.5");
+    expect(negHtml).not.toContain("보합");
+  });
+
+  it("breadthScoreChange가 null이면 Breadth Score chip에 전일 변화를 표시하지 않는다", () => {
+    const snapshot = createMockBreadthSnapshot({
+      breadthScore: 62.5,
+      breadthScoreChange: null,
+    });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("Breadth Score");
+    expect(html).not.toContain("전일 대비");
+  });
+
+  it("Breadth Score chip에 '252일 퍼센타일' 레이블을 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({ breadthScore: 62.5 });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("252일 퍼센타일");
   });
 });
 

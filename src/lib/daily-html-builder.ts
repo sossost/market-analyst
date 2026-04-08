@@ -367,6 +367,19 @@ const DAILY_REPORT_CSS = `
     font-size: 1rem;
   }
 
+  .stat-inline-label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 400;
+  }
+
+  .stat-sub {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
   /* Content Blocks (LLM narrative) */
   .content-block {
     background: var(--surface);
@@ -849,18 +862,22 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
       <span class="l4">Phase 4 ${escapeHtml(p4Pct)}% (${escapeHtml(String(data.phaseDistribution.phase4))})</span>
     </div>`;
 
-  const adRatioStr =
-    data.advanceDecline.ratio != null
-      ? data.advanceDecline.ratio.toFixed(2)
-      : "—";
-  const hlRatioStr =
-    data.newHighLow.ratio != null
-      ? data.newHighLow.ratio.toFixed(2)
-      : "—";
   const breadthScoreStr =
     data.breadthScore != null
       ? data.breadthScore.toFixed(1)
       : "—";
+
+  const BREADTH_SCORE_FLAT_THRESHOLD = 0.5;
+  const breadthScoreChangeDisplay: string = (() => {
+    if (data.breadthScoreChange == null) return "";
+    if (Math.abs(data.breadthScoreChange) < BREADTH_SCORE_FLAT_THRESHOLD) return "보합";
+    return `${data.breadthScoreChange >= 0 ? "+" : ""}${data.breadthScoreChange.toFixed(1)}`;
+  })();
+  const breadthScoreChangeCls: string = (() => {
+    if (data.breadthScoreChange == null) return "";
+    if (Math.abs(data.breadthScoreChange) < BREADTH_SCORE_FLAT_THRESHOLD) return "neutral-color";
+    return colorClass(data.breadthScoreChange);
+  })();
 
   const PHASE2_HIGHLIGHT_MULTIPLIER = 1.5;
   const isPhase2EntryHighlighted =
@@ -893,15 +910,13 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
           </div>`
       : "";
 
-  const phase2NetFlowChip =
+  // Phase 2 비율 chip 내 순유입 인라인 표시 (별도 chip 제거)
+  const netFlowInline =
     data.phase2NetFlow != null
       ? (() => {
           const netFlowCls = data.phase2NetFlow > 0 ? "up" : data.phase2NetFlow < 0 ? "down" : "neutral-color";
           const netFlowStr = `${data.phase2NetFlow >= 0 ? "+" : ""}${escapeHtml(String(data.phase2NetFlow))}건`;
-          return `<div class="stat-chip">
-            <span class="stat-label">순유입</span>
-            <span class="stat-value ${netFlowCls}">${netFlowStr}</span>
-          </div>`;
+          return ` / <span class="${netFlowCls}">${netFlowStr}</span> <span class="stat-inline-label">(절대 수량)</span>`;
         })()
       : "";
 
@@ -909,28 +924,24 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
     <div class="stat-row">
       <div class="stat-chip">
         <span class="stat-label">Phase 2 비율</span>
-        <span class="stat-value">${escapeHtml(data.phase2Ratio.toFixed(1))}% <span class="${escapeHtml(p2ChangeCls)}" style="font-size:0.85rem;">(${escapeHtml(p2ChangeStr)})</span></span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">A/D Ratio</span>
-        <span class="stat-value">${escapeHtml(adRatioStr)}</span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">신고가/신저가</span>
-        <span class="stat-value">${escapeHtml(String(data.newHighLow.newHighs))} / ${escapeHtml(String(data.newHighLow.newLows))} (${escapeHtml(hlRatioStr)})</span>
+        <span class="stat-value">${escapeHtml(data.phase2Ratio.toFixed(1))}% <span class="${escapeHtml(p2ChangeCls)}" style="font-size:0.85rem;">(${escapeHtml(p2ChangeStr)})</span> <span class="stat-inline-label">(비중 변화)</span>${netFlowInline}</span>
       </div>
       ${
         breadthScoreStr !== "—"
           ? `<div class="stat-chip">
-              <span class="stat-label">Breadth Score</span>
-              <span class="stat-value">${escapeHtml(breadthScoreStr)}</span>
+              <span class="stat-label">Breadth Score <span class="stat-inline-label">(252일 퍼센타일)</span></span>
+              <span class="stat-value">${escapeHtml(breadthScoreStr)}${
+                breadthScoreChangeDisplay !== ""
+                  ? ` <span class="${escapeHtml(breadthScoreChangeCls)}" style="font-size:0.85rem;">${escapeHtml(breadthScoreChangeDisplay)}</span> <span class="stat-inline-label">(전일 대비)</span>`
+                  : ""
+              }</span>
             </div>`
           : ""
       }
     </div>
     ${
-      phase2EntryChip !== "" || phase2ExitChip !== "" || phase2NetFlowChip !== ""
-        ? `<div class="stat-row">${phase2EntryChip}${phase2ExitChip}${phase2NetFlowChip}</div>`
+      phase2EntryChip !== "" || phase2ExitChip !== ""
+        ? `<div class="stat-row">${phase2EntryChip}${phase2ExitChip}</div>`
         : ""
     }`;
 
