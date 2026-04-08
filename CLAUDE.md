@@ -112,24 +112,10 @@ CEO가 미션을 내리면 즉시 실행하지 않는다:
 - **테스트 커버리지 80% 이상** 유지
 - **에이전트 병렬 실행** — 독립적인 작업은 반드시 병렬로
 
-## 피처 문서 규칙
-
-`docs/features/[feature-name]/`에 저장. 피처 복잡도에 따라 두 트랙:
-
-| 트랙 | 기준 | 문서 구성 |
-|------|------|----------|
-| **Full** | 의사결정이 필요한 피처 (새 기능, 아키텍처 변경) | `01-spec.md` + `02-decisions.md` + `03-plan.md` |
-| **Lite** | 단순 수정/버그픽스/스타일링 | `plan.md` 단독 |
-
-- Full 트랙: `/yc:brainstorm` → `/yc:plan` 순서로 생성
-- Lite 트랙: mission-planner가 `plan.md` 하나로 기획 완료
-- **과거 문서 리네이밍 하지 않는다** — 앞으로 새 피처부터 적용
-
 ## 참조
 
 - `.claude/ORGANIZATION.md` — 조직 체계, 운영 규칙, 미션 프로토콜
 - `.claude/agents/` — 에이전트 정의 (분석팀 + 검증팀)
-- `docs/features/` — 기능별 스펙/결정/플랜 문서
 - `memory/chief-of-staff.md` — 매니저 성장 로그
 - `memory/MEMORY.md` — 프로젝트 히스토리 & 진행 상황
 - `memory/reference_system_operations.md` — 실행 가능 시스템, 명령어, 스케줄, 실행 위치. **스크립트 실행/운영 요청 시 먼저 읽는다.**
