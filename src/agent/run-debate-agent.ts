@@ -10,6 +10,7 @@ import { loadNewsForPersona } from "@/debate/newsLoader";
 import { saveTheses, resolveOrExpireStaleTheses, expireStalledTheses, getThesisStats } from "@/debate/thesisStore";
 import {
   validateRegimeInput,
+  validateRegimeTransition,
   saveRegimePending,
   applyHysteresis,
   loadConfirmedRegime,
@@ -717,7 +718,9 @@ async function main() {
     try {
       const validated = validateRegimeInput(result.marketRegime);
       if (validated != null) {
-        await saveRegimePending(debateDate, validated);
+        const confirmedRegime = await loadConfirmedRegime();
+        const guarded = validateRegimeTransition(validated, confirmedRegime);
+        await saveRegimePending(debateDate, guarded);
         const stressContext: MarketStressContext = {
           vix: marketSnapshot.indices.find((i) => i.name === "VIX")?.close ?? null,
           fearGreedScore: marketSnapshot.fearGreed?.score ?? null,
