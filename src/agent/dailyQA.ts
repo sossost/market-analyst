@@ -5,8 +5,11 @@
  */
 import {
   runFactCheck,
+  runContentQA,
+  aggregateSeverity,
   type DbData,
   type ReportData,
+  type ContentQAInput,
   type Mismatch,
   type Severity,
 } from "@/lib/factChecker";
@@ -21,7 +24,7 @@ import {
 // Public interface
 // ────────────────────────────────────────────
 
-export type { Mismatch, Severity };
+export type { Mismatch, Severity, ContentQAInput };
 
 export interface DailyQAResult {
   date: string;
@@ -98,6 +101,7 @@ function toDbData(
 export async function runDailyQA(
   date: string,
   reportData: ReportData,
+  contentQAInput?: ContentQAInput,
 ): Promise<DailyQAResult> {
   try {
     // DB 조회
@@ -117,17 +121,34 @@ export async function runDailyQA(
 
     // DbData 변환 + 팩트 체크
     const dbData = toDbData(sectorRows, phase2Row, stockRows);
-    const result = runFactCheck(dbData, reportData);
+    const factResult = runFactCheck(dbData, reportData);
+
+    // 콘텐츠 QA (insight/html 제공 시)
+    let allMismatches = [...factResult.mismatches];
+    let totalChecked = factResult.checkedItems;
+
+    if (contentQAInput != null) {
+      const contentResult = runContentQA(contentQAInput);
+      allMismatches = [...allMismatches, ...contentResult.mismatches];
+      totalChecked += contentResult.checkedItems;
+
+      logger.info("DailyQA",
+        `[DailyQA] ${date}: 콘텐츠 QA ${contentResult.checkedItems}건 검증, ${contentResult.mismatches.length}건 불일치`,
+      );
+    }
+
+    // 전체 severity는 모든 mismatch 합산으로 재계산
+    const severity = aggregateSeverity(allMismatches);
 
     logger.info("DailyQA",
-      `[DailyQA] ${date}: ${result.checkedItems}건 검증, ${result.mismatches.length}건 불일치 (severity: ${result.severity})`,
+      `[DailyQA] ${date}: 총 ${totalChecked}건 검증, ${allMismatches.length}건 불일치 (severity: ${severity})`,
     );
 
     return {
       date,
-      severity: result.severity,
-      mismatches: result.mismatches,
-      checkedItems: result.checkedItems,
+      severity,
+      mismatches: allMismatches,
+      checkedItems: totalChecked,
       checkedAt: new Date().toISOString(),
     };
   } catch (error) {
