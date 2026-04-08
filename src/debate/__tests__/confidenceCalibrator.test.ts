@@ -68,12 +68,14 @@ import {
   formatModeratorPerformanceContext,
   formatCategoryHitRateContext,
   formatPersonaCategoryHitRates,
+  formatModeratorCrossCalibrationContext,
   type CalibrationBin,
   type CalibrationResult,
   type InvalidatedThesisRow,
   type PersonaHitRate,
   type CategoryHitRate,
   type PersonaCategoryHitRate,
+  type CrossCalibrationEntry,
 } from "../confidenceCalibrator.js";
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
@@ -813,6 +815,91 @@ describe("formatPersonaCategoryHitRates", () => {
 
     // 1 + 0 + 2 = 3건 → 유효 데이터로 처리됨
     expect(output).toContain("만료");
+    expect(output).toContain("33%");
+  });
+});
+
+// ─── formatModeratorCrossCalibrationContext ──────────────────────────────────
+
+describe("formatModeratorCrossCalibrationContext", () => {
+  it("빈 배열이면 빈 문자열 반환", () => {
+    expect(formatModeratorCrossCalibrationContext([])).toBe("");
+  });
+
+  it("3건 미만 항목만 있으면 빈 문자열 반환", () => {
+    const entries: CrossCalibrationEntry[] = [
+      { persona: "sentiment", category: "sector_rotation", confirmed: 1, invalidated: 1, expired: 0, hitRate: 0.5 },
+    ];
+
+    expect(formatModeratorCrossCalibrationContext(entries)).toBe("");
+  });
+
+  it("교차 적중률 테이블을 생성한다", () => {
+    const entries: CrossCalibrationEntry[] = [
+      { persona: "tech", category: "structural_narrative", confirmed: 5, invalidated: 1, expired: 0, hitRate: 0.833 },
+      { persona: "sentiment", category: "sector_rotation", confirmed: 3, invalidated: 5, expired: 0, hitRate: 0.375 },
+      { persona: "macro", category: "structural_narrative", confirmed: 4, invalidated: 1, expired: 0, hitRate: 0.8 },
+    ];
+
+    const output = formatModeratorCrossCalibrationContext(entries);
+
+    expect(output).toContain("에이전트×카테고리 교차 적중률");
+    expect(output).toContain("분석가×카테고리 조합의 적중률이 50% 미만이면");
+    expect(output).toContain("테크 애널리스트");
+    expect(output).toContain("시장 심리 분석가");
+    expect(output).toContain("매크로 이코노미스트");
+    expect(output).toContain("구조적 서사");
+    expect(output).toContain("섹터 로테이션");
+  });
+
+  it("50% 미만 조합에 저신뢰 표시와 경고를 포함한다", () => {
+    const entries: CrossCalibrationEntry[] = [
+      { persona: "sentiment", category: "sector_rotation", confirmed: 2, invalidated: 5, expired: 0, hitRate: 0.286 },
+      { persona: "tech", category: "structural_narrative", confirmed: 5, invalidated: 1, expired: 0, hitRate: 0.833 },
+    ];
+
+    const output = formatModeratorCrossCalibrationContext(entries);
+
+    expect(output).toContain("⚠️ 저신뢰");
+    expect(output).toContain("저적중 에이전트×카테고리 조합");
+    expect(output).toContain("시장 심리 분석가 × 섹터 로테이션");
+    expect(output).toContain("가중치를 추가 할인");
+  });
+
+  it("모든 조합이 50% 이상이면 경고 없음", () => {
+    const entries: CrossCalibrationEntry[] = [
+      { persona: "tech", category: "structural_narrative", confirmed: 5, invalidated: 1, expired: 0, hitRate: 0.833 },
+      { persona: "macro", category: "sector_rotation", confirmed: 4, invalidated: 2, expired: 0, hitRate: 0.667 },
+    ];
+
+    const output = formatModeratorCrossCalibrationContext(entries);
+
+    expect(output).not.toContain("저적중 에이전트×카테고리 조합");
+    expect(output).toContain("정상");
+  });
+
+  it("적중률 오름차순으로 정렬한다 (저적중 조합이 먼저)", () => {
+    const entries: CrossCalibrationEntry[] = [
+      { persona: "tech", category: "structural_narrative", confirmed: 5, invalidated: 1, expired: 0, hitRate: 0.833 },
+      { persona: "sentiment", category: "sector_rotation", confirmed: 2, invalidated: 5, expired: 0, hitRate: 0.286 },
+    ];
+
+    const output = formatModeratorCrossCalibrationContext(entries);
+
+    const sentimentIdx = output.indexOf("시장 심리 분석가");
+    const techIdx = output.indexOf("테크 애널리스트");
+    expect(sentimentIdx).toBeLessThan(techIdx);
+  });
+
+  it("EXPIRED를 만료 컬럼에 표시한다", () => {
+    const entries: CrossCalibrationEntry[] = [
+      { persona: "geopolitics", category: "short_term_outlook", confirmed: 3, invalidated: 4, expired: 2, hitRate: 0.333 },
+    ];
+
+    const output = formatModeratorCrossCalibrationContext(entries);
+
+    expect(output).toContain("만료");
+    expect(output).toContain("| 2 |");
     expect(output).toContain("33%");
   });
 });
