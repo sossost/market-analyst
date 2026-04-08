@@ -168,7 +168,7 @@ describe("getPhase1LateStocks", () => {
     expect(queryArgs).toContain(300_000_000);
   });
 
-  it("SQL uses LEFT JOIN for fundamental_scores (no SEPA filter)", async () => {
+  it("SQL uses LEFT JOIN for fundamental_scores and selects sepa_grade", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
 
     await getPhase1LateStocks.execute({ date: "2026-03-07" });
@@ -176,14 +176,6 @@ describe("getPhase1LateStocks", () => {
     const sqlArg: string = mockQuery.mock.calls[0][0];
     expect(sqlArg).toMatch(/LEFT JOIN latest_scores fs/);
     expect(sqlArg).not.toContain("fs.grade IN ('S', 'A', 'B')");
-  });
-
-  it("SELECT includes sepa_grade as metadata tag", async () => {
-    mockQuery.mockResolvedValue({ rows: [] });
-
-    await getPhase1LateStocks.execute({ date: "2026-03-07" });
-
-    const sqlArg: string = mockQuery.mock.calls[0][0];
     expect(sqlArg).toContain("fs.grade AS sepa_grade");
   });
 
