@@ -506,7 +506,7 @@ export function checkRenderCompleteness(
       const renderedCount = (sectionHtml.match(symbolPattern) || []).length;
       const threshold = Math.floor(dataCounts.unusualStocksCount * 0.5);
 
-      if (renderedCount > 0 && renderedCount < threshold) {
+      if (renderedCount < threshold) {
         mismatches.push({
           type: "render_incomplete",
           field: "unusualStocks.renderCount",

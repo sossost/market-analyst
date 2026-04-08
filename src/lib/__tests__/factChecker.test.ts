@@ -815,7 +815,11 @@ describe("checkRenderCompleteness", () => {
   const minimalHtml = `
     <html><body>
       <h2>시장 브레드스</h2><div>content</div>
-      <h2>특이종목</h2><div>content</div>
+      <h2>특이종목</h2><div>
+        <span class="stock-symbol">AAPL</span>
+        <span class="stock-symbol">TSLA</span>
+        <span class="stock-symbol">NVDA</span>
+      </div>
       <h2>섹터 RS 랭킹</h2><div>content</div>
     </body></html>
   `;
@@ -893,7 +897,14 @@ describe("runContentQA", () => {
     },
     html: `<html><body>
       <h2>시장 브레드스</h2><div>content</div>
-      <h2>특이종목</h2><div>content</div>
+      <h2>특이종목</h2><div>
+        <span class="stock-symbol">AAPL</span>
+        <span class="stock-symbol">TSLA</span>
+        <span class="stock-symbol">NVDA</span>
+        <span class="stock-symbol">AMZN</span>
+        <span class="stock-symbol">MSFT</span>
+        <span class="stock-symbol">GOOG</span>
+      </div>
       <h2>섹터 RS 랭킹</h2><div>content</div>
     </body></html>`,
   };
