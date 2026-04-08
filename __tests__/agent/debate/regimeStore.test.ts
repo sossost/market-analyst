@@ -17,10 +17,12 @@ vi.mock("../../../src/db/client.js", () => ({
 
 import {
   validateRegimeInput,
+  validateRegimeTransition,
   formatRegimeForPrompt,
   areDatesConsecutive,
   calendarDaysBetween,
   type MarketRegimeRow,
+  type MarketRegimeInput,
 } from "@/debate/regimeStore.js";
 import type { MarketRegimeType } from "../../../src/db/schema/analyst.js";
 
@@ -375,5 +377,118 @@ describe("formatRegimeForPrompt", () => {
 
     expect(result).toContain("pending 판정");
     expect(result).toContain("EARLY_BEAR");
+  });
+});
+
+// ─── validateRegimeTransition ────────────────────────────────────────────────
+
+describe("validateRegimeTransition", () => {
+  const baseInput: MarketRegimeInput = {
+    regime: "LATE_BULL",
+    rationale: "과열 경계",
+    confidence: "medium",
+  };
+
+  const confirmedEarlyBear: MarketRegimeType = "EARLY_BEAR";
+
+  it("confirmed가 없는 초기 상태에서는 입력을 그대로 반환한다", () => {
+    const result = validateRegimeTransition(baseInput, null);
+    expect(result).toEqual(baseInput);
+  });
+
+  it("confirmed와 동일한 레짐이면 그대로 반환한다", () => {
+    const input: MarketRegimeInput = {
+      regime: "EARLY_BEAR",
+      rationale: "약세 지속",
+      confidence: "medium",
+    };
+    const result = validateRegimeTransition(input, confirmedEarlyBear);
+    expect(result.regime).toBe("EARLY_BEAR");
+  });
+
+  it("허용된 전이(EARLY_BEAR → EARLY_BULL)이면 그대로 반환한다", () => {
+    const input: MarketRegimeInput = {
+      regime: "EARLY_BULL",
+      rationale: "바닥 돌파",
+      confidence: "high",
+    };
+    const result = validateRegimeTransition(input, confirmedEarlyBear);
+    expect(result.regime).toBe("EARLY_BULL");
+  });
+
+  it("허용된 전이(EARLY_BEAR → BEAR)이면 그대로 반환한다", () => {
+    const input: MarketRegimeInput = {
+      regime: "BEAR",
+      rationale: "약세 심화",
+      confidence: "high",
+    };
+    const result = validateRegimeTransition(input, confirmedEarlyBear);
+    expect(result.regime).toBe("BEAR");
+  });
+
+  it("불허 전이(EARLY_BEAR → LATE_BULL)이면 confirmed 레짐으로 대체한다", () => {
+    const result = validateRegimeTransition(baseInput, confirmedEarlyBear);
+    expect(result.regime).toBe("EARLY_BEAR");
+    expect(result.rationale).toBe(baseInput.rationale);
+    expect(result.confidence).toBe(baseInput.confidence);
+  });
+
+  it("불허 전이(EARLY_BEAR → MID_BULL)이면 confirmed 레짐으로 대체한다", () => {
+    const input: MarketRegimeInput = {
+      regime: "MID_BULL",
+      rationale: "중기 강세",
+      confidence: "medium",
+    };
+    const result = validateRegimeTransition(input, confirmedEarlyBear);
+    expect(result.regime).toBe("EARLY_BEAR");
+  });
+
+  it("불허 전이(BEAR → LATE_BULL)이면 confirmed 레짐으로 대체한다", () => {
+    const input: MarketRegimeInput = {
+      regime: "LATE_BULL",
+      rationale: "과열",
+      confidence: "low",
+    };
+    const result = validateRegimeTransition(input, "BEAR");
+    expect(result.regime).toBe("BEAR");
+  });
+
+  it("모든 ALLOWED_TRANSITIONS 경로를 통과시킨다", () => {
+    const transitions: Array<[MarketRegimeType, MarketRegimeType]> = [
+      ["EARLY_BULL", "MID_BULL"],
+      ["EARLY_BULL", "EARLY_BEAR"],
+      ["MID_BULL", "LATE_BULL"],
+      ["MID_BULL", "EARLY_BULL"],
+      ["MID_BULL", "EARLY_BEAR"],
+      ["LATE_BULL", "MID_BULL"],
+      ["LATE_BULL", "EARLY_BEAR"],
+      ["EARLY_BEAR", "BEAR"],
+      ["EARLY_BEAR", "EARLY_BULL"],
+      ["BEAR", "EARLY_BEAR"],
+    ];
+
+    for (const [from, to] of transitions) {
+      const input: MarketRegimeInput = {
+        regime: to,
+        rationale: "test",
+        confidence: "medium",
+      };
+      const result = validateRegimeTransition(input, from);
+      expect(result.regime).toBe(to);
+    }
+  });
+
+  it("대체 시 rationale과 confidence는 원본을 유지한다", () => {
+    const input: MarketRegimeInput = {
+      regime: "LATE_BULL",
+      rationale: "LLM이 판단한 과열 근거",
+      confidence: "high",
+    };
+    const result = validateRegimeTransition(input, confirmedEarlyBear);
+    expect(result).toEqual({
+      regime: "EARLY_BEAR",
+      rationale: "LLM이 판단한 과열 근거",
+      confidence: "high",
+    });
   });
 });

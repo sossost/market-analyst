@@ -149,6 +149,40 @@ export function validateRegimeInput(raw: unknown): MarketRegimeInput | null {
 }
 
 /**
+ * LLM 출력 레짐이 현재 확정 레짐에서 ALLOWED_TRANSITIONS 기준 도달 가능한지 검증.
+ * 불가능한 전이이면 직전 confirmed 레짐으로 대체하여 DB 오염을 방지한다.
+ *
+ * - confirmed가 없는 초기 상태 → 제약 없이 통과
+ * - confirmed와 동일 레짐 → 통과
+ * - ALLOWED_TRANSITIONS에 포함 → 통과
+ * - 그 외 → confirmed 레짐으로 대체 + 경고 로그
+ */
+export function validateRegimeTransition(
+  input: MarketRegimeInput,
+  confirmedRegime: MarketRegimeType | null,
+): MarketRegimeInput {
+  if (confirmedRegime == null) {
+    return input;
+  }
+  if (confirmedRegime === input.regime) {
+    return input;
+  }
+  if (ALLOWED_TRANSITIONS[confirmedRegime].has(input.regime)) {
+    return input;
+  }
+
+  logger.warn(
+    "RegimeStore",
+    `불허 전이 차단: ${confirmedRegime} → ${input.regime}. 확정 레짐(${confirmedRegime})으로 대체 저장.`,
+  );
+
+  return {
+    ...input,
+    regime: confirmedRegime,
+  };
+}
+
+/**
  * LLM 판정 직후 pending 상태로 저장.
  * is_confirmed = false — 히스테리시스 적용 전까지 확정되지 않음.
  * regime_date UNIQUE이므로 같은 날 재실행 시 upsert.
