@@ -459,6 +459,7 @@ export interface Phase1LateStockRow {
   industry: string | null;
   sector_group_phase: number | null;
   sector_avg_rs: string | null;
+  sepa_grade: string | null;
 }
 
 export interface EtlVolumeHistoryRow {
