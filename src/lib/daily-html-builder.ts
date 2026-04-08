@@ -1553,12 +1553,12 @@ export function buildDailyHtml(
       <section>
         <h2>지수 현황</h2>
         ${indexTableHtml}
-        ${marketPositionHtml}
       </section>
 
       <!-- 섹션 3: 시장 브레드스 -->
       <section>
         <h2>시장 브레드스</h2>
+        ${marketPositionHtml}
         ${phaseDistributionHtml}
       </section>
 
