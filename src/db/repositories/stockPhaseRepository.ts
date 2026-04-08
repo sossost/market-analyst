@@ -312,7 +312,7 @@ export async function findRisingRsStocks(params: {
        s.market_cap
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
-     JOIN latest_scores fs ON fs.symbol = sp.symbol
+     LEFT JOIN latest_scores fs ON fs.symbol = sp.symbol
      LEFT JOIN rs_4w r4w ON r4w.symbol = sp.symbol
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
      WHERE sp.date = $1::text
@@ -322,7 +322,6 @@ export async function findRisingRsStocks(params: {
        AND sp.phase = ANY($6::int[])
        AND s.market_cap::numeric >= $7
        AND s.country = 'US'
-       AND fs.grade IN ('S', 'A', 'B')
      ORDER BY
        CASE WHEN srd.change_4w::numeric > 0 THEN 0 ELSE 1 END,
        (sp.rs_score - COALESCE(r4w.rs_score_4w_ago, sp.rs_score)) DESC,
@@ -362,10 +361,11 @@ export async function findPhase1LateStocks(
        sp.conditions_met, sp.vol_ratio::text, sp.vdu_ratio::text,
        s.sector, s.industry,
        srd.group_phase AS sector_group_phase,
-       srd.avg_rs::text AS sector_avg_rs
+       srd.avg_rs::text AS sector_avg_rs,
+       fs.grade AS sepa_grade
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
-     JOIN latest_scores fs ON fs.symbol = sp.symbol
+     LEFT JOIN latest_scores fs ON fs.symbol = sp.symbol
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
      WHERE sp.date = $1
        AND sp.phase = 1
@@ -375,7 +375,6 @@ export async function findPhase1LateStocks(
        AND COALESCE(sp.vol_ratio::numeric, 0) >= 1.0
        AND s.market_cap::numeric >= $3
        AND s.country = 'US'
-       AND fs.grade IN ('S', 'A', 'B')
        AND (
          SELECT COUNT(*)
          FROM stock_phases sp2

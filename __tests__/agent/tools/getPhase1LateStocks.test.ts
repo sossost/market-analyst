@@ -38,6 +38,7 @@ const makeRow = (overrides: Record<string, unknown> = {}) => ({
   industry: "Software",
   sector_group_phase: 2,
   sector_avg_rs: "55",
+  sepa_grade: "B",
   ...overrides,
 });
 
@@ -167,13 +168,15 @@ describe("getPhase1LateStocks", () => {
     expect(queryArgs).toContain(300_000_000);
   });
 
-  it("SQL includes SEPA B grade in filter (S/A/B allowed)", async () => {
+  it("SQL uses LEFT JOIN for fundamental_scores and selects sepa_grade", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
 
     await getPhase1LateStocks.execute({ date: "2026-03-07" });
 
     const sqlArg: string = mockQuery.mock.calls[0][0];
-    expect(sqlArg).toContain("fs.grade IN ('S', 'A', 'B')");
+    expect(sqlArg).toMatch(/LEFT JOIN latest_scores fs/);
+    expect(sqlArg).not.toContain("fs.grade IN ('S', 'A', 'B')");
+    expect(sqlArg).toContain("fs.grade AS sepa_grade");
   });
 
   it("returns totalFound equal to number of stocks", async () => {
@@ -227,5 +230,17 @@ describe("getPhase1LateStocks", () => {
     expect(stock.industry).toBe("Semiconductors");
     expect(stock.sectorGroupPhase).toBe(1);
     expect(stock.sectorAvgRs).toBeCloseTo(48);
+    expect(stock.sepaGrade).toBe("B");
+  });
+
+  it("returns sepaGrade null when no fundamental score exists", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [makeRow({ symbol: "EARLY", sepa_grade: null })],
+    });
+
+    const result = await getPhase1LateStocks.execute({ date: "2026-03-07" });
+    const parsed = JSON.parse(result);
+
+    expect(parsed.stocks[0].sepaGrade).toBeNull();
   });
 });

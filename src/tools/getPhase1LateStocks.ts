@@ -70,6 +70,7 @@ export const getPhase1LateStocks: AgentTool = {
         industry: r.industry,
         sectorGroupPhase: r.sector_group_phase,
         sectorAvgRs: r.sector_avg_rs != null ? toNum(r.sector_avg_rs) : null,
+        sepaGrade: r.sepa_grade,
       };
     });
 
