@@ -10,9 +10,17 @@ import {
   compareSymbolRs,
   aggregateSeverity,
   runFactCheck,
+  checkNarrativePresence,
+  checkToneConsistency,
+  checkRenderCompleteness,
+  runContentQA,
   type Mismatch,
   type DbData,
   type ReportData,
+  type ContentQAInsight,
+  type ContentQABreadthData,
+  type ContentQADataCounts,
+  type ContentQAInput,
 } from "../factChecker";
 
 // ---------------------------------------------------------------------------
@@ -570,5 +578,377 @@ describe("runFactCheck", () => {
     if (result.mismatches.length === 1) {
       expect(result.severity).toBe("warn");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Content QA — checkNarrativePresence
+// ---------------------------------------------------------------------------
+
+describe("checkNarrativePresence", () => {
+  const fullInsight: ContentQAInsight = {
+    breadthNarrative: "Phase 2 비율이 상승하며 시장 브레드스가 개선되고 있다.",
+    unusualStocksNarrative: "반도체 섹터에서 거래량 급증 종목이 집중되고 있다.",
+    risingRSNarrative: "헬스케어 업종에서 RS 상승 초기 종목이 다수 발견된다.",
+    watchlistNarrative: "관심종목 3개 중 2개가 Phase 2를 유지하고 있다.",
+  };
+
+  const dataCounts: ContentQADataCounts = {
+    unusualStocksCount: 10,
+    risingRSCount: 5,
+    watchlistActiveCount: 3,
+  };
+
+  it("모든 나레이션이 존재하면 mismatch 없음", () => {
+    const result = checkNarrativePresence(fullInsight, dataCounts);
+    expect(result).toHaveLength(0);
+  });
+
+  it("breadthNarrative가 비어있으면 warn 반환", () => {
+    const insight = { ...fullInsight, breadthNarrative: "" };
+    const result = checkNarrativePresence(insight, dataCounts);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("narrative_missing");
+    expect(result[0].field).toBe("breadthNarrative");
+    expect(result[0].severity).toBe("warn");
+  });
+
+  it("'해당 없음'은 비어있는 것으로 취급", () => {
+    const insight = { ...fullInsight, breadthNarrative: "해당 없음" };
+    const result = checkNarrativePresence(insight, dataCounts);
+    expect(result).toHaveLength(1);
+    expect(result[0].field).toBe("breadthNarrative");
+  });
+
+  it("unusualStocks가 0건이면 unusualStocksNarrative 검증 스킵", () => {
+    const insight = { ...fullInsight, unusualStocksNarrative: "" };
+    const counts = { ...dataCounts, unusualStocksCount: 0 };
+    const result = checkNarrativePresence(insight, counts);
+    expect(result).toHaveLength(0);
+  });
+
+  it("risingRS가 0건이면 risingRSNarrative 검증 스킵", () => {
+    const insight = { ...fullInsight, risingRSNarrative: "" };
+    const counts = { ...dataCounts, risingRSCount: 0 };
+    const result = checkNarrativePresence(insight, counts);
+    expect(result).toHaveLength(0);
+  });
+
+  it("watchlist가 0건이면 watchlistNarrative 검증 스킵", () => {
+    const insight = { ...fullInsight, watchlistNarrative: "" };
+    const counts = { ...dataCounts, watchlistActiveCount: 0 };
+    const result = checkNarrativePresence(insight, counts);
+    expect(result).toHaveLength(0);
+  });
+
+  it("여러 나레이션이 동시에 비어있으면 각각 mismatch 반환", () => {
+    const insight = { ...fullInsight, breadthNarrative: "", unusualStocksNarrative: "해당 없음" };
+    const result = checkNarrativePresence(insight, dataCounts);
+    expect(result).toHaveLength(2);
+    expect(result.map((m) => m.field)).toContain("breadthNarrative");
+    expect(result.map((m) => m.field)).toContain("unusualStocksNarrative");
+  });
+
+  it("공백만 있는 나레이션은 비어있는 것으로 취급", () => {
+    const insight = { ...fullInsight, breadthNarrative: "   " };
+    const result = checkNarrativePresence(insight, dataCounts);
+    expect(result).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Content QA — checkToneConsistency
+// ---------------------------------------------------------------------------
+
+describe("checkToneConsistency", () => {
+  it("강한 Phase 2 순유입인데 양의 키워드 있으면 mismatch 없음", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "Phase 2 순유입이 크게 증가하며 시장 참여가 활발해지고 있다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: 2.5,
+      phase2NetFlow: 20,
+      phase2EntryAvg5d: 8,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result).toHaveLength(0);
+  });
+
+  it("강한 Phase 2 순유입(5일평균 2배+)인데 양의 키워드 없으면 warn", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "시장은 현재 관망세를 보이고 있다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: 2.5,
+      phase2NetFlow: 20,
+      phase2EntryAvg5d: 8,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result.some((m) => m.field === "breadthNarrative.phase2NetFlow")).toBe(true);
+    expect(result[0].severity).toBe("warn");
+  });
+
+  it("Phase 2 순유입이 2배 미만이면 규칙1 스킵", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "시장은 현재 관망세를 보이고 있다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: 1.0,
+      phase2NetFlow: 10,
+      phase2EntryAvg5d: 8,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result.filter((m) => m.field === "breadthNarrative.phase2NetFlow")).toHaveLength(0);
+  });
+
+  it("phase2NetFlow가 null이면 규칙1 스킵", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "시장은 약세를 보이고 있다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: -1.0,
+      phase2NetFlow: null,
+      phase2EntryAvg5d: null,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result.filter((m) => m.field === "breadthNarrative.phase2NetFlow")).toHaveLength(0);
+  });
+
+  it("Phase 2 비율 양의 변화인데 부정 키워드만 → warn", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "시장은 악화되고 위축된 상태가 지속되고 있다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: 3.0,
+      phase2NetFlow: null,
+      phase2EntryAvg5d: null,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result.some((m) => m.field === "breadthNarrative.phase2RatioChange")).toBe(true);
+  });
+
+  it("Phase 2 비율 양의 변화 + 양의 키워드 + 부정 키워드 혼재 → 규칙2 통과", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "브레드스가 개선되고 있지만 일부 섹터에서 약세가 보인다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: 2.0,
+      phase2NetFlow: null,
+      phase2EntryAvg5d: null,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result.filter((m) => m.field === "breadthNarrative.phase2RatioChange")).toHaveLength(0);
+  });
+
+  it("Phase 2 비율 음의 변화이면 규칙2 스킵", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "시장은 악화되고 있다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: -2.0,
+      phase2NetFlow: null,
+      phase2EntryAvg5d: null,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result).toHaveLength(0);
+  });
+
+  it("나레이션이 비어있으면 톤 검증 스킵", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: 5.0,
+      phase2NetFlow: 30,
+      phase2EntryAvg5d: 10,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result).toHaveLength(0);
+  });
+
+  it("phase2EntryAvg5d가 0이면 규칙1 스킵 (0으로 나눗셈 방지)", () => {
+    const insight: ContentQAInsight = {
+      breadthNarrative: "시장은 관망세이다.",
+      unusualStocksNarrative: "",
+      risingRSNarrative: "",
+      watchlistNarrative: "",
+    };
+    const breadthData: ContentQABreadthData = {
+      phase2RatioChange: 1.0,
+      phase2NetFlow: 10,
+      phase2EntryAvg5d: 0,
+    };
+    const result = checkToneConsistency(insight, breadthData);
+    expect(result.filter((m) => m.field === "breadthNarrative.phase2NetFlow")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Content QA — checkRenderCompleteness
+// ---------------------------------------------------------------------------
+
+describe("checkRenderCompleteness", () => {
+  const minimalHtml = `
+    <html><body>
+      <h2>시장 브레드스</h2><div>content</div>
+      <h2>특이종목</h2><div>
+        <span class="stock-symbol">AAPL</span>
+        <span class="stock-symbol">TSLA</span>
+        <span class="stock-symbol">NVDA</span>
+      </div>
+      <h2>섹터 RS 랭킹</h2><div>content</div>
+    </body></html>
+  `;
+
+  const dataCounts: ContentQADataCounts = {
+    unusualStocksCount: 5,
+    risingRSCount: 3,
+    watchlistActiveCount: 2,
+  };
+
+  it("모든 필수 섹션이 존재하면 mismatch 없음", () => {
+    const result = checkRenderCompleteness(minimalHtml, dataCounts);
+    expect(result).toHaveLength(0);
+  });
+
+  it("시장 브레드스 섹션 누락 시 warn", () => {
+    const html = minimalHtml.replace("<h2>시장 브레드스</h2>", "");
+    const result = checkRenderCompleteness(html, dataCounts);
+    expect(result.some((m) => m.field === "section:시장 브레드스")).toBe(true);
+    expect(result[0].type).toBe("render_incomplete");
+  });
+
+  it("특이종목 섹션 누락 시 warn", () => {
+    const html = minimalHtml.replace("<h2>특이종목</h2>", "");
+    const result = checkRenderCompleteness(html, dataCounts);
+    expect(result.some((m) => m.field === "section:특이종목")).toBe(true);
+  });
+
+  it("섹터 RS 랭킹 섹션 누락 시 warn", () => {
+    const html = minimalHtml.replace("<h2>섹터 RS 랭킹</h2>", "");
+    const result = checkRenderCompleteness(html, dataCounts);
+    expect(result.some((m) => m.field === "section:섹터 RS 랭킹")).toBe(true);
+  });
+
+  it("빈 HTML이면 mismatch 없음 (검증 스킵)", () => {
+    const result = checkRenderCompleteness("", dataCounts);
+    expect(result).toHaveLength(0);
+  });
+
+  it("여러 섹션이 동시에 누락되면 각각 mismatch 반환", () => {
+    const html = "<html><body><p>empty</p></body></html>";
+    const result = checkRenderCompleteness(html, dataCounts);
+    expect(result).toHaveLength(3);
+  });
+
+  it("unusualStocks 3건 이하이면 렌더링 수 비교 스킵", () => {
+    const counts = { ...dataCounts, unusualStocksCount: 3 };
+    const result = checkRenderCompleteness(minimalHtml, counts);
+    // 필수 섹션은 있으므로 mismatch 없음
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Content QA — runContentQA
+// ---------------------------------------------------------------------------
+
+describe("runContentQA", () => {
+  const baseInput: ContentQAInput = {
+    insight: {
+      breadthNarrative: "Phase 2 비율이 증가하며 시장이 개선되고 있다.",
+      unusualStocksNarrative: "반도체 섹터에서 특이 움직임.",
+      risingRSNarrative: "헬스케어 업종 RS 상승 초기.",
+      watchlistNarrative: "관심종목 현황 양호.",
+    },
+    breadthData: {
+      phase2RatioChange: 1.0,
+      phase2NetFlow: 5,
+      phase2EntryAvg5d: 4,
+    },
+    dataCounts: {
+      unusualStocksCount: 10,
+      risingRSCount: 5,
+      watchlistActiveCount: 3,
+    },
+    html: `<html><body>
+      <h2>시장 브레드스</h2><div>content</div>
+      <h2>특이종목</h2><div>
+        <span class="stock-symbol">AAPL</span>
+        <span class="stock-symbol">TSLA</span>
+        <span class="stock-symbol">NVDA</span>
+        <span class="stock-symbol">AMZN</span>
+        <span class="stock-symbol">MSFT</span>
+        <span class="stock-symbol">GOOG</span>
+      </div>
+      <h2>섹터 RS 랭킹</h2><div>content</div>
+    </body></html>`,
+  };
+
+  it("모든 검증 통과 시 severity ok", () => {
+    const result = runContentQA(baseInput);
+    expect(result.severity).toBe("ok");
+    expect(result.mismatches).toHaveLength(0);
+    expect(result.checkedItems).toBe(3);
+  });
+
+  it("나레이션 누락 1건이면 severity warn", () => {
+    const input = {
+      ...baseInput,
+      insight: { ...baseInput.insight, breadthNarrative: "" },
+    };
+    const result = runContentQA(input);
+    expect(result.severity).toBe("warn");
+    expect(result.mismatches.some((m) => m.type === "narrative_missing")).toBe(true);
+  });
+
+  it("나레이션 누락 + 톤 불일치 → severity block (warn 2건+)", () => {
+    const input: ContentQAInput = {
+      ...baseInput,
+      insight: {
+        breadthNarrative: "시장은 악화되고 있다.",
+        unusualStocksNarrative: "",
+        risingRSNarrative: "RS 상승 초기.",
+        watchlistNarrative: "관심종목 현황.",
+      },
+      breadthData: {
+        phase2RatioChange: 3.0,
+        phase2NetFlow: null,
+        phase2EntryAvg5d: null,
+      },
+    };
+    const result = runContentQA(input);
+    // unusualStocksNarrative 누락(warn) + tone_mismatch(warn) = 2건 → block
+    expect(result.mismatches.length).toBeGreaterThanOrEqual(2);
+    expect(result.severity).toBe("block");
+  });
+
+  it("checkedItems는 항상 3 (나레이션 + 톤 + 렌더링)", () => {
+    const result = runContentQA(baseInput);
+    expect(result.checkedItems).toBe(3);
   });
 });

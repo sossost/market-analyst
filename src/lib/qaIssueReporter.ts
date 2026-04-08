@@ -28,6 +28,47 @@ const LABEL_P2_MEDIUM = "P2: medium";
 export type QAType = "daily" | "debate";
 
 // ---------------------------------------------------------------------------
+// Content QA type formatting
+// ---------------------------------------------------------------------------
+
+function formatContentQAType(type: string): string {
+  switch (type) {
+    case "narrative_missing": return "나레이션 누락";
+    case "tone_mismatch": return "톤 불일치";
+    case "render_incomplete": return "렌더링 누락";
+    default: return type;
+  }
+}
+
+function buildResponseGuide(
+  result: DailyQAResult | DebateQAResult,
+  severityLabel: string,
+): string {
+  const hasContentQA = result.mismatches.some((m) =>
+    m.type === "narrative_missing" || m.type === "tone_mismatch" || m.type === "render_incomplete",
+  );
+  const hasFactCheck = result.mismatches.some((m) =>
+    m.type === "sector_list" || m.type === "phase2_ratio" || m.type === "symbol_phase" || m.type === "symbol_rs",
+  );
+
+  const lines: string[] = [];
+  if (hasFactCheck) {
+    lines.push(
+      severityLabel === "BLOCK"
+        ? "- **데이터 정합성**: 섹터 오분류 또는 Phase 2 비율 10pp+ 차이 감지. ETL 파이프라인 및 리포트 생성 로직 점검 필요."
+        : "- **데이터 정합성**: 경미한 수치 불일치. 리포트 재확인 및 ETL 데이터 검토 권장.",
+    );
+  }
+  if (hasContentQA) {
+    lines.push("- **콘텐츠 품질**: 나레이션 누락/톤 불일치/렌더링 누락 감지. LLM 프롬프트 또는 HTML 빌더 점검 필요.");
+  }
+  if (lines.length === 0) {
+    lines.push("- 경미한 수치 불일치. 리포트 재확인 및 ETL 데이터 검토 권장.");
+  }
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Issue body builder
 // ---------------------------------------------------------------------------
 
@@ -39,8 +80,16 @@ function buildIssueBody(
   const typeLabel = qaType === "daily" ? "일간 리포트" : "투자 브리핑";
   const severityLabel = result.severity === "block" ? "BLOCK" : "WARN";
 
+  const CONTENT_QA_TYPES = new Set(["narrative_missing", "tone_mismatch", "render_incomplete"]);
+
   const mismatchLines = result.mismatches
-    .map((m) => `- **${m.field}**: 리포트 \`${m.actual}\` / DB 실측 \`${m.expected}\` (severity: ${m.severity})`)
+    .map((m) => {
+      if (CONTENT_QA_TYPES.has(m.type)) {
+        const typeLabel = formatContentQAType(m.type);
+        return `- **[${typeLabel}] ${m.field}**: \`${m.actual}\` — 기대: \`${m.expected}\` (severity: ${m.severity})`;
+      }
+      return `- **${m.field}**: 리포트 \`${m.actual}\` / DB 실측 \`${m.expected}\` (severity: ${m.severity})`;
+    })
     .join("\n");
 
   return [
@@ -58,9 +107,7 @@ function buildIssueBody(
     "",
     "## 대응 가이드",
     "",
-    severityLabel === "BLOCK"
-      ? "- 섹터 오분류 또는 Phase 2 비율 10pp+ 차이 감지. ETL 파이프라인 및 리포트 생성 로직 점검 필요."
-      : "- 경미한 수치 불일치. 리포트 재확인 및 ETL 데이터 검토 권장.",
+    buildResponseGuide(result, severityLabel),
     "",
     `_자동 생성: qaIssueReporter | ${result.checkedAt}_`,
   ].join("\n");
