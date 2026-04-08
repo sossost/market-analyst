@@ -389,11 +389,7 @@ describe("validateRegimeTransition", () => {
     confidence: "medium",
   };
 
-  const confirmedEarlyBear: MarketRegimeRow = makeRow({
-    regime: "EARLY_BEAR",
-    isConfirmed: true,
-    confirmedAt: "2026-04-01",
-  });
+  const confirmedEarlyBear: MarketRegimeType = "EARLY_BEAR";
 
   it("confirmed가 없는 초기 상태에서는 입력을 그대로 반환한다", () => {
     const result = validateRegimeTransition(baseInput, null);
@@ -448,13 +444,12 @@ describe("validateRegimeTransition", () => {
   });
 
   it("불허 전이(BEAR → LATE_BULL)이면 confirmed 레짐으로 대체한다", () => {
-    const confirmed = makeRow({ regime: "BEAR", isConfirmed: true });
     const input: MarketRegimeInput = {
       regime: "LATE_BULL",
       rationale: "과열",
       confidence: "low",
     };
-    const result = validateRegimeTransition(input, confirmed);
+    const result = validateRegimeTransition(input, "BEAR");
     expect(result.regime).toBe("BEAR");
   });
 
@@ -473,13 +468,12 @@ describe("validateRegimeTransition", () => {
     ];
 
     for (const [from, to] of transitions) {
-      const confirmed = makeRow({ regime: from, isConfirmed: true });
       const input: MarketRegimeInput = {
         regime: to,
         rationale: "test",
         confidence: "medium",
       };
-      const result = validateRegimeTransition(input, confirmed);
+      const result = validateRegimeTransition(input, from);
       expect(result.regime).toBe(to);
     }
   });

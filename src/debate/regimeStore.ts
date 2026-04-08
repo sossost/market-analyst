@@ -159,26 +159,26 @@ export function validateRegimeInput(raw: unknown): MarketRegimeInput | null {
  */
 export function validateRegimeTransition(
   input: MarketRegimeInput,
-  confirmedRegime: MarketRegimeRow | null,
+  confirmedRegime: MarketRegimeType | null,
 ): MarketRegimeInput {
   if (confirmedRegime == null) {
     return input;
   }
-  if (confirmedRegime.regime === input.regime) {
+  if (confirmedRegime === input.regime) {
     return input;
   }
-  if (ALLOWED_TRANSITIONS[confirmedRegime.regime].has(input.regime)) {
+  if (ALLOWED_TRANSITIONS[confirmedRegime].has(input.regime)) {
     return input;
   }
 
   logger.warn(
     "RegimeStore",
-    `불허 전이 차단: ${confirmedRegime.regime} → ${input.regime}. 확정 레짐(${confirmedRegime.regime})으로 대체 저장.`,
+    `불허 전이 차단: ${confirmedRegime} → ${input.regime}. 확정 레짐(${confirmedRegime})으로 대체 저장.`,
   );
 
   return {
     ...input,
-    regime: confirmedRegime.regime,
+    regime: confirmedRegime,
   };
 }
 

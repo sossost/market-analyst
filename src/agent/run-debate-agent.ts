@@ -718,8 +718,7 @@ async function main() {
     try {
       const validated = validateRegimeInput(result.marketRegime);
       if (validated != null) {
-        const confirmedRegime = await loadConfirmedRegime();
-        const guarded = validateRegimeTransition(validated, confirmedRegime);
+        const guarded = validateRegimeTransition(validated, confirmedRegimeType);
         await saveRegimePending(debateDate, guarded);
         const stressContext: MarketStressContext = {
           vix: marketSnapshot.indices.find((i) => i.name === "VIX")?.close ?? null,
