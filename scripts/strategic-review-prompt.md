@@ -220,16 +220,50 @@ GROUP BY agent_persona;
   - `P3: low` — 후순위
   - **`P0`, `P1`, `P2`, `P3` 같은 축약형 라벨 사용 금지** — GitHub에 존재하지 않음
 - 본문에 분석 근거, 현재 상태, 개선 제안 포함
-- **이슈 생성 전에 기존 오픈 이슈를 확인**하고 중복이면 생성하지 마라:
+- **이슈 생성 전에 3단계 중복 체크**를 수행하고, 중복이면 생성하지 마라:
+
+  **Step 1 — OPEN 이슈 확인:**
   ```bash
-  gh issue list --label strategic-review --state open
+  gh issue list --label strategic-review --state open --json number,title,createdAt
   ```
+  동일 주제의 OPEN 이슈가 있으면 → **스킵**. 이슈 생성하지 않음.
+
+  **Step 2 — 최근 30일 CLOSED 이슈 확인:**
+  ```bash
+  gh issue list --label strategic-review --state closed --json number,title,closedAt --limit 50
+  ```
+  최근 30일 이내에 CLOSED된 동일 주제 이슈가 있으면 → Step 3으로 진행.
+  없으면 → 이슈 생성 허용.
+
+  **Step 3 — 쿨다운 판정:**
+  CLOSED 이슈에 연결된 PR이 머지되었는지 확인한다.
+  - **PR 머지됨** → CLOSED 시점으로부터 **14일 쿨다운**. 14일 이내면 스킵.
+  - **PR 없이 닫힘** → CLOSED 시점으로부터 **7일 쿨다운**. 7일 이내면 스킵.
+
+  **쿨다운 예외 (스킵 무시하고 이슈 생성 허용):**
+  - 핵심 수치가 이전 이슈 대비 **5%p 이상 악화**된 경우
+  - 이전 이슈와 **근본 원인이 다른** 경우 (같은 영역이라도 다른 원인이면 별개 이슈)
+
+  **쿨다운 스킵 시:** `memory/strategic-briefing.md`의 "미해결 전략 이슈" 항목에 쿨다운 상태를 기록한다.
+  예: `#687: sentiment 적중률 41% — 쿨다운 중 (PR #696 머지, ~04/15 해제)`
+
+  **동일 주제 판정 기준 (키워드 조합):**
+  | 영역 | 키워드 조합 |
+  |------|------------|
+  | 포착 로직 | phase, detection, threshold, 포착, 임계값 |
+  | 학습 루프 | learning, hit_rate, cold-start, 학습, 적중률 |
+  | Thesis | thesis, 적중률, confidence, 판정 |
+  | 추천 성과 | recommendation, pnl, 승률, 성과 |
+  | 에이전트 편향 | sentiment, bias, optimism, 편향, 낙관 |
+  | 데이터 품질 | data, pipeline, ETL, 데이터, 파이프라인 |
+
+  제목과 본문의 키워드 조합이 70% 이상 겹치면 동일 주제로 판정.
 
 ## 실행 방법
 
 1. 위 8개 영역을 모두 분석 (코드 파일 읽기 + DB 쿼리)
 2. **`memory/strategic-briefing.md` 갱신** (포맷 엄수)
 3. 인사이트 품질 기준으로 필터링
-4. 기존 오픈 이슈 중복 체크
+4. 3단계 중복 체크 (OPEN → 최근 30일 CLOSED → 쿨다운 판정)
 5. 가치 있는 인사이트만 `gh issue create`로 이슈 생성
 6. 생성한 이슈 URL을 출력
