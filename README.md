@@ -2,7 +2,7 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 206 TS files · **Tests** 2,704 · **Open Issues** 11 · **Frontend** → control-tower 레포로 이관
+> **Backend** 206 TS files · **Tests** 102 files · **Open Issues** 11 · **Frontend** → control-tower 레포로 이관
 
 ## How It Works
 
@@ -63,9 +63,10 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 가치 있는 인사이트만 GitHub 이슈로 생성 (최대 3건/일)
 
 9. 자율 운영
-   → Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성
-   → Auto PR Reviewer: 이슈 프로세서가 생성한 PR을 Strategic + Code 리뷰어가 병렬 검토 → GitHub 코멘트 자동 게시
-   → 맥미니 서버 launchd 기반 스케줄링
+   → Issue Triage: 미트리아지 이슈 사전 분류 (매일 09:00)
+   → Issue Processor: triaged 이슈 → Claude Code CLI 자동 구현 → PR 생성 (10:00~02:00)
+   → PR Reviewer: PR Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (09:15~02:15)
+   → 맥미니 서버 launchd 기반 스케줄링 (10개 작업)
 ```
 
 ## Quick Start
@@ -134,7 +135,7 @@ yarn agent:corporate-analyst  # 기업 애널리스트 수동 실행
 yarn agent:issue-processor  # 자율 이슈 처리 (Claude Code CLI)
 
 # 테스트
-yarn test                   # 전체 테스트 (161 test files)
+yarn test                   # 전체 테스트 (102 test files)
 yarn test:watch             # 워치 모드
 yarn typecheck              # 타입 체크
 
@@ -256,13 +257,13 @@ yarn db:studio              # Drizzle Studio UI
 
 | 지표 | 현재 | 목표 (6개월) | 비고 |
 |------|------|-------------|------|
-| 테스트 | 2,704 (160 files) | 유지 | Backend + Frontend |
+| 테스트 | — (102 files) | 유지 | Backend only (Frontend → control-tower) |
 | 토론 세션 | 운영 중 | — | 평일 매일 자동 실행 |
 | Thesis 총 건수 | 축적 중 | 200건+ | 서사 카테고리 분리 적용 |
 | 학습 승격 | 축적 중 | 10건+ | 3회+ 적중 패턴 필요 |
 | 실패 패턴 | 축적 중 | 5건+ | N-1e 배포 완료, 데이터 수집 중 |
 | 대시보드 | → control-tower 레포 | — | 프론트엔드 분리 완료 |
-| 자동화 스케줄 | 9개 launchd 작업 | 안정 운영 | 매일 36회+ 자동 트리거 |
+| 자동화 스케줄 | 10개 launchd 작업 | 안정 운영 | 매일 36회+ 자동 트리거 |
 
 **핵심 추적 질문:** 서사-기술적 교집합이 기술적 단독 대비 적중률을 높이는가? → N-2 홀드아웃 테스트(3/22 이후)에서 검증 예정.
 
@@ -286,16 +287,16 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 | 작업 | 스케줄 (KST) | 내용 |
 |------|-------------|------|
-| ETL Daily | 08:30 화~토 | ETL 4단계 → 일간 에이전트 → 리포트 검증 |
-| ETL Weekly | 08:00 일 | quarterly_financials + quarterly_ratios 주간 갱신 |
-| Debate Daily | 07:00 화~금 | 애널리스트 토론 → thesis 저장 |
-| Agent Weekly | 10:00 토 | 주간 에이전트 + 펀더멘탈 검증 |
+| ETL Daily | 07:00 화~토 | ETL 6단계 → 토론 → 일간 리포트 → QA 검증 |
+| ETL Weekly | 08:00 일 | 분기 재무·비율 갱신 |
+| Agent Weekly | 10:00 토 | 주간 리포트 + CEO 리포트 + 주간 검증 |
 | QA Weekly | 12:00 토 | 주간 QA 분석 |
-| News Collect | 00/06/12/18:00 매일 | 뉴스 수집 |
+| News Collect | 06:00, 18:00 매일 | 뉴스 수집 (2회/일) |
 | Strategic Review | 04:00 매일 | 전략 참모 리뷰 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거) |
-| Issue Processor | 09:00~02:00 매 정시 (18회/일) | GitHub 이슈 자동 처리 → PR 생성 |
-| PR Reviewer | 09:15~02:15 매 :15분 (18회/일) | 이슈 프로세서 생성 PR 자동 검토 → Strategic + Code 리뷰 코멘트 게시 |
-| Log Cleanup | 09:00 일 | 오래된 로그 정리 |
+| Issue Triage | 09:00 매일 | 미트리아지 이슈 사전 분류 |
+| Issue Processor | 10:00~02:00 매 정시 (17회/일) | triaged 이슈 자동 구현 → PR 생성 |
+| PR Reviewer | 09:15~02:15 매 :15분 (18회/일) | PR Strategic + Code 리뷰 → 코멘트 게시 |
+| Log Cleanup | 09:00 일 | 30일 이상 로그 정리 |
 
 ```bash
 # 설치/관리 (SSH 원격 가능)
