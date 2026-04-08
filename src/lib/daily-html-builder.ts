@@ -595,6 +595,15 @@ function colorClass(value: number): "up" | "down" | "neutral-color" {
   return "neutral-color";
 }
 
+/** Breadth Score 구간별 상태 레이블 (0~100) */
+function getBreadthScoreLabel(score: number): string {
+  if (score >= 80) return "극강세";
+  if (score >= 60) return "강세";
+  if (score >= 40) return "보통";
+  if (score >= 20) return "약세";
+  return "극약세";
+}
+
 /**
  * VIX 전용 컬러 — 일반 지수와 반대.
  * VIX 상승 = 시장 불안 → 한국식 하락색(파랑, down)
@@ -941,10 +950,10 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
       ${
         breadthScoreStr !== "—"
           ? `<div class="stat-chip">
-              <span class="stat-label">Breadth Score <span class="stat-inline-label">(252일 퍼센타일)</span></span>
-              <span class="stat-value">${escapeHtml(breadthScoreStr)}${
+              <span class="stat-label">Breadth Score</span>
+              <span class="stat-value">${escapeHtml(breadthScoreStr)} <span class="stat-inline-label">${escapeHtml(getBreadthScoreLabel(data.breadthScore!))}</span>${
                 breadthScoreChangeDisplay !== ""
-                  ? ` <span class="${escapeHtml(breadthScoreChangeCls)}" style="font-size:0.85rem;">${escapeHtml(breadthScoreChangeDisplay)}</span> <span class="stat-inline-label">(전일 대비)</span>`
+                  ? ` <span class="${escapeHtml(breadthScoreChangeCls)}" style="font-size:0.85rem;">${escapeHtml(breadthScoreChangeDisplay)}</span>`
                   : ""
               }</span>
             </div>`

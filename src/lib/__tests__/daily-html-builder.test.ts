@@ -547,7 +547,7 @@ describe("renderPhaseDistribution", () => {
     const html = renderPhaseDistribution(snapshot);
     expect(html).toContain("Breadth Score");
     expect(html).toContain("+2.3");
-    expect(html).toContain("전일 대비");
+    expect(html).toContain("강세");
   });
 
   it("breadthScoreChange가 음수이면 down 클래스로 표시한다", () => {
@@ -557,7 +557,7 @@ describe("renderPhaseDistribution", () => {
     });
     const html = renderPhaseDistribution(snapshot);
     expect(html).toContain("-1.5");
-    expect(html).toContain("전일 대비");
+    expect(html).toContain("보통");
   });
 
   it("breadthScoreChange가 ±0.5 미만이면 '보합'을 표시한다", () => {
@@ -594,13 +594,14 @@ describe("renderPhaseDistribution", () => {
     });
     const html = renderPhaseDistribution(snapshot);
     expect(html).toContain("Breadth Score");
-    expect(html).not.toContain("전일 대비");
+    expect(html).toContain("강세");
   });
 
-  it("Breadth Score chip에 '252일 퍼센타일' 레이블을 표시한다", () => {
+  it("Breadth Score chip에 구간별 상태 레이블을 표시한다", () => {
     const snapshot = createMockBreadthSnapshot({ breadthScore: 62.5 });
     const html = renderPhaseDistribution(snapshot);
-    expect(html).toContain("252일 퍼센타일");
+    expect(html).toContain("강세");
+    expect(html).not.toContain("252일 퍼센타일");
   });
 });
 

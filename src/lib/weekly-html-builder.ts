@@ -579,6 +579,15 @@ function colorClass(value: number): "up" | "down" | "neutral-color" {
   return "neutral-color";
 }
 
+/** Breadth Score 구간별 상태 레이블 (0~100) */
+function getBreadthScoreLabel(score: number): string {
+  if (score >= 80) return "극강세";
+  if (score >= 60) return "강세";
+  if (score >= 40) return "보통";
+  if (score >= 20) return "약세";
+  return "극약세";
+}
+
 /**
  * VIX 전용 컬러 — 일반 지수와 반대.
  * VIX 상승 = 시장 불안 → 한국식 하락색(파랑, down)
@@ -669,7 +678,7 @@ function renderFearGreedCard(fg: FearGreedData): string {
 
   return `
     <div class="index-card">
-      <div class="label">공포탐욕</div>
+      <div class="label">Fear &amp; Greed</div>
       <div class="value ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
       <div class="change">${escapeHtml(fg.rating)}</div>
       ${directionStr !== "" || prev1wSub !== ""
@@ -876,6 +885,19 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData, breadthNarrat
     snap.breadthScore != null
       ? snap.breadthScore.toFixed(1)
       : "—";
+
+  const BREADTH_SCORE_FLAT_THRESHOLD = 0.5;
+  const breadthScoreChangeDisplay: string = (() => {
+    if (snap.breadthScoreChange == null) return "";
+    if (Math.abs(snap.breadthScoreChange) < BREADTH_SCORE_FLAT_THRESHOLD) return "보합";
+    return `${snap.breadthScoreChange >= 0 ? "+" : ""}${snap.breadthScoreChange.toFixed(1)}`;
+  })();
+  const breadthScoreChangeCls: string = (() => {
+    if (snap.breadthScoreChange == null) return "";
+    if (Math.abs(snap.breadthScoreChange) < BREADTH_SCORE_FLAT_THRESHOLD) return "neutral-color";
+    return colorClass(snap.breadthScoreChange);
+  })();
+
   const p2Change =
     snap.phase2RatioChange >= 0
       ? `+${snap.phase2RatioChange.toFixed(1)}%p`
@@ -904,7 +926,11 @@ export function renderPhase2TrendTable(breadth: MarketBreadthData, breadthNarrat
         breadthScoreStr !== "—"
           ? `<div class="stat-chip">
               <span class="stat-label">Breadth Score</span>
-              <span class="stat-value">${escapeHtml(breadthScoreStr)}</span>
+              <span class="stat-value">${escapeHtml(breadthScoreStr)} <span class="stat-inline-label">${escapeHtml(getBreadthScoreLabel(snap.breadthScore!))}</span>${
+                breadthScoreChangeDisplay !== ""
+                  ? ` <span class="${escapeHtml(breadthScoreChangeCls)}" style="font-size:0.85rem;">${escapeHtml(breadthScoreChangeDisplay)}</span>`
+                  : ""
+              }</span>
             </div>`
           : ""
       }
@@ -1260,13 +1286,18 @@ function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
     return "";
   }
 
+  const hasSeparateBottleneck =
+    group.bottleneck !== group.megatrend && group.bottleneck.trim() !== "";
+  const descriptionHtml = hasSeparateBottleneck
+    ? `\n    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">${escapeHtml(group.bottleneck)}</p>`
+    : "";
+
   const headerHtml = `
     <h3>
       ${escapeHtml(group.megatrend)}
       <span class="phase-badge p2"><span class="${escapeHtml(statusCls)}">${escapeHtml(group.chainStatus)}</span></span>
       <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400;">${escapeHtml(String(group.daysSinceIdentified))}일 경과</span>
-    </h3>
-    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">${escapeHtml(group.bottleneck)}</p>`;
+    </h3>${descriptionHtml}`;
 
   const rows = group.candidates
     .map((c) => {

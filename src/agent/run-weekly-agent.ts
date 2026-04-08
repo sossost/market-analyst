@@ -136,7 +136,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
       phase2Ratio: 0, phase2RatioChange: 0, marketAvgRs: 0,
       advanceDecline: { advancers: 0, decliners: 0, unchanged: 0, ratio: null },
       newHighLow: { newHighs: 0, newLows: 0, ratio: null },
-      breadthScore: null, divergenceSignal: null, topSectors: [],
+      breadthScore: null, breadthScoreChange: null, divergenceSignal: null, topSectors: [],
     },
   };
 

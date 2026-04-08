@@ -252,17 +252,17 @@ describe("renderIndexTable", () => {
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    expect(result).toContain("공포탐욕");
+    expect(result).toContain("Fear &amp; Greed");
     expect(result).toContain("72");
     expect(result).toContain("Greed");
     // 그리드 내 index-card로 통합됨 (fear-greed-row 아님)
     expect(result).not.toContain("fear-greed-row");
   });
 
-  it("fearGreed null: 공포탐욕 카드가 없다", () => {
+  it("fearGreed null: Fear & Greed 카드가 없다", () => {
     const result = renderIndexTable([createMockIndexReturn()], null);
 
-    expect(result).not.toContain("공포탐욕");
+    expect(result).not.toContain("Fear &amp; Greed");
   });
 
   it("양수 변화율에 up 클래스가 적용된다", () => {
@@ -436,7 +436,7 @@ describe("renderIndexTable — Fear & Greed 방향 레이블", () => {
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    // "공포탐욕"은 카드 제목이므로 항상 존재. 방향 레이블만 없어야 함.
+    // "Fear & Greed"은 카드 제목이므로 항상 존재. 방향 레이블만 없어야 함.
     expect(result).not.toContain("탐욕 심화");
     expect(result).not.toContain("탐욕 약화");
     expect(result).not.toContain("공포 심화");
@@ -492,9 +492,9 @@ describe("renderIndexTable — 10Y/DXY/FearGreed 카드", () => {
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    // 그리드 안에 공포탐욕 카드가 있어야 함
+    // 그리드 안에 Fear & Greed 카드가 있어야 함
     const gridContent = result.match(/class="index-grid">([\s\S]*)<\/div>/)?.[1] ?? "";
-    expect(gridContent).toContain("공포탐욕");
+    expect(gridContent).toContain("Fear &amp; Greed");
   });
 
   it("4×2 배치: 8개 항목(4지수+VIX+10Y+DXY+FearGreed) 모두 index-card로 렌더링된다", () => {

@@ -79,6 +79,7 @@ interface BreadthLatestSnapshot {
   advanceDecline: AdvanceDecline;
   newHighLow: NewHighLow;
   breadthScore: number | null;
+  breadthScoreChange: number | null;
   divergenceSignal: string | null;
   topSectors: BreadthTopSector[];
 }
