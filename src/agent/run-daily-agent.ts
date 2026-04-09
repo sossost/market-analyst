@@ -308,7 +308,7 @@ export function buildRisingRsSectorDistribution(
   }
 
   const total = stocks.length;
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const parts = sorted.map(
     ([sector, count]) =>
