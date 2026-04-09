@@ -389,7 +389,7 @@ async function main() {
       TAG,
       `금일 추천 0건 — 레짐: ${regimeForGate ?? "없음"}, ` +
         `Phase2 총: ${phase2Stocks.length}, ` +
-        `최다 차단: ${identifyTopBlocker(blockedByRegime, blockedByCooldown, blockedByLowRS, blockedByOverheatedRS, blockedByLowPrice, blockedByPersistence, blockedByStability, blockedByFundamental)}`,
+        `최다 차단: ${identifyTopBlocker(blockedByRegime, blockedByLateBull, blockedByCooldown, blockedByLowRS, blockedByOverheatedRS, blockedByLowPrice, blockedByPersistence, blockedByStability, blockedByFundamental)}`,
     );
   }
 
@@ -480,7 +480,7 @@ async function saveFactorSnapshot(symbol: string, date: string): Promise<void> {
  */
 function identifyTopBlocker(...counts: number[]): string {
   const labels = [
-    "Bear레짐", "쿨다운", "RS하한", "RS과열",
+    "Bear레짐", "LateBull", "쿨다운", "RS하한", "RS과열",
     "저가주", "지속성", "안정성", "펀더멘탈",
   ];
 
