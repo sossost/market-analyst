@@ -27,6 +27,7 @@ import type {
   DailyReportData,
   DailyReportInsight,
   DailyBreadthSnapshot,
+  DailyRisingRSStock,
 } from "@/tools/schemas/dailyReportSchema";
 import { fillInsightDefaults } from "@/tools/schemas/dailyReportSchema";
 import { buildDailyHtml } from "@/lib/daily-html-builder";
@@ -246,6 +247,8 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
     .map((s) => `${s.symbol} [P${s.phase}] ${s.dailyReturn >= 0 ? "+" : ""}${s.dailyReturn.toFixed(1)}% 거래량×${s.volRatio.toFixed(1)} ${s.sector ?? "—"} | ${s.conditions.join(",")}`)
     .join("\n");
 
+  const risingRsSectorDist = buildRisingRsSectorDistribution(data.risingRS);
+
   const risingRsLines = data.risingRS
     .slice(0, 10)
     .map((s) => `${s.symbol} [P${s.phase}] RS ${s.rsScore} (+${s.rsChange?.toFixed(0) ?? "?"}) ${s.sector ?? "—"} / ${s.industry ?? "—"}`)
@@ -275,6 +278,7 @@ ${industryLines}
 ${unusualLines || "없음"}
 
 ## RS 상승 초기 종목 (${data.risingRS.length}건)
+${risingRsSectorDist}
 ${risingRsLines || "없음"}
 
 ## 관심종목
@@ -286,6 +290,32 @@ ${watchlistItemLines}
 위 데이터를 분석하여 아래 JSON으로만 응답하세요. 다른 텍스트 금지.`;
 
   return { system: systemPrompt, user: dataSummary };
+}
+
+/**
+ * RS 상승 초기 종목의 섹터별 분포를 사전 집계한다.
+ * LLM이 직접 카운트하지 않고 이 수치를 인용하도록 프롬프트에 삽입.
+ */
+export function buildRisingRsSectorDistribution(
+  stocks: DailyRisingRSStock[],
+): string {
+  if (stocks.length === 0) return "섹터 분포: 해당 없음";
+
+  const counts = new Map<string, number>();
+  for (const s of stocks) {
+    const sector = s.sector ?? "Unknown";
+    counts.set(sector, (counts.get(sector) ?? 0) + 1);
+  }
+
+  const total = stocks.length;
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+
+  const parts = sorted.map(
+    ([sector, count]) =>
+      `${sector} ${count}건(${((count / total) * 100).toFixed(0)}%)`,
+  );
+
+  return `섹터 분포(전체 ${total}건): ${parts.join(", ")}`;
 }
 
 interface InsightResult {

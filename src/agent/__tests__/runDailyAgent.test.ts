@@ -9,7 +9,9 @@ import { describe, it, expect } from "vitest";
 import {
   fillInsightDefaults,
   type DailyReportInsight,
+  type DailyRisingRSStock,
 } from "@/tools/schemas/dailyReportSchema";
+import { buildRisingRsSectorDistribution } from "../run-daily-agent";
 
 // ────────────────────────────────────────────
 // fillInsightDefaults
@@ -73,5 +75,93 @@ describe("fillInsightDefaults", () => {
     fillInsightDefaults(raw);
 
     expect(Object.keys(raw)).toHaveLength(1);
+  });
+});
+
+// ────────────────────────────────────────────
+// buildRisingRsSectorDistribution
+// ────────────────────────────────────────────
+
+function makeStock(overrides: Partial<DailyRisingRSStock> = {}): DailyRisingRSStock {
+  return {
+    symbol: "TEST",
+    phase: 2,
+    rsScore: 50,
+    rsScore4wAgo: null,
+    rsChange: null,
+    ma150Slope: null,
+    pctFromLow52w: null,
+    isExtremePctFromLow: false,
+    volRatio: null,
+    sector: null,
+    industry: null,
+    sectorAvgRs: null,
+    sectorChange4w: null,
+    sectorGroupPhase: null,
+    sepaGrade: null,
+    marketCap: null,
+    ...overrides,
+  };
+}
+
+describe("buildRisingRsSectorDistribution", () => {
+  it("빈 배열 → '해당 없음' 반환", () => {
+    const result = buildRisingRsSectorDistribution([]);
+    expect(result).toBe("섹터 분포: 해당 없음");
+  });
+
+  it("단일 섹터 종목들 → 100% 표시", () => {
+    const stocks = [
+      makeStock({ sector: "Financial Services" }),
+      makeStock({ sector: "Financial Services" }),
+      makeStock({ sector: "Financial Services" }),
+    ];
+    const result = buildRisingRsSectorDistribution(stocks);
+    expect(result).toBe("섹터 분포(전체 3건): Financial Services 3건(100%)");
+  });
+
+  it("복수 섹터 → 내림차순 정렬, 비율 포함", () => {
+    const stocks = [
+      makeStock({ sector: "Financial Services" }),
+      makeStock({ sector: "Technology" }),
+      makeStock({ sector: "Financial Services" }),
+      makeStock({ sector: "Financial Services" }),
+      makeStock({ sector: "Technology" }),
+      makeStock({ sector: "Energy" }),
+    ];
+    const result = buildRisingRsSectorDistribution(stocks);
+    expect(result).toBe(
+      "섹터 분포(전체 6건): Financial Services 3건(50%), Technology 2건(33%), Energy 1건(17%)",
+    );
+  });
+
+  it("null sector → 'Unknown'으로 집계", () => {
+    const stocks = [
+      makeStock({ sector: null }),
+      makeStock({ sector: "Technology" }),
+      makeStock({ sector: null }),
+    ];
+    const result = buildRisingRsSectorDistribution(stocks);
+    expect(result).toContain("Unknown 2건");
+    expect(result).toContain("Technology 1건");
+  });
+
+  it("이슈 #714 재현: 22건 Financial Services 정확 카운트", () => {
+    const financialStocks = Array.from({ length: 22 }, () =>
+      makeStock({ sector: "Financial Services" }),
+    );
+    const techStocks = Array.from({ length: 3 }, () =>
+      makeStock({ sector: "Technology" }),
+    );
+    const otherStocks = Array.from({ length: 5 }, () =>
+      makeStock({ sector: "Energy" }),
+    );
+    const all = [...financialStocks, ...techStocks, ...otherStocks];
+
+    const result = buildRisingRsSectorDistribution(all);
+    expect(result).toContain("전체 30건");
+    expect(result).toContain("Financial Services 22건(73%)");
+    expect(result).toContain("Energy 5건(17%)");
+    expect(result).toContain("Technology 3건(10%)");
   });
 });
