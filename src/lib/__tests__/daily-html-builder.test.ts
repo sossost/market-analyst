@@ -1132,4 +1132,28 @@ describe("buildDailyHtml", () => {
     expect(html).toContain("<h2>시장 브레드스</h2>");
     expect(html).toContain("<h3>Phase 분포</h3>");
   });
+
+  it("시장 환경 게이트는 시장 브레드스 섹션 내에 위치한다", () => {
+    const data = createMockDailyReportData({
+      marketPosition: {
+        gates: [
+          { label: "S&P > 200MA", passed: true, detail: "5200 > 4800" },
+          { label: "S&P > 50MA", passed: false, detail: "5200 < 5300" },
+        ],
+        passCount: 1,
+        totalCount: 2,
+        date: "2026-04-04",
+      },
+    });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+
+    const indexSectionRegex = /<section>[\s\S]*?<h2>지수 현황<\/h2>([\s\S]*?)<\/section>/;
+    const breadthSectionRegex = /<section>[\s\S]*?<h2>시장 브레드스<\/h2>([\s\S]*?)<\/section>/;
+
+    const indexSectionContent = html.match(indexSectionRegex)?.[1] ?? "";
+    const breadthSectionContent = html.match(breadthSectionRegex)?.[1] ?? "";
+
+    expect(indexSectionContent).not.toContain("시장 환경");
+    expect(breadthSectionContent).toContain("시장 환경");
+  });
 });
