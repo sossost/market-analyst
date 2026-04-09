@@ -2,7 +2,6 @@
 
 Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2 초입 주도주**를 발굴하고, 멀티 애널리스트 토론 + 펀더멘탈 검증 + 학습 루프를 통해 **시간이 지날수록 똑똑해지는** 시장 분석 시스템.
 
-> **Backend** 206 TS files · **Tests** 102 files · **Open Issues** 11 · **Frontend** → control-tower 레포로 이관
 
 ## How It Works
 
