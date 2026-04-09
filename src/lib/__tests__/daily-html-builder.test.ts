@@ -1147,12 +1147,13 @@ describe("buildDailyHtml", () => {
     });
     const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
 
-    const indexSectionIdx = html.indexOf("지수 현황");
-    const breadthSectionIdx = html.indexOf("시장 브레드스");
-    const gateBlockIdx = html.indexOf("시장 환경");
+    const indexSectionRegex = /<section>[\s\S]*?<h2>지수 현황<\/h2>([\s\S]*?)<\/section>/;
+    const breadthSectionRegex = /<section>[\s\S]*?<h2>시장 브레드스<\/h2>([\s\S]*?)<\/section>/;
 
-    expect(gateBlockIdx).toBeGreaterThan(-1);
-    expect(gateBlockIdx).toBeGreaterThan(breadthSectionIdx);
-    expect(gateBlockIdx).toBeGreaterThan(indexSectionIdx);
+    const indexSectionContent = html.match(indexSectionRegex)?.[1] ?? "";
+    const breadthSectionContent = html.match(breadthSectionRegex)?.[1] ?? "";
+
+    expect(indexSectionContent).not.toContain("시장 환경");
+    expect(breadthSectionContent).toContain("시장 환경");
   });
 });
