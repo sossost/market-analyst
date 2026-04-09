@@ -159,13 +159,32 @@ describe("computeAlgorithmicConsensus", () => {
     expect(result.algorithmicConsensus).toBe("4/4");
     expect(result.keywords).toEqual([]);
   });
+
+  it("긍정/부정 동률 시 보수적으로 oppose 판정한다 (tie-break)", () => {
+    const thesis = makeThesis({
+      agentPersona: "macro",
+      thesis: "반도체 공급 과잉 전환",
+    });
+    // tech: "반도체"가 긍정(확대) + 부정(우려) 동시 존재 → 동률 → oppose
+    const outputs = makeRound1Outputs({
+      macro: "반도체 공급 과잉 전환 가능성 확대",
+      tech: "반도체 확대 성장 공급 우려 리스크 과잉 반박",
+      geopolitics: "반도체 공급 확대 성장 긍정",
+      sentiment: "반도체 과잉 낙관 기회",
+    });
+
+    const result = computeAlgorithmicConsensus(thesis, outputs);
+    // tech의 verdict는 tie-break에 의해 oppose 또는 support (SUPPORT_THRESHOLD에 따라)
+    // 핵심: "absent"가 되면 안 됨 — 키워드가 발견되었으므로
+    const techDetail = result.details.find((d) => d.persona === "tech");
+    expect(techDetail?.verdict).not.toBe("absent");
+  });
 });
 
 // ─── verifyConsensusLevels ───────────────────────────────────────────────────
 
 describe("verifyConsensusLevels", () => {
   it("2단계 이상 차이가 나면 consensusUnverified를 true로 설정한다", () => {
-    // Moderator가 4/4를 줬는데, 알고리즘은 지지가 2명뿐인 케이스
     const thesis = makeThesis({
       agentPersona: "macro",
       thesis: "유가 급등으로 에너지 상승 전환",
@@ -178,7 +197,8 @@ describe("verifyConsensusLevels", () => {
       sentiment: "유가 급등 반대 우려 부정 하락",
     });
 
-    const result = verifyConsensusLevels([thesis], outputs);
+    const { theses: result, verificationRan } = verifyConsensusLevels([thesis], outputs);
+    expect(verificationRan).toBe(true);
     expect(result[0].consensusUnverified).toBe(true);
   });
 
@@ -195,19 +215,20 @@ describe("verifyConsensusLevels", () => {
       sentiment: "반도체 리스크 우려 반박 부정",
     });
 
-    const result = verifyConsensusLevels([thesis], outputs);
+    const { theses: result } = verifyConsensusLevels([thesis], outputs);
     // 3/4 vs 4/4 → gap=1 → 플래그 안 붙음
     expect(result[0].consensusUnverified).toBeUndefined();
   });
 
-  it("Round 1 에이전트가 4명이 아니면 검증을 스킵한다", () => {
+  it("Round 1 에이전트가 4명이 아니면 검증을 스킵하고 verificationRan=false 반환", () => {
     const thesis = makeThesis({ consensusLevel: "4/4" });
     const outputs: RoundOutput[] = [
       { persona: "macro", content: "내용" },
       { persona: "tech", content: "내용" },
     ];
 
-    const result = verifyConsensusLevels([thesis], outputs);
+    const { theses: result, verificationRan } = verifyConsensusLevels([thesis], outputs);
+    expect(verificationRan).toBe(false);
     expect(result[0].consensusUnverified).toBeUndefined();
   });
 
@@ -231,7 +252,7 @@ describe("verifyConsensusLevels", () => {
       sentiment: "AI 반도체 수요 확대 낙관 유가 급등 에너지 상승 낙관",
     });
 
-    const result = verifyConsensusLevels(theses, outputs);
+    const { theses: result } = verifyConsensusLevels(theses, outputs);
     expect(result).toHaveLength(2);
     // 첫 번째: 모두 지지 → 4/4 vs 4/4 → 플래그 없음
     expect(result[0].consensusUnverified).toBeUndefined();
@@ -250,5 +271,18 @@ describe("verifyConsensusLevels", () => {
 
     verifyConsensusLevels([original], outputs);
     expect(original).not.toHaveProperty("consensusUnverified");
+  });
+
+  it("verificationRan=true이면 검증이 실행된 것을 보장한다", () => {
+    const thesis = makeThesis({ consensusLevel: "3/4" });
+    const outputs = makeRound1Outputs({
+      macro: "반도체 수요 확대 가속 성장",
+      tech: "반도체 수요 확대 강조 기회",
+      geopolitics: "반도체 수요 확대 긍정",
+      sentiment: "반도체 수요 확대 낙관",
+    });
+
+    const { verificationRan } = verifyConsensusLevels([thesis], outputs);
+    expect(verificationRan).toBe(true);
   });
 });

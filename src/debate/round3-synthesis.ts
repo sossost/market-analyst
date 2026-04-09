@@ -948,10 +948,14 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
   logger.info("Round3", `Synthesis complete: ${theses.length} theses extracted`);
 
   // #713: Round 1 에이전트 출력 기반 consensus 알고리즘 검증
-  const verifiedTheses = verifyConsensusLevels(theses, round1Outputs);
-  const unverifiedCount = verifiedTheses.filter((t) => t.consensusUnverified === true).length;
-  if (unverifiedCount > 0) {
-    logger.warn("Round3", `Consensus 불일치 thesis ${unverifiedCount}건 감지 (총 ${verifiedTheses.length}건)`);
+  const { theses: verifiedTheses, verificationRan } = verifyConsensusLevels(theses, round1Outputs);
+  if (verificationRan) {
+    const unverifiedCount = verifiedTheses.filter((t) => t.consensusUnverified === true).length;
+    if (unverifiedCount > 0) {
+      logger.warn("Round3", `Consensus 불일치 thesis ${unverifiedCount}건 감지 (총 ${verifiedTheses.length}건)`);
+    }
+  } else {
+    logger.warn("Round3", "Consensus 검증 스킵됨 — Round 1 에이전트 수 부족");
   }
 
   return {

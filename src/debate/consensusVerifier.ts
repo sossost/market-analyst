@@ -128,10 +128,11 @@ export function computeAlgorithmicConsensus(
 
   // 키워드가 없으면 판정 불가 — 전원 지지로 간주 (보수적: 플래그 안 붙임)
   if (keywords.length === 0) {
+    const safeCount = Math.max(1, Math.min(4, round1Outputs.length)) as 1 | 2 | 3 | 4;
     return {
       keywords: [],
       supportCount: round1Outputs.length,
-      algorithmicConsensus: `${round1Outputs.length}/4` as ConsensusLevel,
+      algorithmicConsensus: `${safeCount}/4`,
       details: round1Outputs.map((o) => ({
         persona: o.persona,
         keywordsFound: 0,
@@ -186,6 +187,9 @@ export function computeAlgorithmicConsensus(
         verdict = "support";
       } else if (opposeRatio > supportRatio) {
         verdict = "oppose";
+      } else if (opposeRatio > 0) {
+        // 긍정/부정 동률 → 보수적 판정: oppose (analyzeKeywordContext와 동일 원칙)
+        verdict = "oppose";
       } else {
         verdict = "absent";
       }
@@ -212,10 +216,21 @@ export function computeAlgorithmicConsensus(
 }
 
 /**
- * consensus score 파싱 (예: "3/4" → 3)
+ * consensus score 파싱 (예: "3/4" → 3).
+ * NaN 방어 포함 — 잘못된 consensusLevel이면 예외 발생.
  */
 function parseConsensusScore(level: ConsensusLevel): number {
-  return parseInt(level.split("/")[0], 10);
+  const score = parseInt(level.split("/")[0], 10);
+  if (Number.isNaN(score)) {
+    throw new Error(`Invalid consensusLevel: ${level}`);
+  }
+  return score;
+}
+
+export interface ConsensusVerificationResult {
+  theses: Thesis[];
+  /** 검증이 실제로 실행되었는지 여부. false면 에이전트 수 부족 등으로 스킵됨 */
+  verificationRan: boolean;
 }
 
 /**
@@ -224,22 +239,22 @@ function parseConsensusScore(level: ConsensusLevel): number {
  * 판정 기준: Moderator consensus와 알고리즘 consensus가 2단계 이상 차이나면
  * consensusUnverified = true.
  *
- * @returns 플래그가 부착된 thesis 배열 (원본 변경 없이 새 배열 반환)
+ * @returns 검증 결과 + 실행 여부. verificationRan=false면 검증 스킵됨.
  */
 export function verifyConsensusLevels(
   theses: Thesis[],
   round1Outputs: RoundOutput[],
-): Thesis[] {
-  // Round 1 에이전트가 4명이 아니면 검증 불가 — 원본 그대로 반환
+): ConsensusVerificationResult {
+  // Round 1 에이전트가 4명이 아니면 검증 불가 — 스킵을 명시적으로 전달
   if (round1Outputs.length !== 4) {
     logger.warn(
       "ConsensusVerifier",
       `Round 1 에이전트 수가 4명이 아님 (${round1Outputs.length}명) — consensus 검증 스킵`,
     );
-    return theses;
+    return { theses, verificationRan: false };
   }
 
-  return theses.map((thesis) => {
+  const verified = theses.map((thesis) => {
     const result = computeAlgorithmicConsensus(thesis, round1Outputs);
     const moderatorScore = parseConsensusScore(thesis.consensusLevel);
     const algorithmicScore = parseConsensusScore(result.algorithmicConsensus);
@@ -261,4 +276,6 @@ export function verifyConsensusLevels(
       consensusUnverified: isUnverified ? true : undefined,
     };
   });
+
+  return { theses: verified, verificationRan: true };
 }
