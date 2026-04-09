@@ -22,6 +22,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 공급 과잉 전환 감지: 병목 해소 → 과잉 전환 조기 포착
    → 병목 체인 추적: narrative_chains 테이블에 병목 생애주기 기록
    → 모더레이터(Claude)가 thesis 구조화 + 합의도(consensus_score) 기록
+   → Consensus 알고리즘 검증: Round 1 에이전트 출력 키워드 매칭으로 합의도 교차 검증 + 불일치 플래그(#713)
 
 3. 학습 루프 (자동)
    → ACTIVE thesis를 시장 데이터로 검증 (CONFIRMED/INVALIDATED)

@@ -54,6 +54,7 @@ export async function saveTheses(
     nextBottleneck: t.nextBottleneck ?? null,
     dissentReason: t.dissentReason ?? null,
     minorityView: t.minorityView ?? null,
+    consensusUnverified: t.consensusUnverified ?? null,
     status: "ACTIVE" as const,
   }));
 
