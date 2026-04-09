@@ -16,7 +16,7 @@ export const getSectorLagPatterns: AgentTool = {
   definition: {
     name: "get_sector_lag_patterns",
     description:
-      "섹터/업종 간 Phase 전환 래그 패턴을 조회합니다. 선도 섹터가 Phase 2에 진입한 뒤 후행 섹터가 평균 N일 뒤 진입하는 패턴을 보여줍니다. 통계적으로 신뢰할 수 있는(p-value 기반) 패턴만 반환합니다.",
+      "섹터/업종 간 Phase 전환 래그 패턴을 조회합니다. 선도 섹터가 Phase 2에 진입한 뒤 후행 섹터가 평균 N일 뒤 진입하는 패턴을 보여줍니다. 통계적으로 신뢰할 수 있는(p-value 기반) 패턴만 반환합니다. 반환값 중 avgLagDays, medianLagDays, stddevLagDays, pValue가 null이면 'N/A'로 표기하고 값을 추정하지 마세요.",
     input_schema: {
       type: "object" as const,
       properties: {
