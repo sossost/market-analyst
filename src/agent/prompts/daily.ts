@@ -60,7 +60,7 @@ ${ANALYSIS_FRAMEWORK}
 - **marketTemperatureLabel**: 예시: "강세 — 모멘텀 가속", "중립 — 관망", "약세 — 하락 3일째". 한 줄 이내.
 - **marketTemperatureRationale**: 왜 그 온도인지 판단 근거. VIX 레벨, Phase2 비율 방향, 공포탐욕 구간, A/D ratio를 종합해 해석하라. 숫자 테이블 만들지 마라.
 - **unusualStocksNarrative**: 특이종목이 공통 업종/테마에 집중되면 그 해석. 이질적(개별 악재, 이상 급등 등) 패턴이면 그 의미. 없으면 "해당 없음".
-- **risingRSNarrative**: RS 상승 초기 종목군의 소속 업종·섹터 공통점과 자금 유입 방향. 없으면 "해당 없음".
+- **risingRSNarrative**: RS 상승 초기 종목군의 소속 업종·섹터 공통점과 자금 유입 방향. 섹터별 종목 수를 언급할 때는 반드시 데이터에 포함된 '섹터 분포' 사전 집계 수치를 그대로 인용하라. 직접 카운트 금지. 없으면 "해당 없음".
 - **watchlistNarrative**: ACTIVE 관심종목의 오늘 서사 유효성. Phase 이탈 우려 종목이 있으면 간략히 언급. 없으면 "해당 없음".
 - **breadthNarrative**: 시장 브레드스 추세 한줄 해석. Phase 2 비율 방향(확대/축소/보합), A/D ratio 수준, 신고가·신저가 비율을 종합해 시장 참여 폭이 넓어지는지 좁아지는지 판단. 없으면 "해당 없음".
 - **todayInsight**: 토론 인사이트(debateInsight 컨텍스트)가 제공된 경우에만 작성. 시장 데이터와 일치하면 "토론과 일치", 충돌하면 "토론과 상충" 명시. 없으면 "해당 없음".
