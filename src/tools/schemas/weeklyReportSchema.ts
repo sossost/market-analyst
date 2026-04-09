@@ -207,6 +207,47 @@ export interface WatchlistChange {
   reason: string;
 }
 
+// ─── Phase 2 조기포착 신호 서브타입 ─────────────────────────────────────────
+
+export interface VcpCandidate {
+  symbol: string;
+  bbWidthCurrent: number | null;
+  bbWidthAvg60d: number | null;
+  atr14Percent: number | null;
+  bodyRatio: number | null;
+  ma20Ma50DistancePercent: number | null;
+  sector: string | null;
+  industry: string | null;
+  phase: number | null;
+  rsScore: number | null;
+}
+
+export interface ConfirmedBreakout {
+  symbol: string;
+  breakoutPercent: number | null;
+  volumeRatio: number | null;
+  isPerfectRetest: boolean;
+  ma20DistancePercent: number | null;
+  sector: string | null;
+  industry: string | null;
+  phase: number | null;
+  rsScore: number | null;
+}
+
+export interface SectorLagPattern {
+  leaderEntity: string;
+  followerEntity: string;
+  entityType: string;
+  transition: string;
+  sampleCount: number;
+  avgLagDays: number | null;
+  medianLagDays: number | null;
+  stddevLagDays: number | null;
+  pValue: number | null;
+  lastObservedAt: string | null;
+  lastLagDays: number | null;
+}
+
 // ─── 데이터 컨테이너 (도구 반환값 직접 매핑) ──────────────────────────────────
 
 /**
@@ -237,6 +278,12 @@ export interface WeeklyReportData {
   };
   /** buildThesisAlignedCandidates 반환값. 수집 실패 시 null */
   thesisAlignedCandidates: ThesisAlignedData | null;
+  /** get_vcp_candidates 반환값. 수집 실패 시 null */
+  vcpCandidates: VcpCandidate[] | null;
+  /** get_confirmed_breakouts 반환값. 수집 실패 시 null */
+  confirmedBreakouts: ConfirmedBreakout[] | null;
+  /** get_sector_lag_patterns 반환값. 수집 실패 시 null */
+  sectorLagPatterns: SectorLagPattern[] | null;
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────
