@@ -4,10 +4,11 @@
  * EARLY_BEAR / BEAR 레짐에서도 구조적으로 강한 종목에 대해
  * 조건부 예외 진입을 허용하는 게이트.
  *
- * 예외 조건 (모두 충족해야 통과):
- * 1. 섹터 RS 상위 15% — 시장 대비 상대강도 상위권
- * 2. 펀더멘탈 SEPA S/A 등급 — 실적 상위 종목
- * 3. Phase 2 지속성 3일 이상 — 일반 게이트와 동일 기준
+ * 레짐별 차등 기준 (#711):
+ *   EARLY_BEAR: 섹터 RS 상위 25%, SEPA S/A/B 등급, Phase 2 지속성 3일
+ *   BEAR:       섹터 RS 상위 15%, SEPA S/A 등급,   Phase 2 지속성 3일
+ *
+ * 모든 조건을 충족해야 통과. DB 조회 실패 시 fail-closed.
  */
 
 import { retryDatabaseOperation } from "@/etl/utils/retry";
@@ -19,17 +20,36 @@ import { findPhase2PersistenceBySymbol } from "@/db/repositories/stockPhaseRepos
 /** Bear 예외 통과에 필요한 Phase 2 지속 최소 일수 (일반 게이트와 동일 기준) */
 export const BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS = 3;
 
-/** 섹터 RS 상위 N% 이내만 예외 허용 */
+/** 섹터 RS 상위 N% 이내만 예외 허용 (BEAR 레짐) */
 export const BEAR_EXCEPTION_SECTOR_RS_PERCENTILE = 15;
 
 /**
- * Bear 예외 허용 SEPA 등급 집합.
+ * EARLY_BEAR 섹터 RS 상위 N% 이내 예외 허용.
+ * 근거: EARLY_BEAR는 하락 초기로 BEAR보다 위험도가 낮다.
+ * 15%에서는 ~1,500 Phase 2 종목 중 일 0-2건만 통과하여
+ * 알파 형성 검증이 불가능했다 (#711). 25%로 완화하되
+ * 나머지 게이트(SEPA, 가격, 안정성 등)가 품질을 보장.
+ */
+export const EARLY_BEAR_SECTOR_RS_PERCENTILE = 25;
+
+/**
+ * Bear 예외 허용 SEPA 등급 집합 (BEAR 레짐).
  * S(최상) + A(우수) — Bear 장에서도 펀더멘탈이 검증된 종목만 허용.
  * 근거: S 단독 조건은 1,441건 중 0건 통과 (#619). S+A로 완화하되
  * 나머지 게이트(RS, 가격, 안정성 등)가 품질을 보장.
  */
 export const BEAR_EXCEPTION_ALLOWED_GRADES: ReadonlySet<string> = new Set(["S", "A"]);
 export const BEAR_EXCEPTION_ALLOWED_GRADES_TEXT = Array.from(BEAR_EXCEPTION_ALLOWED_GRADES).join("/");
+
+/**
+ * EARLY_BEAR 예외 허용 SEPA 등급 집합.
+ * S/A/B — 하락 초기에는 B등급(기준 일부 충족)까지 허용.
+ * 근거: S/A만 허용 시 EARLY_BEAR에서도 일 0-2건에 불과하여
+ * 알파 형성 검증 불가 (#711). B등급 추가로 후보 풀 확대.
+ * C(미약)/F(전부 미충족)는 여전히 차단.
+ */
+export const EARLY_BEAR_ALLOWED_GRADES: ReadonlySet<string> = new Set(["S", "A", "B"]);
+export const EARLY_BEAR_ALLOWED_GRADES_TEXT = Array.from(EARLY_BEAR_ALLOWED_GRADES).join("/");
 
 /** [Bear 예외] 태그 — reason 접두사 */
 export const BEAR_EXCEPTION_TAG = "[Bear 예외]";
@@ -38,6 +58,8 @@ export interface BearExceptionInput {
   symbol: string;
   sector: string;
   date: string;
+  /** 현재 확정 레짐. EARLY_BEAR와 BEAR에 따라 게이트 엄격도가 달라진다. */
+  regime?: string;
 }
 
 export interface BearExceptionResult {
@@ -61,7 +83,19 @@ export interface BearExceptionResult {
 export async function evaluateBearException(
   input: BearExceptionInput,
 ): Promise<BearExceptionResult> {
-  const { symbol, sector, date } = input;
+  const { symbol, sector, date, regime } = input;
+
+  // EARLY_BEAR는 BEAR보다 완화된 기준 적용 (#711)
+  const isEarlyBear = regime === "EARLY_BEAR";
+  const sectorRsThreshold = isEarlyBear
+    ? EARLY_BEAR_SECTOR_RS_PERCENTILE
+    : BEAR_EXCEPTION_SECTOR_RS_PERCENTILE;
+  const allowedGrades = isEarlyBear
+    ? EARLY_BEAR_ALLOWED_GRADES
+    : BEAR_EXCEPTION_ALLOWED_GRADES;
+  const allowedGradesText = isEarlyBear
+    ? EARLY_BEAR_ALLOWED_GRADES_TEXT
+    : BEAR_EXCEPTION_ALLOWED_GRADES_TEXT;
 
   const persistenceStart = getDateOffset(date, BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS);
 
@@ -82,12 +116,12 @@ export async function evaluateBearException(
       ? Math.round((sectorRsRank / totalSectors) * 100)
       : null;
 
-  // 3가지 조건 판정
+  // 3가지 조건 판정 — 레짐별 차등 기준
   const isSectorRsTop =
     sectorRsPercentile != null &&
-    sectorRsPercentile <= BEAR_EXCEPTION_SECTOR_RS_PERCENTILE;
+    sectorRsPercentile <= sectorRsThreshold;
 
-  const isFundamentalQualified = fundamentalGrade != null && BEAR_EXCEPTION_ALLOWED_GRADES.has(fundamentalGrade);
+  const isFundamentalQualified = fundamentalGrade != null && allowedGrades.has(fundamentalGrade);
 
   const isPhase2Persistent =
     phase2Count >= BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS;
@@ -98,12 +132,12 @@ export async function evaluateBearException(
   const failReasons: string[] = [];
   if (!isSectorRsTop) {
     failReasons.push(
-      `섹터RS ${sectorRsPercentile ?? "N/A"}% (기준: ≤${BEAR_EXCEPTION_SECTOR_RS_PERCENTILE}%)`,
+      `섹터RS ${sectorRsPercentile ?? "N/A"}% (기준: ≤${sectorRsThreshold}%)`,
     );
   }
   if (!isFundamentalQualified) {
     failReasons.push(
-      `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${BEAR_EXCEPTION_ALLOWED_GRADES_TEXT})`,
+      `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${allowedGradesText})`,
     );
   }
   if (!isPhase2Persistent) {
@@ -112,9 +146,10 @@ export async function evaluateBearException(
     );
   }
 
+  const regimeLabel = isEarlyBear ? "Early Bear 예외" : "Bear 예외";
   const reason = passed
-    ? `Bear 예외 통과: 섹터RS 상위${sectorRsPercentile}%, SEPA ${fundamentalGrade}, Phase2 ${phase2Count}일`
-    : `Bear 예외 미충족: ${failReasons.join(", ")}`;
+    ? `${regimeLabel} 통과: 섹터RS 상위${sectorRsPercentile}%, SEPA ${fundamentalGrade}, Phase2 ${phase2Count}일`
+    : `${regimeLabel} 미충족: ${failReasons.join(", ")}`;
 
   if (passed) {
     logger.info(

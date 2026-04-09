@@ -208,6 +208,7 @@ async function main() {
         symbol,
         sector: sector ?? "",
         date: targetDate,
+        regime: regimeForGate ?? undefined,
       });
 
       if (!exceptionResult.passed) {
@@ -371,16 +372,26 @@ async function main() {
     await Promise.allSettled(corporateAnalystPromises);
   }
 
-  logger.info(
-    TAG,
+  const summaryMsg =
     `완료 — 저장: ${savedCount}, 스킵: ${skippedCount}, ` +
-      `Bear차단: ${blockedByRegime}, Bear예외통과: ${bearExceptionCount}, ` +
-      `LateBull차단: ${blockedByLateBull}, LateBull통과: ${lateBullPassCount}, ` +
-      `쿨다운차단: ${blockedByCooldown}, RS하한차단: ${blockedByLowRS}, ` +
-      `RS과열차단: ${blockedByOverheatedRS}, 저가주차단: ${blockedByLowPrice}, ` +
-      `지속성차단: ${blockedByPersistence}, 안정성차단: ${blockedByStability}, ` +
-      `펀더멘탈차단: ${blockedByFundamental}`,
-  );
+    `Bear차단: ${blockedByRegime}, Bear예외통과: ${bearExceptionCount}, ` +
+    `LateBull차단: ${blockedByLateBull}, LateBull통과: ${lateBullPassCount}, ` +
+    `쿨다운차단: ${blockedByCooldown}, RS하한차단: ${blockedByLowRS}, ` +
+    `RS과열차단: ${blockedByOverheatedRS}, 저가주차단: ${blockedByLowPrice}, ` +
+    `지속성차단: ${blockedByPersistence}, 안정성차단: ${blockedByStability}, ` +
+    `펀더멘탈차단: ${blockedByFundamental}`;
+
+  logger.info(TAG, summaryMsg);
+
+  // 추천 0건 진단 — 파이프라인 건강성 모니터링 (#711)
+  if (savedCount === 0 && phase2Stocks.length > 0) {
+    logger.warn(
+      TAG,
+      `금일 추천 0건 — 레짐: ${regimeForGate ?? "없음"}, ` +
+        `Phase2 총: ${phase2Stocks.length}, ` +
+        `최다 차단: ${identifyTopBlocker(blockedByRegime, blockedByLateBull, blockedByCooldown, blockedByLowRS, blockedByOverheatedRS, blockedByLowPrice, blockedByPersistence, blockedByStability, blockedByFundamental)}`,
+    );
+  }
 
   await pool.end();
 }
@@ -461,6 +472,24 @@ async function saveFactorSnapshot(symbol: string, date: string): Promise<void> {
         ],
       }),
   );
+}
+
+/**
+ * 게이트별 차단 수 중 최다 차단 원인을 식별한다.
+ * 0건 진단 로그에서 병목 원인 파악용.
+ */
+function identifyTopBlocker(...counts: number[]): string {
+  const labels = [
+    "Bear레짐", "LateBull", "쿨다운", "RS하한", "RS과열",
+    "저가주", "지속성", "안정성", "펀더멘탈",
+  ];
+
+  const top = counts.reduce(
+    (best, count, idx) => (count > best.count ? { count, idx } : best),
+    { count: 0, idx: 0 },
+  );
+
+  return top.count > 0 ? `${labels[top.idx]}(${top.count}건)` : "없음";
 }
 
 main().catch(async (err) => {
