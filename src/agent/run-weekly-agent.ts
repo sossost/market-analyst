@@ -11,6 +11,9 @@ import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getPhase2Stocks } from "@/tools/getPhase2Stocks";
 import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
+import { getVCPCandidates } from "@/tools/getVCPCandidates";
+import { getConfirmedBreakouts } from "@/tools/getConfirmedBreakouts";
+import { getSectorLagPatterns } from "@/tools/getSectorLagPatterns";
 import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
 
 // Schema + Builder
@@ -82,7 +85,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   logger.step("[4/7] Collecting data from tools...");
 
   // 병렬 호출
-  const [indexRaw, breadthRaw, sectorRaw, industryRaw, watchlistRaw, phase2Raw, allIndustryRaw, thesisAlignedRaw] =
+  const [indexRaw, breadthRaw, sectorRaw, industryRaw, watchlistRaw, phase2Raw, allIndustryRaw, thesisAlignedRaw, vcpRaw, breakoutRaw, lagRaw] =
     await Promise.all([
       getIndexReturns.execute({ mode: "weekly", date: targetDate }),
       getMarketBreadth.execute({ mode: "weekly", date: targetDate }),
@@ -93,6 +96,18 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
       getLeadingSectors.execute({ mode: "industry", limit: 200, date: targetDate }),
       buildThesisAlignedCandidates(targetDate).catch((err: unknown) => {
         logger.warn("ThesisAligned", `수집 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }),
+      getVCPCandidates.execute({ date: targetDate }).catch((err: unknown) => {
+        logger.warn("VCP", `수집 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }),
+      getConfirmedBreakouts.execute({ date: targetDate }).catch((err: unknown) => {
+        logger.warn("Breakout", `수집 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }),
+      getSectorLagPatterns.execute({ transition: "1to2", entity_type: "sector" }).catch((err: unknown) => {
+        logger.warn("SectorLag", `수집 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
         return null;
       }),
     ]);
@@ -163,12 +178,18 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
       pending4of5,
     },
     thesisAlignedCandidates: thesisAlignedRaw,
+    vcpCandidates: vcpRaw != null ? (parse(vcpRaw).candidates as WeeklyReportData["vcpCandidates"]) ?? null : null,
+    confirmedBreakouts: breakoutRaw != null ? (parse(breakoutRaw).breakouts as WeeklyReportData["confirmedBreakouts"]) ?? null : null,
+    sectorLagPatterns: lagRaw != null ? (parse(lagRaw).patterns as WeeklyReportData["sectorLagPatterns"]) ?? null : null,
   };
 
   const taLabel = thesisAlignedRaw != null
     ? `서사수혜: 체인 ${thesisAlignedRaw.chains.length}, 후보 ${thesisAlignedRaw.totalCandidates}`
     : "서사수혜: 수집 실패";
-  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | 예비 ${pending4of5.length} | ${taLabel}`);
+  const vcpCount = data.vcpCandidates?.length ?? 0;
+  const breakoutCount = data.confirmedBreakouts?.length ?? 0;
+  const lagCount = data.sectorLagPatterns?.length ?? 0;
+  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | 예비 ${pending4of5.length} | VCP ${vcpCount} | 돌파 ${breakoutCount} | 래그 ${lagCount} | ${taLabel}`);
 
   return data;
 }
@@ -200,6 +221,21 @@ ${data.watchlist.items.map((w) => `${w.symbol}: Phase ${w.currentPhase ?? w.entr
 
 ## 예비 관심종목 (4/5 통과, thesis 미충족)
 ${data.watchlistChanges.pending4of5.map((p) => `${p.symbol}: ${p.reason}`).join("\n") || "없음"}
+
+## VCP 후보 (변동성 수축 패턴)
+${data.vcpCandidates != null && data.vcpCandidates.length > 0
+  ? data.vcpCandidates.slice(0, 15).map((v) => `${v.symbol}: BB폭 ${v.bbWidthCurrent?.toFixed(3) ?? "—"}, ATR% ${v.atr14Percent?.toFixed(2) ?? "—"}, Phase ${v.phase ?? "—"}, RS ${v.rsScore ?? "—"} (${v.sector ?? "—"})`).join("\n")
+  : "없음"}
+
+## 확인된 돌파 종목
+${data.confirmedBreakouts != null && data.confirmedBreakouts.length > 0
+  ? data.confirmedBreakouts.slice(0, 15).map((b) => `${b.symbol}: 돌파 ${b.breakoutPercent?.toFixed(1) ?? "—"}%, 거래량비율 ${b.volumeRatio?.toFixed(1) ?? "—"}x${b.isPerfectRetest ? " (완벽되돌림)" : ""}, Phase ${b.phase ?? "—"}, RS ${b.rsScore ?? "—"} (${b.sector ?? "—"})`).join("\n")
+  : "없음"}
+
+## 섹터 래그 패턴 (Phase 1→2)
+${data.sectorLagPatterns != null && data.sectorLagPatterns.length > 0
+  ? data.sectorLagPatterns.slice(0, 10).map((l) => `${l.leaderEntity} → ${l.followerEntity}: 평균 ${l.avgLagDays?.toFixed(1) ?? "—"}일 (n=${l.sampleCount}, p=${l.pValue?.toFixed(3) ?? "—"})`).join("\n")
+  : "없음"}
 
 ---
 

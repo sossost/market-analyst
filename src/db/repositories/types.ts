@@ -883,6 +883,49 @@ export interface WeeklyQaBiasMetricsRow {
   cnt: number;
 }
 
+// ─── signalRepository (Phase 2 조기포착 신호) ──────────────────────────────
+
+export interface VcpCandidateRow {
+  symbol: string;
+  date: string;
+  bb_width_current: string | null;
+  bb_width_avg_60d: string | null;
+  atr14_percent: string | null;
+  body_ratio: string | null;
+  ma20_ma50_distance_percent: string | null;
+  sector: string | null;
+  industry: string | null;
+  phase: number | null;
+  rs_score: number | null;
+}
+
+export interface ConfirmedBreakoutRow {
+  symbol: string;
+  date: string;
+  breakout_percent: string | null;
+  volume_ratio: string | null;
+  is_perfect_retest: boolean;
+  ma20_distance_percent: string | null;
+  sector: string | null;
+  industry: string | null;
+  phase: number | null;
+  rs_score: number | null;
+}
+
+export interface SectorLagPatternRow {
+  entity_type: string;
+  leader_entity: string;
+  follower_entity: string;
+  transition: string;
+  sample_count: number;
+  avg_lag_days: string | null;
+  median_lag_days: string | null;
+  stddev_lag_days: string | null;
+  p_value: string | null;
+  last_observed_at: string | null;
+  last_lag_days: number | null;
+}
+
 // ─── sectorClusterRepository ────────────────────────────────────────────────
 
 export interface SectorClusterRow {

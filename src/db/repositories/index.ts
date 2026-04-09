@@ -9,4 +9,5 @@ export * from "./fundamentalRepository.js";
 export * from "./corporateRepository.js";
 export * from "./watchlistRepository.js";
 export * from "./sectorClusterRepository.js";
+export * from "./signalRepository.js";
 export type * from "./types.js";

@@ -98,6 +98,7 @@ export class WeeklyDataCollector {
           advanceDecline: { advancers: 0, decliners: 0, unchanged: 0, ratio: null },
           newHighLow: { newHighs: 0, newLows: 0, ratio: null },
           breadthScore: null,
+          breadthScoreChange: null,
           divergenceSignal: null,
           topSectors: [],
         },
@@ -115,6 +116,9 @@ export class WeeklyDataCollector {
         pending4of5: [],
       },
       thesisAlignedCandidates: (data.thesisAlignedCandidates as WeeklyReportData["thesisAlignedCandidates"] | undefined) ?? null,
+      vcpCandidates: (data.vcpCandidates as WeeklyReportData["vcpCandidates"] | undefined) ?? null,
+      confirmedBreakouts: (data.confirmedBreakouts as WeeklyReportData["confirmedBreakouts"] | undefined) ?? null,
+      sectorLagPatterns: (data.sectorLagPatterns as WeeklyReportData["sectorLagPatterns"] | undefined) ?? null,
     };
   }
 

@@ -153,7 +153,7 @@ yarn db:studio              # Drizzle Studio UI
 │     ETL      │    │Multi-Model   │    │    Agent     │
 │              │    │   Debate     │    │              │
 │ Stock Phases │───▶│GPT-4o/Gemini│───▶│Claude Sonnet │
-│ Sector RS    │    │/Claude 4명   │    │ + 19 Tools   │
+│ Sector RS    │    │/Claude 4명   │    │ + 22 Tools   │
 │ Industry RS  │    │ + 서사 프레임 │    │ + Fundamental│
 │ Breakout/    │    └──────┬───────┘    └──────┬───────┘
 │ Noise Signal │           │                   │
@@ -208,6 +208,9 @@ yarn db:studio              # Drizzle Studio UI
 | `readRegimePerformance` | | O | 레짐별 신호 성과 통계 (BULL/BEAR/LATE_BULL 등) |
 | `saveRecommendations` | O | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
 | `saveReportLog` | O | O | 리포트 결과 저장 |
+| `getVCPCandidates` | | O | VCP(변동성 수축 패턴) 후보 — BB width 수축 기반 피벗 진입 신호 |
+| `getConfirmedBreakouts` | | O | 거래량 확인된 돌파 종목 — volumeRatio 내림차순 스크리닝 |
+| `getSectorLagPatterns` | | O | 섹터 간 Phase 전환 래그 패턴 — 후행 섹터 선제 예측 |
 | `sendDiscordReport` | — | — | Discord + Gist 리포트 발송 (리뷰 파이프라인 내부 전용) |
 
 ### Learning Loop
@@ -377,7 +380,7 @@ src/
 │   └── narrativeChainService.ts  # 병목 체인 추적
 ├── corporate-analyst/       # 기업 애널리스트 (종목 심층 분석 + 정량 목표주가)
 ├── fundamental/             # SEPA 펀더멘탈 검증
-├── tools/                   # 에이전트 도구 (18개 + 내부 유틸 2개)
+├── tools/                   # 에이전트 도구 (21개 + 내부 유틸 2개)
 ├── issue-processor/         # 자율 이슈 처리 (Claude Code CLI)
 ├── pr-reviewer/             # 자동 PR 리뷰 (Strategic + Code 병렬 리뷰어)
 ├── etl/                     # 데이터 파이프라인

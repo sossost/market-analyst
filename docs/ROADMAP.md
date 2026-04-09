@@ -1,6 +1,6 @@
 # Market Analyst — Roadmap
 
-**최종 업데이트:** 2026-04-08
+**최종 업데이트:** 2026-04-09
 
 ---
 
@@ -55,7 +55,7 @@
 
 | 구성 요소 | 설명 |
 |-----------|------|
-| Agent Loop | Claude API + 18개 도구, 일간/주간 분리 |
+| Agent Loop | Claude API + 21개 도구, 일간/주간 분리 |
 | 리뷰 에이전트 | 리포트 품질 검증 파이프라인 (Claude Code CLI 기반 QA) |
 | 조건부 발송 | 품질 미달 시 발송 차단 + bull-bias 감지 |
 | 딜리버리 | Discord + Gist, 일간/주간 스케줄 |
@@ -65,6 +65,7 @@
 | 시장 환경 멀티게이트 | 일간 리포트에 S&P 500 MA200/MA50 위치 + 신고가>신저가 + A/D>1.0 4개 게이트 추가 — index_prices 런타임 MA 계산, 시장 구조적 위치 컨텍스트 제공 (#662) |
 | 주간 리포트 가독성 | 지표 4×2 그리드(10Y·DXY·공포탐욕 통합) + 시장 브레드스 섹션(Phase 분포·5일 추이 mini-table·LLM 해석) — 일간(#679)과 동일 방향 (#681) |
 | 일간 브레드스 섹션 개편 | A/D Ratio·신고가/신저가 chip 제거(시장 환경 게이트와 중복) + Breadth Score에 252일 퍼센타일 레이블·전일 대비 변화 추가 + Phase 2 비율 chip에 순유입 건수 인라인 통합 (#692) |
+| Phase 2 조기포착 신호 도구 | VCP 후보(`getVCPCandidates`), 확인된 돌파(`getConfirmedBreakouts`), 섹터 래그 패턴(`getSectorLagPatterns`) 3개 도구 추가 — ETL이 적재한 `daily_noise_signals`/`daily_breakout_signals`/`sector_lag_patterns` 데이터를 에이전트에 노출 (#712) |
 | Thesis-Aligned Candidates | ACTIVE/RESOLVING narrative_chain의 beneficiary_tickers를 stock_phases + fundamental_scores + company_profiles와 자동 조인 → 일간 리포트에 체인별 수혜주 기술적 상태(Phase/RS/SEPA/52w 고점 대비/게이트 충족 수) 표시. beneficiary_tickers 비어있는 신규 chain은 동일 megatrend 기존 chain에서 상속 (#697) |
 
 ### Layer 3: 추적 시스템 (F4) — Done
