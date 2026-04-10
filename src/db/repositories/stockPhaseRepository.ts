@@ -60,6 +60,8 @@ const SIO_JOIN = "LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symb
 const SIO_JOIN_SYM = "LEFT JOIN symbol_industry_overrides sio ON sym.symbol = sio.symbol";
 const IND_COL = "COALESCE(sio.industry, s.industry)";
 const IND_COL_SYM = "COALESCE(sio.industry, sym.industry)";
+/** Shell Companies 제외 필터 — IS DISTINCT FROM으로 industry=NULL인 종목도 포함 */
+const NOT_SHELL = `${IND_COL} IS DISTINCT FROM 'Shell Companies'`;
 
 /**
  * Phase 2 초입 종목 리스트를 조회한다.
@@ -263,7 +265,7 @@ export async function findUnusualStocks(
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false
-       AND ${IND_COL} != 'Shell Companies'
+       AND ${NOT_SHELL}
        AND dm.vol_ma30::numeric > 0
        AND dp_prev.close::numeric > 0
        AND (
@@ -413,7 +415,7 @@ export async function findActiveNonEtfSymbols(): Promise<EtlSymbolRow[]> {
     `SELECT s.symbol, s.sector, ${IND_COL} AS industry FROM symbols s
      ${SIO_JOIN}
      WHERE s.is_actively_trading = true AND s.is_etf = false AND s.is_fund = false
-       AND ${IND_COL} != 'Shell Companies'
+       AND ${NOT_SHELL}
      ORDER BY s.symbol`,
   );
   return rows;
@@ -627,7 +629,7 @@ export async function countNullIndustrySymbols(): Promise<EtlNullIndustryRow> {
     `SELECT COUNT(*) as cnt FROM symbols s
      ${SIO_JOIN}
      WHERE s.is_actively_trading = true AND s.is_etf = false AND s.is_fund = false
-       AND ${IND_COL} != 'Shell Companies'
+       AND ${NOT_SHELL}
        AND (${IND_COL} IS NULL OR ${IND_COL} = '')`,
   );
   return rows[0] ?? { cnt: "0" };
@@ -840,7 +842,7 @@ export async function findPhase2RatioForQa(
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false
-       AND ${IND_COL} != 'Shell Companies'`,
+       AND ${NOT_SHELL}`,
     [date],
   );
   return rows[0] ?? null;
