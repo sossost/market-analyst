@@ -77,10 +77,11 @@ export async function findFundamentalAcceleration(): Promise<FundamentalAccelera
        qf.revenue::text,
        qf.net_income::text,
        s.sector,
-       s.industry
+       COALESCE(sio.industry, s.industry) AS industry
      FROM quarterly_financials qf
      JOIN target_symbols ts ON qf.symbol = ts.symbol
      JOIN symbols s ON qf.symbol = s.symbol
+     LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
      WHERE qf.period_end_date >= (CURRENT_DATE - INTERVAL '2 years')::text
      ORDER BY qf.symbol, qf.period_end_date DESC`,
     [MIN_MARKET_CAP],

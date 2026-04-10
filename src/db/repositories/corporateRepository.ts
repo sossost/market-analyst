@@ -58,7 +58,10 @@ export async function findSymbolInfo(
   pool: Pool,
 ): Promise<CorporateSymbolRow[]> {
   const { rows } = await pool.query<CorporateSymbolRow>(
-    `SELECT company_name, sector, industry FROM symbols WHERE symbol = $1 LIMIT 1`,
+    `SELECT s.company_name, s.sector, COALESCE(sio.industry, s.industry) AS industry
+     FROM symbols s
+     LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
+     WHERE s.symbol = $1 LIMIT 1`,
     [symbol],
   );
   return rows;

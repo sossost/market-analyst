@@ -40,7 +40,7 @@
 | 구성 요소 | 설명 |
 |-----------|------|
 | Stock Phases | Weinstein Stage Analysis — 8개 조건으로 Phase 1~4 판별 + Volume Dry-Up(VDU) ratio로 축적 패턴 감지 (#509) + Phase 2 전환 시 주간/일봉 거래량 돌파 확인 `breakoutSignal` (#601) |
-| Sector/Industry RS | 상대 강도 점수 + 가속도 + 브레드스 (Phase 2 비율) |
+| Sector/Industry RS | 상대 강도 점수 + 가속도 + 브레드스 (Phase 2 비율) + 업종 오분류 보정(`symbol_industry_overrides` COALESCE 패턴, #722) |
 | 펀더멘탈 데이터 | 분기 재무제표 + 비율 (FMP API) |
 | 돌파/노이즈 신호 | 기술적 시그널 필터링 (breakout_signals, noise_signals) |
 | 지수 가격 ETL | S&P 500, NASDAQ, DOW, Russell 2000, VIX 일간 가격 (FMP API → `index_prices` 테이블) — #420 |

@@ -34,6 +34,20 @@ export const symbols = pgTable("symbols", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * symbol_industry_overrides — FMP 업종 오분류 보정.
+ * symbols 테이블의 FMP 원본은 보존하고, 조회 시 COALESCE로 override 우선 적용.
+ */
+export const symbolIndustryOverrides = pgTable("symbol_industry_overrides", {
+  symbol: text("symbol")
+    .primaryKey()
+    .references(() => symbols.symbol, { onDelete: "cascade" }),
+  industry: text("industry").notNull(),
+  originalIndustry: text("original_industry"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
 export const quarterlyFinancials = pgTable(
   "quarterly_financials",
   {
