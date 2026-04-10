@@ -217,6 +217,25 @@ describe("runRound1", () => {
     }
   });
 
+  it("earlyDetectionContext 프레이밍이 평가를 요구하고 무시 경로를 차단한다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+
+    await runRound1({
+      getProvider,
+      experts,
+      question: "시장 분석",
+      memoryContext: "",
+      earlyDetectionContext: "| AAPL | 45 |",
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.userMessage).toContain("구조적 수혜 가능성을 평가하세요");
+    expect(callArgs.userMessage).toContain("관련 종목이 없으면 그 이유를 간단히 명시하세요");
+    expect(callArgs.userMessage).not.toContain("확신이 없으면 언급하지 않아도 됩니다");
+  });
+
   it("earlyDetectionContext는 fundamentalContext 뒤에 추가된다", async () => {
     const provider = makeMockProvider();
     const getProvider = vi.fn().mockReturnValue(provider);

@@ -75,7 +75,7 @@ export async function runRound1(input: Round1Input): Promise<Round1Result> {
 
         // 조기포착 도구 결과 주입 — 아직 Phase 2가 아니지만 곧 전환될 후보
         if (earlyDetectionContext.length > 0) {
-          fullQuestion += `\n\n---\n\n<early-detection>\n## 조기포착 후보 (pre-Phase 2)\n\n아래는 아직 Phase 2에 진입하지 않았으나, 조기 전환 신호가 감지된 종목입니다.\n이 종목들이 당신의 전문 영역과 관련된 구조적 변화의 수혜를 받을 수 있는지 평가하세요.\n확신이 없으면 언급하지 않아도 됩니다.\n\n${earlyDetectionContext}\n</early-detection>`;
+          fullQuestion += `\n\n---\n\n<early-detection>\n## 조기포착 후보 (pre-Phase 2)\n\n아래는 아직 Phase 2에 진입하지 않았으나, 조기 전환 신호가 감지된 종목입니다.\n아래 종목 중 당신의 전문 영역과 관련된 종목에 대해 구조적 수혜 가능성을 평가하세요.\n관련 종목이 없으면 그 이유를 간단히 명시하세요.\n\n${earlyDetectionContext}\n</early-detection>`;
         }
 
         // 촉매 데이터 주입 — 종목 뉴스, 실적 서프라이즈, 임박 실적 발표

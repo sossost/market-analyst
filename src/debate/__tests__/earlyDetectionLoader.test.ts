@@ -261,6 +261,21 @@ describe("formatEarlyDetectionContext", () => {
     expect(result).toContain("-10%");
   });
 
+  it("고확신 후보 섹션에 ⭐ 마킹과 '우선 평가 대상' 강조가 포함된다", () => {
+    const data: EarlyDetectionData = {
+      phase1Late: [],
+      risingRs: [],
+      accelerating: [],
+      highConviction: [
+        { symbol: "AAPL", sector: "Tech", overlapCount: 2, sources: ["phase1Late", "risingRs"], convictionLevel: "medium" as const },
+      ],
+    };
+    const result = formatEarlyDetectionContext(data);
+    expect(result).toContain("⭐ 고확신 후보");
+    expect(result).toContain("우선 평가 대상");
+    expect(result).toContain("반드시 우선 평가하세요");
+  });
+
   it("고확신 후보 섹션이 다른 섹션보다 먼저 표시", () => {
     const data: EarlyDetectionData = {
       phase1Late: [

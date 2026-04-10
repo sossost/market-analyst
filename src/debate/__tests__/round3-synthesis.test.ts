@@ -181,6 +181,13 @@ describe("buildSynthesisPrompt", () => {
     expect(result).toContain("조기포착 후보");
   });
 
+  it("earlyDetectionContext가 있으면 moderator에 독립 평가 지시가 포함된다", () => {
+    const earlyCtx = "| AAPL | 45 | 0.0012 | 2.1x | Technology |";
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, earlyCtx);
+
+    expect(result).toContain("전문가가 언급하지 않은 조기포착 종목도 위 데이터를 직접 참조하여 Phase 2 전환 가능성을 평가하세요");
+  });
+
   it("earlyDetectionContext가 undefined이면 조기포착 섹션이 포함되지 않는다", () => {
     const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined);
 

@@ -260,8 +260,8 @@ export function formatEarlyDetectionContext(data: EarlyDetectionData): string {
       return `| ${s.symbol} | ${s.overlapCount} | ${sourceLabels} | ${s.sector ?? "—"} |`;
     });
     sections.push([
-      "### 고확신 후보 — 복수 신호 수렴",
-      "2개 이상 조기포착 도구에 동시 등장하는 종목. 신호 수렴도가 높을수록 Phase 2 초입 가능성 높음.",
+      "### ⭐ 고확신 후보 — 복수 신호 수렴 (우선 평가 대상)",
+      "2개 이상 조기포착 도구에 동시 등장하는 종목. 신호 수렴도가 높을수록 Phase 2 초입 가능성 높음. 반드시 우선 평가하세요.",
       "",
       "| 종목 | 신호수 | 출처 | 섹터 |",
       "|------|--------|------|------|",
