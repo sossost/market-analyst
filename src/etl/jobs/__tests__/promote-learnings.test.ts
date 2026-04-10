@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   BOOTSTRAP_THRESHOLD,
   COLD_START_THRESHOLD,
+  EARLY_GROWTH_THRESHOLD,
   GROWTH_PHASE_THRESHOLD,
   MIN_MATURATION_HITS,
   MIN_QUANTITATIVE_RATE,
@@ -67,6 +68,10 @@ describe("상수 경계값", () => {
     expect(COLD_START_THRESHOLD).toBe(5);
   });
 
+  it("EARLY_GROWTH_THRESHOLD는 10이다", () => {
+    expect(EARLY_GROWTH_THRESHOLD).toBe(10);
+  });
+
   it("GROWTH_PHASE_THRESHOLD는 15이다", () => {
     expect(GROWTH_PHASE_THRESHOLD).toBe(15);
   });
@@ -95,8 +100,18 @@ describe("getPromotionThresholds", () => {
     expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
   });
 
-  it("활성 학습 COLD_START_THRESHOLD = 5건 — 성장기 기준 반환", () => {
+  it("활성 학습 COLD_START_THRESHOLD = 5건 — 초기 성장기 기준 반환 (binomial 면제)", () => {
     const thresholds = getPromotionThresholds(COLD_START_THRESHOLD);
+    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+  });
+
+  it("활성 학습 EARLY_GROWTH_THRESHOLD - 1 = 9건 — 초기 성장기 기준 반환", () => {
+    const thresholds = getPromotionThresholds(EARLY_GROWTH_THRESHOLD - 1);
+    expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+  });
+
+  it("활성 학습 EARLY_GROWTH_THRESHOLD = 10건 — 성장기 기준 반환 (binomial 필수)", () => {
+    const thresholds = getPromotionThresholds(EARLY_GROWTH_THRESHOLD);
     expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
   });
 
@@ -322,7 +337,29 @@ describe("buildPromotionCandidates", () => {
     expect(candidates).toHaveLength(1);
   });
 
-  it("growth 단계에서 binomial test 실패하면 후보가 탈락한다", () => {
+  it("early growth 단계(5~9건)에서 binomial test 면제로 후보가 통과한다 (#719)", () => {
+    mockBinomialTest.mockReturnValueOnce({ isSignificant: false, pValue: 0.5, cohenH: 0.1 });
+
+    const confirmed = [
+      makeThesis({ id: 30 }),
+      makeThesis({ id: 31 }),
+      makeThesis({ id: 32 }),
+    ];
+
+    // early growth (6 learnings) → skipBinomialTest=true, minHits=2, minTotal=3
+    const candidates = buildPromotionCandidates(
+      confirmed as never,
+      [] as never,
+      new Set<number>(),
+      6,
+    );
+
+    // early growth에서는 binomial test 면제 → 통과
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].hitCount).toBe(3);
+  });
+
+  it("growth 단계(10건+)에서 binomial test 실패하면 후보가 탈락한다", () => {
     mockBinomialTest.mockReturnValueOnce({ isSignificant: false, pValue: 0.5, cohenH: 0.1 });
 
     const confirmed = [
@@ -333,12 +370,12 @@ describe("buildPromotionCandidates", () => {
       makeThesis({ id: 34 }),
     ];
 
-    // growth (5 learnings) → skipBinomialTest=false, minHits=3
+    // growth (10 learnings) → skipBinomialTest=false, minHits=3
     const candidates = buildPromotionCandidates(
       confirmed as never,
       [] as never,
       new Set<number>(),
-      5,
+      10,
     );
 
     // binomial test not significant → 탈락

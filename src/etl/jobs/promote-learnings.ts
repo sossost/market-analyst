@@ -24,6 +24,7 @@ export const MIN_MATURATION_HITS = 3;
 
 export const BOOTSTRAP_THRESHOLD = 2;
 export const COLD_START_THRESHOLD = 5;
+export const EARLY_GROWTH_THRESHOLD = 10;
 export const GROWTH_PHASE_THRESHOLD = 15;
 
 interface PromotionThresholds {
@@ -41,7 +42,15 @@ const BOOTSTRAP_THRESHOLDS: PromotionThresholds = { minHits: 1, minHitRate: 0.55
  * 소표본(2~4건)에서 p<0.05는 수학적으로 불가 → hitRate로 품질 제어. (#437)
  */
 const COLD_START_THRESHOLDS: PromotionThresholds = { minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true };
-/** 성장기 (5~14건): 중간 기준 — binomial test 필수 */
+/**
+ * 초기 성장기 (5~9건): Cold Start→Growth 전환 완화. binomial test 면제. (#719)
+ *
+ * Cold Start(minHits=2, minTotal=2) → Growth(minHits=3, minTotal=5, binomial 필수) 전환 시
+ * binomial test가 소표본(total≤8)에서 ~87%+ 적중률을 요구하여 사실상 진입 불가.
+ * 중간 단계를 두어 학습 루프 정체를 방지한다.
+ */
+const EARLY_GROWTH_THRESHOLDS: PromotionThresholds = { minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true };
+/** 성장기 (10~14건): 중간 기준 — binomial test 필수 */
 const GROWTH_THRESHOLDS: PromotionThresholds = { minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false };
 /** 정상 운영 (15건+): 엄격 기준 유지 */
 const NORMAL_THRESHOLDS: PromotionThresholds = { minHits: 5, minHitRate: 0.65, minTotal: 8, skipBinomialTest: false };
@@ -58,6 +67,9 @@ export function getPromotionThresholds(activeLearningCount: number): PromotionTh
   }
   if (activeLearningCount < COLD_START_THRESHOLD) {
     return COLD_START_THRESHOLDS;
+  }
+  if (activeLearningCount < EARLY_GROWTH_THRESHOLD) {
+    return EARLY_GROWTH_THRESHOLDS;
   }
   if (activeLearningCount < GROWTH_PHASE_THRESHOLD) {
     return GROWTH_THRESHOLDS;
@@ -502,7 +514,12 @@ export async function absorbNewTheses(
     toAbsorb.set(learningId, existing);
   }
 
-  if (toAbsorb.size === 0) return 0;
+  if (toAbsorb.size === 0) {
+    if (confirmedLearnings.length > 0) {
+      logger.info(TAG, `Absorb: 0 new theses matched. ${confirmedLearnings.length} learnings checked, none had new matching theses.`);
+    }
+    return 0;
+  }
 
   // DB 업데이트: sourceThesisIds 확장 + stats 재계산
   const confirmedIds = new Set(allJudgedTheses.filter((t) => t.status === "CONFIRMED").map((t) => t.id));
@@ -579,16 +596,26 @@ function filterCandidateGroups(
       const total = g.confirmed.length + g.invalidated.length;
       const hitRate = total > 0 ? g.confirmed.length / total : 0;
 
-      if (g.confirmed.length < thresholds.minHits) return false;
-      if (hitRate < thresholds.minHitRate) return false;
-      if (total < thresholds.minTotal) return false;
+      if (g.confirmed.length < thresholds.minHits) {
+        logger.info(TAG, `  REJECT (minHits): ${key} — hits=${g.confirmed.length} < ${thresholds.minHits}`);
+        return false;
+      }
+      if (hitRate < thresholds.minHitRate) {
+        logger.info(TAG, `  REJECT (minHitRate): ${key} — hitRate=${(hitRate * 100).toFixed(0)}% < ${(thresholds.minHitRate * 100).toFixed(0)}%`);
+        return false;
+      }
+      if (total < thresholds.minTotal) {
+        logger.info(TAG, `  REJECT (minTotal): ${key} — total=${total} < ${thresholds.minTotal}`);
+        return false;
+      }
 
       if (thresholds.skipBinomialTest) {
-        logger.info(TAG, `  BOOTSTRAP: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
+        const phaseLabel = activeLearningCount < COLD_START_THRESHOLD ? "BOOTSTRAP" : "EARLY_GROWTH";
+        logger.info(TAG, `  ${phaseLabel}: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
       } else {
         const test = binomialTest(g.confirmed.length, total);
         if (!test.isSignificant) {
-          logger.info(TAG, `  SKIP (not significant): ${key} p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
+          logger.info(TAG, `  REJECT (binomial): ${key} — p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)} (not significant)`);
           return false;
         }
       }
@@ -724,7 +751,14 @@ export async function promoteNewLearnings(
   bearPriority: boolean = false,
 ): Promise<number> {
   const slotsAvailable = MAX_ACTIVE_LEARNINGS - currentActiveCount;
-  if (slotsAvailable <= 0 || candidates.length === 0) return 0;
+  if (slotsAvailable <= 0) {
+    logger.warn(TAG, `No slots available for promotion (${currentActiveCount}/${MAX_ACTIVE_LEARNINGS})`);
+    return 0;
+  }
+  if (candidates.length === 0) {
+    logger.info(TAG, `No promotion candidates — all groups below thresholds`);
+    return 0;
+  }
 
   // 적중률 높은 순으로 정렬, bear-priority 시 bear 키워드 포함 후보를 우선 배치
   const sorted = [...candidates].sort((a, b) => {
@@ -895,16 +929,26 @@ function filterAntiPatternGroups(
       const total = g.invalidated.length + g.confirmed.length;
       const missRate = total > 0 ? g.invalidated.length / total : 0;
 
-      if (g.invalidated.length < thresholds.minHits) return false;
-      if (missRate < thresholds.minHitRate) return false;
-      if (total < thresholds.minTotal) return false;
+      if (g.invalidated.length < thresholds.minHits) {
+        logger.info(TAG, `  ANTI-REJECT (minHits): ${key} — misses=${g.invalidated.length} < ${thresholds.minHits}`);
+        return false;
+      }
+      if (missRate < thresholds.minHitRate) {
+        logger.info(TAG, `  ANTI-REJECT (minHitRate): ${key} — missRate=${(missRate * 100).toFixed(0)}% < ${(thresholds.minHitRate * 100).toFixed(0)}%`);
+        return false;
+      }
+      if (total < thresholds.minTotal) {
+        logger.info(TAG, `  ANTI-REJECT (minTotal): ${key} — total=${total} < ${thresholds.minTotal}`);
+        return false;
+      }
 
       if (thresholds.skipBinomialTest) {
-        logger.info(TAG, `  ANTI-BOOTSTRAP: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
+        const phaseLabel = activeLearningCount < COLD_START_THRESHOLD ? "ANTI-BOOTSTRAP" : "ANTI-EARLY_GROWTH";
+        logger.info(TAG, `  ${phaseLabel}: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
       } else {
         const test = binomialTest(g.invalidated.length, total);
         if (!test.isSignificant) {
-          logger.info(TAG, `  ANTI-SKIP (not significant): ${key} p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)}`);
+          logger.info(TAG, `  ANTI-REJECT (binomial): ${key} — p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)} (not significant)`);
           return false;
         }
       }
@@ -946,7 +990,11 @@ export async function promoteAntiPatterns(
   today: string,
 ): Promise<number> {
   const slotsAvailable = MAX_ACTIVE_LEARNINGS - currentActiveCount;
-  if (slotsAvailable <= 0 || candidates.length === 0) return 0;
+  if (slotsAvailable <= 0) {
+    logger.warn(TAG, `No slots for anti-pattern promotion (${currentActiveCount}/${MAX_ACTIVE_LEARNINGS})`);
+    return 0;
+  }
+  if (candidates.length === 0) return 0;
 
   const toPromote = candidates.slice(0, slotsAvailable);
 
