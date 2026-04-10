@@ -16,9 +16,14 @@ import type {
  */
 
 const ALLOWED_GROUP_COLS = {
-  sector: { col: "s.sector", table: "sector_rs_daily", colName: "sector" },
-  industry: { col: "s.industry", table: "industry_rs_daily", colName: "industry" },
-} as const satisfies Record<GroupBy, { col: string; table: string; colName: string }>;
+  sector: { col: "s.sector", table: "sector_rs_daily", colName: "sector", joinClause: "" },
+  industry: {
+    col: "COALESCE(sio.industry, s.industry)",
+    table: "industry_rs_daily",
+    colName: "industry",
+    joinClause: "LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol",
+  },
+} as const satisfies Record<GroupBy, { col: string; table: string; colName: string; joinClause: string }>;
 
 /**
  * 그룹별 RS 평균 + 종목 수를 조회한다 (Step 1).
@@ -28,7 +33,7 @@ export async function findGroupAvgs(
   targetDate: string,
   minStockCount: number,
 ): Promise<GroupAvgRow[]> {
-  const { col: groupCol } = ALLOWED_GROUP_COLS[groupBy];
+  const { col: groupCol, joinClause } = ALLOWED_GROUP_COLS[groupBy];
 
   const { rows } = await pool.query<GroupAvgRow>(
     `SELECT
@@ -37,6 +42,7 @@ export async function findGroupAvgs(
       AVG(dp.rs_score)::numeric(10,2) AS avg_rs,
       COUNT(*)::text AS stock_count
      FROM symbols s
+     ${joinClause}
      JOIN daily_prices dp ON s.symbol = dp.symbol AND dp.date = $1
      WHERE s.is_actively_trading = true
        AND s.is_etf = false
@@ -81,7 +87,7 @@ export async function findGroupBreadth(
   targetDate: string,
   groupNames: string[],
 ): Promise<GroupBreadthRow[]> {
-  const { col: groupCol } = ALLOWED_GROUP_COLS[groupBy];
+  const { col: groupCol, joinClause } = ALLOWED_GROUP_COLS[groupBy];
 
   const { rows } = await pool.query<GroupBreadthRow>(
     `SELECT
@@ -102,6 +108,7 @@ export async function findGroupBreadth(
         )
       )::numeric / NULLIF(COUNT(*), 0), 0) AS new_high_ratio
      FROM symbols s
+     ${joinClause}
      JOIN daily_prices dp ON s.symbol = dp.symbol AND dp.date = $1
      JOIN daily_ma dm ON s.symbol = dm.symbol AND dm.date = $1
      LEFT JOIN stock_phases sp ON s.symbol = sp.symbol AND sp.date = $1
@@ -123,7 +130,7 @@ export async function findGroupTransitions(
   groupNames: string[],
   targetDate: string,
 ): Promise<GroupTransitionRow[]> {
-  const { col: groupCol } = ALLOWED_GROUP_COLS[groupBy];
+  const { col: groupCol, joinClause } = ALLOWED_GROUP_COLS[groupBy];
 
   const { rows } = await pool.query<GroupTransitionRow>(
     `SELECT
@@ -132,6 +139,7 @@ export async function findGroupTransitions(
       COUNT(*) FILTER (WHERE sp.prev_phase = 2 AND sp.phase = 3) AS p2to3
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${joinClause}
      WHERE ${groupCol} = ANY($1)
        AND sp.date > (
          SELECT date FROM (
@@ -155,7 +163,7 @@ export async function findGroupFundamentals(
   groupBy: GroupBy,
   groupNames: string[],
 ): Promise<GroupFundamentalRow[]> {
-  const { col: groupCol } = ALLOWED_GROUP_COLS[groupBy];
+  const { col: groupCol, joinClause } = ALLOWED_GROUP_COLS[groupBy];
 
   const { rows } = await pool.query<GroupFundamentalRow>(
     `WITH latest_q AS (
@@ -164,6 +172,7 @@ export async function findGroupFundamentals(
              ROW_NUMBER() OVER (PARTITION BY qf.symbol ORDER BY qf.period_end_date DESC) as rn
       FROM quarterly_financials qf
       JOIN symbols s ON qf.symbol = s.symbol
+      ${joinClause}
       WHERE ${groupCol} = ANY($1)
         AND s.is_actively_trading = true
         AND s.is_etf = false

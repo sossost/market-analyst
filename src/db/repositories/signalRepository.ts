@@ -31,11 +31,12 @@ export async function findVcpCandidates(params: {
        dns.body_ratio::text,
        dns.ma20_ma50_distance_percent::text,
        s.sector,
-       s.industry,
+       COALESCE(sio.industry, s.industry) AS industry,
        sp.phase,
        sp.rs_score
      FROM daily_noise_signals dns
      JOIN symbols s ON s.symbol = dns.symbol
+     LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
      LEFT JOIN stock_phases sp ON sp.symbol = dns.symbol AND sp.date = dns.date
      WHERE dns.date = $1
        AND dns.is_vcp = true
@@ -67,11 +68,12 @@ export async function findConfirmedBreakouts(params: {
        dbs.is_perfect_retest,
        dbs.ma20_distance_percent::text,
        s.sector,
-       s.industry,
+       COALESCE(sio.industry, s.industry) AS industry,
        sp.phase,
        sp.rs_score
      FROM daily_breakout_signals dbs
      JOIN symbols s ON s.symbol = dbs.symbol
+     LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
      LEFT JOIN stock_phases sp ON sp.symbol = dbs.symbol AND sp.date = dbs.date
      WHERE dbs.date = $1
        AND dbs.is_confirmed_breakout = true

@@ -15,7 +15,7 @@ import {
   stockPhases,
   type NarrativeChainStatus,
 } from "@/db/schema/analyst";
-import { symbols } from "@/db/schema/market";
+import { symbols, symbolIndustryOverrides } from "@/db/schema/market";
 import { inArray, eq, and, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 
@@ -169,16 +169,17 @@ export async function buildThesisAlignedCandidates(
         symbol: stockPhases.symbol,
         phase: stockPhases.phase,
         rsScore: stockPhases.rsScore,
-        industry: symbols.industry,
+        industry: sql<string>`COALESCE(${symbolIndustryOverrides.industry}, ${symbols.industry})`.as("industry"),
       })
       .from(stockPhases)
       .innerJoin(symbols, eq(stockPhases.symbol, symbols.symbol))
+      .leftJoin(symbolIndustryOverrides, eq(symbols.symbol, symbolIndustryOverrides.symbol))
       .where(
         and(
           eq(stockPhases.date, date),
           eq(stockPhases.phase, PHASE_2),
           sql`${stockPhases.rsScore} >= ${RS_THRESHOLD}`,
-          inArray(symbols.industry, sectorList),
+          sql`COALESCE(${symbolIndustryOverrides.industry}, ${symbols.industry}) = ANY(${sectorList})`,
         ),
       );
 
@@ -234,10 +235,11 @@ export async function buildThesisAlignedCandidates(
       .select({
         symbol: symbols.symbol,
         sector: symbols.sector,
-        industry: symbols.industry,
+        industry: sql<string>`COALESCE(${symbolIndustryOverrides.industry}, ${symbols.industry})`.as("industry"),
         marketCap: symbols.marketCap,
       })
       .from(symbols)
+      .leftJoin(symbolIndustryOverrides, eq(symbols.symbol, symbolIndustryOverrides.symbol))
       .where(inArray(symbols.symbol, tickerList)),
   ]);
 

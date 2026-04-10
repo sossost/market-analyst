@@ -8,13 +8,16 @@ import type { SymbolMetaRow } from "./types.js";
 
 /**
  * 단일 종목의 sector, industry, market_cap을 조회한다.
+ * industry는 override 테이블 우선 적용.
  */
 export async function findSymbolMeta(
   symbol: string,
 ): Promise<SymbolMetaRow | null> {
   const { rows } = await pool.query<SymbolMetaRow>(
-    `SELECT sector, industry, market_cap::text
-     FROM symbols WHERE symbol = $1`,
+    `SELECT s.sector, COALESCE(sio.industry, s.industry) AS industry, s.market_cap::text
+     FROM symbols s
+     LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
+     WHERE s.symbol = $1`,
     [symbol],
   );
 

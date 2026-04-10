@@ -55,6 +55,14 @@ import type {
  * 재시도 로직은 호출부가 담당한다.
  */
 
+/** FMP 업종 오분류 보정: symbols 조인 시 override 우선 적용 */
+const SIO_JOIN = "LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol";
+const SIO_JOIN_SYM = "LEFT JOIN symbol_industry_overrides sio ON sym.symbol = sio.symbol";
+const IND_COL = "COALESCE(sio.industry, s.industry)";
+const IND_COL_SYM = "COALESCE(sio.industry, sym.industry)";
+/** Shell Companies 제외 필터 — IS DISTINCT FROM으로 industry=NULL인 종목도 포함 */
+const NOT_SHELL = `${IND_COL} IS DISTINCT FROM 'Shell Companies'`;
+
 /**
  * Phase 2 초입 종목 리스트를 조회한다.
  * RS 필터링 + Phase 전환 정보 포함.
@@ -79,10 +87,11 @@ export async function findPhase2Stocks(params: {
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met,
        sp.vol_ratio::text, sp.volume_confirmed, sp.breakout_signal,
-       s.sector, s.industry,
+       s.sector, ${IND_COL} AS industry,
        fs.grade AS sepa_grade
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${SIO_JOIN}
      LEFT JOIN latest_scores fs ON fs.symbol = sp.symbol
      WHERE sp.date = $1
        AND sp.phase = 2
@@ -110,9 +119,10 @@ export async function findAllPhase2Stocks(date: string): Promise<StockPhaseRow[]
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met,
        sp.vol_ratio::text, sp.volume_confirmed, sp.breakout_signal,
-       s.sector, s.industry
+       s.sector, ${IND_COL} AS industry
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${SIO_JOIN}
      WHERE sp.date = $1
        AND sp.phase = 2
      ORDER BY sp.rs_score DESC`,
@@ -238,7 +248,7 @@ export async function findUnusualStocks(
        sp.prev_phase,
        sp.rs_score,
        s.sector,
-       s.industry,
+       ${IND_COL} AS industry,
        s.company_name
      FROM daily_prices dp
      JOIN daily_prices dp_prev
@@ -250,11 +260,12 @@ export async function findUnusualStocks(
        ON dp.symbol = sp.symbol AND sp.date = $1
      JOIN symbols s
        ON dp.symbol = s.symbol
+     ${SIO_JOIN}
      WHERE dp.date = $1
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false
-       AND s.industry != 'Shell Companies'
+       AND ${NOT_SHELL}
        AND dm.vol_ma30::numeric > 0
        AND dp_prev.close::numeric > 0
        AND (
@@ -304,7 +315,7 @@ export async function findRisingRsStocks(params: {
        sp.ma150_slope::text,
        sp.pct_from_low_52w::text,
        sp.vol_ratio::text,
-       s.sector, s.industry,
+       s.sector, ${IND_COL} AS industry,
        srd.avg_rs::text AS sector_avg_rs,
        srd.change_4w::text AS sector_change_4w,
        srd.group_phase AS sector_group_phase,
@@ -312,6 +323,7 @@ export async function findRisingRsStocks(params: {
        s.market_cap
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${SIO_JOIN}
      LEFT JOIN latest_scores fs ON fs.symbol = sp.symbol
      LEFT JOIN rs_4w r4w ON r4w.symbol = sp.symbol
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
@@ -359,12 +371,13 @@ export async function findPhase1LateStocks(
        sp.symbol, sp.phase, sp.prev_phase, sp.rs_score,
        sp.ma150_slope::text, sp.pct_from_high_52w::text, sp.pct_from_low_52w::text,
        sp.conditions_met, sp.vol_ratio::text, sp.vdu_ratio::text,
-       s.sector, s.industry,
+       s.sector, ${IND_COL} AS industry,
        srd.group_phase AS sector_group_phase,
        srd.avg_rs::text AS sector_avg_rs,
        fs.grade AS sepa_grade
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${SIO_JOIN}
      LEFT JOIN latest_scores fs ON fs.symbol = sp.symbol
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = s.sector
      WHERE sp.date = $1
@@ -399,10 +412,11 @@ export async function findPhase1LateStocks(
  */
 export async function findActiveNonEtfSymbols(): Promise<EtlSymbolRow[]> {
   const { rows } = await pool.query<EtlSymbolRow>(
-    `SELECT symbol, sector, industry FROM symbols
-     WHERE is_actively_trading = true AND is_etf = false AND is_fund = false
-       AND industry != 'Shell Companies'
-     ORDER BY symbol`,
+    `SELECT s.symbol, s.sector, ${IND_COL} AS industry FROM symbols s
+     ${SIO_JOIN}
+     WHERE s.is_actively_trading = true AND s.is_etf = false AND s.is_fund = false
+       AND ${NOT_SHELL}
+     ORDER BY s.symbol`,
   );
   return rows;
 }
@@ -612,10 +626,11 @@ export async function findBreadthCheckByDate(
  */
 export async function countNullIndustrySymbols(): Promise<EtlNullIndustryRow> {
   const { rows } = await pool.query<EtlNullIndustryRow>(
-    `SELECT COUNT(*) as cnt FROM symbols
-     WHERE is_actively_trading = true AND is_etf = false AND is_fund = false
-       AND industry != 'Shell Companies'
-       AND (industry IS NULL OR industry = '')`,
+    `SELECT COUNT(*) as cnt FROM symbols s
+     ${SIO_JOIN}
+     WHERE s.is_actively_trading = true AND s.is_etf = false AND s.is_fund = false
+       AND ${NOT_SHELL}
+       AND (${IND_COL} IS NULL OR ${IND_COL} = '')`,
   );
   return rows[0] ?? { cnt: "0" };
 }
@@ -668,10 +683,11 @@ export async function findPhase1to2Transitions(
        sp.volume_confirmed,
        srd.group_phase AS sector_group_phase,
        sym.sector,
-       sym.industry
+       ${IND_COL_SYM} AS industry
      FROM stock_phases sp
      JOIN daily_prices dp ON sp.symbol = dp.symbol AND sp.date = dp.date
      JOIN symbols sym ON sp.symbol = sym.symbol
+     ${SIO_JOIN_SYM}
      LEFT JOIN sector_rs_daily srd ON srd.date = sp.date AND srd.sector = sym.sector
      WHERE sp.date = $1
        AND sp.phase = 2
@@ -821,11 +837,12 @@ export async function findPhase2RatioForQa(
        COUNT(*) FILTER (WHERE sp.phase = 2)::text AS phase2_count
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     ${SIO_JOIN}
      WHERE sp.date = $1
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false
-       AND s.industry != 'Shell Companies'`,
+       AND ${NOT_SHELL}`,
     [date],
   );
   return rows[0] ?? null;

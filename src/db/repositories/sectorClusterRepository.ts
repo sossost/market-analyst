@@ -46,10 +46,11 @@ export async function findSectorClusters(params?: {
        LIMIT $5
      ),
      sector_stocks AS (
-       SELECT sp.symbol, sp.rs_score, s.sector, s.industry,
+       SELECT sp.symbol, sp.rs_score, s.sector, COALESCE(sio.industry, s.industry) AS industry,
               ROW_NUMBER() OVER (PARTITION BY s.sector ORDER BY sp.rs_score DESC) AS rn
        FROM stock_phases sp
        JOIN symbols s ON sp.symbol = s.symbol
+       LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
        WHERE sp.date = $1
          AND sp.phase = 2
          AND sp.rs_score >= $3

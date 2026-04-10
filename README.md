@@ -329,7 +329,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 ### Core Features (완료)
 
-- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스, 돌파/노이즈 신호, US10Y/DXY)
+- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스, 돌파/노이즈 신호, US10Y/DXY, 업종 override)
 - [x] **F2** Agent Core — Claude agentic loop + 16개 도구 + 일간/주간 분리
 - [ ] ~~**F3** Industry Intelligence~~ — 폐기. F6 토론 엔진이 시장 분석 역할을 대체
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지
@@ -352,6 +352,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **자율 이슈 처리** — Auto Issue Processor: GitHub 이슈 → Claude Code CLI 자동 처리 → PR 생성 (10단계 프로토콜: plan.md 작성 → 골 정렬 검증 → 구현 → 셀프 리뷰 → PR)
 - [x] **자동 PR 리뷰** — Auto PR Reviewer: 이슈 프로세서 생성 PR → Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (#364)
 - [x] **LATE_BULL 진입 감쇠** — LATE_BULL 레짐 진입 조건 강화 (RS 70+, SEPA A+, Phase 2 지속 5일+) — 과열 후기 구조적 손실 차단 (#508)
+- [x] **업종 오분류 보정** — `symbol_industry_overrides` 테이블 도입, FMP 업종 오분류를 COALESCE 패턴으로 보정 (업종 RS 계산·필터·표시 전 경로 적용) (#722)
 
 ### Next (진행 예정)
 

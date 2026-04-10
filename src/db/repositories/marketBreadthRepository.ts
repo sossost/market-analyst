@@ -411,12 +411,13 @@ export async function findNewPhase2Stocks(
 ): Promise<Phase2StockRow[]> {
 
   const { rows } = await pool.query<Phase2StockRow>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
+    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, COALESCE(sio.industry, s.industry) AS industry,
             sp.volume_confirmed, sp.breakout_signal, sp.pct_from_high_52w::text, s.market_cap::text,
             momentum.change_5d::text AS price_change_5d,
             momentum.change_20d::text AS price_change_20d
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
      ${MOMENTUM_JOIN}
      WHERE sp.date = $1
        AND sp.phase = 2
@@ -440,12 +441,13 @@ export async function findTopPhase2Stocks(
 ): Promise<Phase2StockRow[]> {
 
   const { rows } = await pool.query<Phase2StockRow>(
-    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, s.industry,
+    `SELECT sp.symbol, sp.rs_score, sp.prev_phase, s.sector, COALESCE(sio.industry, s.industry) AS industry,
             sp.volume_confirmed, sp.breakout_signal, sp.pct_from_high_52w::text, s.market_cap::text,
             momentum.change_5d::text AS price_change_5d,
             momentum.change_20d::text AS price_change_20d
      FROM stock_phases sp
      JOIN symbols s ON sp.symbol = s.symbol
+     LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol
      ${MOMENTUM_JOIN}
      WHERE sp.date = $1
        AND sp.phase = 2
