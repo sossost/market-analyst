@@ -70,6 +70,7 @@ function createMockBreadthSnapshot(
     phase1to2Count1d: 25,
     phase2to3Count1d: 10,
     phase2NetFlow: 15,
+    phase2CountChange: 10,
     phase2EntryAvg5d: 20.0,
     ...overrides,
   };
@@ -435,11 +436,11 @@ describe("renderPhaseDistribution", () => {
     expect(html).toContain("phase-bar");
   });
 
-  it("Phase 2 진입/이탈 stat-chip과 순유입 인라인 수치를 렌더링한다", () => {
+  it("Phase 2 진입/이탈 stat-chip과 절대수량 변화 인라인 수치를 렌더링한다", () => {
     const snapshot = createMockBreadthSnapshot({
       phase1to2Count1d: 25,
       phase2to3Count1d: 10,
-      phase2NetFlow: 15,
+      phase2CountChange: 10,
       phase2EntryAvg5d: 20.0,
     });
     const html = renderPhaseDistribution(snapshot);
@@ -447,9 +448,9 @@ describe("renderPhaseDistribution", () => {
     expect(html).toContain("25건");
     expect(html).toContain("Phase 2 이탈");
     expect(html).toContain("10건");
-    // 순유입은 Phase 2 비율 chip에 인라인으로 표시
-    expect(html).toContain("+15건");
-    expect(html).toContain("절대 수량");
+    // 절대수량 변화(스냅샷 차이)는 Phase 2 비율 chip에 인라인으로 표시
+    expect(html).toContain("+10건");
+    expect(html).toContain("전일 대비");
   });
 
   it("진입 수가 5일 평균의 1.5배를 초과하면 하이라이트 처리된다", () => {
@@ -476,20 +477,21 @@ describe("renderPhaseDistribution", () => {
       phase1to2Count1d: null,
       phase2to3Count1d: null,
       phase2NetFlow: null,
+      phase2CountChange: null,
       phase2EntryAvg5d: null,
     });
     const html = renderPhaseDistribution(snapshot);
     expect(html).not.toContain("Phase 2 진입");
     expect(html).not.toContain("Phase 2 이탈");
-    // phase2NetFlow가 null이면 인라인 순유입 수치도 미표시
-    expect(html).not.toContain("절대 수량");
+    // phase2CountChange가 null이면 인라인 절대수량 변화도 미표시
+    expect(html).not.toContain("전일 대비");
   });
 
-  it("순유입이 음수이면 down 클래스를 적용한다", () => {
+  it("절대수량 변화가 음수이면 down 클래스를 적용한다", () => {
     const snapshot = createMockBreadthSnapshot({
       phase1to2Count1d: 5,
       phase2to3Count1d: 20,
-      phase2NetFlow: -15,
+      phase2CountChange: -15,
       phase2EntryAvg5d: 10.0,
     });
     const html = renderPhaseDistribution(snapshot);
@@ -653,6 +655,26 @@ describe("renderSectorTable", () => {
     const sector = createMockSectorItem({ change4w: 5.2 });
     const html = renderSectorTable([sector]);
     expect(html).toContain("+5.2");
+  });
+
+  it("Phase 변경 시 X→Y 형식으로 표시한다", () => {
+    const sector = createMockSectorItem({ prevGroupPhase: 2, groupPhase: 3 });
+    const html = renderSectorTable([sector]);
+    expect(html).toContain("Phase 2→3");
+  });
+
+  it("Phase 변경이 없으면 현재 Phase만 표시한다", () => {
+    const sector = createMockSectorItem({ prevGroupPhase: 2, groupPhase: 2 });
+    const html = renderSectorTable([sector]);
+    expect(html).toContain("Phase 2");
+    expect(html).not.toContain("→");
+  });
+
+  it("prevGroupPhase가 null이면 현재 Phase만 표시한다", () => {
+    const sector = createMockSectorItem({ prevGroupPhase: null, groupPhase: 2 });
+    const html = renderSectorTable([sector]);
+    expect(html).toContain("Phase 2");
+    expect(html).not.toContain("→");
   });
 });
 

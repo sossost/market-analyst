@@ -287,6 +287,11 @@ export interface PrevBreadthScoreRow {
   breadth_score: string | null;
 }
 
+export interface PrevPhase2CountRow {
+  /** integer 컬럼 — pg driver가 number로 반환. numeric 컬럼(string)과 달리 변환 불필요. */
+  phase2_count: number | null;
+}
+
 // ─── priceRepository ─────────────────────────────────────────────────────────
 
 export interface PriceRow {

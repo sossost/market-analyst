@@ -17,6 +17,7 @@ import {
   findPhase1To2Count1d,
   findPhase2To3Count1d,
   findPrevDayBreadthScore,
+  findPrevDayPhase2Count,
 } from "@/db/repositories/index.js";
 
 /**
@@ -264,6 +265,16 @@ async function executeDailyMode(date: string): Promise<string> {
       phase1to2Count1d != null && phase2to3Count1d != null
         ? phase1to2Count1d - phase2to3Count1d
         : null;
+
+    // Phase 2 절대수량 변화: 스냅샷 차이 (금일 − 전일)
+    const prevPhase2CountRow = await retryDatabaseOperation(() =>
+      findPrevDayPhase2Count(date),
+    );
+    const phase2CountChange =
+      prevPhase2CountRow.phase2_count != null
+        ? snapshot.phase2_count - prevPhase2CountRow.phase2_count
+        : null;
+
     const phase2EntryAvg5d =
       snapshot.phase1_to2_count_5d != null
         ? Number((snapshot.phase1_to2_count_5d / 5).toFixed(1))
@@ -285,6 +296,7 @@ async function executeDailyMode(date: string): Promise<string> {
       phase1to2Count1d,
       phase2to3Count1d,
       phase2NetFlow,
+      phase2CountChange,
       phase2EntryAvg5d,
       topSectors: topSectors.map((s) => ({
         sector: s.sector,
@@ -353,6 +365,12 @@ async function executeDailyMode(date: string): Promise<string> {
       ? fallbackPhase1to2Count1d - fallbackPhase2to3Count1d
       : null;
 
+  // Phase 2 절대수량 변화: 폴백 경로에서는 findPrevDayPhase2Ratio 결과를 재사용.
+  // 스냅샷 경로는 market_breadth_daily, 폴백은 stock_phases 기준이므로 수치가 미세하게 다를 수 있다.
+  // prevTotal === 0이면 전일 데이터 없음 → null.
+  const fallbackPhase2CountChange =
+    prevTotal > 0 ? phase2Count - prevPhase2Count : null;
+
   // 폴백 경로: breadthScore는 집계 쿼리로 계산 불가 → breadthScoreChange도 null
   return JSON.stringify({
     _note: "phase2Ratio는 이미 퍼센트(0~100). 절대 ×100 하지 마세요",
@@ -374,6 +392,7 @@ async function executeDailyMode(date: string): Promise<string> {
     phase1to2Count1d: fallbackPhase1to2Count1d,
     phase2to3Count1d: fallbackPhase2to3Count1d,
     phase2NetFlow: fallbackPhase2NetFlow,
+    phase2CountChange: fallbackPhase2CountChange,
     // phase1_to2_count_5d는 market_breadth_daily 스냅샷에만 존재 — 폴백 경로에서 계산 불가
     phase2EntryAvg5d: null,
     topSectors: topSectors.map((s) => ({
