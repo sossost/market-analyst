@@ -29,9 +29,14 @@ export function extractThesisKeywords(thesisText: string): string[] {
   const keywords: string[] = [];
 
   // 영문 대문자 단어 (종목, 지표명 등): AI, NASDAQ, VIX, Technology 등
+  const ENGLISH_STOP_WORDS = new Set([
+    "The", "And", "But", "For", "With", "From", "That", "This", "Are", "Was",
+    "Were", "Has", "Have", "Had", "Not", "Its", "Also", "Into", "More", "Can",
+    "Will", "May", "All", "Our", "Their", "Which", "When", "How", "Who",
+  ]);
   const englishMatches = thesisText.match(/\b[A-Z][A-Za-z&]{1,20}\b/g);
   if (englishMatches != null) {
-    keywords.push(...englishMatches);
+    keywords.push(...englishMatches.filter((w) => !ENGLISH_STOP_WORDS.has(w)));
   }
 
   // 한글 핵심 명사구 추출 (2자 이상)
@@ -66,7 +71,7 @@ function analyzeKeywordContext(
   agentOutput: string,
   keyword: string,
 ): "support" | "oppose" | null {
-  const keywordIndex = agentOutput.indexOf(keyword);
+  const keywordIndex = agentOutput.toLowerCase().indexOf(keyword.toLowerCase());
   if (keywordIndex === -1) return null;
 
   // 키워드 주변 ±100자 범위 추출
@@ -79,9 +84,9 @@ function analyzeKeywordContext(
   const hasPositive = POSITIVE_CONTEXT_PATTERNS.some((p) => p.test(context));
 
   // 둘 다 있으면 부정 우선 (보수적 판정)
-  if (hasNegative && !hasPositive) return "oppose";
-  if (hasPositive && !hasNegative) return "support";
-  // 둘 다 있거나 둘 다 없으면 키워드 존재 자체를 지지로 간주 (관련 논의 = 관심)
+  if (hasNegative) return "oppose";
+  if (hasPositive) return "support";
+  // 둘 다 없으면 키워드 존재 자체를 지지로 간주 (관련 논의 = 관심)
   return "support";
 }
 
@@ -183,7 +188,9 @@ export function computeAlgorithmicConsensus(
       const supportRatio = supportCount / keywords.length;
       const opposeRatio = opposeCount / keywords.length;
 
-      if (supportRatio >= SUPPORT_THRESHOLD) {
+      if (opposeRatio > supportRatio && opposeRatio >= SUPPORT_THRESHOLD) {
+        verdict = "oppose";
+      } else if (supportRatio >= SUPPORT_THRESHOLD) {
         verdict = "support";
       } else if (opposeRatio > supportRatio) {
         verdict = "oppose";
@@ -257,7 +264,7 @@ export function verifyConsensusLevels(
   const verified = theses.map((thesis) => {
     const result = computeAlgorithmicConsensus(thesis, round1Outputs);
     const moderatorScore = parseConsensusScore(thesis.consensusLevel);
-    const algorithmicScore = parseConsensusScore(result.algorithmicConsensus);
+    const algorithmicScore = result.supportCount;
     const gap = Math.abs(moderatorScore - algorithmicScore);
 
     const UNVERIFIED_THRESHOLD = 2;
