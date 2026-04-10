@@ -610,7 +610,7 @@ function filterCandidateGroups(
       }
 
       if (thresholds.skipBinomialTest) {
-        const phaseLabel = activeLearningCount < COLD_START_THRESHOLD ? "BOOTSTRAP" : "EARLY_GROWTH";
+        const phaseLabel = activeLearningCount < BOOTSTRAP_THRESHOLD ? "BOOTSTRAP" : activeLearningCount < COLD_START_THRESHOLD ? "COLD_START" : "EARLY_GROWTH";
         logger.info(TAG, `  ${phaseLabel}: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
       } else {
         const test = binomialTest(g.confirmed.length, total);
@@ -943,7 +943,7 @@ function filterAntiPatternGroups(
       }
 
       if (thresholds.skipBinomialTest) {
-        const phaseLabel = activeLearningCount < COLD_START_THRESHOLD ? "ANTI-BOOTSTRAP" : "ANTI-EARLY_GROWTH";
+        const phaseLabel = activeLearningCount < BOOTSTRAP_THRESHOLD ? "ANTI-BOOTSTRAP" : activeLearningCount < COLD_START_THRESHOLD ? "ANTI-COLD_START" : "ANTI-EARLY_GROWTH";
         logger.info(TAG, `  ${phaseLabel}: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
       } else {
         const test = binomialTest(g.invalidated.length, total);
