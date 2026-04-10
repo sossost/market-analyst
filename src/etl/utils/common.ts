@@ -46,7 +46,7 @@ export function toStrNum(v: unknown): string | null {
 /**
  * Check if a ticker symbol meets the standard format rules:
  * - 1-5 uppercase letters
- * - No warrants (W/WS suffix, 4+ chars), units (U suffix, 4+ chars), special classes (X suffix)
+ * - No warrants (W suffix 4+ chars, WS suffix), units (U suffix, 4+ chars), special classes (X suffix)
  * - No dots (foreign listings like BRK.B)
  * - Short tickers like MU, W, AW are allowed (length < 4)
  */
