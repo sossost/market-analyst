@@ -1000,6 +1000,10 @@ export function renderSectorTable(data: DailySectorItem[]): string {
           : "—";
 
       const p2Str = `${s.phase2Ratio.toFixed(1)}%`;
+      const phaseStr =
+        s.prevGroupPhase != null && s.prevGroupPhase !== s.groupPhase
+          ? `Phase ${escapeHtml(String(s.prevGroupPhase))}→${escapeHtml(String(s.groupPhase))}`
+          : `Phase ${escapeHtml(String(s.groupPhase))}`;
 
       return `
         <tr>
@@ -1008,7 +1012,7 @@ export function renderSectorTable(data: DailySectorItem[]): string {
           <td>${escapeHtml(String(s.rsRank))}</td>
           <td>${rankChangeStr}</td>
           <td>${change4wStr}</td>
-          <td><span class="phase-badge ${escapeHtml(phaseCls)}">${s.prevGroupPhase != null && s.prevGroupPhase !== s.groupPhase ? `Phase ${escapeHtml(String(s.prevGroupPhase))}→${escapeHtml(String(s.groupPhase))}` : `Phase ${escapeHtml(String(s.groupPhase))}`}</span></td>
+          <td><span class="phase-badge ${escapeHtml(phaseCls)}">${phaseStr}</span></td>
           <td>${escapeHtml(p2Str)}</td>
         </tr>`;
     })
