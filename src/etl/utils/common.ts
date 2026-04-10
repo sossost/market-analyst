@@ -46,16 +46,17 @@ export function toStrNum(v: unknown): string | null {
 /**
  * Check if a ticker symbol meets the standard format rules:
  * - 1-5 uppercase letters
- * - No warrants (W suffix), units (U suffix), special classes (X suffix)
+ * - No warrants (W suffix 4+ chars, WS suffix), units (U suffix, 4+ chars), special classes (X suffix)
  * - No dots (foreign listings like BRK.B)
+ * - Short tickers like MU, W, AW are allowed (length < 4)
  */
 export function isValidTicker(symbol: string): boolean {
   return (
     /^[A-Z]{1,5}$/.test(symbol) &&
-    !symbol.endsWith("W") &&
+    !(symbol.length >= 4 && symbol.endsWith("W")) &&
     !symbol.endsWith("X") &&
     !symbol.includes(".") &&
-    !symbol.endsWith("U") &&
+    !(symbol.length >= 4 && symbol.endsWith("U")) &&
     !symbol.endsWith("WS")
   );
 }
