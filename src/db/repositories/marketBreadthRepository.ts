@@ -20,6 +20,7 @@ import type {
   DataDateRow,
   MarketBreadthDailyRow,
   PrevBreadthScoreRow,
+  PrevPhase2CountRow,
 } from "./types.js";
 
 /**
@@ -627,4 +628,23 @@ export async function findPrevDayBreadthScore(
   );
 
   return rows[0] ?? { breadth_score: null };
+}
+
+/**
+ * 지정 날짜 직전의 가장 최근 phase2_count를 조회한다.
+ * Phase 2 절대수량 변화(스냅샷 차이) 계산용.
+ */
+export async function findPrevDayPhase2Count(
+  date: string,
+): Promise<PrevPhase2CountRow> {
+  const { rows } = await pool.query<PrevPhase2CountRow>(
+    `SELECT phase2_count
+     FROM market_breadth_daily
+     WHERE date < $1
+     ORDER BY date DESC
+     LIMIT 1`,
+    [date],
+  );
+
+  return rows[0] ?? { phase2_count: null };
 }

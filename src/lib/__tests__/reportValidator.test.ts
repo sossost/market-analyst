@@ -1258,10 +1258,32 @@ describe("checkPhaseDirectionConsistency", () => {
     expect(errors).toHaveLength(0);
   });
 
+  it("Phase 3→2 + 붕괴 서술 → ERROR (개선인데 붕괴 서술)", () => {
+    const errors: string[] = [];
+    checkPhaseDirectionConsistency(
+      "SPIR Phase 3→2 위상 붕괴 — 급락",
+      errors,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("Phase 방향 모순");
+    expect(errors[0]).toContain("개선 방향인데 악화 서술");
+  });
+
   it("validateReport에서 daily 리포트로 Phase 방향 모순 감지", () => {
     const result = validateReport({
       markdown: padToMinLength(
         "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\nUtilities Phase 2→3 개선 — 강세 전환. 리스크 주의.",
+      ),
+      reportType: "daily",
+    });
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("Phase 방향 모순"))).toBe(true);
+  });
+
+  it("validateReport에서 Phase 3→2 + 붕괴 서술을 모순으로 감지", () => {
+    const result = validateReport({
+      markdown: padToMinLength(
+        "## 시장 온도 근거\n분석.\n## 섹터 RS 랭킹\n표.\n## 시장 흐름\n전망.\nSPIR Phase 3→2 위상 붕괴. 리스크 경계 필요.",
       ),
       reportType: "daily",
     });

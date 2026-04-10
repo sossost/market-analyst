@@ -89,6 +89,7 @@ const EMPTY_BREADTH_SNAPSHOT: DailyBreadthSnapshot = {
   phase1to2Count1d: null,
   phase2to3Count1d: null,
   phase2NetFlow: null,
+  phase2CountChange: null,
   phase2EntryAvg5d: null,
 };
 
@@ -234,7 +235,12 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
   ].filter((l) => l !== "").join("\n");
 
   const sectorLines = data.sectorRanking
-    .map((s) => `${s.rsRank}. ${s.sector}: RS ${s.avgRs.toFixed(1)} (4주 변화 ${s.change4w != null && s.change4w >= 0 ? "+" : ""}${s.change4w?.toFixed(1) ?? "N/A"}) Phase ${s.groupPhase} P2비율 ${s.phase2Ratio.toFixed(1)}%`)
+    .map((s) => {
+      const phaseStr = s.prevGroupPhase != null && s.prevGroupPhase !== s.groupPhase
+        ? `Phase ${s.prevGroupPhase}→${s.groupPhase}`
+        : `Phase ${s.groupPhase}`;
+      return `${s.rsRank}. ${s.sector}: RS ${s.avgRs.toFixed(1)} (4주 변화 ${s.change4w != null && s.change4w >= 0 ? "+" : ""}${s.change4w?.toFixed(1) ?? "N/A"}) ${phaseStr} P2비율 ${s.phase2Ratio.toFixed(1)}%`;
+    })
     .join("\n");
 
   const industryLines = data.industryTop10

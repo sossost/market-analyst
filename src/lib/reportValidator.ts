@@ -712,7 +712,7 @@ function checkReserveChangeReason(
 const PHASE_TRANSITION_PATTERN = /Phase\s*(\d)\s*→\s*(\d)/g;
 
 const IMPROVEMENT_KEYWORDS = ["개선", "강세", "호전", "상향", "반등", "회복"] as const;
-const DETERIORATION_KEYWORDS = ["악화", "약세", "하향", "둔화", "이탈", "하락"] as const;
+const DETERIORATION_KEYWORDS = ["악화", "약세", "하향", "둔화", "이탈", "하락", "붕괴"] as const;
 
 export function checkPhaseDirectionConsistency(
   markdown: string,

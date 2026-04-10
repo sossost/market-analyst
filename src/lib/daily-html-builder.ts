@@ -931,13 +931,13 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
           </div>`
       : "";
 
-  // Phase 2 비율 chip 내 순유입 인라인 표시 (별도 chip 제거)
-  const netFlowInline =
-    data.phase2NetFlow != null
+  // Phase 2 비율 chip 내 절대수량 변화 인라인 표시 (스냅샷 차이 = 금일 − 전일 phase2_count)
+  const countChangeInline =
+    data.phase2CountChange != null
       ? (() => {
-          const netFlowCls = data.phase2NetFlow > 0 ? "up" : data.phase2NetFlow < 0 ? "down" : "neutral-color";
-          const netFlowStr = `${data.phase2NetFlow >= 0 ? "+" : ""}${escapeHtml(String(data.phase2NetFlow))}건`;
-          return ` / <span class="${netFlowCls}">${netFlowStr}</span> <span class="stat-inline-label">(절대 수량)</span>`;
+          const changeCls = data.phase2CountChange > 0 ? "up" : data.phase2CountChange < 0 ? "down" : "neutral-color";
+          const changeStr = `${data.phase2CountChange >= 0 ? "+" : ""}${escapeHtml(String(data.phase2CountChange))}건`;
+          return ` / <span class="${changeCls}">${changeStr}</span> <span class="stat-inline-label">(전일 대비)</span>`;
         })()
       : "";
 
@@ -945,7 +945,7 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
     <div class="stat-row">
       <div class="stat-chip">
         <span class="stat-label">Phase 2 비율</span>
-        <span class="stat-value">${escapeHtml(data.phase2Ratio.toFixed(1))}% <span class="${escapeHtml(p2ChangeCls)}" style="font-size:0.85rem;">(${escapeHtml(p2ChangeStr)})</span> <span class="stat-inline-label">(비중 변화)</span>${netFlowInline}</span>
+        <span class="stat-value">${escapeHtml(data.phase2Ratio.toFixed(1))}% <span class="${escapeHtml(p2ChangeCls)}" style="font-size:0.85rem;">(${escapeHtml(p2ChangeStr)})</span> <span class="stat-inline-label">(비중 변화)</span>${countChangeInline}</span>
       </div>
       ${
         breadthScoreStr !== "—"
@@ -1008,7 +1008,7 @@ export function renderSectorTable(data: DailySectorItem[]): string {
           <td>${escapeHtml(String(s.rsRank))}</td>
           <td>${rankChangeStr}</td>
           <td>${change4wStr}</td>
-          <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(s.groupPhase))}</span></td>
+          <td><span class="phase-badge ${escapeHtml(phaseCls)}">${s.prevGroupPhase != null && s.prevGroupPhase !== s.groupPhase ? `Phase ${escapeHtml(String(s.prevGroupPhase))}→${escapeHtml(String(s.groupPhase))}` : `Phase ${escapeHtml(String(s.groupPhase))}`}</span></td>
           <td>${escapeHtml(p2Str)}</td>
         </tr>`;
     })
