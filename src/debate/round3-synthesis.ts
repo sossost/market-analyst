@@ -155,6 +155,7 @@ export function buildSynthesisPrompt(
         "",
         "아래는 아직 Phase 2에 진입하지 않았으나, 조기 전환 신호가 감지된 종목입니다.",
         "섹션 4(기회: 주도섹터/주도주)에서 별도 카테고리(\"조기포착 후보\")로 분리하여 기재하세요.",
+        "전문가가 언급하지 않은 조기포착 종목도 위 데이터를 직접 참조하여 Phase 2 전환 가능성을 평가하세요.",
         "",
         earlyDetectionContext,
         "</early-detection>",
