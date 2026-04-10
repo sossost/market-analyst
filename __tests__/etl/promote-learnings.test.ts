@@ -290,14 +290,24 @@ describe("promote-learnings logic", () => {
       expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
     });
 
-    it("경계값 4→5건 전환 — 5건은 성장기 기준", () => {
+    it("경계값 4→5건 전환 — 5건은 초기 성장기 기준 (#719)", () => {
       expect(getPromotionThresholds(4)).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 2, skipBinomialTest: true });
-      expect(getPromotionThresholds(5)).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+      expect(getPromotionThresholds(5)).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
     });
 
-    it("성장기 (5건) → 중간 기준 반환", () => {
+    it("초기 성장기 (5건) → binomial 면제 + minTotal=3 반환 (#719)", () => {
       const thresholds = getPromotionThresholds(5);
-      expect(thresholds).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
+      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+    });
+
+    it("초기 성장기 (9건) → binomial 면제 + minTotal=3 반환 (#719)", () => {
+      const thresholds = getPromotionThresholds(9);
+      expect(thresholds).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+    });
+
+    it("경계값 9→10건 전환 — 10건은 성장기 기준", () => {
+      expect(getPromotionThresholds(9)).toEqual({ minHits: 2, minHitRate: 0.55, minTotal: 3, skipBinomialTest: true });
+      expect(getPromotionThresholds(10)).toEqual({ minHits: 3, minHitRate: 0.60, minTotal: 5, skipBinomialTest: false });
     });
 
     it("성장기 (14건) → 중간 기준 반환", () => {
@@ -358,7 +368,31 @@ describe("promote-learnings logic", () => {
       expect(result).toHaveLength(0);
     });
 
-    it("성장기: 학습 5건 → minHits=3, minHitRate=0.60, minTotal=5 기준 적용", () => {
+    it("초기 성장기: 학습 5건 → minHits=2, minHitRate=0.55, minTotal=3, binomial 면제 (#719)", () => {
+      // 2 confirmed + 1 invalidated = 67% hitRate >= 55%, total=3 >= 3 → 승격
+      const confirmed = Array.from({ length: 2 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+      );
+      const invalidated = Array.from({ length: 1 }, (_, i) =>
+        makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "Fed funds rate", status: "INVALIDATED" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 5);
+      expect(result).toHaveLength(1);
+      expect(result[0].hitCount).toBe(2);
+    });
+
+    it("초기 성장기: 학습 6건 → minTotal=3 미달 시 승격 불가 (#719)", () => {
+      // 2 confirmed + 0 invalidated = total=2 < minTotal=3 → 승격 불가
+      const confirmed = Array.from({ length: 2 }, (_, i) =>
+        makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
+      );
+
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 6);
+      expect(result).toHaveLength(0);
+    });
+
+    it("성장기: 학습 10건 → minHits=3, minHitRate=0.60, minTotal=5 기준 적용", () => {
       // 3 confirmed + 1 invalidated = 75% hitRate >= 60%, total=4 < 5 → 미승격
       const confirmed = Array.from({ length: 3 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
@@ -367,18 +401,18 @@ describe("promote-learnings logic", () => {
         makeThesis({ id: 100 + i, agentPersona: "macro", verificationMetric: "Fed funds rate", status: "INVALIDATED" }),
       );
 
-      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 5);
+      const result = buildPromotionCandidates(confirmed, invalidated, new Set(), 10);
       // total=4 < minTotal=5 → 승격 불가
       expect(result).toHaveLength(0);
     });
 
-    it("성장기: 학습 5건 → total=5 이상이고 hitRate>=60% 이면 승격", () => {
+    it("성장기: 학습 10건 → total=5 이상이고 hitRate>=60% 이면 승격", () => {
       // 5 confirmed + 0 invalidated = 100%, total=5 >= 5 → 승격
       const confirmed = Array.from({ length: 5 }, (_, i) =>
         makeThesis({ id: i + 1, agentPersona: "macro", verificationMetric: "Fed funds rate" }),
       );
 
-      const result = buildPromotionCandidates(confirmed, [], new Set(), 5);
+      const result = buildPromotionCandidates(confirmed, [], new Set(), 10);
       expect(result).toHaveLength(1);
       expect(result[0].hitCount).toBe(5);
     });
