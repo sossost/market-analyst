@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegimeRaw, PersonaDefinition, MinorityView, MinorityViewPosition, AgentPersona, Confidence, NarrativeChainFields } from "@/types/debate";
 import type { FundamentalScore } from "@/types/fundamental";
 import type { MarketRegimeType } from "@/db/schema/analyst";
+import { verifyConsensusLevels } from "./consensusVerifier.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
 
@@ -946,10 +947,21 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
   const { theses, cleanReport, marketRegime } = extractDebateOutput(result.content);
   logger.info("Round3", `Synthesis complete: ${theses.length} theses extracted`);
 
+  // #713: Round 1 에이전트 출력 기반 consensus 알고리즘 검증
+  const { theses: verifiedTheses, verificationRan } = verifyConsensusLevels(theses, round1Outputs);
+  if (verificationRan) {
+    const unverifiedCount = verifiedTheses.filter((t) => t.consensusUnverified === true).length;
+    if (unverifiedCount > 0) {
+      logger.warn("Round3", `Consensus 불일치 thesis ${unverifiedCount}건 감지 (총 ${verifiedTheses.length}건)`);
+    }
+  } else {
+    logger.warn("Round3", "Consensus 검증 스킵됨 — Round 1 에이전트 수 부족");
+  }
+
   return {
     synthesis: {
       report: cleanReport,
-      theses,
+      theses: verifiedTheses,
     },
     marketRegime,
     tokensUsed: result.tokensUsed,

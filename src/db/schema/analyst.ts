@@ -242,6 +242,9 @@ export const theses = pgTable(
     // Phase D-3: 소수 의견 보존
     minorityView: jsonb("minority_view").$type<import("../../types/debate.js").MinorityView>(), // { analyst, position, reasoning, wasCorrect }
 
+    // #713: consensus 알고리즘 검증 불일치 플래그
+    consensusUnverified: boolean("consensus_unverified"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

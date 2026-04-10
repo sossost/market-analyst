@@ -71,6 +71,8 @@ export interface Thesis {
   nextBeneficiaryTickers?: string[] | null;
   narrativeChain?: NarrativeChainFields | null;
   minorityView?: MinorityView | null;
+  /** 알고리즘 검증에서 Moderator consensus와 2단계 이상 불일치 감지 시 true (#713) */
+  consensusUnverified?: boolean;
 }
 
 /**
