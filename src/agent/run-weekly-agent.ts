@@ -15,6 +15,7 @@ import { getVCPCandidates } from "@/tools/getVCPCandidates";
 import { getConfirmedBreakouts } from "@/tools/getConfirmedBreakouts";
 import { getSectorLagPatterns } from "@/tools/getSectorLagPatterns";
 import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
+import { certifyThesisAlignedCandidates } from "@/lib/certifyThesisAligned";
 
 // Schema + Builder
 import type {
@@ -177,14 +178,33 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
       exited: [],
       pending4of5,
     },
-    thesisAlignedCandidates: thesisAlignedRaw,
+    thesisAlignedCandidates: thesisAlignedRaw, // 인증 후 덮어씀
     vcpCandidates: vcpRaw != null ? (parse(vcpRaw).candidates as WeeklyReportData["vcpCandidates"]) ?? null : null,
     confirmedBreakouts: breakoutRaw != null ? (parse(breakoutRaw).breakouts as WeeklyReportData["confirmedBreakouts"]) ?? null : null,
     sectorLagPatterns: lagRaw != null ? (parse(lagRaw).patterns as WeeklyReportData["sectorLagPatterns"]) ?? null : null,
   };
 
+  // ─── Thesis-Aligned LLM 인증 ─────────────────────────────────────────────
+  if (thesisAlignedRaw != null && thesisAlignedRaw.chains.length > 0) {
+    try {
+      const beforeCount = thesisAlignedRaw.totalCandidates;
+      const certified = await certifyThesisAlignedCandidates(thesisAlignedRaw);
+      data.thesisAlignedCandidates = certified;
+      logger.info(
+        "CertifyTA",
+        `인증 완료: ${beforeCount}개 후보 → ${certified.totalCandidates}개 인증`,
+      );
+    } catch (err) {
+      logger.warn(
+        "CertifyTA",
+        `인증 실패 (미인증 데이터 사용): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      // graceful degradation: 원본 데이터 유지
+    }
+  }
+
   const taLabel = thesisAlignedRaw != null
-    ? `서사수혜: 체인 ${thesisAlignedRaw.chains.length}, 후보 ${thesisAlignedRaw.totalCandidates}`
+    ? `서사수혜: 체인 ${data.thesisAlignedCandidates?.chains.length ?? 0}, 후보 ${data.thesisAlignedCandidates?.totalCandidates ?? 0}`
     : "서사수혜: 수집 실패";
   const vcpCount = data.vcpCandidates?.length ?? 0;
   const breakoutCount = data.confirmedBreakouts?.length ?? 0;

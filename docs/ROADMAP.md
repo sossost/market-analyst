@@ -67,6 +67,7 @@
 | 일간 브레드스 섹션 개편 | A/D Ratio·신고가/신저가 chip 제거(시장 환경 게이트와 중복) + Breadth Score에 252일 퍼센타일 레이블·전일 대비 변화 추가 + Phase 2 비율 chip에 순유입 건수 인라인 통합 (#692) |
 | Phase 2 조기포착 신호 도구 | VCP 후보(`getVCPCandidates`), 확인된 돌파(`getConfirmedBreakouts`), 섹터 래그 패턴(`getSectorLagPatterns`) 3개 도구 추가 — ETL이 적재한 `daily_noise_signals`/`daily_breakout_signals`/`sector_lag_patterns` 데이터를 에이전트에 노출 (#712) |
 | Thesis-Aligned Candidates | ACTIVE/RESOLVING narrative_chain의 beneficiary_tickers를 stock_phases + fundamental_scores + company_profiles와 자동 조인 → 일간 리포트에 체인별 수혜주 기술적 상태(Phase/RS/SEPA/52w 고점 대비/게이트 충족 수) 표시. beneficiary_tickers 비어있는 신규 chain은 동일 megatrend 기존 chain에서 상속 (#697) |
+| Thesis-Aligned LLM 인증 | 2단계 퍼널: 업종 기반 자동 수집 후 LLM이 각 종목의 thesis 직접 관련성 심사 → 인증 종목만 리포트 표시. 체인당 배치 1회 호출, company_profiles.description 기반 판정, 프롬프트 인젝션 방어(구조적 태그 + 마크다운 제어문자 제거), LLM 실패 시 원본 유지(graceful degradation) (#699) |
 
 ### Layer 3: 추적 시스템 (F4) — Done
 추천 종목의 성과를 추적하여 시스템 자체의 실적을 측정.
