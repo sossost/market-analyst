@@ -465,3 +465,68 @@ export async function findSimilarMetaRegime(
 
   return { id: bestMatch.id, name: bestMatch.name };
 }
+
+/**
+ * 특정 국면에 연결된 체인 수를 조회한다.
+ * linkChainToMetaRegime 호출 시 sequenceOrder 계산에 사용된다.
+ */
+export async function getChainCountInMetaRegime(regimeId: number): Promise<number> {
+  const chains = await db
+    .select({ id: narrativeChains.id })
+    .from(narrativeChains)
+    .where(eq(narrativeChains.metaRegimeId, regimeId));
+  return chains.length;
+}
+
+type UnlinkedChain = {
+  id: number;
+  megatrend: string;
+  bottleneck: string;
+  status: string;
+};
+
+/**
+ * megatrend 키워드 기반으로 체인을 그루핑한다.
+ * 서로 MIN_KEYWORD_OVERLAP 이상의 키워드를 공유하는 체인을 같은 그룹으로 묶는다.
+ * 그룹 키는 공통 키워드들을 공백으로 결합한 문자열.
+ */
+export function groupChainsByMegatrend(
+  chains: UnlinkedChain[],
+): Map<string, UnlinkedChain[]> {
+  const MIN_OVERLAP = 2;
+  const groups: Array<{ keywords: Set<string>; chains: UnlinkedChain[] }> = [];
+
+  for (const chain of chains) {
+    const kw = extractKeywords(chain.megatrend);
+    let merged = false;
+
+    for (const group of groups) {
+      let overlap = 0;
+      for (const k of kw) {
+        if (group.keywords.has(k)) overlap++;
+      }
+      if (overlap >= MIN_OVERLAP) {
+        group.chains.push(chain);
+        // 공통 키워드만 유지 (교집합)
+        for (const gk of [...group.keywords]) {
+          if (!kw.has(gk)) group.keywords.delete(gk);
+        }
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) {
+      groups.push({ keywords: new Set(kw), chains: [chain] });
+    }
+  }
+
+  const result = new Map<string, UnlinkedChain[]>();
+  for (const group of groups) {
+    const key = [...group.keywords].sort().join(" ");
+    if (key.length > 0) {
+      result.set(key, group.chains);
+    }
+  }
+  return result;
+}

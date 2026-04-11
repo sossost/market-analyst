@@ -3,7 +3,7 @@ import {
   narrativeChains,
   type NarrativeChainStatus,
 } from "@/db/schema/analyst";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, isNull, and, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { sendDiscordMessage } from "@/lib/discord";
 import type { Thesis } from "@/types/debate";
@@ -511,4 +511,32 @@ export async function recordNarrativeChain(
       // Discord 발송 실패는 무시 — 원본 오류 은폐 방지
     });
   }
+}
+
+/**
+ * metaRegimeId가 NULL이고 ACTIVE/RESOLVING 상태인 체인 목록 조회.
+ * 메타 레짐 자동 연결/생성 평가 대상 체인.
+ */
+export async function getUnlinkedActiveChains(): Promise<Array<{
+  id: number;
+  megatrend: string;
+  bottleneck: string;
+  status: string;
+}>> {
+  const activeStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
+  return db
+    .select({
+      id: narrativeChains.id,
+      megatrend: narrativeChains.megatrend,
+      bottleneck: narrativeChains.bottleneck,
+      status: narrativeChains.status,
+    })
+    .from(narrativeChains)
+    .where(
+      and(
+        isNull(narrativeChains.metaRegimeId),
+        inArray(narrativeChains.status, activeStatuses),
+      ),
+    )
+    .orderBy(asc(narrativeChains.id));
 }
