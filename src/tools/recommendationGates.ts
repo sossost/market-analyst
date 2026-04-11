@@ -46,6 +46,13 @@ export const BLOCKED_FUNDAMENTAL_GRADE = "F";
 export const PRICE_DIVERGENCE_THRESHOLD = 0.1;
 
 /**
+ * 동일 섹터 추천 최대 비중 (50%).
+ * 근거: #732 — Energy 88% 편중 발생. 단일 섹터가 추천의 절반을 넘지 않도록 제한.
+ * 17건 기준 최대 9건까지 허용. 보수적 시작점으로 데이터 기반 조정 예정.
+ */
+export const MAX_SECTOR_RATIO = 0.5;
+
+/**
  * date에서 days만큼 이전 날짜를 계산한다.
  * YYYY-MM-DD 형식으로 반환. 쿨다운·지속성 기간 계산 공용.
  */
@@ -138,4 +145,53 @@ export function evaluateFundamentalGate(grade: string | null | undefined): Phase
     };
   }
   return { passed: true, reason: "" };
+}
+
+export interface SectorCapResult<T> {
+  selected: T[];
+  capped: T[];
+}
+
+/**
+ * 게이트 통과 후보에 섹터별 상한을 적용한다.
+ *
+ * 입력 배열이 RS 내림차순으로 정렬되어 있다고 가정한다.
+ * 섹터당 최대 허용 수 = max(1, ceil(totalCount * maxRatio)).
+ * sector가 null/undefined인 종목은 "Unknown" 그룹으로 처리한다.
+ *
+ * @param candidates - RS 내림차순 정렬된 게이트 통과 후보
+ * @param maxRatio   - 섹터당 최대 비중 (0 < maxRatio < 1)
+ * @returns selected(상한 이내) + capped(상한 초과로 제외) 분리 결과
+ */
+export function applySectorCap<T extends { sector: string | null | undefined }>(
+  candidates: T[],
+  maxRatio: number,
+): SectorCapResult<T> {
+  if (candidates.length === 0) {
+    return { selected: [], capped: [] };
+  }
+
+  if (maxRatio <= 0 || maxRatio >= 1) {
+    return { selected: [...candidates], capped: [] };
+  }
+
+  const maxPerSector = Math.max(1, Math.ceil(candidates.length * maxRatio));
+  const sectorCounts = new Map<string, number>();
+  const selected: T[] = [];
+  const capped: T[] = [];
+
+  for (const candidate of candidates) {
+    const sector = candidate.sector ?? "Unknown";
+    const count = sectorCounts.get(sector) ?? 0;
+
+    if (count >= maxPerSector) {
+      capped.push(candidate);
+      continue;
+    }
+
+    selected.push(candidate);
+    sectorCounts.set(sector, count + 1);
+  }
+
+  return { selected, capped };
 }

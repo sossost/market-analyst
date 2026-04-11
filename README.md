@@ -356,6 +356,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **LATE_BULL 진입 감쇠** — LATE_BULL 레짐 진입 조건 강화 (RS 70+, SEPA A+, Phase 2 지속 5일+) — 과열 후기 구조적 손실 차단 (#508)
 - [x] **업종 오분류 보정** — `symbol_industry_overrides` 테이블 도입, FMP 업종 오분류를 COALESCE 패턴으로 보정 (업종 RS 계산·필터·표시 전 경로 적용) (#722)
 - [x] **서사 수혜 LLM 인증** — thesis-aligned 후보를 LLM으로 관련성 심사, 인증 종목만 리포트 표시 (2단계 퍼널: 업종 수집 → LLM 인증) (#699)
+- [x] **섹터 집중도 상한** — 동일 섹터 추천 최대 50% 비중 제한, 게이트 통과 후 RS 순위 기반 섹터별 soft cap 적용 (#732)
 - [x] **국면(Meta-Regime) 계층 + 공급망 자금흐름 순서** — meta_regimes 테이블 + 체인 간 순차 활성화 모델링 + supplyChain/nextBeneficiary 프롬프트 주입 (#735)
 
 ### Next (진행 예정)

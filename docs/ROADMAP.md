@@ -76,6 +76,7 @@
 |-----------|------|
 | ETL 자동 추천 저장 | `scan-recommendation-candidates` ETL job — Phase 2 전수 스캔 → 게이트 통과 종목 자동 저장 (ETL Phase 3.8) |
 | 게이트 로직 분리 | `recommendationGates.ts` — Phase/RS/가격/지속성/안정성/펀더멘탈 게이트 순수 함수로 추출 (ETL + 도구 공용) |
+| 섹터 집중도 상한 | `applySectorCap` — 동일 섹터 최대 50% 비중 제한, 게이트 통과 후 RS 순위 기반 soft cap (#732) |
 | 에이전트 조회 모드 | `save_recommendations` 도구가 저장 → 조회 전환 — ETL 저장 결과를 에이전트가 확인하는 구조 |
 | 추천 기록 | `recommendations` 테이블에 저장 |
 | 성과 추적 | Phase 변화, 가격 변동 자동 업데이트 |
