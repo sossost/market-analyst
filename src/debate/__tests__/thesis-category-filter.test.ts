@@ -8,7 +8,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { extractThesesFromText, extractDebateOutput, containsNumericPrediction, containsPriceTarget, filterShortTermOutlookCap } from "../round3-synthesis.js";
+import { extractThesesFromText, extractDebateOutput, containsNumericPrediction, containsPriceTarget, filterShortTermOutlookCap, containsMeanReversionPattern } from "../round3-synthesis.js";
 import { logger } from "@/lib/logger";
 
 // ─── Helper ──────��─────────────────────────────────────────────────────────────
@@ -997,5 +997,166 @@ describe("extractDebateOutput 필터 파이프라인", () => {
 
     const shortTermTheses = result.theses.filter((t) => t.category === "short_term_outlook");
     expect(shortTermTheses).toHaveLength(1);
+  });
+});
+
+// ─── containsMeanReversionPattern ─────────────────────────────────────────────
+
+describe("containsMeanReversionPattern", () => {
+  it("추세/국면 반전·전환 예측을 감지한다", () => {
+    expect(containsMeanReversionPattern("추세 반전 가능성 존재")).toBe(true);
+    expect(containsMeanReversionPattern("국면 전환 임박")).toBe(true);
+    expect(containsMeanReversionPattern("방향 반전 신호")).toBe(true);
+  });
+
+  it("정상화/안정화 예측을 감지한다", () => {
+    expect(containsMeanReversionPattern("시장 정상화 전망")).toBe(true);
+    expect(containsMeanReversionPattern("변동성 안정화 예상")).toBe(true);
+    expect(containsMeanReversionPattern("정상화 진입 단계")).toBe(true);
+  });
+
+  it("심리 상태 전환 예측(→/->)을 감지한다", () => {
+    expect(containsMeanReversionPattern("공포 → 중립 전환")).toBe(true);
+    expect(containsMeanReversionPattern("공포 -> 중립 전환")).toBe(true);
+    expect(containsMeanReversionPattern("risk-off → risk-on 전환")).toBe(true);
+    expect(containsMeanReversionPattern("과매도 → 정상 복귀")).toBe(true);
+  });
+
+  it("회복/반등 전망을 감지한다", () => {
+    expect(containsMeanReversionPattern("시장 회복 전망")).toBe(true);
+    expect(containsMeanReversionPattern("단기 반등 예상")).toBe(true);
+    expect(containsMeanReversionPattern("회복 임박 판단")).toBe(true);
+  });
+
+  it("조정 마무리/완료 예측을 감지한다", () => {
+    expect(containsMeanReversionPattern("조정 마무리 단계")).toBe(true);
+    expect(containsMeanReversionPattern("조정 완료 후 반등")).toBe(true);
+  });
+
+  it("바닥/저점 형성 판단을 감지한다", () => {
+    expect(containsMeanReversionPattern("바닥 형성 완료")).toBe(true);
+    expect(containsMeanReversionPattern("저점 확인 후 반등")).toBe(true);
+  });
+
+  it("추세 순응형 분석은 감지하지 않는다", () => {
+    expect(containsMeanReversionPattern("risk-off 지속 전망")).toBe(false);
+    expect(containsMeanReversionPattern("자금 유출 가속")).toBe(false);
+    expect(containsMeanReversionPattern("과밀 포지션 심화")).toBe(false);
+    expect(containsMeanReversionPattern("공포 심화 조건 분석")).toBe(false);
+    expect(containsMeanReversionPattern("하락 추세 지속")).toBe(false);
+  });
+
+  it("구조적 관찰(현재 상태 서술)은 감지하지 않는다", () => {
+    expect(containsMeanReversionPattern("현재 극단적 공포 구간")).toBe(false);
+    expect(containsMeanReversionPattern("자금이 defensive 섹터로 이동 중")).toBe(false);
+    expect(containsMeanReversionPattern("포지셔닝이 과밀하여 해소 압력 존재")).toBe(false);
+  });
+});
+
+// ─── sentiment structural_narrative mean-reversion confidence 캡 (#731) ──────
+
+describe("sentiment structural_narrative mean-reversion confidence 캡", () => {
+  it("mean-reversion 패턴 + structural_narrative + high → medium으로 캡한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "공포 → 중립 전환 임박, 포지셔닝 해소 압력",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("medium");
+  });
+
+  it("mean-reversion 패턴 없는 structural_narrative + high는 유지한다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "포지셔닝 과밀 심화, defensive 쏠림 가속",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("mean-reversion + structural_narrative + medium은 변경하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        confidence: "medium",
+        thesis: "시장 회복 전망, 자금 유입 재개 조건 형성",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("medium");
+  });
+
+  it("mean-reversion + sector_rotation + high는 기존 2단계 하향(low) 적용", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "sector_rotation",
+        confidence: "high",
+        thesis: "추세 반전 예상, 자금 로테이션 전환",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("low");
+  });
+
+  it("다른 에이전트의 structural_narrative + high + mean-reversion은 변경하지 않는다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "macro",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "경기 국면 전환 임박, 회복 전망",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    const result = extractThesesFromText(text);
+
+    expect(result.theses).toHaveLength(1);
+    expect(result.theses[0].confidence).toBe("high");
+  });
+
+  it("캡 적용 시 로그를 남긴다", () => {
+    const text = wrapThesesInText([
+      makeThesis({
+        agentPersona: "sentiment",
+        category: "structural_narrative",
+        confidence: "high",
+        thesis: "조정 마무리 단계 진입",
+        timeframeDays: 60,
+      }),
+    ]);
+
+    extractThesesFromText(text);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Round3",
+      expect.stringContaining("mean-reversion thesis confidence 캡"),
+    );
   });
 });
