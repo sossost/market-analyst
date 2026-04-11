@@ -304,9 +304,13 @@ export async function recordNarrativeChain(
 
     const existing = await findMatchingChain({ megatrend: info.megatrend, bottleneck: info.bottleneck });
 
-    // TODO(#608-followup): thesis.nextBeneficiarySectors / nextBeneficiaryTickers는
-    // Thesis 타입에 존재하지만 narrative_chains 테이블에 컬럼 미추가 상태.
-    // DB 마이그레이션 후 여기서 저장 필요.
+    // N+1 병목 수혜 섹터/종목 (#735 — #608-followup 해결)
+    const nextBeneficiarySectors = Array.isArray(thesis.nextBeneficiarySectors)
+      ? thesis.nextBeneficiarySectors
+      : [];
+    const nextBeneficiaryTickers = Array.isArray(thesis.nextBeneficiaryTickers)
+      ? thesis.nextBeneficiaryTickers
+      : [];
 
     // Sector Alpha Gate — 수혜 섹터 SEPA 적합성 평가
     const alphaGateResult =
@@ -321,6 +325,12 @@ export async function recordNarrativeChain(
       const updatedThesisIds = [...new Set([...existing.linkedThesisIds, thesisId])];
 
       const isResolved = info.status === "RESOLVED" || info.status === "OVERSUPPLY";
+
+      // N+1 수혜 필드 (비어있지 않을 때만 업데이트)
+      const nextBeneficiaryUpdate = {
+        ...(nextBeneficiarySectors.length > 0 && { nextBeneficiarySectors }),
+        ...(nextBeneficiaryTickers.length > 0 && { nextBeneficiaryTickers }),
+      };
 
       if (isResolved) {
         const now = new Date();
@@ -340,6 +350,7 @@ export async function recordNarrativeChain(
             ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
             ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
             ...(alphaCompatible != null && { alphaCompatible }),
+            ...nextBeneficiaryUpdate,
           })
           .where(eq(narrativeChains.id, existing.id));
       } else {
@@ -352,6 +363,7 @@ export async function recordNarrativeChain(
             ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
             ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
             ...(alphaCompatible != null && { alphaCompatible }),
+            ...nextBeneficiaryUpdate,
           })
           .where(eq(narrativeChains.id, existing.id));
       }
@@ -395,6 +407,8 @@ export async function recordNarrativeChain(
           beneficiaryTickers: finalBeneficiaryTickers,
           linkedThesisIds: [thesisId],
           ...(alphaCompatible != null && { alphaCompatible }),
+          ...(nextBeneficiarySectors.length > 0 && { nextBeneficiarySectors }),
+          ...(nextBeneficiaryTickers.length > 0 && { nextBeneficiaryTickers }),
         })
         .returning({ id: narrativeChains.id });
 

@@ -16,6 +16,7 @@ export interface ActiveChainSummary {
   id: number;
   megatrend: string;
   bottleneck: string;
+  supplyChain: string;
   identifiedAt: Date;
   daysSinceIdentified: number;
   status: NarrativeChainStatus;
@@ -23,6 +24,8 @@ export interface ActiveChainSummary {
   linkedThesisCount: number;
   beneficiarySectors: string[];
   beneficiaryTickers: string[];
+  nextBeneficiarySectors: string[];
+  nextBeneficiaryTickers: string[];
   alphaCompatible: boolean | null;
 }
 
@@ -83,12 +86,15 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
       id: narrativeChains.id,
       megatrend: narrativeChains.megatrend,
       bottleneck: narrativeChains.bottleneck,
+      supplyChain: narrativeChains.supplyChain,
       bottleneckIdentifiedAt: narrativeChains.bottleneckIdentifiedAt,
       status: narrativeChains.status,
       nextBottleneck: narrativeChains.nextBottleneck,
       linkedThesisIds: narrativeChains.linkedThesisIds,
       beneficiarySectors: narrativeChains.beneficiarySectors,
       beneficiaryTickers: narrativeChains.beneficiaryTickers,
+      nextBeneficiarySectors: narrativeChains.nextBeneficiarySectors,
+      nextBeneficiaryTickers: narrativeChains.nextBeneficiaryTickers,
       alphaCompatible: narrativeChains.alphaCompatible,
     })
     .from(narrativeChains)
@@ -101,6 +107,7 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
     id: chain.id,
     megatrend: chain.megatrend,
     bottleneck: chain.bottleneck,
+    supplyChain: chain.supplyChain,
     identifiedAt: chain.bottleneckIdentifiedAt,
     daysSinceIdentified: Math.round(
       (now.getTime() - chain.bottleneckIdentifiedAt.getTime()) / msPerDay,
@@ -116,8 +123,21 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
     beneficiaryTickers: Array.isArray(chain.beneficiaryTickers)
       ? (chain.beneficiaryTickers as string[])
       : [],
+    nextBeneficiarySectors: Array.isArray(chain.nextBeneficiarySectors)
+      ? (chain.nextBeneficiarySectors as string[])
+      : [],
+    nextBeneficiaryTickers: Array.isArray(chain.nextBeneficiaryTickers)
+      ? (chain.nextBeneficiaryTickers as string[])
+      : [],
     alphaCompatible: chain.alphaCompatible,
   }));
+}
+
+/**
+ * Sanitize a string for safe inclusion in a markdown table cell.
+ */
+function sanitizeCell(value: string): string {
+  return value.replace(/\|/g, "｜").replace(/\n/g, " ").trim();
 }
 
 /**
@@ -130,12 +150,13 @@ export async function formatChainsForDailyPrompt(): Promise<string> {
 
   const lines: string[] = [
     "## 현재 추적 중인 서사 체인 (종목 태그 참조용)\n",
-    "| 체인명 | 메가트렌드 | 상태 | Alpha Gate | 경과일 | 수혜 섹터 | 수혜 종목 |",
-    "|--------|----------|------|-----------|--------|----------|----------|",
+    "| 체인명 | 메가트렌드 | 공급망 경로 | 상태 | Alpha Gate | 경과일 | 수혜 섹터 | 수혜 종목 |",
+    "|--------|----------|-----------|------|-----------|--------|----------|----------|",
   ];
 
   for (const chain of chains) {
     const alphaTag = formatAlphaTag(chain.alphaCompatible);
+    const supply = chain.supplyChain !== "" ? sanitizeCell(chain.supplyChain) : "—";
     const sectors = chain.beneficiarySectors.length > 0
       ? chain.beneficiarySectors.join(", ")
       : "—";
@@ -143,7 +164,7 @@ export async function formatChainsForDailyPrompt(): Promise<string> {
       ? chain.beneficiaryTickers.join(", ")
       : "—";
     lines.push(
-      `| ${chain.bottleneck} | ${chain.megatrend} | ${chain.status} | ${alphaTag} | ${chain.daysSinceIdentified}일 | ${sectors} | ${tickers} |`,
+      `| ${sanitizeCell(chain.bottleneck)} | ${sanitizeCell(chain.megatrend)} | ${supply} | ${chain.status} | ${alphaTag} | ${chain.daysSinceIdentified}일 | ${sectors} | ${tickers} |`,
     );
   }
 
@@ -173,29 +194,37 @@ export async function formatChainsSummaryForPrompt(): Promise<string> {
 
   const lines: string[] = [
     "## 현재 추적 중인 병목 체인\n",
-    "| 병목 노드 | 메가트렌드 | 식별일 | 경과일 | 상태 | Alpha Gate | N+1 병목 | 수혜 섹터 | 수혜 종목 | 참고 해소 기간 |",
-    "|----------|----------|--------|-------|------|-----------|---------|----------|----------|-------------|",
+    "| 병목 노드 | 메가트렌드 | 공급망 경로 | 식별일 | 경과일 | 상태 | Alpha Gate | N+1 병목 | 수혜 섹터 | 수혜 종목 | N+1 수혜 섹터 | N+1 수혜 종목 | 참고 해소 기간 |",
+    "|----------|----------|-----------|--------|-------|------|-----------|---------|----------|----------|------------|------------|-------------|",
   ];
 
   for (const chain of chains) {
     const dateStr = chain.identifiedAt.toISOString().slice(0, 10);
-    const nextBn = chain.nextBottleneck ?? "—";
+    const supply = chain.supplyChain !== "" ? sanitizeCell(chain.supplyChain) : "—";
+    const nextBn = chain.nextBottleneck != null ? sanitizeCell(chain.nextBottleneck) : "—";
     const sectors = chain.beneficiarySectors.length > 0
       ? chain.beneficiarySectors.join(", ")
       : "—";
     const tickers = chain.beneficiaryTickers.length > 0
       ? chain.beneficiaryTickers.join(", ")
       : "—";
+    const nextSectors = chain.nextBeneficiarySectors.length > 0
+      ? chain.nextBeneficiarySectors.join(", ")
+      : "—";
+    const nextTickers = chain.nextBeneficiaryTickers.length > 0
+      ? chain.nextBeneficiaryTickers.join(", ")
+      : "—";
     const alphaTag = formatAlphaTag(chain.alphaCompatible);
     lines.push(
-      `| ${chain.bottleneck} | ${chain.megatrend} | ${dateStr} | ${chain.daysSinceIdentified}일 | ${chain.status} | ${alphaTag} | ${nextBn} | ${sectors} | ${tickers} | ${refResolution} |`,
+      `| ${sanitizeCell(chain.bottleneck)} | ${sanitizeCell(chain.megatrend)} | ${supply} | ${dateStr} | ${chain.daysSinceIdentified}일 | ${chain.status} | ${alphaTag} | ${nextBn} | ${sectors} | ${tickers} | ${nextSectors} | ${nextTickers} | ${refResolution} |`,
     );
   }
 
   lines.push(
     "",
     "※ 해소된 체인이 3개 이상 쌓이면 \"참고 해소 기간\"에 평균 기간이 표시됩니다.",
-    "※ 수혜 종목은 N+1 병목 해소 시 구조적 수혜가 예상되는 종목입니다. 현재 Phase/RS 기준 미달이어도 서사적 워치리스트로 활용하세요.",
+    "※ 수혜 종목은 현재 병목의 구조적 수혜 종목입니다. 현재 Phase/RS 기준 미달이어도 서사적 워치리스트로 활용하세요.",
+    "※ N+1 수혜 섹터/종목은 다음 병목 해소 시 수혜가 예상되는 선행 포착 후보입니다.",
     "※ Alpha Gate \"구조적 관찰\": 해당 섹터의 SEPA 적합성이 낮아 종목 발굴 대상으로 부적합할 수 있음. 거시 분석으로만 활용.",
   );
 

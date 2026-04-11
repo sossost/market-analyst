@@ -20,7 +20,9 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 수요-공급-병목 프레임으로 구조적 서사 도출
    → N+1 병목 예측: "현재 병목 해소 후 다음 제약은?"
    → 공급 과잉 전환 감지: 병목 해소 → 과잉 전환 조기 포착
-   → 병목 체인 추적: narrative_chains 테이블에 병목 생애주기 기록
+   → 병목 체인 추적: narrative_chains 테이블에 병목 생애주기 기록 + N+1 수혜 섹터/종목 저장
+   → 국면(Meta-Regime) 계층: 체인 간 순차 활성화 순서 + 전파 유형(supply_chain/narrative_shift) 모델링
+   → 서사 체인 + 국면 컨텍스트를 Round 3 합성 프롬프트에 주입 — 공급망 경로 + 선행 포착 후보 제공
    → 모더레이터(Claude)가 thesis 구조화 + 합의도(consensus_score) 기록
    → Consensus 알고리즘 검증: Round 1 에이전트 출력 키워드 매칭으로 합의도 교차 검증 + 불일치 플래그(#713)
 
@@ -354,6 +356,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **LATE_BULL 진입 감쇠** — LATE_BULL 레짐 진입 조건 강화 (RS 70+, SEPA A+, Phase 2 지속 5일+) — 과열 후기 구조적 손실 차단 (#508)
 - [x] **업종 오분류 보정** — `symbol_industry_overrides` 테이블 도입, FMP 업종 오분류를 COALESCE 패턴으로 보정 (업종 RS 계산·필터·표시 전 경로 적용) (#722)
 - [x] **서사 수혜 LLM 인증** — thesis-aligned 후보를 LLM으로 관련성 심사, 인증 종목만 리포트 표시 (2단계 퍼널: 업종 수집 → LLM 인증) (#699)
+- [x] **국면(Meta-Regime) 계층 + 공급망 자금흐름 순서** — meta_regimes 테이블 + 체인 간 순차 활성화 모델링 + supplyChain/nextBeneficiary 프롬프트 주입 (#735)
 
 ### Next (진행 예정)
 

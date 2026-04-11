@@ -601,6 +601,106 @@ describe("narrativeChainService", () => {
       await expect(recordNarrativeChain(thesis, 1)).resolves.toBeUndefined();
     });
 
+    it("saves nextBeneficiarySectors and nextBeneficiaryTickers on new chain", async () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "AI 인프라 GPU 공급 부족 지속",
+        timeframeDays: 60,
+        verificationMetric: "m",
+        targetCondition: "c",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        narrativeChain: {
+          megatrend: "AI 인프라",
+          demandDriver: "수요",
+          supplyChain: "GPU → HBM",
+          bottleneck: "GPU 공급 부족",
+        },
+        nextBeneficiarySectors: ["Utilities", "Power Infrastructure"],
+        nextBeneficiaryTickers: ["AES", "NEE", "VST"],
+      };
+
+      mockWhere.mockResolvedValueOnce([]); // findMatchingChain
+      mockWhere.mockResolvedValueOnce([]); // findBeneficiaryFromSameNarrative
+      mockReturning.mockResolvedValueOnce([{ id: 10 }]);
+
+      await recordNarrativeChain(thesis, 200);
+
+      expect(mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nextBeneficiarySectors: ["Utilities", "Power Infrastructure"],
+          nextBeneficiaryTickers: ["AES", "NEE", "VST"],
+        }),
+      );
+    });
+
+    it("saves nextBeneficiary fields on existing chain update", async () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "AI 인프라 GPU supply shortage 계속",
+        timeframeDays: 60,
+        verificationMetric: "m",
+        targetCondition: "c",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        nextBeneficiarySectors: ["Power Infrastructure"],
+        nextBeneficiaryTickers: ["VST"],
+      };
+
+      mockWhere.mockResolvedValueOnce([
+        {
+          id: 5,
+          megatrend: "AI 인프라",
+          bottleneck: "AI 인프라 GPU supply shortage 계속",
+          linkedThesisIds: [10],
+          bottleneckIdentifiedAt: new Date("2026-01-01"),
+        },
+      ]);
+      mockUpdateWhere.mockResolvedValueOnce(undefined);
+
+      await recordNarrativeChain(thesis, 201);
+
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nextBeneficiarySectors: ["Power Infrastructure"],
+          nextBeneficiaryTickers: ["VST"],
+        }),
+      );
+    });
+
+    it("does not include empty nextBeneficiary arrays in update", async () => {
+      const thesis: Thesis = {
+        agentPersona: "tech",
+        thesis: "AI 인프라 GPU supply shortage 지속",
+        timeframeDays: 60,
+        verificationMetric: "m",
+        targetCondition: "c",
+        confidence: "high",
+        consensusLevel: "3/4",
+        category: "structural_narrative",
+        // nextBeneficiarySectors/Tickers omitted → empty arrays
+      };
+
+      mockWhere.mockResolvedValueOnce([
+        {
+          id: 5,
+          megatrend: "AI 인프라",
+          bottleneck: "AI 인프라 GPU supply shortage 지속",
+          linkedThesisIds: [10],
+          bottleneckIdentifiedAt: new Date("2026-01-01"),
+        },
+      ]);
+      mockUpdateWhere.mockResolvedValueOnce(undefined);
+
+      await recordNarrativeChain(thesis, 202);
+
+      const setCall = mockSet.mock.calls[0][0];
+      expect(setCall).not.toHaveProperty("nextBeneficiarySectors");
+      expect(setCall).not.toHaveProperty("nextBeneficiaryTickers");
+    });
+
     it("records resolution date and days for RESOLVED status", async () => {
       const thesis: Thesis = {
         agentPersona: "tech",

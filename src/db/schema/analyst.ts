@@ -601,10 +601,62 @@ export const narrativeChains = pgTable(
 
     // Sector Alpha Gate — 수혜 섹터의 SEPA 적합성 (null = 미평가)
     alphaCompatible: boolean("alpha_compatible"),
+
+    // N+1 병목 수혜 섹터/종목 (#735 — 기존 TODO #608-followup)
+    nextBeneficiarySectors: jsonb("next_beneficiary_sectors").$type<string[]>(),
+    nextBeneficiaryTickers: jsonb("next_beneficiary_tickers").$type<string[]>(),
+
+    // 국면(meta-regime) 연결 (#735) — FK는 SQL 마이그레이션에서 설정
+    // metaRegimes 테이블이 이 파일에서 뒤에 정의되므로 ORM 레벨 .references()는 생략
+    metaRegimeId: integer("meta_regime_id"),
+    sequenceOrder: integer("sequence_order"), // 국면 내 순서 (1-based)
+    sequenceConfidence: text("sequence_confidence").$type<"low" | "medium" | "high">(),
+
+    // 체인 라이프사이클 타임스탬프 (#735)
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    peakAt: timestamp("peak_at", { withTimezone: true }),
   },
   (t) => ({
     idxStatus: index("idx_narrative_chains_status").on(t.status),
     idxMegatrend: index("idx_narrative_chains_megatrend").on(t.megatrend),
+    idxMetaRegimeId: index("idx_narrative_chains_meta_regime_id").on(t.metaRegimeId),
+  }),
+);
+
+/**
+ * meta_regimes — 국면(테마 사이클) 계층.
+ * 시장의 거시적 국면(AI 인프라 사이클, 인플레이션 사이클 등)을 표현한다.
+ * 하나의 국면 안에 여러 narrative_chain이 순차적으로 활성화된다.
+ *
+ * market_regimes와 역할 구분:
+ *  - market_regimes: VIX/브레드스 기반 매크로 온도계 (EARLY_BULL ~ BEAR)
+ *  - meta_regimes: 테마 사이클 계층 — 체인의 상위 구조
+ */
+export type MetaRegimePropagationType = "supply_chain" | "narrative_shift";
+export type MetaRegimeStatus = "ACTIVE" | "PEAKED" | "RESOLVED";
+
+export const metaRegimes = pgTable(
+  "meta_regimes",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(), // "AI 인프라 투자 사이클"
+    description: text("description"), // 국면 설명
+    propagationType: text("propagation_type")
+      .$type<MetaRegimePropagationType>()
+      .notNull(), // 전파 메커니즘
+    status: text("status")
+      .$type<MetaRegimeStatus>()
+      .notNull()
+      .default("ACTIVE"),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    peakAt: timestamp("peak_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    idxStatus: index("idx_meta_regimes_status").on(t.status),
   }),
 );
 
