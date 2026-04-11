@@ -222,12 +222,14 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
     const { score, rating, previousClose, previous1Week } = data.fearGreed;
     const parts = [`Fear & Greed: ${score} (${rating})`];
     if (previousClose != null) {
-      const diff = (score - previousClose).toFixed(1);
-      parts.push(`전일 ${previousClose.toFixed(1)} (${Number(diff) >= 0 ? "+" : ""}${diff})`);
+      const diff = score - previousClose;
+      const sign = diff >= 0 ? "+" : "";
+      parts.push(`전일 ${previousClose.toFixed(1)} (${sign}${diff.toFixed(1)})`);
     }
     if (previous1Week != null) {
-      const diff = (score - previous1Week).toFixed(1);
-      parts.push(`1주전 ${previous1Week.toFixed(1)} (${Number(diff) >= 0 ? "+" : ""}${diff})`);
+      const diff = score - previous1Week;
+      const sign = diff >= 0 ? "+" : "";
+      parts.push(`1주전 ${previous1Week.toFixed(1)} (${sign}${diff.toFixed(1)})`);
     }
     return parts.join(" | ");
   })();
