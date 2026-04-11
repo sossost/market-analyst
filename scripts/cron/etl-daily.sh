@@ -101,11 +101,28 @@ run_step "Load Earnings Surprises FMP" "src/etl/jobs/load-earnings-surprises-fmp
 run_step "Validate Data" "src/etl/jobs/validate-data.ts"
 
 if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
-  # Phase 5: 토론 (비블로킹 — 실패해도 일간보고서는 실행)
-  log "▶ 토론 에이전트 시작"
-  if npx tsx src/agent/run-debate-agent.ts >> "$LOG_FILE" 2>&1; then
-    log "✓ 토론 에이전트 완료"
+  # Phase 5: 토론 (재시도 포함 — 일시적 인증 실패 대응)
+  DEBATE_MAX_RETRIES=2
+  DEBATE_RETRY_DELAY=180
+  TOTAL_ATTEMPTS=$((DEBATE_MAX_RETRIES + 1))
+  debate_success=0
 
+  for attempt in $(seq 1 $TOTAL_ATTEMPTS); do
+    log "▶ 토론 에이전트 시도 ${attempt}/$TOTAL_ATTEMPTS"
+    if npx tsx src/agent/run-debate-agent.ts >> "$LOG_FILE" 2>&1; then
+      log "✓ 토론 에이전트 완료"
+      debate_success=1
+      break
+    else
+      log "✗ 토론 에이전트 실패 (시도 ${attempt}/$TOTAL_ATTEMPTS)"
+      if [ "$attempt" -lt $TOTAL_ATTEMPTS ]; then
+        log "⏳ ${DEBATE_RETRY_DELAY}초 후 재시도..."
+        sleep "$DEBATE_RETRY_DELAY"
+      fi
+    fi
+  done
+
+  if [ "$debate_success" -eq 1 ]; then
     # promote-learnings (비블로킹)
     log "▶ Promote learnings"
     if yarn etl:promote-learnings >> "$LOG_FILE" 2>&1; then
@@ -122,8 +139,8 @@ if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
       log "⚠ 투자 브리핑 QA 실패 (비블로킹)"
     fi
   else
-    log "✗ 토론 에이전트 실패 — 일간보고서도 스킵 (토론 결과 종속)"
-    send_error "run-debate-agent.ts 실패 — 일간보고서 스킵" "토론"
+    log "✗ 토론 에이전트 ${TOTAL_ATTEMPTS}회 시도 모두 실패 — 일간보고서 스킵"
+    send_error "토론 에이전트 ${TOTAL_ATTEMPTS}회 시도 실패 — 수동 재실행 필요" "토론"
     log "=== ETL 파이프라인 완료 (토론 실패로 일간보고서 미실행) ==="
     exit 1
   fi
