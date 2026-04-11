@@ -6,7 +6,8 @@
  * 2. PR 리뷰 코멘트 확인 (Gemini 등 외부 리뷰어)
  * 3. 타당한 리뷰 있으면 Claude Code CLI로 반영 → 푸시
  * 4. squash merge 실행
- * 4.5. post-merge 인프라 반영 (DB 마이그레이션, launchd 재로드)
+ * 4.5. git checkout main && git pull (최신 코드 확보)
+ * 4.6. post-merge 인프라 반영 (DB 마이그레이션, launchd 재로드)
  * 5. 로컬 브랜치 정리
  * 6. 스레드에 완료 알림
  * 7. PR 매핑 삭제
@@ -255,14 +256,21 @@ async function runPostMergeInfra(prNumber: number, threadId: string): Promise<vo
 }
 
 /**
+ * 로컬 main 브랜치를 최신 상태로 동기화한다.
+ * squash merge 후, runPostMergeInfra 전에 호출해야 최신 스키마로 DB push가 실행된다.
+ */
+async function checkoutAndPullMain(): Promise<void> {
+  await git(['checkout', 'main'])
+  await git(['pull', '--rebase', 'origin', 'main'])
+}
+
+/**
  * 로컬 브랜치가 존재하는지 확인하고 삭제한다.
+ * checkoutAndPullMain이 이미 호출된 상태에서 사용한다.
  * 브랜치가 없거나 정리 실패 시 조용히 스킵.
  */
 async function deleteLocalBranchIfExists(branchName: string): Promise<void> {
   try {
-    await git(['checkout', 'main'])
-    await git(['pull', '--rebase', 'origin', 'main'])
-
     const localBranches = await git(['branch'])
     const branchExists = localBranches
       .split('\n')
@@ -538,7 +546,21 @@ export async function processMerge(mapping: PrThreadMapping): Promise<void> {
     return
   }
 
-  // 3.5. Post-merge 인프라 반영 (DB 마이그레이션 실패 시 머지 흐름 중단)
+  // 3.5. 로컬 main을 최신으로 동기화 (runPostMergeInfra가 신 스키마 기준으로 실행되도록)
+  try {
+    await checkoutAndPullMain()
+    logger.info(TAG, `PR #${prNumber} 머지 후 로컬 main 동기화 완료`)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `PR #${prNumber} 로컬 main 동기화 실패: ${reason}`)
+    await sendThreadMessage(
+      threadId,
+      `❌ 머지 완료, 로컬 main 동기화 실패: ${reason.slice(0, 300)}\n수동 확인이 필요합니다.`,
+    )
+    return
+  }
+
+  // 3.6. Post-merge 인프라 반영 (DB 마이그레이션 실패 시 머지 흐름 중단)
   try {
     await runPostMergeInfra(prNumber, threadId)
   } catch (err) {
@@ -551,7 +573,7 @@ export async function processMerge(mapping: PrThreadMapping): Promise<void> {
     return
   }
 
-  // 4. 로컬 브랜치 정리
+  // 4. 로컬 브랜치 정리 (main checkout/pull은 이미 완료)
   await deleteLocalBranchIfExists(branchName)
 
   // 5. 스레드에 완료 알림

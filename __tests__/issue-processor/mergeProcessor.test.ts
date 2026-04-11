@@ -24,6 +24,12 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
+// node:fs/promises 모킹 — reloadPlist가 plist 파일을 읽고 쓸 때 실제 파일시스템에 의존하지 않도록
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn().mockResolvedValue('<?xml version="1.0"?><plist><dict><key>Label</key><string>__PROJECT_DIR__</string></dict></plist>'),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}))
+
 import { execFile } from 'node:child_process'
 import { sendThreadMessage } from '@/issue-processor/discordClient'
 import { processMerge } from '@/issue-processor/mergeProcessor'
@@ -69,7 +75,10 @@ function mockExecFileError(err: Error): void {
 
 /**
  * processMerge가 내부적으로 실행하는 gh/git 명령들을 순서대로 mock.
- * processMerge 흐름: fetchPrState → resolveReviewComments (fetchReviewComments + hasChangesRequested) → merge → runPostMergeInfra (fetchMergedFiles) → deleteLocalBranchIfExists
+ * processMerge 흐름:
+ *   fetchPrState → resolveReviewComments (fetchReviewComments + hasChangesRequested)
+ *   → merge → checkoutAndPullMain → runPostMergeInfra (fetchMergedFiles)
+ *   → deleteLocalBranchIfExists
  */
 function setupBasicMergeFlow(mergedFiles: Array<{ path: string }>): void {
   // 1. fetchPrState — gh pr view --json state
@@ -84,18 +93,19 @@ function setupBasicMergeFlow(mergedFiles: Array<{ path: string }>): void {
   // 4. gh pr merge (squash)
   mockExecFileCall('')
 
-  // 5. fetchMergedFiles — gh pr view --json files
+  // 5. checkoutAndPullMain — git checkout main
+  mockExecFileCall('')
+  // 6. checkoutAndPullMain — git pull --rebase origin main
+  mockExecFileCall('')
+
+  // 7. fetchMergedFiles — gh pr view --json files
   mockExecFileCall(JSON.stringify({ files: mergedFiles }))
 }
 
 function setupBasicMergeFlowWithCleanup(mergedFiles: Array<{ path: string }>): void {
   setupBasicMergeFlow(mergedFiles)
 
-  // 6. git checkout main
-  mockExecFileCall('')
-  // 7. git pull --rebase
-  mockExecFileCall('')
-  // 8. git branch (로컬 브랜치 목록)
+  // 8. deleteLocalBranchIfExists — git branch (로컬 브랜치 목록)
   mockExecFileCall('  main\n')
 }
 
@@ -131,11 +141,12 @@ describe('fetchMergedFiles (processMerge 내부 — gh pr view --json files)', (
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
     mockExecFileCall('')
+    // checkoutAndPullMain — git checkout main + git pull
+    mockExecFileCall('')
+    mockExecFileCall('')
     // fetchMergedFiles — 실패
     mockExecFileError(new Error('gh command failed'))
-    // deleteLocalBranchIfExists
-    mockExecFileCall('')
-    mockExecFileCall('')
+    // deleteLocalBranchIfExists — git branch
     mockExecFileCall('  main\n')
 
     await processMerge(sampleMapping)
@@ -182,7 +193,8 @@ describe('runPostMergeInfra (processMerge 내부)', () => {
     setupBasicMergeFlowWithCleanup([
       { path: 'scripts/launchd/market-analyst.plist' },
     ])
-    // reloadLaunchd — bash setup-launchd.sh
+    // reloadPlist: launchctl unload + launchctl load
+    mockExecFileCall('')
     mockExecFileCall('')
 
     await processMerge(sampleMapping)
@@ -197,9 +209,10 @@ describe('runPostMergeInfra (processMerge 내부)', () => {
       { path: 'src/db/schema/analyst.ts' },
       { path: 'scripts/launchd/market-analyst.plist' },
     ])
-    // applyDbMigration
+    // applyDbMigration — yarn db:push
     mockExecFileCall('')
-    // reloadLaunchd
+    // reloadPlist: launchctl unload + launchctl load
+    mockExecFileCall('')
     mockExecFileCall('')
 
     await processMerge(sampleMapping)
@@ -254,6 +267,9 @@ describe('applyDbMigration (processMerge 내부)', () => {
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
     mockExecFileCall('')
+    // checkoutAndPullMain — git checkout main + git pull
+    mockExecFileCall('')
+    mockExecFileCall('')
     // fetchMergedFiles
     mockExecFileCall(JSON.stringify({ files: [{ path: 'src/db/schema/analyst.ts' }] }))
     // applyDbMigration — yarn db:push --force 실패
@@ -277,6 +293,9 @@ describe('applyDbMigration (processMerge 내부)', () => {
     // hasChangesRequested
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
+    mockExecFileCall('')
+    // checkoutAndPullMain — git checkout main + git pull
+    mockExecFileCall('')
     mockExecFileCall('')
     // fetchMergedFiles
     mockExecFileCall(JSON.stringify({ files: [{ path: 'src/db/schema/analyst.ts' }] }))
@@ -306,13 +325,16 @@ describe('reloadLaunchd (processMerge 내부)', () => {
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
     mockExecFileCall('')
+    // checkoutAndPullMain — git checkout main + git pull
+    mockExecFileCall('')
+    mockExecFileCall('')
     // fetchMergedFiles
     mockExecFileCall(JSON.stringify({ files: [{ path: 'scripts/launchd/market-analyst.plist' }] }))
-    // reloadLaunchd — setup-launchd.sh 실패
-    mockExecFileError(new Error('setup-launchd.sh: permission denied'))
-    // deleteLocalBranchIfExists — git checkout main, pull, branch
+    // reloadPlist — launchctl unload (성공)
     mockExecFileCall('')
-    mockExecFileCall('')
+    // reloadPlist — launchctl load (실패)
+    mockExecFileError(new Error('launchctl: permission denied'))
+    // deleteLocalBranchIfExists — git branch
     mockExecFileCall('  main\n')
 
     // processMerge가 예외 없이 완료돼야 함
@@ -322,5 +344,85 @@ describe('reloadLaunchd (processMerge 내부)', () => {
     expect(messages.some(msg => msg.includes('❌ launchd 재로드 실패'))).toBe(true)
     // 완료 알림도 정상 발송돼야 함
     expect(messages.some(msg => msg.includes('머지되었습니다'))).toBe(true)
+  })
+})
+
+describe('checkoutAndPullMain 실행 순서 (processMerge 내부)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetAllMocks()
+  })
+
+  it('checkoutAndPullMain이 runPostMergeInfra보다 먼저 실행된다', async () => {
+    const callOrder: string[] = []
+
+    // execFile 호출을 가로채서 실행 순서를 기록
+    const calls = [
+      // 1. fetchPrState
+      { stdout: JSON.stringify({ state: 'OPEN' }), label: 'fetchPrState' },
+      // 2. fetchReviewComments
+      { stdout: '', label: 'fetchReviewComments' },
+      // 3. hasChangesRequested
+      { stdout: JSON.stringify({ reviews: [] }), label: 'hasChangesRequested' },
+      // 4. gh pr merge
+      { stdout: '', label: 'merge' },
+      // 5. checkoutAndPullMain — git checkout main
+      { stdout: '', label: 'git-checkout-main' },
+      // 6. checkoutAndPullMain — git pull
+      { stdout: '', label: 'git-pull' },
+      // 7. fetchMergedFiles (DB 스키마 포함)
+      { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/analyst.ts' }] }), label: 'fetchMergedFiles' },
+      // 8. applyDbMigration — yarn db:push
+      { stdout: '', label: 'db-push' },
+      // 9. deleteLocalBranchIfExists — git branch
+      { stdout: '  main\n', label: 'git-branch-list' },
+    ]
+
+    for (const { stdout, label } of calls) {
+      mockExecFile.mockImplementationOnce(
+        (_cmd: unknown, _args: unknown, _opts: unknown, callback: unknown) => {
+          callOrder.push(label)
+          const cb = callback as (error: Error | null, stdout: string, stderr: string) => void
+          process.nextTick(() => cb(null, stdout, ''))
+          return { stdin: { end: vi.fn() } } as never
+        },
+      )
+    }
+
+    await processMerge(sampleMapping)
+
+    // git checkout/pull이 fetchMergedFiles(인프라 판단)보다 먼저 실행되어야 함
+    const checkoutIdx = callOrder.indexOf('git-checkout-main')
+    const pullIdx = callOrder.indexOf('git-pull')
+    const fetchFilesIdx = callOrder.indexOf('fetchMergedFiles')
+    const dbPushIdx = callOrder.indexOf('db-push')
+
+    expect(checkoutIdx).toBeLessThan(fetchFilesIdx)
+    expect(pullIdx).toBeLessThan(fetchFilesIdx)
+    expect(pullIdx).toBeLessThan(dbPushIdx)
+  })
+
+  it('checkoutAndPullMain 실패 시 runPostMergeInfra가 실행되지 않는다', async () => {
+    // fetchPrState
+    mockExecFileCall(JSON.stringify({ state: 'OPEN' }))
+    // fetchReviewComments
+    mockExecFileCall('')
+    // hasChangesRequested
+    mockExecFileCall(JSON.stringify({ reviews: [] }))
+    // gh pr merge
+    mockExecFileCall('')
+    // checkoutAndPullMain — git checkout main 실패
+    mockExecFileError(new Error('fatal: cannot checkout main'))
+    // processMerge는 checkout 실패 시 return하므로 이후 mock 불필요
+
+    await expect(processMerge(sampleMapping)).resolves.toBeUndefined()
+
+    const messages = mockSendThreadMessage.mock.calls.map(c => c[1])
+    // 동기화 실패 알림이 있어야 함
+    expect(messages.some(msg => msg.includes('로컬 main 동기화 실패'))).toBe(true)
+    // DB 마이그레이션이 실행되지 않아야 함
+    expect(messages.some(msg => msg.includes('drizzle-kit'))).toBe(false)
+    // 머지 완료 알림도 없어야 함
+    expect(messages.some(msg => msg.includes('머지되었습니다'))).toBe(false)
   })
 })
