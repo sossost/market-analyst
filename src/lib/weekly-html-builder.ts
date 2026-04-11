@@ -1319,9 +1319,12 @@ function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
       const aiTag = c.source === "llm"
         ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);vertical-align:middle;">AI</span>`
         : "";
+      const certTag = c.certified === true
+        ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#ddf6dd;color:#1a7f37;vertical-align:middle;">인증</span>`
+        : "";
       return `
         <tr>
-          <td><strong>${escapeHtml(c.symbol)}</strong>${aiTag}</td>
+          <td><strong>${escapeHtml(c.symbol)}</strong>${aiTag}${certTag}</td>
           <td class="tc"><span class="phase-badge ${escapeHtml(phaseCls)}">${phaseStr}</span></td>
           <td class="tc">${rsStr}</td>
           <td class="tc">${sepaStr}</td>

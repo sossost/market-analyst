@@ -40,6 +40,14 @@ export interface ThesisAlignedCandidate {
   gateTotalCount: number;
   /** "llm" = LLM이 직접 지목, "sector" = 업종 자동 탐색 */
   source: "llm" | "sector";
+  /** LLM 인증 여부 (인증 단계 미실행 시 undefined) */
+  certified?: boolean;
+  /**
+   * LLM이 생성한 인증/미인증 사유 (디버깅용).
+   * UNTRUSTED — 서드파티 데이터(company description)에 영향받은 LLM 출력.
+   * HTML 렌더링 시 반드시 escapeHtml() 처리 필요.
+   */
+  certificationReason?: string;
 }
 
 export interface ThesisAlignedChainGroup {
@@ -61,7 +69,7 @@ export interface ThesisAlignedData {
 // ─── 상수 ──────────────────────────────────────────────────────────────────────
 
 const ACTIVE_STATUSES: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
-const PHASE_2 = 2;
+export const PHASE_2 = 2;
 const RS_THRESHOLD = 60;
 const SEPA_TOP_GRADES = ["S", "A"];
 /** 업종 자동 탐색 후보 상한 (체인당) — LLM 지목은 제한 없음 */
@@ -162,7 +170,7 @@ export async function buildThesisAlignedCandidates(
   const sectorList = Array.from(allSectors);
 
   // 업종에서 Phase 2 + RS >= 60 종목 조회
-  let sectorDiscovered = new Map<string, { symbol: string; industry: string }>();
+  const sectorDiscovered = new Map<string, { symbol: string; industry: string }>();
   if (sectorList.length > 0) {
     const sectorRows = await db
       .select({
