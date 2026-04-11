@@ -24,6 +24,8 @@ interface Round3Input {
   earlyDetectionContext?: string;
   /** 촉매 데이터 (종목 뉴스, 실적 서프라이즈, 임박 실적 발표) */
   catalystContext?: string;
+  /** 서사 체인 + 국면 컨텍스트 (#735) */
+  narrativeChainContext?: string;
 }
 
 interface Round3Result {
@@ -120,6 +122,7 @@ export function buildSynthesisPrompt(
   earlyDetectionContext?: string,
   catalystContext?: string,
   regimeContext?: string,
+  narrativeChainContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -177,6 +180,15 @@ export function buildSynthesisPrompt(
       ].join("\n")
     : "";
 
+  const narrativeChainSection = narrativeChainContext != null && narrativeChainContext.length > 0
+    ? [
+        "\n---\n",
+        "<narrative-chains>",
+        narrativeChainContext,
+        "</narrative-chains>",
+      ].join("\n")
+    : "";
+
   const performanceSection = agentPerformanceContext != null && agentPerformanceContext.length > 0
     ? `\n---\n\n${agentPerformanceContext}\n`
     : "";
@@ -189,6 +201,7 @@ ${dataSection}
 ${fundamentalSection}
 ${earlyDetectionSection}
 ${catalystSection}
+${narrativeChainSection}
 ${performanceSection}
 ---
 
@@ -935,14 +948,14 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext } = input;
+  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, narrativeChainContext } = input;
 
   // 이전 확정 레짐을 조회하여 프롬프트에 주입 — LLM이 맥락 없이 판정하는 것을 방지
   const confirmedRegime = await loadConfirmedRegime();
   const today = new Date().toISOString().slice(0, 10);
   const regimeContext = formatRegimeContext(confirmedRegime, today);
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, regimeContext);
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, regimeContext, narrativeChainContext);
   const result = await provider.call({
     systemPrompt: moderator.systemPrompt,
     userMessage,

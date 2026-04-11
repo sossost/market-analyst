@@ -28,6 +28,8 @@ interface DebateConfig {
   earlyDetectionContext?: string;
   /** 촉매 데이터 (종목 뉴스, 실적 서프라이즈 비트율, 임박 실적 발표) */
   catalystContext?: string;
+  /** 서사 체인 + 국면 컨텍스트 (#735) */
+  narrativeChainContext?: string;
 }
 
 /**
@@ -52,6 +54,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     agentPerformanceContext,
     earlyDetectionContext,
     catalystContext,
+    narrativeChainContext,
   } = config;
   const startTime = Date.now();
 
@@ -131,6 +134,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     agentPerformanceContext,
     earlyDetectionContext,
     catalystContext,
+    narrativeChainContext,
   });
 
   const totalDurationMs = Date.now() - startTime;

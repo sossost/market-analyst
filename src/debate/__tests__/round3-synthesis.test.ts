@@ -254,6 +254,29 @@ describe("buildSynthesisPrompt", () => {
     expect(classificationIdx).toBeGreaterThan(-1);
     expect(regimeCtxIdx).toBeLessThan(classificationIdx);
   });
+
+  it("narrativeChainContext가 주어지면 narrative-chains XML 래핑과 함께 프롬프트에 포함된다", () => {
+    const chainCtx = "## 현재 추적 중인 서사 체인\n| GPU 공급 부족 | AI 인프라 |";
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, undefined, chainCtx);
+
+    expect(result).toContain("<narrative-chains>");
+    expect(result).toContain("</narrative-chains>");
+    expect(result).toContain("현재 추적 중인 서사 체인");
+    expect(result).toContain("GPU 공급 부족");
+  });
+
+  it("narrativeChainContext가 undefined이면 서사 체인 섹션이 포함되지 않는다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question);
+
+    expect(result).not.toContain("<narrative-chains>");
+    expect(result).not.toContain("</narrative-chains>");
+  });
+
+  it("narrativeChainContext가 빈 문자열이면 서사 체인 섹션이 포함되지 않는다", () => {
+    const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, undefined, "");
+
+    expect(result).not.toContain("<narrative-chains>");
+  });
 });
 
 // ─── formatRegimeContext ─────────────────────────────────────────────────────

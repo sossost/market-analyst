@@ -675,6 +675,28 @@ async function main() {
     process.exit(1);
   }
 
+  // 4.7. 서사 체인 + 국면 컨텍스트 로드 (#735)
+  let narrativeChainContext = "";
+  try {
+    const { formatChainsForDailyPrompt } = await import("@/lib/narrativeChainStats");
+    const { formatMetaRegimesForPrompt } = await import("@/debate/metaRegimeService");
+    const [chainCtx, regimeCtx] = await Promise.all([
+      formatChainsForDailyPrompt(),
+      formatMetaRegimesForPrompt(),
+    ]);
+    narrativeChainContext = [chainCtx, regimeCtx]
+      .filter((s) => s.length > 0)
+      .join("\n\n");
+    if (narrativeChainContext.length > 0) {
+      logger.info("NarrativeChain", "서사 체인 + 국면 컨텍스트 로드 완료");
+    }
+  } catch (err) {
+    logger.warn(
+      "NarrativeChain",
+      `서사 체인 컨텍스트 로드 실패: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   // 5. 토론 실행
   logger.step(`[5/7] Running debate for ${debateDate}...`);
 
@@ -689,6 +711,7 @@ async function main() {
     agentPerformanceContext,
     earlyDetectionContext,
     catalystContext,
+    narrativeChainContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);

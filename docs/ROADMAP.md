@@ -1,6 +1,6 @@
 # Market Analyst — Roadmap
 
-**최종 업데이트:** 2026-04-09
+**최종 업데이트:** 2026-04-11
 
 ---
 
@@ -152,6 +152,18 @@
 | 공급 과잉 전환 | 병목 해소 → 과잉 전환 조기 감지 프롬프트 |
 | narrative_chains | 병목 생애주기 추적 (식별일/해소일/상태/resolution_days) |
 | 병목 통계 | Jaccard 유사도 70% 중복 감지, 활성 체인 요약 → 주간 에이전트 주입 |
+
+### Layer 9+: 국면(Meta-Regime) 계층 + 공급망 자금흐름 순서 (#735)
+서사 체인의 상위 구조인 "국면"을 도입하고, 체인 간 순차 활성화 순서를 모델링.
+
+| 구성 요소 | 설명 |
+|-----------|------|
+| meta_regimes 테이블 | 국면(테마 사이클) 계층 — name, propagation_type(supply_chain/narrative_shift), status, 라이프사이클 타임스탬프 |
+| narrative_chains 확장 | next_beneficiary_sectors/tickers 컬럼 추가(#608-followup 해결), meta_regime_id FK, sequence_order, sequence_confidence, activated_at, peak_at |
+| supplyChain 프롬프트 주입 | 일간/주간 프롬프트에 공급망 경로 컬럼 추가 — 에이전트가 체인의 상류→하류 경로를 인지 |
+| N+1 수혜 섹터/종목 표시 | 주간 프롬프트에 N+1 수혜 섹터/종목 컬럼 추가 — 선행 포착 후보 제공 |
+| 서사 체인 컨텍스트 주입 | Round 3 합성에 ACTIVE 체인 목록 + 국면 컨텍스트를 `<narrative-chains>` 블록으로 주입 |
+| metaRegimeService | 국면 CRUD + 프롬프트 포맷팅 서비스 |
 
 ### Layer 10: 섹터 시차 패턴 — Done
 섹터/산업 간 Phase 전이의 선후행 관계를 통계적으로 축적하는 정량 인프라. (PR #102)

@@ -124,12 +124,15 @@ describe("narrativeChainStats", () => {
           id: 1,
           megatrend: "AI 인프라",
           bottleneck: "GPU 공급 부족",
+          supplyChain: "GPU → HBM → 광트랜시버",
           bottleneckIdentifiedAt: identifiedAt,
           status: "ACTIVE",
           nextBottleneck: "전력 인프라",
           linkedThesisIds: [10, 20, 30],
           beneficiarySectors: ["Power Infrastructure"],
           beneficiaryTickers: ["VRT", "ETN"],
+          nextBeneficiarySectors: ["Utilities"],
+          nextBeneficiaryTickers: ["AES", "NEE"],
         },
       ]);
 
@@ -138,6 +141,7 @@ describe("narrativeChainStats", () => {
       expect(summary).toHaveLength(1);
       expect(summary[0].megatrend).toBe("AI 인프라");
       expect(summary[0].bottleneck).toBe("GPU 공급 부족");
+      expect(summary[0].supplyChain).toBe("GPU → HBM → 광트랜시버");
       expect(summary[0].identifiedAt).toEqual(identifiedAt);
       expect(summary[0].daysSinceIdentified).toBeGreaterThan(0);
       expect(summary[0].status).toBe("ACTIVE");
@@ -145,6 +149,8 @@ describe("narrativeChainStats", () => {
       expect(summary[0].linkedThesisCount).toBe(3);
       expect(summary[0].beneficiarySectors).toEqual(["Power Infrastructure"]);
       expect(summary[0].beneficiaryTickers).toEqual(["VRT", "ETN"]);
+      expect(summary[0].nextBeneficiarySectors).toEqual(["Utilities"]);
+      expect(summary[0].nextBeneficiaryTickers).toEqual(["AES", "NEE"]);
     });
 
     it("returns empty array when no active chains", async () => {
@@ -160,12 +166,15 @@ describe("narrativeChainStats", () => {
           id: 1,
           megatrend: "AI",
           bottleneck: "test",
+          supplyChain: "",
           bottleneckIdentifiedAt: new Date(),
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: null,
           beneficiarySectors: null,
           beneficiaryTickers: null,
+          nextBeneficiarySectors: null,
+          nextBeneficiaryTickers: null,
         },
       ]);
 
@@ -173,6 +182,8 @@ describe("narrativeChainStats", () => {
       expect(summary[0].linkedThesisCount).toBe(0);
       expect(summary[0].beneficiarySectors).toEqual([]);
       expect(summary[0].beneficiaryTickers).toEqual([]);
+      expect(summary[0].nextBeneficiarySectors).toEqual([]);
+      expect(summary[0].nextBeneficiaryTickers).toEqual([]);
     });
   });
 
@@ -184,7 +195,7 @@ describe("narrativeChainStats", () => {
       expect(result).toBe("");
     });
 
-    it("formats single ACTIVE chain into concise table", async () => {
+    it("formats single ACTIVE chain into concise table with supplyChain", async () => {
       const identifiedAt = new Date("2026-01-20");
 
       mockWhere.mockResolvedValueOnce([
@@ -192,18 +203,23 @@ describe("narrativeChainStats", () => {
           id: 1,
           megatrend: "AI인프라",
           bottleneck: "HBM 공급 부족",
+          supplyChain: "GPU → HBM → 패키징",
           bottleneckIdentifiedAt: identifiedAt,
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [10],
           beneficiarySectors: null,
           beneficiaryTickers: null,
+          nextBeneficiarySectors: null,
+          nextBeneficiaryTickers: null,
         },
       ]);
 
       const result = await formatChainsForDailyPrompt();
 
       expect(result).toContain("## 현재 추적 중인 서사 체인 (종목 태그 참조용)");
+      expect(result).toContain("공급망 경로");
+      expect(result).toContain("GPU → HBM → 패키징");
       expect(result).toContain("HBM 공급 부족");
       expect(result).toContain("AI인프라");
       expect(result).toContain("ACTIVE");
@@ -216,23 +232,29 @@ describe("narrativeChainStats", () => {
           id: 1,
           megatrend: "AI인프라",
           bottleneck: "HBM 공급 부족",
+          supplyChain: "",
           bottleneckIdentifiedAt: new Date("2026-01-20"),
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [10],
           beneficiarySectors: null,
           beneficiaryTickers: null,
+          nextBeneficiarySectors: null,
+          nextBeneficiaryTickers: null,
         },
         {
           id: 2,
           megatrend: "AI인프라",
           bottleneck: "광트랜시버 부족",
+          supplyChain: "광트랜시버 공급망",
           bottleneckIdentifiedAt: new Date("2026-02-01"),
           status: "RESOLVING",
           nextBottleneck: null,
           linkedThesisIds: [20, 30],
           beneficiarySectors: null,
           beneficiaryTickers: null,
+          nextBeneficiarySectors: null,
+          nextBeneficiaryTickers: null,
         },
       ]);
 
@@ -251,12 +273,15 @@ describe("narrativeChainStats", () => {
           id: 1,
           megatrend: "AI인프라",
           bottleneck: "HBM 공급 부족",
+          supplyChain: "",
           bottleneckIdentifiedAt: new Date("2026-01-20"),
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [],
           beneficiarySectors: null,
           beneficiaryTickers: null,
+          nextBeneficiarySectors: null,
+          nextBeneficiaryTickers: null,
         },
       ]);
 
@@ -276,15 +301,8 @@ describe("narrativeChainStats", () => {
       expect(result).toBe("");
     });
 
-    it("formats active chains into markdown table", async () => {
+    it("formats active chains into markdown table with supplyChain and nextBeneficiary", async () => {
       const identifiedAt = new Date("2026-01-15");
-
-      // formatChainsSummaryForPrompt calls:
-      // 1. getActiveChainsSummary() → select().from().where() → mockFrom(1st), mockWhere(1st)
-      // 2. getChainStats() → select().from() → mockFrom(2nd) returns data directly
-
-      // 1st mockFrom: for getActiveChainsSummary — returns object with .where()
-      // (default behavior when mockFrom returns undefined)
 
       // mockWhere for getActiveChainsSummary
       mockWhere.mockResolvedValueOnce([
@@ -292,12 +310,15 @@ describe("narrativeChainStats", () => {
           id: 1,
           megatrend: "AI 인프라",
           bottleneck: "광트랜시버 공급 부족",
+          supplyChain: "GPU → HBM → 광트랜시버 → 전력",
           bottleneckIdentifiedAt: identifiedAt,
           status: "ACTIVE",
           nextBottleneck: "전력 인프라 부족",
           linkedThesisIds: [1, 2],
           beneficiarySectors: ["Power Infrastructure"],
           beneficiaryTickers: ["VRT", "ETN"],
+          nextBeneficiarySectors: ["Utilities"],
+          nextBeneficiaryTickers: ["AES", "NEE"],
         },
       ]);
 
@@ -311,6 +332,8 @@ describe("narrativeChainStats", () => {
       const result = await formatChainsSummaryForPrompt();
 
       expect(result).toContain("## 현재 추적 중인 병목 체인");
+      expect(result).toContain("공급망 경로");
+      expect(result).toContain("GPU → HBM → 광트랜시버 → 전력");
       expect(result).toContain("광트랜시버 공급 부족");
       expect(result).toContain("AI 인프라");
       expect(result).toContain("2026-01-15");
@@ -319,7 +342,10 @@ describe("narrativeChainStats", () => {
       expect(result).toContain("전력 인프라 부족");
       expect(result).toContain("Power Infrastructure");
       expect(result).toContain("VRT, ETN");
-      expect(result).toContain("서사적 워치리스트");
+      expect(result).toContain("N+1 수혜 섹터");
+      expect(result).toContain("Utilities");
+      expect(result).toContain("AES, NEE");
+      expect(result).toContain("선행 포착 후보");
     });
 
     it("shows average resolution days when 3+ resolved chains", async () => {
@@ -331,12 +357,15 @@ describe("narrativeChainStats", () => {
           id: 4,
           megatrend: "AI 인프라",
           bottleneck: "전력 부족",
+          supplyChain: "",
           bottleneckIdentifiedAt: identifiedAt,
           status: "ACTIVE",
           nextBottleneck: null,
           linkedThesisIds: [1],
           beneficiarySectors: null,
           beneficiaryTickers: null,
+          nextBeneficiarySectors: null,
+          nextBeneficiaryTickers: null,
         },
       ]);
 
