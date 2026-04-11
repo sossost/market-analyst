@@ -359,6 +359,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **서사 수혜 LLM 인증** — thesis-aligned 후보를 LLM으로 관련성 심사, 인증 종목만 리포트 표시 (2단계 퍼널: 업종 수집 → LLM 인증) (#699)
 - [x] **섹터 집중도 상한** — 동일 섹터 추천 최대 50% 비중 제한, 게이트 통과 후 RS 순위 기반 섹터별 soft cap 적용 (#732)
 - [x] **국면(Meta-Regime) 계층 + 공급망 자금흐름 순서** — meta_regimes 테이블 + 체인 간 순차 활성화 모델링 + supplyChain/nextBeneficiary 프롬프트 주입 (#735)
+- [x] **메타 레짐 자동 관리** — 토론 에이전트에 국면 상태 자동 동기화(ACTIVE/PEAKED/RESOLVED) + megatrend 키워드 그루핑 기반 신규 국면 자동 생성/체인 연결 (#743)
 
 ### Next (진행 예정)
 
