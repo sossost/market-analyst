@@ -205,6 +205,8 @@ async function main() {
   // is_status_quo = false → 진짜 예측 — 포함
   const statusQuoCount = confirmedTheses.filter((t) => t.isStatusQuo === true).length;
   const confirmedForLearning = confirmedTheses.filter((t) => t.isStatusQuo !== true);
+  const invalidatedForLearning = invalidatedTheses.filter((t) => t.isStatusQuo !== true);
+  const expiredForLearning = expiredTheses.filter((t) => t.isStatusQuo !== true);
 
   // 데이터 품질 경고: 오늘자 confirmed thesis에 is_status_quo=null이면 snapshot 미전달 가능성
   const currentRunNulls = confirmedTheses.filter(
@@ -214,10 +216,10 @@ async function main() {
     logger.warn(TAG, `${currentRunNulls}건의 오늘자 confirmed thesis가 is_status_quo=null — snapshot 미전달 가능성`);
   }
 
-  logger.info(TAG, `Confirmed: ${confirmedTheses.length} (status_quo: ${statusQuoCount}, 학습 대상: ${confirmedForLearning.length}), Invalidated: ${invalidatedTheses.length}, Expired: ${expiredTheses.length}`);
+  logger.info(TAG, `Confirmed: ${confirmedTheses.length} (status_quo: ${statusQuoCount}, 학습 대상: ${confirmedForLearning.length}), Invalidated: ${invalidatedTheses.length} (학습 대상: ${invalidatedForLearning.length}), Expired: ${expiredTheses.length} (학습 대상: ${expiredForLearning.length})`);
 
   // 4. 기존 learnings의 hitCount/missCount 업데이트
-  const allNegativeTheses = [...invalidatedTheses, ...expiredTheses];
+  const allNegativeTheses = [...invalidatedForLearning, ...expiredForLearning];
   const updatedCount = await updateLearningStats(
     remainingLearnings,
     confirmedForLearning,
@@ -228,8 +230,8 @@ async function main() {
   // 4b. 새 thesis를 기존 학습에 흡수 (#427)
   // 기존 학습의 persona+metric 패턴과 일치하는 새 thesis를 sourceThesisIds에 추가.
   // 이를 통해 기존 학습의 hitCount가 자연 성장하여 성숙도 게이트를 통과할 수 있다.
-  // status_quo 제외된 confirmedForLearning 사용
-  const allJudgedTheses = [...confirmedForLearning, ...invalidatedTheses, ...expiredTheses];
+  // status_quo 제외된 confirmedForLearning/invalidatedForLearning/expiredForLearning 사용
+  const allJudgedTheses = [...confirmedForLearning, ...invalidatedForLearning, ...expiredForLearning];
   const absorbedCount = await absorbNewTheses(
     remainingLearnings,
     allJudgedTheses,
@@ -269,7 +271,7 @@ async function main() {
   // 학습 0~4건 상태에서 EXPIRED를 부정으로 계산하면 hitRate가 희석되어
   // bootstrap이 영구적으로 불가능해진다. (#360)
   const isEarlyPhase = activeCountAfterDemotion < COLD_START_THRESHOLD;
-  const negativesForPromotion = isEarlyPhase ? invalidatedTheses : allNegativeTheses;
+  const negativesForPromotion = isEarlyPhase ? invalidatedForLearning : allNegativeTheses;
 
   if (isEarlyPhase && expiredTheses.length > 0) {
     logger.info(TAG, `Early phase (${activeCountAfterDemotion} learnings): EXPIRED ${expiredTheses.length}건을 부정 신호에서 제외`);
