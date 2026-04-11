@@ -1015,8 +1015,9 @@ describe("containsMeanReversionPattern", () => {
     expect(containsMeanReversionPattern("정상화 진입 단계")).toBe(true);
   });
 
-  it("심리 상태 전환 예측(→)을 감지한다", () => {
+  it("심리 상태 전환 예측(→/->)을 감지한다", () => {
     expect(containsMeanReversionPattern("공포 → 중립 전환")).toBe(true);
+    expect(containsMeanReversionPattern("공포 -> 중립 전환")).toBe(true);
     expect(containsMeanReversionPattern("risk-off → risk-on 전환")).toBe(true);
     expect(containsMeanReversionPattern("과매도 → 정상 복귀")).toBe(true);
   });
