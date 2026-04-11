@@ -1179,3 +1179,57 @@ describe("buildDailyHtml", () => {
     expect(breadthSectionContent).toContain("시장 환경");
   });
 });
+
+// ─── renderFearGreedCard (via renderIndexTable) ────────────────────────────
+
+describe("renderFearGreedCard", () => {
+  const mockIndex = createMockDailyIndexReturn();
+
+  it("previousClose와 previous1Week가 모두 있을 때 전일·1주전 변화량을 표시한다", () => {
+    const fg = createMockFearGreed({ score: 37.7, previousClose: 23.7, previous1Week: 23.7 });
+    const html = renderIndexTable([mockIndex], fg);
+    expect(html).toContain("전일 23.7");
+    expect(html).toContain("+14.0");
+    expect(html).toContain("1주전 23.7");
+  });
+
+  it("previousClose가 null이면 공포탐욕 카드에 전일 서브텍스트를 표시하지 않는다", () => {
+    const fg = createMockFearGreed({ score: 37.7, previousClose: null, previous1Week: 23.7 });
+    const html = renderIndexTable([mockIndex], fg);
+    // 공포탐욕 카드 부분만 추출 (일반 인덱스 카드의 '전일 대비' 텍스트와 분리)
+    const fearGreedCardMatch = html.match(/<div class="label">공포탐욕<\/div>([\s\S]*?)<\/div>\s*<\/div>/);
+    const fearGreedSection = fearGreedCardMatch?.[0] ?? "";
+    expect(fearGreedSection).not.toContain("전일 ");
+    expect(fearGreedSection).toContain("1주전 23.7");
+  });
+
+  it("previous1Week가 null이면 1주전 서브텍스트를 표시하지 않는다", () => {
+    const fg = createMockFearGreed({ score: 37.7, previousClose: 23.7, previous1Week: null });
+    const html = renderIndexTable([mockIndex], fg);
+    const fearGreedCardMatch = html.match(/<div class="label">공포탐욕<\/div>([\s\S]*?)<\/div>\s*<\/div>/);
+    const fearGreedSection = fearGreedCardMatch?.[0] ?? "";
+    expect(fearGreedSection).toContain("전일 23.7");
+    expect(fearGreedSection).not.toContain("1주전");
+  });
+
+  it("previousClose와 previous1Week가 모두 null이면 서브텍스트 div 자체가 없다", () => {
+    const fg = createMockFearGreed({ score: 37.7, previousClose: null, previous1Week: null });
+    const html = renderIndexTable([mockIndex], fg);
+    const fearGreedCardMatch = html.match(/<div class="label">공포탐욕<\/div>([\s\S]*?)<\/div>\s*<\/div>/);
+    const fearGreedSection = fearGreedCardMatch?.[0] ?? "";
+    expect(fearGreedSection).not.toContain("전일 ");
+    expect(fearGreedSection).not.toContain("1주전");
+  });
+
+  it("score가 previousClose보다 낮을 때 음수 부호가 붙는다", () => {
+    const fg = createMockFearGreed({ score: 20.0, previousClose: 35.0, previous1Week: null });
+    const html = renderIndexTable([mockIndex], fg);
+    expect(html).toContain("전일 35.0");
+    expect(html).toContain("(-15.0)");
+  });
+
+  it("fearGreed가 null이면 공포탐욕 카드를 렌더링하지 않는다", () => {
+    const html = renderIndexTable([mockIndex], null);
+    expect(html).not.toContain("공포탐욕");
+  });
+});

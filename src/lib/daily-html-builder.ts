@@ -725,9 +725,19 @@ function renderFearGreedCard(fg: FearGreedData): string {
     fg.previous1Week != null
       ? escapeHtml(getFearGreedDirectionLabel(fg.score, fg.previous1Week))
       : "";
+  function buildChangeSub(label: string, prev: number, current: number): string {
+    const diff = current - prev;
+    const sign = diff >= 0 ? "+" : "";
+    return `${label} ${escapeHtml(prev.toFixed(1))} (${sign}${escapeHtml(diff.toFixed(1))})`;
+  }
+
+  const prevCloseSub =
+    fg.previousClose != null
+      ? buildChangeSub("전일", fg.previousClose, fg.score)
+      : "";
   const prev1wSub =
     fg.previous1Week != null
-      ? `1주전 ${escapeHtml(fg.previous1Week.toFixed(1))}`
+      ? buildChangeSub("1주전", fg.previous1Week, fg.score)
       : "";
 
   return `
@@ -735,9 +745,9 @@ function renderFearGreedCard(fg: FearGreedData): string {
       <div class="label">공포탐욕</div>
       <div class="value ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
       <div class="change">${escapeHtml(fg.rating)}</div>
-      ${directionStr !== "" || prev1wSub !== ""
+      ${directionStr !== "" || prevCloseSub !== "" || prev1wSub !== ""
         ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
-            ${[directionStr, prev1wSub].filter(Boolean).join(" · ")}
+            ${[directionStr, prevCloseSub, prev1wSub].filter(Boolean).join(" · ")}
           </div>`
         : ""}
     </div>`;

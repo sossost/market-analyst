@@ -217,9 +217,20 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
     .map((i) => `${i.name}: ${i.close} (${i.changePercent >= 0 ? "+" : ""}${i.changePercent.toFixed(2)}%)`)
     .join("\n");
 
-  const fearGreedLine = data.fearGreed != null
-    ? `Fear & Greed: ${data.fearGreed.score} (${data.fearGreed.rating})`
-    : "";
+  const fearGreedLine = (() => {
+    if (data.fearGreed == null) return "";
+    const { score, rating, previousClose, previous1Week } = data.fearGreed;
+    const parts = [`Fear & Greed: ${score} (${rating})`];
+    if (previousClose != null) {
+      const diff = (score - previousClose).toFixed(1);
+      parts.push(`전일 ${previousClose.toFixed(1)} (${Number(diff) >= 0 ? "+" : ""}${diff})`);
+    }
+    if (previous1Week != null) {
+      const diff = (score - previous1Week).toFixed(1);
+      parts.push(`1주전 ${previous1Week.toFixed(1)} (${Number(diff) >= 0 ? "+" : ""}${diff})`);
+    }
+    return parts.join(" | ");
+  })();
 
   const breadth = data.marketBreadth;
   const ad = breadth.advanceDecline;
