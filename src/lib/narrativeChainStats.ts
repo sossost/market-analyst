@@ -1,6 +1,7 @@
 import { db } from "../db/client.js";
 import { narrativeChains, type NarrativeChainStatus } from "../db/schema/analyst.js";
 import { eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { sanitizeCell } from "./markdown.js";
 
 const MIN_RESOLVED_FOR_STATS = 3;
 
@@ -133,12 +134,6 @@ export async function getActiveChainsSummary(): Promise<ActiveChainSummary[]> {
   }));
 }
 
-/**
- * Sanitize a string for safe inclusion in a markdown table cell.
- */
-function sanitizeCell(value: string): string {
-  return value.replace(/\|/g, "｜").replace(/\n/g, " ").trim();
-}
 
 /**
  * Format active chains for daily agent prompt — concise table for tag reference.

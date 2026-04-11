@@ -7,6 +7,7 @@ import {
 } from "@/db/schema/analyst";
 import { eq, inArray, asc } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { sanitizeCell } from "@/lib/markdown";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -131,14 +132,6 @@ export async function getMetaRegimeWithChains(
 
 // ─── Prompt Formatting ──────────────────────────────────────────────
 
-/**
- * Sanitize a string for safe inclusion in a markdown table cell.
- * Strips newlines and replaces pipe characters to prevent table breakage.
- */
-function sanitizeCell(value: string): string {
-  return value.replace(/\|/g, "｜").replace(/\n/g, " ").trim();
-}
-
 const PROPAGATION_LABEL: Record<MetaRegimePropagationType, string> = {
   supply_chain: "병목 전파 (Bullwhip)",
   narrative_shift: "내러티브 전환",
@@ -151,6 +144,20 @@ const PROPAGATION_LABEL: Record<MetaRegimePropagationType, string> = {
 export async function formatMetaRegimesForPrompt(): Promise<string> {
   const regimes = await getActiveMetaRegimes();
   if (regimes.length === 0) return "";
+
+  const regimeIds = regimes.map((r) => r.id);
+  const allChains = await db
+    .select({
+      metaRegimeId: narrativeChains.metaRegimeId,
+      bottleneck: narrativeChains.bottleneck,
+      supplyChain: narrativeChains.supplyChain,
+      sequenceOrder: narrativeChains.sequenceOrder,
+      sequenceConfidence: narrativeChains.sequenceConfidence,
+      status: narrativeChains.status,
+    })
+    .from(narrativeChains)
+    .where(inArray(narrativeChains.metaRegimeId, regimeIds))
+    .orderBy(asc(narrativeChains.sequenceOrder));
 
   const sections: string[] = [
     "## 현재 활성 국면 (Meta-Regime)\n",
@@ -169,18 +176,7 @@ export async function formatMetaRegimesForPrompt(): Promise<string> {
       sections.push(`- 설명: ${regime.description}`);
     }
 
-    // Fetch chains for this regime
-    const chains = await db
-      .select({
-        bottleneck: narrativeChains.bottleneck,
-        supplyChain: narrativeChains.supplyChain,
-        sequenceOrder: narrativeChains.sequenceOrder,
-        sequenceConfidence: narrativeChains.sequenceConfidence,
-        status: narrativeChains.status,
-      })
-      .from(narrativeChains)
-      .where(eq(narrativeChains.metaRegimeId, regime.id))
-      .orderBy(asc(narrativeChains.sequenceOrder));
+    const chains = allChains.filter((c) => c.metaRegimeId === regime.id);
 
     if (chains.length > 0) {
       sections.push("");

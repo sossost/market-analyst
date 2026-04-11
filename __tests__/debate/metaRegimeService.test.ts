@@ -211,9 +211,10 @@ describe("metaRegimeService", () => {
         },
       ]);
 
-      // chains for regime
+      // batch chains for all regimes
       mockOrderBy.mockResolvedValueOnce([
         {
+          metaRegimeId: 1,
           bottleneck: "GPU 공급 부족",
           supplyChain: "GPU → HBM → 광트랜시버",
           sequenceOrder: 1,
@@ -221,6 +222,7 @@ describe("metaRegimeService", () => {
           status: "RESOLVED",
         },
         {
+          metaRegimeId: 1,
           bottleneck: "HBM 병목",
           supplyChain: "HBM → 패키징",
           sequenceOrder: 2,
