@@ -83,7 +83,7 @@ function openPrNoReviewCheckSequence() {
  *
  * 실행 순서:
  *   fetchPrState → resolveReviewComments → merge
- *   → checkoutAndPullMain (git checkout main + git pull)
+ *   → checkoutAndPullMain (git checkout main + git fetch + git reset --hard)
  *   → fetchMergedFiles
  */
 function openPrNoReviewSequence() {
@@ -93,9 +93,11 @@ function openPrNoReviewSequence() {
     { stdout: '' },
     // 5. checkoutAndPullMain — git checkout main
     { stdout: '' },
-    // 6. checkoutAndPullMain — git pull --rebase origin main
+    // 6. checkoutAndPullMain — git fetch origin main
     { stdout: '' },
-    // 7. gh pr view --json files (fetchMergedFiles — 인프라 반영 대상 없음)
+    // 7. checkoutAndPullMain — git reset --hard origin/main
+    { stdout: '' },
+    // 8. gh pr view --json files (fetchMergedFiles — 인프라 반영 대상 없음)
     { stdout: JSON.stringify({ files: [] }) },
   ]
 }
@@ -149,11 +151,13 @@ describe('processMerge', () => {
       { stdout: '' },
       // 6. checkoutAndPullMain — git checkout main
       { stdout: '' },
-      // 7. checkoutAndPullMain — git pull
+      // 7. checkoutAndPullMain — git fetch origin main
       { stdout: '' },
-      // 8. fetchMergedFiles (인프라 반영 대상 없음)
+      // 8. checkoutAndPullMain — git reset --hard origin/main
+      { stdout: '' },
+      // 9. fetchMergedFiles (인프라 반영 대상 없음)
       { stdout: JSON.stringify({ files: [] }) },
-      // 9. deleteLocalBranchIfExists — git branch
+      // 10. deleteLocalBranchIfExists — git branch
       { stdout: '  main' },
     ])
 
@@ -286,7 +290,9 @@ describe('processMerge', () => {
       { stdout: '' },
       // checkoutAndPullMain — git checkout main
       { stdout: '' },
-      // checkoutAndPullMain — git pull
+      // checkoutAndPullMain — git fetch origin main
+      { stdout: '' },
+      // checkoutAndPullMain — git reset --hard origin/main
       { stdout: '' },
       // gh pr view --json files — DB 스키마 변경 포함
       { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/users.ts' }] }) },
@@ -317,7 +323,9 @@ describe('processMerge', () => {
       { stdout: '' },
       // checkoutAndPullMain — git checkout main
       { stdout: '' },
-      // checkoutAndPullMain — git pull
+      // checkoutAndPullMain — git fetch origin main
+      { stdout: '' },
+      // checkoutAndPullMain — git reset --hard origin/main
       { stdout: '' },
       // gh pr view --json files — DB 스키마 변경 포함
       { stdout: JSON.stringify({ files: [{ path: 'db/migrations/0001.sql' }] }) },
@@ -345,7 +353,9 @@ describe('processMerge', () => {
       { stdout: '' },
       // checkoutAndPullMain — git checkout main
       { stdout: '' },
-      // checkoutAndPullMain — git pull
+      // checkoutAndPullMain — git fetch origin main
+      { stdout: '' },
+      // checkoutAndPullMain — git reset --hard origin/main
       { stdout: '' },
       // gh pr view --json files — DB 스키마 변경 포함
       { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/foo.ts' }] }) },

@@ -95,17 +95,19 @@ function setupBasicMergeFlow(mergedFiles: Array<{ path: string }>): void {
 
   // 5. checkoutAndPullMain — git checkout main
   mockExecFileCall('')
-  // 6. checkoutAndPullMain — git pull --rebase origin main
+  // 6. checkoutAndPullMain — git fetch origin main
+  mockExecFileCall('')
+  // 7. checkoutAndPullMain — git reset --hard origin/main
   mockExecFileCall('')
 
-  // 7. fetchMergedFiles — gh pr view --json files
+  // 8. fetchMergedFiles — gh pr view --json files
   mockExecFileCall(JSON.stringify({ files: mergedFiles }))
 }
 
 function setupBasicMergeFlowWithCleanup(mergedFiles: Array<{ path: string }>): void {
   setupBasicMergeFlow(mergedFiles)
 
-  // 8. deleteLocalBranchIfExists — git branch (로컬 브랜치 목록)
+  // 9. deleteLocalBranchIfExists — git branch (로컬 브랜치 목록)
   mockExecFileCall('  main\n')
 }
 
@@ -141,7 +143,8 @@ describe('fetchMergedFiles (processMerge 내부 — gh pr view --json files)', (
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
     mockExecFileCall('')
-    // checkoutAndPullMain — git checkout main + git pull
+    // checkoutAndPullMain — git checkout main + git fetch + git reset --hard
+    mockExecFileCall('')
     mockExecFileCall('')
     mockExecFileCall('')
     // fetchMergedFiles — 실패
@@ -267,7 +270,8 @@ describe('applyDbMigration (processMerge 내부)', () => {
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
     mockExecFileCall('')
-    // checkoutAndPullMain — git checkout main + git pull
+    // checkoutAndPullMain — git checkout main + git fetch + git reset --hard
+    mockExecFileCall('')
     mockExecFileCall('')
     mockExecFileCall('')
     // fetchMergedFiles
@@ -294,7 +298,8 @@ describe('applyDbMigration (processMerge 내부)', () => {
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
     mockExecFileCall('')
-    // checkoutAndPullMain — git checkout main + git pull
+    // checkoutAndPullMain — git checkout main + git fetch + git reset --hard
+    mockExecFileCall('')
     mockExecFileCall('')
     mockExecFileCall('')
     // fetchMergedFiles
@@ -325,7 +330,8 @@ describe('reloadLaunchd (processMerge 내부)', () => {
     mockExecFileCall(JSON.stringify({ reviews: [] }))
     // gh pr merge
     mockExecFileCall('')
-    // checkoutAndPullMain — git checkout main + git pull
+    // checkoutAndPullMain — git checkout main + git fetch + git reset --hard
+    mockExecFileCall('')
     mockExecFileCall('')
     mockExecFileCall('')
     // fetchMergedFiles
@@ -368,13 +374,15 @@ describe('checkoutAndPullMain 실행 순서 (processMerge 내부)', () => {
       { stdout: '', label: 'merge' },
       // 5. checkoutAndPullMain — git checkout main
       { stdout: '', label: 'git-checkout-main' },
-      // 6. checkoutAndPullMain — git pull
-      { stdout: '', label: 'git-pull' },
-      // 7. fetchMergedFiles (DB 스키마 포함)
+      // 6. checkoutAndPullMain — git fetch origin main
+      { stdout: '', label: 'git-fetch' },
+      // 7. checkoutAndPullMain — git reset --hard origin/main
+      { stdout: '', label: 'git-reset-hard' },
+      // 8. fetchMergedFiles (DB 스키마 포함)
       { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/analyst.ts' }] }), label: 'fetchMergedFiles' },
-      // 8. applyDbMigration — yarn db:push
+      // 9. applyDbMigration — yarn db:push
       { stdout: '', label: 'db-push' },
-      // 9. deleteLocalBranchIfExists — git branch
+      // 10. deleteLocalBranchIfExists — git branch
       { stdout: '  main\n', label: 'git-branch-list' },
     ]
 
@@ -391,15 +399,15 @@ describe('checkoutAndPullMain 실행 순서 (processMerge 내부)', () => {
 
     await processMerge(sampleMapping)
 
-    // git checkout/pull이 fetchMergedFiles(인프라 판단)보다 먼저 실행되어야 함
+    // git checkout/fetch/reset이 fetchMergedFiles(인프라 판단)보다 먼저 실행되어야 함
     const checkoutIdx = callOrder.indexOf('git-checkout-main')
-    const pullIdx = callOrder.indexOf('git-pull')
+    const resetIdx = callOrder.indexOf('git-reset-hard')
     const fetchFilesIdx = callOrder.indexOf('fetchMergedFiles')
     const dbPushIdx = callOrder.indexOf('db-push')
 
     expect(checkoutIdx).toBeLessThan(fetchFilesIdx)
-    expect(pullIdx).toBeLessThan(fetchFilesIdx)
-    expect(pullIdx).toBeLessThan(dbPushIdx)
+    expect(resetIdx).toBeLessThan(fetchFilesIdx)
+    expect(resetIdx).toBeLessThan(dbPushIdx)
   })
 
   it('checkoutAndPullMain 실패 시 runPostMergeInfra가 실행되지 않는다', async () => {

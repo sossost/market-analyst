@@ -261,7 +261,8 @@ async function runPostMergeInfra(prNumber: number, threadId: string): Promise<vo
  */
 async function checkoutAndPullMain(): Promise<void> {
   await git(['checkout', 'main'])
-  await git(['pull', '--rebase', 'origin', 'main'])
+  await git(['fetch', 'origin', 'main'])
+  await git(['reset', '--hard', 'origin/main'])
 }
 
 /**
