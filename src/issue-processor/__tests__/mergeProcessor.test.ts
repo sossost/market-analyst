@@ -78,13 +78,26 @@ function openPrNoReviewCheckSequence() {
   ]
 }
 
-/** 리뷰 없는 OPEN PR의 전체 시퀀스 (merge + fetchMergedFiles 포함) */
+/**
+ * 리뷰 없는 OPEN PR의 전체 시퀀스 (merge + checkoutAndPullMain + fetchMergedFiles 포함)
+ *
+ * 실행 순서:
+ *   fetchPrState → resolveReviewComments → merge
+ *   → checkoutAndPullMain (git checkout main + git fetch + git reset --hard)
+ *   → fetchMergedFiles
+ */
 function openPrNoReviewSequence() {
   return [
     ...openPrNoReviewCheckSequence(),
     // 4. gh pr merge
     { stdout: '' },
-    // 5. gh pr view --json files (fetchMergedFiles — 인프라 반영 대상 없음)
+    // 5. checkoutAndPullMain — git checkout main
+    { stdout: '' },
+    // 6. checkoutAndPullMain — git fetch origin main
+    { stdout: '' },
+    // 7. checkoutAndPullMain — git reset --hard origin/main
+    { stdout: '' },
+    // 8. gh pr view --json files (fetchMergedFiles — 인프라 반영 대상 없음)
     { stdout: JSON.stringify({ files: [] }) },
   ]
 }
@@ -106,11 +119,7 @@ describe('processMerge', () => {
 
     mockExecSequence(vi.mocked(execFile), [
       ...openPrNoReviewSequence(),
-      // git checkout main
-      { stdout: '' },
-      // git pull
-      { stdout: '' },
-      // git branch (로컬 브랜치 목록 — 대상 브랜치 없음)
+      // deleteLocalBranchIfExists — git branch (로컬 브랜치 목록 — 대상 브랜치 없음)
       { stdout: '  main\n  other-branch' },
     ])
 
@@ -140,12 +149,16 @@ describe('processMerge', () => {
       { stdout: '' },
       // 5. gh pr merge
       { stdout: '' },
-      // 6. gh pr view --json files (fetchMergedFiles — 인프라 반영 대상 없음)
+      // 6. checkoutAndPullMain — git checkout main
+      { stdout: '' },
+      // 7. checkoutAndPullMain — git fetch origin main
+      { stdout: '' },
+      // 8. checkoutAndPullMain — git reset --hard origin/main
+      { stdout: '' },
+      // 9. fetchMergedFiles (인프라 반영 대상 없음)
       { stdout: JSON.stringify({ files: [] }) },
-      // 7~9. 로컬 브랜치 정리
-      { stdout: '' }, // git checkout main
-      { stdout: '' }, // git pull
-      { stdout: '  main' }, // git branch
+      // 10. deleteLocalBranchIfExists — git branch
+      { stdout: '  main' },
     ])
 
     await processMerge(makeMapping(42))
@@ -246,11 +259,7 @@ describe('processMerge', () => {
 
     mockExecSequence(vi.mocked(execFile), [
       ...openPrNoReviewSequence(),
-      // git checkout main
-      { stdout: '' },
-      // git pull
-      { stdout: '' },
-      // git branch — 브랜치 존재
+      // deleteLocalBranchIfExists — git branch (브랜치 존재)
       { stdout: `  main\n  ${branchName}` },
       // git branch -d
       { stdout: '' },
@@ -279,6 +288,12 @@ describe('processMerge', () => {
       ...openPrNoReviewCheckSequence(),
       // gh pr merge — 성공
       { stdout: '' },
+      // checkoutAndPullMain — git checkout main
+      { stdout: '' },
+      // checkoutAndPullMain — git fetch origin main
+      { stdout: '' },
+      // checkoutAndPullMain — git reset --hard origin/main
+      { stdout: '' },
       // gh pr view --json files — DB 스키마 변경 포함
       { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/users.ts' }] }) },
       // yarn db:push --force — exit 0이지만 stderr에 error: 포함
@@ -306,6 +321,12 @@ describe('processMerge', () => {
       ...openPrNoReviewCheckSequence(),
       // gh pr merge — 성공
       { stdout: '' },
+      // checkoutAndPullMain — git checkout main
+      { stdout: '' },
+      // checkoutAndPullMain — git fetch origin main
+      { stdout: '' },
+      // checkoutAndPullMain — git reset --hard origin/main
+      { stdout: '' },
       // gh pr view --json files — DB 스키마 변경 포함
       { stdout: JSON.stringify({ files: [{ path: 'db/migrations/0001.sql' }] }) },
       // yarn db:push --force — exit 0이지만 stdout에 error: 포함
@@ -329,6 +350,12 @@ describe('processMerge', () => {
     mockExecSequence(vi.mocked(execFile), [
       ...openPrNoReviewCheckSequence(),
       // gh pr merge — 성공
+      { stdout: '' },
+      // checkoutAndPullMain — git checkout main
+      { stdout: '' },
+      // checkoutAndPullMain — git fetch origin main
+      { stdout: '' },
+      // checkoutAndPullMain — git reset --hard origin/main
       { stdout: '' },
       // gh pr view --json files — DB 스키마 변경 포함
       { stdout: JSON.stringify({ files: [{ path: 'src/db/schema/foo.ts' }] }) },
