@@ -660,6 +660,35 @@ export function containsNumericPrediction(thesis: string): boolean {
 }
 
 /**
+ * sentiment 에이전트의 thesis에 추세 반전(mean-reversion) 예측 패턴이 포함되어 있는지 검사한다.
+ * 추세 반전 예측은 base rate가 낮은 이벤트이므로 HIGH confidence와 양립할 수 없다.
+ * 순수 함수 — 테스트 용이.
+ * #731: HIGH confidence 적중률 33.3%로 역전 — mean-reversion 예측에 HIGH 부여가 원인.
+ */
+const SENTIMENT_MEAN_REVERSION_PATTERNS: RegExp[] = [
+  // 추세/국면/방향 반전·전환 예측
+  /(?:추세|국면|방향|흐름)\s*(?:반전|전환)/,
+  // 정상화/안정화 예측
+  /(?:정상화|안정화)\s*(?:전망|예상|예측|진입|시작|완료|임박)/,
+  // 심리 상태 전환 예측 (공포→중립, risk-off→risk-on 등)
+  /(?:공포|탐욕|과열|과매도|risk-off|risk-on)\s*→\s*(?:중립|정상|안정|탐욕|공포|risk-on|risk-off)/i,
+  // 회복/반등 직접 전망 (구조적 관찰 "회복 중"은 제외, 전망만 포착)
+  /(?:회복|반등)\s*(?:전망|예상|예측|완료|임박)/,
+  // 조정 마무리/완료 예측
+  /조정\s*(?:마무리|완료|종료|끝|일단락)/,
+  // 바닥/저점 형성 판단
+  /(?:바닥|저점)\s*(?:형성|확인|통과|완료|도달)/,
+  // 전환 완료/임박 예측
+  /전환\s*(?:완료|임박|예상|전망)/,
+  // 매도/하락/공포 소진 후 반등 패턴
+  /(?:매도|하락|공포)\s*(?:소진|피로).*(?:반등|회복|전환)/,
+];
+
+export function containsMeanReversionPattern(thesis: string): boolean {
+  return SENTIMENT_MEAN_REVERSION_PATTERNS.some((pattern) => pattern.test(thesis));
+}
+
+/**
  * short_term_outlook 카테고리 thesis를 1회 추출당 최대 1건으로 제한한다.
  * 2건 이상이면 첫 번째만 유지, 나머지 드롭 + 로그.
  * #627: 적중률 41.7% — 발행량 자체를 억제하여 역신호 노출 최소화.
@@ -746,6 +775,23 @@ function normalizeThesisFields(
       );
       confidence = downgraded;
     }
+  }
+
+  // sentiment의 structural_narrative mean-reversion 예측 confidence 캡 (#731)
+  // HIGH confidence 적중률 33.3%로 역전 — mean-reversion 패턴 감지 시 MEDIUM으로 캡.
+  // structural_narrative가 아닌 카테고리는 위 CONFIDENCE_DOWNGRADE에서 이미 low로 하향됨.
+  if (
+    persona === "sentiment" &&
+    category === "structural_narrative" &&
+    confidence === "high" &&
+    typeof obj.thesis === "string" &&
+    containsMeanReversionPattern(obj.thesis as string)
+  ) {
+    logger.info(
+      "Round3",
+      `sentiment의 structural_narrative mean-reversion thesis confidence 캡: high → medium (#731 가드레일)`,
+    );
+    confidence = "medium";
   }
 
   // 저적중 카테고리 confidence 자동 하향 (#627)
