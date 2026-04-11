@@ -22,6 +22,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 공급 과잉 전환 감지: 병목 해소 → 과잉 전환 조기 포착
    → 병목 체인 추적: narrative_chains 테이블에 병목 생애주기 기록 + N+1 수혜 섹터/종목 저장
    → 국면(Meta-Regime) 계층: 체인 간 순차 활성화 순서 + 전파 유형(supply_chain/narrative_shift) 모델링
+   → 국면 자동 관리: 토론 완료 후 상태 전이(ACTIVE→PEAKED→RESOLVED) + 미연결 체인 자동 연결 + 2+ 체인 그룹 시 국면 자동 생성 (#743)
    → 서사 체인 + 국면 컨텍스트를 Round 3 합성 프롬프트에 주입 — 공급망 경로 + 선행 포착 후보 제공
    → 모더레이터(Claude)가 thesis 구조화 + 합의도(consensus_score) 기록
    → Consensus 알고리즘 검증: Round 1 에이전트 출력 키워드 매칭으로 합의도 교차 검증 + 불일치 플래그(#713)
