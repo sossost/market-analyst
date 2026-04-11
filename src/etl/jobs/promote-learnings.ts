@@ -196,13 +196,31 @@ async function main() {
     db.select().from(theses).where(eq(theses.status, "EXPIRED")),
   ]);
 
-  logger.info(TAG, `Confirmed: ${confirmedTheses.length}, Invalidated: ${invalidatedTheses.length}, Expired: ${expiredTheses.length}`);
+  // #733: status_quo CONFIRMED thesis는 학습 루프 승격에서 제외
+  // 현상유지 예측(targetCondition이 생성 시점에 이미 충족)은 예측력이 아니라 관성 확인이므로
+  // 학습 패턴으로 축적하면 변화 감지 능력이 약화된다.
+  //
+  // is_status_quo IS NULL → legacy row (pre-#733) — 학습 루프에 포함 (기존 동작 유지)
+  // is_status_quo = true  → 현상유지 예측 — 제외 (예측 신호 없음)
+  // is_status_quo = false → 진짜 예측 — 포함
+  const statusQuoCount = confirmedTheses.filter((t) => t.isStatusQuo === true).length;
+  const confirmedForLearning = confirmedTheses.filter((t) => t.isStatusQuo !== true);
+
+  // 데이터 품질 경고: 오늘자 confirmed thesis에 is_status_quo=null이면 snapshot 미전달 가능성
+  const currentRunNulls = confirmedTheses.filter(
+    (t) => t.isStatusQuo == null && t.debateDate === today,
+  ).length;
+  if (currentRunNulls > 0) {
+    logger.warn(TAG, `${currentRunNulls}건의 오늘자 confirmed thesis가 is_status_quo=null — snapshot 미전달 가능성`);
+  }
+
+  logger.info(TAG, `Confirmed: ${confirmedTheses.length} (status_quo: ${statusQuoCount}, 학습 대상: ${confirmedForLearning.length}), Invalidated: ${invalidatedTheses.length}, Expired: ${expiredTheses.length}`);
 
   // 4. 기존 learnings의 hitCount/missCount 업데이트
   const allNegativeTheses = [...invalidatedTheses, ...expiredTheses];
   const updatedCount = await updateLearningStats(
     remainingLearnings,
-    confirmedTheses,
+    confirmedForLearning,
     allNegativeTheses,
     today,
   );
@@ -210,7 +228,8 @@ async function main() {
   // 4b. 새 thesis를 기존 학습에 흡수 (#427)
   // 기존 학습의 persona+metric 패턴과 일치하는 새 thesis를 sourceThesisIds에 추가.
   // 이를 통해 기존 학습의 hitCount가 자연 성장하여 성숙도 게이트를 통과할 수 있다.
-  const allJudgedTheses = [...confirmedTheses, ...invalidatedTheses, ...expiredTheses];
+  // status_quo 제외된 confirmedForLearning 사용
+  const allJudgedTheses = [...confirmedForLearning, ...invalidatedTheses, ...expiredTheses];
   const absorbedCount = await absorbNewTheses(
     remainingLearnings,
     allJudgedTheses,
@@ -257,7 +276,7 @@ async function main() {
   }
 
   const candidates = buildPromotionCandidates(
-    confirmedTheses,
+    confirmedForLearning,
     negativesForPromotion,
     existingSourceIds,
     activeCountAfterDemotion,

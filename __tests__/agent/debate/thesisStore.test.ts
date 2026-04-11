@@ -27,6 +27,12 @@ vi.mock("@/debate/narrativeChainService.js", () => ({
   recordNarrativeChain: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock statusQuoDetector — 기본 false, 테스트에서 필요 시 override
+const mockDetectStatusQuo = vi.fn().mockReturnValue(false);
+vi.mock("@/debate/statusQuoDetector.js", () => ({
+  detectStatusQuo: (...args: unknown[]) => mockDetectStatusQuo(...args),
+}));
+
 const mockLoggerWarn = vi.fn();
 const mockLoggerInfo = vi.fn();
 vi.mock("@/lib/logger", () => ({
@@ -681,6 +687,96 @@ describe("thesisStore", () => {
         (args: unknown[]) => typeof args[1] === "string" && (args[1] as string).includes("[정량 검증 불가]"),
       );
       expect(warnCalls).toHaveLength(0);
+    });
+  });
+
+  // #733: status_quo 태깅
+  describe("saveTheses — status_quo 태깅", () => {
+    it("snapshot 없이 호출하면 isStatusQuo가 null로 저장된다", async () => {
+      const thesis: Thesis[] = [
+        {
+          agentPersona: "geopolitics",
+          thesis: "호르무즈 봉쇄 → Energy 강세 유지",
+          timeframeDays: 60,
+          verificationMetric: "Energy RS",
+          targetCondition: "Energy RS > 65",
+          confidence: "high",
+          consensusLevel: "4/4",
+          category: "structural_narrative",
+        },
+      ];
+
+      mockReturning.mockResolvedValueOnce([{ id: 100 }]);
+      await saveTheses("2026-04-01", thesis);
+
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ isStatusQuo: null }),
+      ]);
+      expect(mockDetectStatusQuo).not.toHaveBeenCalled();
+    });
+
+    it("snapshot과 함께 호출하면 detectStatusQuo 결과가 isStatusQuo에 저장된다", async () => {
+      mockDetectStatusQuo.mockReturnValueOnce(true);
+
+      const thesis: Thesis[] = [
+        {
+          agentPersona: "geopolitics",
+          thesis: "호르무즈 봉쇄 → Energy 강세 유지",
+          timeframeDays: 60,
+          verificationMetric: "Energy RS",
+          targetCondition: "Energy RS > 65",
+          confidence: "high",
+          consensusLevel: "4/4",
+          category: "structural_narrative",
+        },
+      ];
+
+      const fakeSnapshot = { date: "2026-04-01" } as unknown as import("../../../src/debate/marketDataLoader.js").MarketSnapshot;
+      mockReturning.mockResolvedValueOnce([{ id: 101 }]);
+      await saveTheses("2026-04-01", thesis, fakeSnapshot);
+
+      expect(mockDetectStatusQuo).toHaveBeenCalledWith("Energy RS > 65", fakeSnapshot);
+      expect(mockValues).toHaveBeenCalledWith([
+        expect.objectContaining({ isStatusQuo: true }),
+      ]);
+    });
+
+    it("status_quo 태깅 로그가 출력된다", async () => {
+      mockDetectStatusQuo.mockReturnValueOnce(true);
+      mockDetectStatusQuo.mockReturnValueOnce(false);
+
+      const thesisList: Thesis[] = [
+        {
+          agentPersona: "geopolitics",
+          thesis: "Energy 강세 유지",
+          timeframeDays: 60,
+          verificationMetric: "Energy RS",
+          targetCondition: "Energy RS > 65",
+          confidence: "high",
+          consensusLevel: "4/4",
+          category: "structural_narrative",
+        },
+        {
+          agentPersona: "tech",
+          thesis: "Technology RS 반등",
+          timeframeDays: 30,
+          verificationMetric: "Technology RS",
+          targetCondition: "Technology RS > 60",
+          confidence: "medium",
+          consensusLevel: "3/4",
+          category: "sector_rotation",
+        },
+      ];
+
+      const fakeSnapshot = { date: "2026-04-01" } as unknown as import("../../../src/debate/marketDataLoader.js").MarketSnapshot;
+      mockReturning.mockResolvedValueOnce([{ id: 102 }, { id: 103 }]);
+      mockLoggerInfo.mockClear();
+      await saveTheses("2026-04-01", thesisList, fakeSnapshot);
+
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        "ThesisStore",
+        expect.stringContaining("Status-quo 태깅: 1/2건"),
+      );
     });
   });
 

@@ -733,7 +733,7 @@ async function main() {
 
   // 6. Thesis 저장 + 레짐 저장 + 세션 저장
   logger.step("[6/7] Saving theses, regime & session...");
-  const savedCount = await saveTheses(debateDate, result.round3.theses);
+  const savedCount = await saveTheses(debateDate, result.round3.theses, marketSnapshot);
   logger.info("Thesis", `${savedCount} theses saved to DB`);
 
   // 레짐 저장 — pending 저장 후 히스테리시스 적용 (에러 격리)

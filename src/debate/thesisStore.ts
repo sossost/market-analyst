@@ -8,6 +8,7 @@ import { tryQuantitativeVerification, parseQuantitativeCondition } from "./quant
 import type { MarketSnapshot } from "./marketDataLoader.js";
 import type { AgentPersona } from "@/types/debate";
 import { THESIS_EXPIRE_PROGRESS } from "./thesisConstants.js";
+import { detectStatusQuo } from "./statusQuoDetector.js";
 
 /**
  * 에이전트당 ACTIVE thesis 상한.
@@ -26,10 +27,14 @@ function parseConsensusScore(level: ConsensusLevel): number {
 /**
  * Save extracted theses to DB as ACTIVE.
  * Returns count of saved theses.
+ *
+ * @param snapshot — optional MarketSnapshot. 있으면 각 thesis의 is_status_quo를 판별.
+ *   없으면 null (backtest 등 호환).
  */
 export async function saveTheses(
   debateDate: string,
   extractedTheses: Thesis[],
+  snapshot?: MarketSnapshot,
 ): Promise<number> {
   if (extractedTheses.length === 0) {
     logger.info("ThesisStore", "No theses to save");
@@ -39,24 +44,42 @@ export async function saveTheses(
   // 같은 날짜의 기존 thesis 삭제 (재실행 시 중복 방지)
   await db.delete(theses).where(eq(theses.debateDate, debateDate));
 
-  const rows = extractedTheses.map((t) => ({
-    debateDate,
-    agentPersona: t.agentPersona,
-    thesis: t.thesis,
-    timeframeDays: t.timeframeDays,
-    verificationMetric: t.verificationMetric,
-    targetCondition: t.targetCondition,
-    invalidationCondition: t.invalidationCondition ?? null,
-    confidence: t.confidence,
-    consensusLevel: t.consensusLevel,
-    consensusScore: parseConsensusScore(t.consensusLevel),
-    category: t.category ?? "short_term_outlook",
-    nextBottleneck: t.nextBottleneck ?? null,
-    dissentReason: t.dissentReason ?? null,
-    minorityView: t.minorityView ?? null,
-    consensusUnverified: t.consensusUnverified ?? null,
-    status: "ACTIVE" as const,
-  }));
+  const rows = extractedTheses.map((t) => {
+    const isStatusQuo = snapshot != null
+      ? detectStatusQuo(t.targetCondition, snapshot)
+      : null;
+
+    return {
+      debateDate,
+      agentPersona: t.agentPersona,
+      thesis: t.thesis,
+      timeframeDays: t.timeframeDays,
+      verificationMetric: t.verificationMetric,
+      targetCondition: t.targetCondition,
+      invalidationCondition: t.invalidationCondition ?? null,
+      confidence: t.confidence,
+      consensusLevel: t.consensusLevel,
+      consensusScore: parseConsensusScore(t.consensusLevel),
+      category: t.category ?? "short_term_outlook",
+      nextBottleneck: t.nextBottleneck ?? null,
+      dissentReason: t.dissentReason ?? null,
+      minorityView: t.minorityView ?? null,
+      consensusUnverified: t.consensusUnverified ?? null,
+      isStatusQuo,
+      status: "ACTIVE" as const,
+    };
+  });
+
+  // status_quo 태깅 로그
+  if (snapshot != null) {
+    const sqCount = rows.filter((r) => r.isStatusQuo === true).length;
+    if (sqCount > 0) {
+      logger.info(
+        "ThesisStore",
+        `Status-quo 태깅: ${sqCount}/${rows.length}건이 현상유지 예측`,
+      );
+    }
+  }
 
   // 정량 파싱 가능성 검증 — 자동 검증 불가 thesis 조기 경고
   for (const t of extractedTheses) {
@@ -480,6 +503,89 @@ export async function getThesisStatsByCategory(): Promise<
       result[cat] = {};
     }
     result[cat]![r.status] = r.count;
+  }
+
+  return result;
+}
+
+/**
+ * 카테고리별 적중률 — status_quo 분리 집계 (#733).
+ *
+ * 각 카테고리에 대해:
+ * - total: 전체 (CONFIRMED + INVALIDATED)
+ * - statusQuo: is_status_quo=true인 CONFIRMED/INVALIDATED 수
+ * - nonStatusQuo: is_status_quo=false인 CONFIRMED/INVALIDATED 수
+ * - legacy: is_status_quo IS NULL인 CONFIRMED/INVALIDATED 수 (미태깅 레거시)
+ * - hitRate: 전체 적중률
+ * - pureHitRate: non-status_quo만의 적중률 (진짜 예측력)
+ */
+export interface CategoryHitRateWithStatusQuo {
+  category: ThesisCategory;
+  confirmed: number;
+  invalidated: number;
+  hitRate: number | null;
+  statusQuo: { confirmed: number; invalidated: number };
+  nonStatusQuo: { confirmed: number; invalidated: number };
+  legacy: { confirmed: number; invalidated: number };
+  pureHitRate: number | null;
+}
+
+export async function getThesisHitRateByCategory(): Promise<CategoryHitRateWithStatusQuo[]> {
+  const rows = await db
+    .select({
+      category: theses.category,
+      status: theses.status,
+      isStatusQuo: theses.isStatusQuo,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(theses)
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
+    .groupBy(theses.category, theses.status, theses.isStatusQuo);
+
+  const map = new Map<string, CategoryHitRateWithStatusQuo>();
+
+  for (const r of rows) {
+    const cat = (r.category ?? "short_term_outlook") as ThesisCategory;
+
+    if (!map.has(cat)) {
+      map.set(cat, {
+        category: cat,
+        confirmed: 0,
+        invalidated: 0,
+        hitRate: null,
+        statusQuo: { confirmed: 0, invalidated: 0 },
+        nonStatusQuo: { confirmed: 0, invalidated: 0 },
+        legacy: { confirmed: 0, invalidated: 0 },
+        pureHitRate: null,
+      });
+    }
+
+    const entry = map.get(cat)!;
+    const statusKey = r.status === "CONFIRMED" ? "confirmed" : "invalidated";
+
+    entry[statusKey] += r.count;
+
+    if (r.isStatusQuo === true) {
+      entry.statusQuo[statusKey] += r.count;
+    } else if (r.isStatusQuo === false) {
+      entry.nonStatusQuo[statusKey] += r.count;
+    } else {
+      entry.legacy[statusKey] += r.count;
+    }
+  }
+
+  const result: CategoryHitRateWithStatusQuo[] = [];
+
+  for (const entry of map.values()) {
+    const total = entry.confirmed + entry.invalidated;
+    entry.hitRate = total > 0 ? entry.confirmed / total : null;
+
+    const pureTotal = entry.nonStatusQuo.confirmed + entry.nonStatusQuo.invalidated;
+    entry.pureHitRate = pureTotal > 0
+      ? entry.nonStatusQuo.confirmed / pureTotal
+      : null;
+
+    result.push(entry);
   }
 
   return result;
