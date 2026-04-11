@@ -456,6 +456,66 @@ async function sendLegacyDebateReport(
   }
 }
 
+// ────────────────────────────────────────────
+// 메타 레짐 유틸리티
+// ────────────────────────────────────────────
+
+type UnlinkedChain = {
+  id: number;
+  megatrend: string;
+  bottleneck: string;
+  status: string;
+};
+
+/**
+ * megatrend 키워드 기반으로 체인을 그루핑한다.
+ * 서로 MIN_KEYWORD_OVERLAP 이상의 키워드를 공유하는 체인을 같은 그룹으로 묶는다.
+ * 그룹 키는 공통 키워드들을 공백으로 결합한 문자열.
+ *
+ * @param kwExtractor - 텍스트에서 키워드 집합을 추출하는 함수. metaRegimeService.extractKeywords를 주입받는다.
+ */
+function groupChainsByMegatrend(
+  chains: UnlinkedChain[],
+  kwExtractor: (text: string) => Set<string>,
+): Map<string, UnlinkedChain[]> {
+  const MIN_OVERLAP = 2;
+  const groups: Array<{ keywords: Set<string>; chains: UnlinkedChain[] }> = [];
+
+  for (const chain of chains) {
+    const kw = kwExtractor(chain.megatrend);
+    let merged = false;
+
+    for (const group of groups) {
+      let overlap = 0;
+      for (const k of kw) {
+        if (group.keywords.has(k)) overlap++;
+      }
+      if (overlap >= MIN_OVERLAP) {
+        group.chains.push(chain);
+        // 공통 키워드만 유지 (교집합)
+        for (const gk of [...group.keywords]) {
+          if (!kw.has(gk)) group.keywords.delete(gk);
+        }
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) {
+      groups.push({ keywords: new Set(kw), chains: [chain] });
+    }
+  }
+
+  const result = new Map<string, UnlinkedChain[]>();
+  for (const group of groups) {
+    const key = [...group.keywords].sort().join(" ");
+    if (key.length > 0) {
+      result.set(key, group.chains);
+    }
+  }
+  return result;
+}
+
 async function main() {
   logger.step("=== Debate Agent: Daily Cabinet Discussion ===\n");
 
@@ -790,6 +850,98 @@ async function main() {
       const reason = err instanceof Error ? err.message : String(err);
       logger.warn("DebateIntegrity", `경고 Discord 발송 실패: ${reason}`);
     });
+  }
+
+  // 6.8. 메타 레짐 상태 동기화 (#743)
+  try {
+    const { getActiveMetaRegimes, syncMetaRegimeStatus } = await import("@/debate/metaRegimeService");
+    const activeRegimes = await getActiveMetaRegimes();
+
+    for (const regime of activeRegimes) {
+      const syncResult = await syncMetaRegimeStatus(regime.id);
+      if (syncResult.changed) {
+        logger.info(
+          "MetaRegime",
+          `국면 상태 전이: #${regime.id} "${regime.name}" ${syncResult.previousStatus} → ${syncResult.newStatus}`,
+        );
+      }
+    }
+
+    if (activeRegimes.length > 0) {
+      logger.info("MetaRegime", `${activeRegimes.length}개 활성 국면 상태 동기화 완료`);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("MetaRegime", `국면 상태 동기화 실패 (토론 결과에 영향 없음): ${reason}`);
+  }
+
+  // 6.9. 신규 국면 생성 평가 (#743)
+  try {
+    const { findSimilarMetaRegime, createMetaRegime, linkChainToMetaRegime, extractKeywords } = await import("@/debate/metaRegimeService");
+    const { db } = await import("@/db/client");
+    const { narrativeChains: ncTable } = await import("@/db/schema/analyst");
+    const { and, isNull, inArray: drizzleInArray, eq, asc: drizzleAsc } = await import("drizzle-orm");
+
+    // metaRegimeId가 NULL인 ACTIVE/RESOLVING 체인 전체 조회 (결정적 순서 보장)
+    const unlinkedChains = await db
+      .select({
+        id: ncTable.id,
+        megatrend: ncTable.megatrend,
+        bottleneck: ncTable.bottleneck,
+        status: ncTable.status,
+      })
+      .from(ncTable)
+      .where(
+        and(
+          isNull(ncTable.metaRegimeId),
+          drizzleInArray(ncTable.status, ["ACTIVE", "RESOLVING"]),
+        ),
+      )
+      .orderBy(drizzleAsc(ncTable.id));
+
+    if (unlinkedChains.length >= 2) {
+      const groups = groupChainsByMegatrend(unlinkedChains, extractKeywords);
+
+      for (const [groupKey, groupChains] of groups.entries()) {
+        if (groupChains.length < 2) continue;
+
+        const megatrends = groupChains.map((c) => c.megatrend);
+        const similar = await findSimilarMetaRegime(groupKey, megatrends);
+
+        if (similar != null) {
+          // 기존 국면에 연결
+          const existingChainsInRegime = await db
+            .select({ id: ncTable.id })
+            .from(ncTable)
+            .where(eq(ncTable.metaRegimeId, similar.id));
+          const baseOrder = existingChainsInRegime.length;
+
+          for (let i = 0; i < groupChains.length; i++) {
+            await linkChainToMetaRegime(groupChains[i].id, similar.id, baseOrder + i + 1);
+          }
+          logger.info(
+            "MetaRegime",
+            `${groupChains.length}개 체인을 기존 국면 "${similar.name}"에 연결`,
+          );
+        } else {
+          // 신규 국면 생성
+          const newRegime = await createMetaRegime({
+            name: groupKey,
+            propagationType: "supply_chain",
+          });
+          for (let i = 0; i < groupChains.length; i++) {
+            await linkChainToMetaRegime(groupChains[i].id, newRegime.id, i + 1);
+          }
+          logger.info(
+            "MetaRegime",
+            `신규 국면 생성: "${groupKey}" (#${newRegime.id}), ${groupChains.length}개 체인 연결`,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("MetaRegime", `신규 국면 생성 평가 실패 (토론 결과에 영향 없음): ${reason}`);
   }
 
   // 7. 발송 경로 결정
