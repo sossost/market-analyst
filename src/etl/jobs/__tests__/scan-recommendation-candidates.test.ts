@@ -60,6 +60,7 @@ import {
   evaluatePersistenceGate,
   evaluateStabilityGate,
   evaluateFundamentalGate,
+  applySectorCap,
   getDateOffset,
   COOLDOWN_CALENDAR_DAYS,
   PHASE2_PERSISTENCE_DAYS,
@@ -69,6 +70,7 @@ import {
   MIN_RS_SCORE,
   MAX_RS_SCORE,
   MIN_PRICE,
+  MAX_SECTOR_RATIO,
   BEAR_REGIMES,
 } from "@/tools/recommendationGates.js";
 
@@ -245,6 +247,10 @@ describe("상수 검증", () => {
   it("MAX_RS_SCORE가 95이다", () => {
     expect(MAX_RS_SCORE).toBe(95);
   });
+
+  it("MAX_SECTOR_RATIO가 0.5이다", () => {
+    expect(MAX_SECTOR_RATIO).toBe(0.5);
+  });
 });
 
 // =============================================================================
@@ -293,5 +299,137 @@ describe("게이트 조합 시나리오", () => {
     expect(evaluatePersistenceGate(5).passed).toBe(true);
     expect(evaluateStabilityGate(true).passed).toBe(true);
     expect(evaluateFundamentalGate("F").passed).toBe(false);  // 여기서 차단
+  });
+});
+
+// =============================================================================
+// applySectorCap 테스트 (#732)
+// =============================================================================
+
+describe("applySectorCap", () => {
+  const makeCandidate = (symbol: string, sector: string | null) => ({
+    symbol,
+    sector,
+  });
+
+  it("빈 배열이면 빈 결과를 반환한다", () => {
+    const result = applySectorCap([], 0.5);
+    expect(result.selected).toEqual([]);
+    expect(result.capped).toEqual([]);
+  });
+
+  it("maxRatio가 1 이상이면 모든 후보를 선택한다", () => {
+    const candidates = [
+      makeCandidate("A", "Energy"),
+      makeCandidate("B", "Energy"),
+    ];
+    const result = applySectorCap(candidates, 1);
+    expect(result.selected).toHaveLength(2);
+    expect(result.capped).toHaveLength(0);
+  });
+
+  it("maxRatio가 0 이하이면 모든 후보를 선택한다", () => {
+    const candidates = [makeCandidate("A", "Energy")];
+    const result = applySectorCap(candidates, 0);
+    expect(result.selected).toHaveLength(1);
+    expect(result.capped).toHaveLength(0);
+  });
+
+  it("단일 섹터 편중 시 상한을 적용한다", () => {
+    // 10건 모두 Energy → maxPerSector = max(1, ceil(10 * 0.5)) = 5
+    const candidates = Array.from({ length: 10 }, (_, i) =>
+      makeCandidate(`E${i}`, "Energy"),
+    );
+    const result = applySectorCap(candidates, 0.5);
+    expect(result.selected).toHaveLength(5);
+    expect(result.capped).toHaveLength(5);
+    // RS 순서 유지 (상위 5개 선택)
+    expect(result.selected.map((c) => c.symbol)).toEqual(["E0", "E1", "E2", "E3", "E4"]);
+  });
+
+  it("다양한 섹터가 있으면 상한에 걸리지 않는다", () => {
+    const candidates = [
+      makeCandidate("A", "Energy"),
+      makeCandidate("B", "Tech"),
+      makeCandidate("C", "Finance"),
+      makeCandidate("D", "Health"),
+    ];
+    // maxPerSector = max(1, ceil(4 * 0.5)) = 2, 각 섹터 1건이므로 전부 통과
+    const result = applySectorCap(candidates, 0.5);
+    expect(result.selected).toHaveLength(4);
+    expect(result.capped).toHaveLength(0);
+  });
+
+  it("섹터별 상한을 정확히 계산한다 (17건 × 0.5 = ceil 9)", () => {
+    // 이슈 #732 시나리오 재현: 17건 중 15건 Energy
+    const candidates = [
+      ...Array.from({ length: 15 }, (_, i) => makeCandidate(`E${i}`, "Energy")),
+      makeCandidate("U0", "Utilities"),
+      makeCandidate("U1", "Utilities"),
+    ];
+    // maxPerSector = max(1, ceil(17 * 0.5)) = 9
+    const result = applySectorCap(candidates, 0.5);
+    const energySelected = result.selected.filter((c) => c.sector === "Energy");
+    const utilitiesSelected = result.selected.filter((c) => c.sector === "Utilities");
+    expect(energySelected).toHaveLength(9);
+    expect(utilitiesSelected).toHaveLength(2);
+    expect(result.capped).toHaveLength(6); // 15 - 9 = 6 Energy 제외
+  });
+
+  it("sector가 null인 경우 Unknown 그룹으로 처리한다", () => {
+    const candidates = [
+      makeCandidate("A", null),
+      makeCandidate("B", null),
+      makeCandidate("C", null),
+      makeCandidate("D", "Energy"),
+    ];
+    // maxPerSector = max(1, ceil(4 * 0.5)) = 2
+    const result = applySectorCap(candidates, 0.5);
+    const nullSelected = result.selected.filter((c) => c.sector === null);
+    expect(nullSelected).toHaveLength(2);
+    expect(result.capped).toHaveLength(1); // null 3번째 제외
+  });
+
+  it("maxPerSector는 최소 1을 보장한다", () => {
+    // 1건이면 maxPerSector = max(1, ceil(1 * 0.5)) = 1
+    const candidates = [makeCandidate("A", "Energy")];
+    const result = applySectorCap(candidates, 0.5);
+    expect(result.selected).toHaveLength(1);
+  });
+
+  it("입력 배열을 변경하지 않는다 (불변성)", () => {
+    const candidates = [
+      makeCandidate("A", "Energy"),
+      makeCandidate("B", "Energy"),
+      makeCandidate("C", "Energy"),
+    ];
+    const original = [...candidates];
+    applySectorCap(candidates, 0.5);
+    expect(candidates).toEqual(original);
+  });
+
+  it("RS 순서를 유지한다 (선택된 종목은 원래 순서 보존)", () => {
+    const candidates = [
+      makeCandidate("RS90", "Energy"),
+      makeCandidate("RS85", "Tech"),
+      makeCandidate("RS80", "Energy"),
+      makeCandidate("RS75", "Tech"),
+      makeCandidate("RS70", "Energy"),
+      makeCandidate("RS65", "Energy"),
+    ];
+    // maxPerSector = max(1, ceil(6 * 0.5)) = 3
+    const result = applySectorCap(candidates, 0.5);
+    const symbols = result.selected.map((c) => c.symbol);
+    expect(symbols).toEqual(["RS90", "RS85", "RS80", "RS75", "RS70"]);
+  });
+
+  it("maxRatio 0.3에서 상한이 더 엄격하게 적용된다", () => {
+    const candidates = Array.from({ length: 10 }, (_, i) =>
+      makeCandidate(`E${i}`, "Energy"),
+    );
+    // maxPerSector = max(1, ceil(10 * 0.3)) = 3
+    const result = applySectorCap(candidates, 0.3);
+    expect(result.selected).toHaveLength(3);
+    expect(result.capped).toHaveLength(7);
   });
 });

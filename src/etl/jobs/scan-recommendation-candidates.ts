@@ -18,6 +18,7 @@ import {
   MIN_RS_SCORE,
   MAX_RS_SCORE,
   MIN_PRICE,
+  MAX_SECTOR_RATIO,
   getDateOffset,
   evaluateLowRsGate,
   evaluateOverheatedRsGate,
@@ -25,6 +26,7 @@ import {
   evaluatePersistenceGate,
   evaluateStabilityGate,
   evaluateFundamentalGate,
+  applySectorCap,
 } from "@/tools/recommendationGates.js";
 import {
   findActiveRecommendations,
@@ -166,7 +168,6 @@ async function main() {
     priceRows.map((r) => [r.symbol, toNum(r.close)]),
   );
 
-  let savedCount = 0;
   let skippedCount = 0;
   let blockedByRegime = 0;
   let bearExceptionCount = 0;
@@ -179,7 +180,20 @@ async function main() {
   let blockedByPersistence = 0;
   let blockedByStability = 0;
   let blockedByFundamental = 0;
-  const corporateAnalystPromises: Promise<void>[] = [];
+
+  // Phase 1: 게이트 통과 후보 수집 (RS 내림차순 유지)
+  interface GatePassedCandidate {
+    symbol: string;
+    phase: number | null;
+    rs_score: number | null;
+    sector: string | null;
+    industry: string | null;
+    prev_phase: number | null;
+    entryPrice: number;
+    reason: string;
+  }
+
+  const gatePassedCandidates: GatePassedCandidate[] = [];
 
   for (const stock of phase2Stocks) {
     // Phase 게이트 생략: findAllPhase2Stocks가 WHERE phase = 2를 보장하므로 불필요
@@ -313,6 +327,48 @@ async function main() {
       reason = `[Late Bull 감쇠] ${reason}`;
     }
 
+    gatePassedCandidates.push({
+      symbol,
+      phase: phase ?? null,
+      rs_score: rs_score ?? null,
+      sector: sector ?? null,
+      industry: industry ?? null,
+      prev_phase: stock.prev_phase ?? null,
+      entryPrice,
+      reason,
+    });
+  }
+
+  // Phase 2: 섹터 집중도 상한 적용 (#732)
+  const { selected: selectedCandidates, capped: cappedCandidates } =
+    applySectorCap(gatePassedCandidates, MAX_SECTOR_RATIO);
+
+  const blockedBySectorCap = cappedCandidates.length;
+
+  if (blockedBySectorCap > 0) {
+    const cappedSymbols = cappedCandidates.map((c) => c.symbol).join(", ");
+    logger.info(
+      TAG,
+      `섹터 상한(${MAX_SECTOR_RATIO * 100}%) 적용 — ${blockedBySectorCap}건 제외: ${cappedSymbols}`,
+    );
+  }
+
+  // Phase 3: 선택된 후보만 INSERT
+  let savedCount = 0;
+  const corporateAnalystPromises: Promise<void>[] = [];
+
+  for (const candidate of selectedCandidates) {
+    const {
+      symbol,
+      phase,
+      rs_score,
+      sector,
+      industry,
+      prev_phase,
+      entryPrice,
+      reason,
+    } = candidate;
+
     // INSERT (멱등성 보장)
     const insertResult = await retryDatabaseOperation(() =>
       db
@@ -323,7 +379,7 @@ async function main() {
           entryPrice: String(entryPrice),
           entryRsScore: rs_score ?? null,
           entryPhase: phase ?? 2,
-          entryPrevPhase: stock.prev_phase ?? null,
+          entryPrevPhase: prev_phase ?? null,
           sector: sector ?? null,
           industry: industry ?? null,
           reason,
@@ -379,7 +435,7 @@ async function main() {
     `쿨다운차단: ${blockedByCooldown}, RS하한차단: ${blockedByLowRS}, ` +
     `RS과열차단: ${blockedByOverheatedRS}, 저가주차단: ${blockedByLowPrice}, ` +
     `지속성차단: ${blockedByPersistence}, 안정성차단: ${blockedByStability}, ` +
-    `펀더멘탈차단: ${blockedByFundamental}`;
+    `펀더멘탈차단: ${blockedByFundamental}, 섹터상한차단: ${blockedBySectorCap}`;
 
   logger.info(TAG, summaryMsg);
 
@@ -389,7 +445,7 @@ async function main() {
       TAG,
       `금일 추천 0건 — 레짐: ${regimeForGate ?? "없음"}, ` +
         `Phase2 총: ${phase2Stocks.length}, ` +
-        `최다 차단: ${identifyTopBlocker(blockedByRegime, blockedByLateBull, blockedByCooldown, blockedByLowRS, blockedByOverheatedRS, blockedByLowPrice, blockedByPersistence, blockedByStability, blockedByFundamental)}`,
+        `최다 차단: ${identifyTopBlocker(blockedByRegime, blockedByLateBull, blockedByCooldown, blockedByLowRS, blockedByOverheatedRS, blockedByLowPrice, blockedByPersistence, blockedByStability, blockedByFundamental, blockedBySectorCap)}`,
     );
   }
 
@@ -481,7 +537,7 @@ async function saveFactorSnapshot(symbol: string, date: string): Promise<void> {
 function identifyTopBlocker(...counts: number[]): string {
   const labels = [
     "Bear레짐", "LateBull", "쿨다운", "RS하한", "RS과열",
-    "저가주", "지속성", "안정성", "펀더멘탈",
+    "저가주", "지속성", "안정성", "펀더멘탈", "섹터상한",
   ];
 
   const top = counts.reduce(
