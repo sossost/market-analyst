@@ -69,7 +69,7 @@ export interface ThesisAlignedData {
 // ─── 상수 ──────────────────────────────────────────────────────────────────────
 
 const ACTIVE_STATUSES: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
-const PHASE_2 = 2;
+export const PHASE_2 = 2;
 const RS_THRESHOLD = 60;
 const SEPA_TOP_GRADES = ["S", "A"];
 /** 업종 자동 탐색 후보 상한 (체인당) — LLM 지목은 제한 없음 */

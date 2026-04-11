@@ -15,10 +15,11 @@ import { narrativeChains, companyProfiles } from "@/db/schema/analyst";
 import { inArray, eq } from "drizzle-orm";
 import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider";
 import { logger } from "@/lib/logger";
-import type {
-  ThesisAlignedData,
-  ThesisAlignedChainGroup,
-  ThesisAlignedCandidate,
+import {
+  PHASE_2,
+  type ThesisAlignedData,
+  type ThesisAlignedChainGroup,
+  type ThesisAlignedCandidate,
 } from "./thesisAlignedCandidates";
 
 // ─── 상수 ──────────────────────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ function buildUserMessage(
         ? c.description.slice(0, 500)
         : "(no description available)";
       // 마크다운 제어 문자 제거 — 프롬프트 구조 침범 방지
-      const desc = rawDesc.replace(/[#`*]/g, " ");
+      const desc = rawDesc.replace(/[#`*>_~]/g, " ");
       return `### ${c.symbol} [${c.industry ?? "Unknown"}]\n<company_description>${desc}</company_description>`;
     })
     .join("\n\n");
@@ -370,7 +371,7 @@ export async function certifyThesisAlignedCandidates(
     const phase2Symbols = new Set<string>();
     for (const chain of certifiedChains) {
       for (const c of chain.candidates) {
-        if (c.phase === 2) {
+        if (c.phase === PHASE_2) {
           phase2Symbols.add(c.symbol);
         }
       }
