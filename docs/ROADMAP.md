@@ -110,6 +110,7 @@
 | 기억 주입 | 학습 + 검증 결과를 토론 프롬프트에 반영 |
 | 편향 감지 | bull-bias 80% 초과 경고, 정량 검증 비율 모니터링 |
 | Consensus 검증 | Round 1 에이전트 출력 키워드 매칭으로 Moderator consensus 교차 검증 + 2단계 이상 불일치 시 `consensus_unverified` 플래그 (#713) |
+| 현상유지 필터 | 생성 시점에 targetCondition이 이미 충족된 thesis를 `is_status_quo`로 태깅 → 적중률 분리 집계 + 학습 루프에서 제외하여 측정 왜곡 방지 (#733) |
 
 ### Layer 6: 펀더멘탈 검증 (F7) — Done
 기술적 신호를 펀더멘탈로 교차 검증.

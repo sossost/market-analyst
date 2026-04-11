@@ -245,6 +245,9 @@ export const theses = pgTable(
     // #713: consensus 알고리즘 검증 불일치 플래그
     consensusUnverified: boolean("consensus_unverified"),
 
+    // #733: 현상유지 thesis 태깅 — 생성 시점에 targetCondition이 이미 충족
+    isStatusQuo: boolean("is_status_quo"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
