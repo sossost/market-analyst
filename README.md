@@ -74,7 +74,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 9. 자율 운영
    → Issue Triage: 미트리아지 이슈 사전 분류 (매일 09:00)
    → Issue Processor: triaged 이슈 → Claude Code CLI 자동 구현 → PR 생성 (10:00~02:00)
-   → PR Reviewer: PR Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (09:15~02:15)
+   → PR Reviewer: PR Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시 (09:30~02:30)
    → 맥미니 서버 launchd 기반 스케줄링 (10개 작업)
 ```
 
@@ -307,7 +307,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 | Strategic Review | 04:00 매일 | 전략 참모 리뷰 → `strategic-briefing.md` 갱신 (매니저 골 정렬 근거) |
 | Issue Triage | 09:00 매일 | 미트리아지 이슈 사전 분류 |
 | Issue Processor | 10:00~02:00 매 정시 (17회/일) | triaged 이슈 자동 구현 → PR 생성 |
-| PR Reviewer | 09:15~02:15 매 :15분 (18회/일) | PR Strategic + Code 리뷰 → 코멘트 게시 |
+| PR Reviewer | 09:30~02:30 매 :30분 (18회/일) | PR Strategic + Code 리뷰 → 코멘트 게시 |
 | Log Cleanup | 09:00 일 | 30일 이상 로그 정리 |
 
 ```bash
