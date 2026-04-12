@@ -71,6 +71,30 @@ describe("classifyDirection", () => {
     expect(classifyDirection(t)).toBe("neutral");
   });
 
+  it("'상승 전환'은 bullish — '전환' 단독은 bearish 키워드가 아님", () => {
+    const t = makeThesis({
+      targetCondition: "시장 방향 확인",
+      thesis: "Technology 섹터 RS 상승 전환 기대",
+    });
+    expect(classifyDirection(t)).toBe("bullish");
+  });
+
+  it("'하락 전환'은 bearish", () => {
+    const t = makeThesis({
+      targetCondition: "시장 방향 확인",
+      thesis: "Energy 섹터 RS 하락 전환 예상",
+    });
+    expect(classifyDirection(t)).toBe("bearish");
+  });
+
+  it("'Phase 2 이탈'은 bearish — Phase 2 bullish 매칭에서 제외", () => {
+    const t = makeThesis({
+      targetCondition: "Phase 2 이탈 확인",
+      thesis: "Energy 섹터 Phase 2 이탈로 약세 진입",
+    });
+    expect(classifyDirection(t)).toBe("bearish");
+  });
+
   it("bullish + bearish 키워드 동시 존재 시 neutral", () => {
     const t = makeThesis({
       targetCondition: "시장 상황 변화 확인",

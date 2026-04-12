@@ -28,10 +28,10 @@ const BEARISH_CONDITION_PATTERNS: RegExp[] = [
 ];
 
 /** thesis 텍스트에서 bullish 방향성을 나타내는 키워드 */
-const BULLISH_TEXT_KEYWORDS = /(?:상승|유지|강화|확대|가속|성장|수혜|호조|주도|선도|지속|Phase\s*2)/;
+const BULLISH_TEXT_KEYWORDS = /(?:상승|유지|강화|확대|가속|성장|수혜|호조|주도|선도|지속|Phase\s*2(?!\s*이탈))/;
 
 /** thesis 텍스트에서 bearish 방향성을 나타내는 키워드 */
-const BEARISH_TEXT_KEYWORDS = /(?:하락|전환|약화|축소|둔화|과열|위축|감소|악화|조정|이탈|붕괴)/;
+const BEARISH_TEXT_KEYWORDS = /(?:하락|약화|축소|둔화|과열|위축|감소|악화|조정|이탈|붕괴|하락\s*전환)/;
 
 /**
  * thesis의 방향성을 규칙 기반으로 분류한다.
