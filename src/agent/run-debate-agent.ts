@@ -776,7 +776,23 @@ async function main() {
     logger.warn("Session", `Failed to save session: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // 6.5. 토론 데이터 완전성 검증 (저장 후)
+  // 6.5. 메타 국면 자동 관리 (#743)
+  // 상태 전이 → 체인↔국면 연결 → 신규 국면 생성 (에러 격리)
+  try {
+    const { manageMetaRegimes } = await import("@/debate/metaRegimeService");
+    const regimeResult = await manageMetaRegimes();
+    if (regimeResult.transitioned > 0 || regimeResult.linked > 0 || regimeResult.created > 0) {
+      logger.info(
+        "MetaRegime",
+        `자동 관리: ${regimeResult.transitioned} 전이, ${regimeResult.linked} 연결, ${regimeResult.created} 생성`,
+      );
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("MetaRegime", `국면 자동 관리 실패 (토론은 정상 완료): ${reason}`);
+  }
+
+  // 6.6. 토론 데이터 완전성 검증 (저장 후)
   // structural_narrative 카테고리만 체크 — sector_rotation/short_term_outlook은 빈 배열이 정상 설계
   const structuralTheses = result.round3.theses.filter(
     (t) => t.category === "structural_narrative",
