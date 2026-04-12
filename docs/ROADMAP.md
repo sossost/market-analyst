@@ -166,7 +166,7 @@
 | N+1 수혜 섹터/종목 표시 | 주간 프롬프트에 N+1 수혜 섹터/종목 컬럼 추가 — 선행 포착 후보 제공 |
 | 서사 체인 컨텍스트 주입 | Round 3 합성에 ACTIVE 체인 목록 + 국면 컨텍스트를 `<narrative-chains>` 블록으로 주입 |
 | metaRegimeService | 국면 CRUD + 프롬프트 포맷팅 서비스 |
-| 국면 자동 관리 (#743) | 토론 완료 후 manageMetaRegimes() 호출 — 상태 전이(ACTIVE→PEAKED→RESOLVED), 미연결 체인 자동 연결, 2+ 체인 그룹 시 국면 자동 생성 |
+| 국면 자동 관리 (#743) | 토론 에이전트 Step 6.8/6.9 — 체인 상태 기반 국면 상태 자동 동기화(ACTIVE/PEAKED/RESOLVED), megatrend 키워드 그루핑으로 신규 국면 자동 생성 + 체인 연결, narrativeChainService에서 체인 생성 시 활성 국면 자동 매칭 |
 
 ### Layer 10: 섹터 시차 패턴 — Done
 섹터/산업 간 Phase 전이의 선후행 관계를 통계적으로 축적하는 정량 인프라. (PR #102)
