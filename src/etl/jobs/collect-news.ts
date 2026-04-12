@@ -1,8 +1,10 @@
 import "dotenv/config";
 import { db, pool } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
+import { desc, gte } from "drizzle-orm";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { classifyCategory, classifySentiment } from "@/lib/newsClassifier";
+import { extractAndSaveThemes, type NewsItem } from "@/lib/themeExtractor";
 import { logger } from "@/lib/logger";
 
 const TAG = "COLLECT_NEWS";
@@ -219,6 +221,34 @@ export async function collectAndStoreNews(): Promise<{
   return { totalFetched, inserted: totalInserted };
 }
 
+// ─── 오늘 수집된 뉴스 DB 조회 ────────────────────────────────────────
+
+const MAX_NEWS_FOR_THEME = 100;
+
+/**
+ * 최근 N시간 내 수집된 뉴스를 DB에서 조회한다.
+ * 테마 추출 입력용.
+ */
+export async function loadRecentNewsForTheme(
+  hoursBack: number = 24,
+): Promise<NewsItem[]> {
+  const cutoff = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+
+  const rows = await db
+    .select({
+      title: newsArchive.title,
+      description: newsArchive.description,
+      category: newsArchive.category,
+      source: newsArchive.source,
+    })
+    .from(newsArchive)
+    .where(gte(newsArchive.collectedAt, cutoff))
+    .orderBy(desc(newsArchive.collectedAt))
+    .limit(MAX_NEWS_FOR_THEME);
+
+  return rows;
+}
+
 // ─── Main ───────────────────────────────────────────────────────────
 
 async function main() {
@@ -229,6 +259,17 @@ async function main() {
   const { totalFetched, inserted } = await collectAndStoreNews();
 
   logger.info(TAG, `Collect news archive — done: ${totalFetched} fetched, ${inserted} new inserted`);
+
+  // 테마 추출 — 뉴스 수집 후 비동기 실행 (실패해도 뉴스 수집 결과에 영향 없음)
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const newsItems = await loadRecentNewsForTheme();
+    const { extracted, saved } = await extractAndSaveThemes(newsItems, today);
+    logger.info(TAG, `Theme extraction — ${extracted} themes extracted, ${saved} saved`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(TAG, `Theme extraction failed (non-blocking): ${msg}`);
+  }
 
   await pool.end();
 }

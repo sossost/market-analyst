@@ -40,6 +40,7 @@ import { scoreFundamentals, promoteTopToS } from "@/lib/fundamental-scorer";
 import { formatFundamentalContext } from "@/debate/round3-synthesis";
 import { loadEarlyDetectionContext } from "@/debate/earlyDetectionLoader";
 import { loadCatalystContext } from "@/debate/catalystLoader";
+import { loadThemeContext } from "@/debate/themeContextLoader";
 // extractDailyInsight는 insightExtractor에서 관리 — 순환 참조 방지를 위해 분리
 export { extractDailyInsight } from "@/debate/insightExtractor";
 
@@ -574,6 +575,17 @@ async function main() {
     logger.warn("News", `News loading failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // 3.5. 뉴스 테마 컨텍스트 로드 — HIGH severity 테마를 전 에이전트에 주입
+  let themeContext = "";
+  try {
+    themeContext = await loadThemeContext(debateDate);
+    if (themeContext.length > 0) {
+      logger.info("Theme", `Theme context loaded: ${themeContext.length} chars`);
+    }
+  } catch (err) {
+    logger.warn("Theme", `Theme context loading failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 4. 과거 유사 세션 로드 (few-shot)
   logger.step("[4/7] Loading similar past sessions...");
   let fewShotContext = "";
@@ -713,6 +725,7 @@ async function main() {
     earlyDetectionContext,
     catalystContext,
     narrativeChainContext,
+    themeContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);

@@ -30,6 +30,8 @@ interface DebateConfig {
   catalystContext?: string;
   /** 서사 체인 + 국면 컨텍스트 (#735) */
   narrativeChainContext?: string;
+  /** LLM 뉴스 테마 분석 — HIGH severity 인과 테마 (#751) */
+  themeContext?: string;
 }
 
 /**
@@ -55,6 +57,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     earlyDetectionContext,
     catalystContext,
     narrativeChainContext,
+    themeContext,
   } = config;
   const startTime = Date.now();
 
@@ -68,11 +71,14 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
   // 모더레이터는 Claude 고정 — JSON 구조화 안정성 이슈로 변경 보류
   const moderatorProvider = getProvider(moderator.model);
 
-  // Combine question with market data context
-  const fullQuestion =
-    marketDataContext.length > 0
-      ? `${question}\n\n---\n\n${marketDataContext}`
-      : question;
+  // Combine question with market data context + theme context
+  let fullQuestion = question;
+  if (marketDataContext.length > 0) {
+    fullQuestion += `\n\n---\n\n${marketDataContext}`;
+  }
+  if (themeContext != null && themeContext.length > 0) {
+    fullQuestion += `\n\n---\n\n${themeContext}`;
+  }
 
   logger.info("Debate", `Starting debate for ${debateDate}`);
   logger.info("Debate", `Question: ${question.slice(0, 100)}...`);
