@@ -91,7 +91,7 @@
 | 3라운드 | 독립분석 → 교차검증(반박 필수) → 모더레이터(Claude) 종합 |
 | LLM Provider | 추상화 레이어 (`src/debate/llm/`) + FallbackProvider |
 | 폴백 | Claude 계열: ClaudeCliProvider(Max 구독, $0) 우선 → AnthropicProvider API 폴백. 외부 API(GPT-4o/Gemini) 장애 시 Claude 자동 폴백 + warn 로그 |
-| 뉴스 사전 수집 | Brave Search로 애널리스트별 뉴스 주입 |
+| 뉴스 사전 수집 | Brave Search로 애널리스트별 뉴스 주입 (CREDIT 카테고리 포함 — #749) |
 | 촉매 데이터 주입 | 종목 뉴스 헤드라인 + 섹터별 실적 서프라이즈 비트율 + 임박 실적 발표 일정 → "왜 지금 이 섹터가 강한가" 근거 강화 (#460) |
 | 조기포착 주입 | Phase1Late/RisingRS/펀더멘탈가속 결과를 Round 1·3에 주입 (#414) + 교집합 필터로 2+도구 수렴 "고확신 후보" 태깅 (#593) |
 | 모멘텀 데이터 | 5일/20일 가격 변화율 → 고점 피로감 감지 |

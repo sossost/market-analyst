@@ -9,6 +9,7 @@ export type NewsCategory =
   | "TECHNOLOGY"
   | "GEOPOLITICAL"
   | "CAPEX"
+  | "CREDIT"
   | "MARKET"
   | "OTHER";
 
@@ -86,6 +87,22 @@ const CATEGORY_PATTERNS: readonly { category: NewsCategory; patterns: RegExp[] }
     ].map(buildKeywordPattern),
   },
   {
+    category: "CREDIT",
+    patterns: [
+      "private equity",
+      "private credit",
+      "clo",
+      "leveraged loan",
+      "high yield",
+      "credit spread",
+      "credit stress",
+      "credit default",
+      "junk bond",
+      "debt crisis",
+      "nav lending",
+    ].map(buildKeywordPattern),
+  },
+  {
     category: "MARKET",
     patterns: [
       "market",
@@ -129,7 +146,7 @@ const NEGATIVE_PATTERNS = [
 
 /**
  * 텍스트에서 키워드 기반으로 뉴스 카테고리를 분류한다.
- * 우선순위: POLICY > TECHNOLOGY > GEOPOLITICAL > CAPEX > MARKET > OTHER
+ * 우선순위: POLICY > TECHNOLOGY > GEOPOLITICAL > CAPEX > CREDIT > MARKET > OTHER
  */
 export function classifyCategory(text: string): NewsCategory {
   for (const { category, patterns } of CATEGORY_PATTERNS) {
