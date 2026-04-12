@@ -89,9 +89,8 @@ const CATEGORY_PATTERNS: readonly { category: NewsCategory; patterns: RegExp[] }
   {
     category: "CREDIT",
     patterns: [
-      "private equity",
+      ...["private equity",
       "private credit",
-      "clo",
       "leveraged loan",
       "high yield",
       "credit spread",
@@ -100,7 +99,9 @@ const CATEGORY_PATTERNS: readonly { category: NewsCategory; patterns: RegExp[] }
       "junk bond",
       "debt crisis",
       "nav lending",
-    ].map(buildKeywordPattern),
+      ].map(buildKeywordPattern),
+      /\bclo\b/i,
+    ],
   },
   {
     category: "MARKET",
