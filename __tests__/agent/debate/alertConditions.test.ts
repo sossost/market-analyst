@@ -62,6 +62,7 @@ function makeSnapshot(sectors: SectorSnapshot[] = []): MarketSnapshot {
     breadth: null,
     indices: [],
     fearGreed: null,
+    creditIndicators: [],
   };
 }
 

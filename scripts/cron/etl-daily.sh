@@ -39,6 +39,7 @@ log "=== 일간 ETL 파이프라인 시작 ==="
 # Phase 1
 run_step "Load Daily Prices" "src/etl/jobs/load-daily-prices.ts"
 run_step "Load Index Prices" "src/etl/jobs/load-index-prices.ts"
+run_step "Collect Credit Indicators" "src/etl/jobs/collect-credit-indicators.ts"
 
 # [휴일 감지] Phase 1 완료 후 거래일 여부 확인
 log "▶ 거래일 확인"

@@ -478,3 +478,27 @@ export const indexPrices = pgTable(
     idx_sym_date: index("idx_index_prices_symbol_date").on(t.symbol, t.date),
   }),
 );
+
+/**
+ * credit_indicators — FRED 신용 스프레드 / 금융 스트레스 지표.
+ * HY OAS, CCC Spread, BBB Spread, Financial Stress Index를 일간 수집.
+ */
+export const creditIndicators = pgTable(
+  "credit_indicators",
+  {
+    date: text("date").notNull(),
+    seriesId: text("series_id").notNull(),
+    value: numeric("value").notNull(),
+    zScore180d: numeric("z_score_180d"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_credit_indicators_date_series").on(t.date, t.seriesId),
+    idx_series_date: index("idx_credit_indicators_series_date").on(
+      t.seriesId,
+      t.date,
+    ),
+  }),
+);

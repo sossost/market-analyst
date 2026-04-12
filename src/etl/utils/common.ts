@@ -26,9 +26,10 @@ function sanitizeUrl(url: string): string {
   try {
     const u = new URL(url);
     u.searchParams.delete("apikey");
+    u.searchParams.delete("api_key");
     return u.toString();
   } catch {
-    return url.replace(/apikey=[^&]+/gi, "apikey=***");
+    return url.replace(/api_?key=[^&]+/gi, "apikey=***");
   }
 }
 

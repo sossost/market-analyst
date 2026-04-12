@@ -9,6 +9,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 1. ETL 파이프라인 (매일 장 마감 후)
    → 미장 휴일 자동 감지: Phase 1(가격 수집) 직후 DB MAX(date) 비교 → 휴일이면 Phase 2 이후 전체 스킵 (토론·리포트 포함)
    → 토론 에이전트 자동 재시도: 일시적 인증 실패 시 3분 간격 최대 3회 시도 + 최종 실패 시 Discord 알림 (#741)
+   → FRED 신용 스프레드/금융 스트레스 지표 수집 (HY OAS, CCC, BBB, STLFSI4) + z-score 이상 감지
    → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석
 
 2. 멀티 모델 애널리스트 토론 (매일 22:00 UTC)
@@ -335,7 +336,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 
 ### Core Features (완료)
 
-- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스, 돌파/노이즈 신호, US10Y/DXY, 업종 override)
+- [x] **F1** Data Infrastructure — ETL 파이프라인 (Phase, RS, 브레드스, 돌파/노이즈 신호, US10Y/DXY, 업종 override, FRED 신용 스프레드/금융 스트레스)
 - [x] **F2** Agent Core — Claude agentic loop + 16개 도구 + 일간/주간 분리
 - [ ] ~~**F3** Industry Intelligence~~ — 폐기. F6 토론 엔진이 시장 분석 역할을 대체
 - [x] **F4** Tracking System — 추천 종목 성과 트래킹 + Phase 이탈 감지
@@ -363,6 +364,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **섹터 집중도 상한** — 동일 섹터 추천 최대 50% 비중 제한, 게이트 통과 후 RS 순위 기반 섹터별 soft cap 적용 (#732)
 - [x] **국면(Meta-Regime) 계층 + 공급망 자금흐름 순서** — meta_regimes 테이블 + 체인 간 순차 활성화 모델링 + supplyChain/nextBeneficiary 프롬프트 주입 (#735)
 - [x] **메타 레짐 자동 관리** — 토론 에이전트에 국면 상태 자동 동기화(ACTIVE/PEAKED/RESOLVED) + megatrend 키워드 그루핑 기반 신규 국면 자동 생성/체인 연결 (#743)
+- [x] **FRED 신용 지표** — HY OAS/CCC/BBB 스프레드 + 금융 스트레스 지수 일간 수집, 90일 z-score 이상 감지, 토론 컨텍스트 전 에이전트 주입 (#748)
 
 ### Next (진행 예정)
 

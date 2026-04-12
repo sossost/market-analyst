@@ -63,6 +63,7 @@ function makeSnapshot(sectors: Array<{ sector: string; avgRs: number }> = []): M
     topPhase2Stocks: [],
     breadth: null,
     fearGreed: { score: 55, rating: "Greed", previousClose: 50, previous1Week: 48 },
+    creditIndicators: [],
   };
 }
 

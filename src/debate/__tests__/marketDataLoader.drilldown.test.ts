@@ -40,6 +40,7 @@ function makeBaseSnapshot(overrides: Partial<MarketSnapshot> = {}): MarketSnapsh
     breadth: null,
     indices: [],
     fearGreed: null,
+    creditIndicators: [],
     ...overrides,
   };
 }

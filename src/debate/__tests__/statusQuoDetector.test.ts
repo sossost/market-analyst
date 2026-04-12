@@ -49,6 +49,7 @@ function makeSnapshot(
       previousClose: 50,
       previous1Week: 48,
     },
+    creditIndicators: [],
   };
 }
 
