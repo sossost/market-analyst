@@ -29,7 +29,7 @@ export async function reviewPrs(): Promise<void> {
   }
 
   // 모든 PR을 병렬 리뷰 (PR당 Strategic + Code도 병렬)
-  // 근거: :15 시작 → 타임아웃 30분 → :45 종료 → 다음 이슈 프로세서(:00)까지 15분 버퍼
+  // 근거: :30 시작 → 타임아웃 30분 → :00 종료 → 다음 이슈 프로세서(:00)와 맞닿음
   // 순차 실행 시 2건 × 30분 = 60분 → 다음 사이클과 충돌
   await Promise.allSettled(
     prs.map(async (pr) => {
