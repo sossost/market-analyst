@@ -21,6 +21,8 @@ const SEARCH_QUERIES: Record<string, string[]> = {
     "Federal Reserve interest rate policy today",
     "US economy GDP employment inflation latest",
     "fiscal policy federal budget executive order economic structural impact",
+    "credit spread high yield CLO leveraged loan stress",
+    "private credit private equity default risk latest",
   ],
   tech: [
     "AI semiconductor technology stocks earnings latest",
@@ -34,6 +36,7 @@ const SEARCH_QUERIES: Record<string, string[]> = {
   sentiment: [
     "stock market sentiment VIX fear greed index",
     "ETF fund flows institutional positioning",
+    "credit market risk appetite junk bond spread",
   ],
 };
 

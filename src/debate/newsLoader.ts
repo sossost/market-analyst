@@ -21,10 +21,10 @@ const DEFAULT_HOURS_BACK = 24;
  * category는 뉴스의 주제이므로, persona가 관심 갖는 주제 카테고리를 매핑한다.
  */
 const PERSONA_CATEGORY_MAP: Record<Persona, string[]> = {
-  macro: ["POLICY", "MARKET"],
+  macro: ["POLICY", "MARKET", "CREDIT"],
   tech: ["TECHNOLOGY", "CAPEX"],
   geopolitics: ["GEOPOLITICAL", "POLICY"],
-  sentiment: ["MARKET"],
+  sentiment: ["MARKET", "CREDIT"],
 };
 
 export interface NewsArchiveRow {

@@ -111,6 +111,52 @@ describe("classifyCategory", () => {
     });
   });
 
+  describe("CREDIT category", () => {
+    it("detects private equity keyword", () => {
+      expect(classifyCategory("Private equity firms face liquidity crunch")).toBe("CREDIT");
+    });
+
+    it("detects private credit keyword", () => {
+      expect(classifyCategory("Private credit markets show stress signs")).toBe("CREDIT");
+    });
+
+    it("detects CLO keyword", () => {
+      expect(classifyCategory("CLO issuance drops sharply this quarter")).toBe("CREDIT");
+    });
+
+    it("detects leveraged loan keyword", () => {
+      expect(classifyCategory("Leveraged loan defaults rise")).toBe("CREDIT");
+    });
+
+    it("detects high yield keyword", () => {
+      expect(classifyCategory("High yield spreads widen on recession fears")).toBe("CREDIT");
+    });
+
+    it("detects credit spread keyword", () => {
+      expect(classifyCategory("Credit spread blowout signals risk-off")).toBe("CREDIT");
+    });
+
+    it("detects credit stress keyword", () => {
+      expect(classifyCategory("Credit stress indicators flash warning")).toBe("CREDIT");
+    });
+
+    it("detects credit default keyword", () => {
+      expect(classifyCategory("Credit default swaps signal distress")).toBe("CREDIT");
+    });
+
+    it("detects junk bond keyword", () => {
+      expect(classifyCategory("Junk bond selloff accelerates")).toBe("CREDIT");
+    });
+
+    it("detects debt crisis keyword", () => {
+      expect(classifyCategory("Debt crisis fears mount in Europe")).toBe("CREDIT");
+    });
+
+    it("detects NAV lending keyword", () => {
+      expect(classifyCategory("NAV lending grows as PE seeks liquidity")).toBe("CREDIT");
+    });
+  });
+
   describe("MARKET category", () => {
     it("detects market keyword", () => {
       expect(classifyCategory("Market rally continues into third week")).toBe("MARKET");
@@ -158,6 +204,16 @@ describe("classifyCategory", () => {
     it("GEOPOLITICAL wins over MARKET when both match", () => {
       // "china" (GEOPOLITICAL) + "market" (MARKET)
       expect(classifyCategory("China market crash feared")).toBe("GEOPOLITICAL");
+    });
+
+    it("CREDIT wins over MARKET when both match", () => {
+      // "credit spread" (CREDIT) + "market" (MARKET)
+      expect(classifyCategory("Credit spread widens in volatile market")).toBe("CREDIT");
+    });
+
+    it("POLICY wins over CREDIT when both match", () => {
+      // "fed" (POLICY) + "credit spread" (CREDIT)
+      expect(classifyCategory("Fed rate hike widens credit spread")).toBe("POLICY");
     });
   });
 
