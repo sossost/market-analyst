@@ -248,6 +248,9 @@ export const theses = pgTable(
     // #733: 현상유지 thesis 태깅 — 생성 시점에 targetCondition이 이미 충족
     isStatusQuo: boolean("is_status_quo"),
 
+    // #752: cross-thesis 모순 탐지 — 같은 target entity에 방향성 상반 thesis 강등 플래그
+    contradictionDetected: boolean("contradiction_detected"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

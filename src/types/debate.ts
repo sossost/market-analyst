@@ -73,6 +73,8 @@ export interface Thesis {
   minorityView?: MinorityView | null;
   /** 알고리즘 검증에서 Moderator consensus와 2단계 이상 불일치 감지 시 true (#713) */
   consensusUnverified?: boolean;
+  /** 같은 target entity에 대해 방향성이 상반되는 thesis가 존재하여 강등된 경우 true (#752) */
+  contradictionDetected?: boolean;
 }
 
 /**

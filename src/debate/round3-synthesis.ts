@@ -5,6 +5,7 @@ import type { RoundOutput, SynthesisResult, Thesis, ThesisCategory, MarketRegime
 import type { FundamentalScore } from "@/types/fundamental";
 import type { MarketRegimeType } from "@/db/schema/analyst";
 import { verifyConsensusLevels } from "./consensusVerifier.js";
+import { detectContradictions } from "./contradictionDetector.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
 
@@ -1022,10 +1023,16 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
     logger.warn("Round3", "Consensus 검증 스킵됨 — Round 1 에이전트 수 부족");
   }
 
+  // #752: Cross-thesis 모순 탐지 — 같은 target entity에 상반 방향 thesis flagging
+  const { theses: coherenceCheckedTheses, contradictions } = detectContradictions(verifiedTheses);
+  if (contradictions.length > 0) {
+    logger.warn("Round3", `Cross-thesis 모순 ${contradictions.length}쌍 탐지 (총 ${coherenceCheckedTheses.length}건)`);
+  }
+
   return {
     synthesis: {
       report: cleanReport,
-      theses: verifiedTheses,
+      theses: coherenceCheckedTheses,
     },
     marketRegime,
     tokensUsed: result.tokensUsed,
