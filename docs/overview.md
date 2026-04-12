@@ -92,7 +92,7 @@ QA 주간:         KST 12:00 토
 이슈 프로세서:    KST 09:00~02:00 매 정시 (18회/일)
   GitHub 이슈 → 사전 트리아지(~3분, PROCEED/SKIP/ESCALATE) → Claude Code CLI 자동 처리 → PR 생성
 
-PR 리뷰어:       KST 09:15~02:15 매 :15분 (18회/일)
+PR 리뷰어:       KST 09:30~02:30 매 :30분 (18회/일)
   이슈 프로세서 생성 PR → Strategic + Code 병렬 리뷰 → GitHub 코멘트 자동 게시
 
 로그 정리:       KST 09:00 일

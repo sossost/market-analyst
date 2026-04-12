@@ -73,7 +73,7 @@ install_agents() {
   echo "  News Collect: KST 06:00/18:00 매일"
   echo "  Strategy:     KST 04:00 매일"
   echo "  Issue Proc:   KST 09:00~02:00 매 정시 (18회/일)"
-  echo "  PR Reviewer:  KST 09:15~02:15 매 :15분 (18회/일)"
+  echo "  PR Reviewer:  KST 09:30~02:30 매 :30분 (18회/일)"
   echo ""
   echo "로그: $PROJECT_DIR/logs/"
 }
