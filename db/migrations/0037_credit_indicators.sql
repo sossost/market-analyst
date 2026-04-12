@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS credit_indicators (
   date        TEXT        NOT NULL,
   series_id   TEXT        NOT NULL,
   value       NUMERIC     NOT NULL,
-  z_score_90d NUMERIC,
+  z_score_180d NUMERIC,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (date, series_id)
 );

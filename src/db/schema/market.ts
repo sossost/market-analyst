@@ -489,7 +489,7 @@ export const creditIndicators = pgTable(
     date: text("date").notNull(),
     seriesId: text("series_id").notNull(),
     value: numeric("value").notNull(),
-    zScore90d: numeric("z_score_90d"),
+    zScore180d: numeric("z_score_180d"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -388,13 +388,13 @@ async function loadCreditIndicators(date: string): Promise<CreditIndicatorRow[]>
   const { rows } = await pool.query<{
     series_id: string;
     value: string;
-    z_score_90d: string | null;
+    z_score_180d: string | null;
     value_1w: string | null;
     value_1m: string | null;
   }>(
     `WITH latest AS (
        SELECT DISTINCT ON (series_id)
-         series_id, value, z_score_90d, date
+         series_id, value, z_score_180d, date
        FROM credit_indicators
        WHERE series_id = ANY($1::text[])
          AND date <= $2
@@ -419,7 +419,7 @@ async function loadCreditIndicators(date: string): Promise<CreditIndicatorRow[]>
      SELECT
        l.series_id,
        l.value,
-       l.z_score_90d,
+       l.z_score_180d,
        w.value_1w,
        m.value_1m
      FROM latest l
@@ -436,7 +436,7 @@ async function loadCreditIndicators(date: string): Promise<CreditIndicatorRow[]>
     return {
       seriesId: r.series_id,
       value: Number(current.toFixed(2)),
-      zScore: r.z_score_90d != null ? Number(Number(r.z_score_90d).toFixed(2)) : null,
+      zScore: r.z_score_180d != null ? Number(Number(r.z_score_180d).toFixed(2)) : null,
       change1w: prev1w != null ? Number((current - prev1w).toFixed(2)) : null,
       change1m: prev1m != null ? Number((current - prev1m).toFixed(2)) : null,
     };
@@ -577,10 +577,9 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
 
       let status = "정상";
       if (ci.zScore != null) {
-        const absZ = Math.abs(ci.zScore);
-        if (absZ >= Z_SCORE_WARNING) {
+        if (ci.zScore >= Z_SCORE_WARNING) {
           status = `🔴 경고 (z=${ci.zScore})`;
-        } else if (absZ >= Z_SCORE_CAUTION) {
+        } else if (ci.zScore >= Z_SCORE_CAUTION) {
           status = `⚠️ 주의 (z=${ci.zScore})`;
         } else {
           status = `정상 (z=${ci.zScore})`;

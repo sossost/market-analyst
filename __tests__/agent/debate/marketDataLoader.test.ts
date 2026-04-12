@@ -273,7 +273,7 @@ describe("formatMarketSnapshot", () => {
 
     expect(result).toContain("-10");
     expect(result).toContain("-25");
-    expect(result).toContain("⚠️ 주의 (z=-1.8)");
+    expect(result).toContain("정상 (z=-1.8)");
   });
 
   it("shows negative breadth change correctly", () => {

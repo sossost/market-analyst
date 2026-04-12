@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { fileURLToPath } from "node:url";
 import { db, pool } from "@/db/client";
 import { sql } from "drizzle-orm";
 import { fetchJson, toStrNum } from "@/etl/utils/common";
@@ -101,12 +102,12 @@ async function collectOne(
 
   if (validRows.length === 0) return 0;
 
-  // Batch upsert (z_score_90d는 null로 먼저 삽입)
+  // Batch upsert (z_score_180d는 null로 먼저 삽입)
   const insertValues = validRows.map((row) => ({
     date: row.date,
     seriesId,
     value: toStrNum(row.value)!,
-    zScore90d: null as string | null,
+    zScore180d: null as string | null,
   }));
 
   await retryDatabaseOperation(
@@ -127,7 +128,7 @@ async function collectOne(
   const minDate = validRows[0].date;
   await pool.query(
     `UPDATE credit_indicators ci
-     SET z_score_90d = sub.z_score
+     SET z_score_180d = sub.z_score
      FROM (
        SELECT
          ci2.date,
@@ -213,16 +214,19 @@ export async function collectCreditIndicators(): Promise<void> {
   );
 }
 
-collectCreditIndicators()
-  .then(async () => {
-    await pool.end();
-    process.exit(0);
-  })
-  .catch(async (error) => {
-    logger.error(
-      TAG,
-      `Credit Indicators ETL failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    await pool.end();
-    process.exit(1);
-  });
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename || process.argv[1]?.endsWith("collect-credit-indicators.ts")) {
+  collectCreditIndicators()
+    .then(async () => {
+      await pool.end();
+      process.exit(0);
+    })
+    .catch(async (error) => {
+      logger.error(
+        TAG,
+        `Credit Indicators ETL failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await pool.end();
+      process.exit(1);
+    });
+}
