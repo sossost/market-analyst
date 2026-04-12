@@ -202,7 +202,7 @@ export async function transitionMetaRegimeStatuses(): Promise<number> {
     if (newStatus == null) continue;
 
     const now = new Date();
-    const updateFields: Record<string, unknown> = { status: newStatus };
+    const updateFields: Partial<typeof metaRegimes.$inferInsert> = { status: newStatus };
 
     if (newStatus === "PEAKED" && regime.peakAt == null) {
       updateFields.peakAt = now;
@@ -251,6 +251,9 @@ function extractMegatrendKeywords(text: string): Set<string> {
 
 const MIN_MEGATREND_OVERLAP = 2;
 
+/** Active chain statuses used for linking and regime creation. */
+const ACTIVE_CHAIN_STATUSES: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
+
 /**
  * Link a specific chain to a regime with auto-assigned sequence_order.
  */
@@ -288,8 +291,6 @@ export async function linkChainToRegime(
  * Returns count of chains linked.
  */
 export async function linkUnlinkedChainsToRegimes(): Promise<number> {
-  const activeChainStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
-
   const unlinkedChains = await db
     .select({
       id: narrativeChains.id,
@@ -299,7 +300,7 @@ export async function linkUnlinkedChainsToRegimes(): Promise<number> {
     .where(
       and(
         isNull(narrativeChains.metaRegimeId),
-        inArray(narrativeChains.status, activeChainStatuses),
+        inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
       ),
     );
 
@@ -318,12 +319,19 @@ export async function linkUnlinkedChainsToRegimes(): Promise<number> {
     .from(narrativeChains)
     .where(inArray(narrativeChains.metaRegimeId, regimeIds));
 
-  const regimeChainData = activeRegimes.map((regime) => ({
-    regimeId: regime.id,
-    megatrends: allRegimeChains
+  // Pre-compute keyword sets per regime to avoid redundant extraction inside the loop
+  const regimeChainData = activeRegimes.map((regime) => {
+    const megatrends = allRegimeChains
       .filter((c) => c.metaRegimeId === regime.id)
-      .map((c) => c.megatrend),
-  }));
+      .map((c) => c.megatrend);
+    const keywords = new Set<string>();
+    for (const mt of megatrends) {
+      for (const kw of extractMegatrendKeywords(mt)) {
+        keywords.add(kw);
+      }
+    }
+    return { regimeId: regime.id, keywords };
+  });
 
   let linked = 0;
 
@@ -332,15 +340,7 @@ export async function linkUnlinkedChainsToRegimes(): Promise<number> {
 
     let bestMatch: { regimeId: number; overlap: number } | null = null;
 
-    for (const { regimeId, megatrends } of regimeChainData) {
-      // Combine all megatrend keywords of the regime's chains
-      const regimeKeywords = new Set<string>();
-      for (const mt of megatrends) {
-        for (const kw of extractMegatrendKeywords(mt)) {
-          regimeKeywords.add(kw);
-        }
-      }
-
+    for (const { regimeId, keywords: regimeKeywords } of regimeChainData) {
       let overlap = 0;
       for (const kw of chainKeywords) {
         if (regimeKeywords.has(kw)) overlap++;
@@ -371,8 +371,6 @@ export async function linkUnlinkedChainsToRegimes(): Promise<number> {
  * Returns count of regimes created.
  */
 export async function detectAndCreateNewRegimes(): Promise<number> {
-  const activeChainStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
-
   const unlinkedChains = await db
     .select({
       id: narrativeChains.id,
@@ -383,7 +381,7 @@ export async function detectAndCreateNewRegimes(): Promise<number> {
     .where(
       and(
         isNull(narrativeChains.metaRegimeId),
-        inArray(narrativeChains.status, activeChainStatuses),
+        inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
       ),
     );
 
