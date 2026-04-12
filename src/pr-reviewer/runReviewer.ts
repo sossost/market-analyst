@@ -6,9 +6,8 @@
  * - stdin으로 프롬프트 전달 (임시 파일 X)
  * - ANTHROPIC_API_KEY unset (Max 구독 우선)
  * - timeout: 30분
- *   근거: 리뷰어는 :15에 시작, 다음 이슈 프로세서는 :00 (45분 가용).
+ *   근거: 리뷰어는 :30에 시작, 다음 이슈 프로세서는 :00 (30분 가용).
  *   --print 모드(도구 호출 없이 텍스트 반환)이므로 30분이면 충분.
- *   30분 + 버퍼 15분 = 45분으로 다음 사이클과 충돌 없음.
  */
 
 import { execFile } from 'node:child_process'
@@ -20,7 +19,7 @@ const execFileAsync = promisify(execFile)
 
 const TAG = 'RUN_REVIEWER'
 
-/** 30분 — :15 시작 + 30분 = :45 종료, 다음 사이클(:00)까지 15분 버퍼 */
+/** 30분 — :30 시작 + 30분 = :00 종료, 다음 사이클(:00)과 맞닿음 */
 const REVIEW_TIMEOUT_MS = 30 * 60 * 1_000
 const MAX_BUFFER = 50 * 1024 * 1024 // 50MB
 

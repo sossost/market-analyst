@@ -11,29 +11,29 @@
 	</array>
 	<key>WorkingDirectory</key>
 	<string>__PROJECT_DIR__</string>
-	<!-- KST 09:15~02:15(다음날) 매 :15분 18개 트리거 -->
-	<!-- 이슈 프로세서(:00)가 PR 생성 후 리뷰어(:15)가 검토하는 순서 -->
+	<!-- KST 09:30~02:30(다음날) 매 :30분 18개 트리거 -->
+	<!-- 이슈 프로세서(:00)가 PR 생성 후 리뷰어(:30)가 검토하는 순서 -->
 	<!-- launchd는 시스템 로컬 타임존(KST) 기준으로 동작 -->
 	<key>StartCalendarInterval</key>
 	<array>
-		<dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>15</integer></dict>
-		<dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>15</integer></dict>
+		<dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>30</integer></dict>
 	</array>
 	<key>StandardOutPath</key>
 	<string>__PROJECT_DIR__/logs/launchd-pr-reviewer.log</string>
