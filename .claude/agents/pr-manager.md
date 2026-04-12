@@ -85,10 +85,12 @@ mcp__github__create_pull_request(owner, repo, title, body, head, base)
 ```
 
 ### 7. PR 리뷰 실행
-PR 생성 직후 로컬에서 PR 리뷰어 스크립트를 실행한다:
+PR 생성 직후 로컬에서 PR 리뷰어를 실행한다:
 ```bash
-bash scripts/cron/pr-reviewer.sh
+npx tsx src/pr-reviewer/index.ts
 ```
+⚠️ `scripts/cron/pr-reviewer.sh`를 실행하면 안 된다 — 이 셸 스크립트는 맥미니 cron 전용이며, `ensure_main_branch()`가 피처 브랜치를 강제로 main으로 전환하여 매니저 세션을 방해한다.
+
 리뷰 결과는 GitHub PR 코멘트로 자동 게시된다. 리뷰어 실패 시에도 PR 생성 결과는 반환한다.
 
 ### 8. 결과 반환
@@ -146,6 +148,10 @@ PR: #{pr_number}
 이 에이전트를 호출할 때 필요한 입력:
 - **create**: 브랜치가 준비된 상태 (커밋 완료, 푸시 완료)
 - **review-resolve**: PR 번호, 리뷰 코멘트 수정이 이미 완료된 상태
+
+## 금지 사항
+
+- **`git checkout`, `git switch` 실행 절대 금지** — 브랜치 전환은 매니저 책임이다. PR 생성 후 main 복귀, 머지 후 main 복귀 등 어떤 이유로도 브랜치를 전환하지 않는다. 이슈 프로세서(맥미니 cron)의 "PR 후 main 복귀" 패턴은 이 에이전트에 해당하지 않는다.
 
 ## 도구
 - Bash: git, gh (읽기 전용: pr view, pr list, pr checks, api)

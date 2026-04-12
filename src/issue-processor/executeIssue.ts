@@ -81,8 +81,8 @@ ${issue.body || '(본문 없음)'}
 ## 실행 순서
 
 1. \`git checkout -b ${branchName}\` 브랜치 생성
-2. 이슈 분석 후 \`docs/features/[feature-name]/plan.md\` 기획서 작성:
-   - feature-name은 이슈 타이틀에서 kebab-case로 도출
+2. 이슈 분석 후 기획서를 작성하되, **git에 커밋하지 마라** (docs/features/는 .gitignore 대상):
+   - 기획서는 로컬 참조용으로만 사용. 커밋 대상이 아님.
    - 포함 항목: 문제 정의, Before→After, 변경 사항, 작업 계획, 리스크
 ${selfValidationStep}
 4. 기획서 기반 구현
@@ -92,7 +92,7 @@ ${selfValidationStep}
    - README.md: Feature Map, 주요 변경사항 반영
    - docs/ROADMAP.md: 완료/진행 상태 갱신
    - 단순 fix/test/chore 이슈는 문서 업데이트 불필요
-8. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함, 기획서와 문서도 함께 커밋)
+8. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함. **docs/features/ 파일은 커밋하지 마라**)
 9. \`git push -u origin ${branchName}\`
 10. PR 생성:
    - \`.github/PULL_REQUEST_TEMPLATE.md\` 파일을 읽고 그 형식에 맞춰 PR body를 작성하라
