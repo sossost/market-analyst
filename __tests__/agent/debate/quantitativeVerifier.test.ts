@@ -22,6 +22,7 @@ function createMarketSnapshot(
     breadth: null,
     indices: [],
     fearGreed: null,
+    creditIndicators: [],
     ...overrides,
   };
 }

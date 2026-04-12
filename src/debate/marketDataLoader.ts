@@ -22,6 +22,18 @@ import { buildPhaseTransitionDrilldown } from "@/tools/getLeadingSectors";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
+/** z-score 임계값 — 상수 분리하여 학습 루프에서 조정 가능 */
+const Z_SCORE_CAUTION = 1.5;
+const Z_SCORE_WARNING = 2.0;
+
+/** 신용 지표 시리즈 한글 라벨 매핑 */
+const CREDIT_SERIES_LABELS: Record<string, string> = {
+  BAMLH0A0HYM2: "HY 스프레드",
+  BAMLH0A3HYC: "CCC 스프레드",
+  BAMLC0A4CBBB: "BBB 스프레드",
+  STLFSI4: "금융 스트레스",
+};
+
 interface SectorSnapshot {
   sector: string;
   avgRs: number;
@@ -81,6 +93,14 @@ interface FearGreedSnapshot {
   previous1Week: number | null;
 }
 
+interface CreditIndicatorRow {
+  seriesId: string;
+  value: number;
+  zScore: number | null;
+  change1w: number | null;
+  change1m: number | null;
+}
+
 export interface MarketSnapshot {
   date: string;
   sectors: SectorSnapshot[];
@@ -89,6 +109,7 @@ export interface MarketSnapshot {
   breadth: MarketBreadthSnapshot | null;
   indices: IndexQuote[];
   fearGreed: FearGreedSnapshot | null;
+  creditIndicators: CreditIndicatorRow[];
   /** Phase 전환 섹터의 업종 드릴다운 (전환 섹터가 없으면 undefined) */
   phaseTransitionDrilldown?: ReturnType<typeof buildPhaseTransitionDrilldown>;
 }
@@ -358,6 +379,71 @@ async function fetchFearGreed(): Promise<FearGreedSnapshot | null> {
 }
 
 /**
+ * Load credit indicators from DB.
+ * 각 시리즈별 최신값 + 1주/1개월 변화를 계산한다.
+ */
+async function loadCreditIndicators(date: string): Promise<CreditIndicatorRow[]> {
+  const seriesIds = Object.keys(CREDIT_SERIES_LABELS);
+
+  const { rows } = await pool.query<{
+    series_id: string;
+    value: string;
+    z_score_90d: string | null;
+    value_1w: string | null;
+    value_1m: string | null;
+  }>(
+    `WITH latest AS (
+       SELECT DISTINCT ON (series_id)
+         series_id, value, z_score_90d, date
+       FROM credit_indicators
+       WHERE series_id = ANY($1::text[])
+         AND date <= $2
+       ORDER BY series_id, date DESC
+     ),
+     prev_1w AS (
+       SELECT DISTINCT ON (series_id)
+         series_id, value AS value_1w
+       FROM credit_indicators
+       WHERE series_id = ANY($1::text[])
+         AND date <= ($2::date - INTERVAL '7 days')::text
+       ORDER BY series_id, date DESC
+     ),
+     prev_1m AS (
+       SELECT DISTINCT ON (series_id)
+         series_id, value AS value_1m
+       FROM credit_indicators
+       WHERE series_id = ANY($1::text[])
+         AND date <= ($2::date - INTERVAL '30 days')::text
+       ORDER BY series_id, date DESC
+     )
+     SELECT
+       l.series_id,
+       l.value,
+       l.z_score_90d,
+       w.value_1w,
+       m.value_1m
+     FROM latest l
+     LEFT JOIN prev_1w w ON w.series_id = l.series_id
+     LEFT JOIN prev_1m m ON m.series_id = l.series_id`,
+    [seriesIds, date],
+  );
+
+  return rows.map((r) => {
+    const current = Number(r.value);
+    const prev1w = r.value_1w != null ? Number(r.value_1w) : null;
+    const prev1m = r.value_1m != null ? Number(r.value_1m) : null;
+
+    return {
+      seriesId: r.series_id,
+      value: Number(current.toFixed(2)),
+      zScore: r.z_score_90d != null ? Number(Number(r.z_score_90d).toFixed(2)) : null,
+      change1w: prev1w != null ? Number((current - prev1w).toFixed(2)) : null,
+      change1m: prev1m != null ? Number((current - prev1m).toFixed(2)) : null,
+    };
+  });
+}
+
+/**
  * Find the latest date with data if the requested date has no data.
  */
 async function resolveDataDate(requestedDate: string): Promise<string> {
@@ -376,7 +462,7 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
   }
 
   // Parallel: DB queries + external API calls
-  const [sectors, phase2, breadth, indices, fearGreed] = await Promise.all([
+  const [sectors, phase2, breadth, indices, fearGreed, creditIndicators] = await Promise.all([
     loadSectorSnapshot(date),
     loadPhase2Stocks(date),
     loadMarketBreadth(date),
@@ -385,6 +471,10 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
       return [] as IndexQuote[];
     }),
     fetchFearGreed().catch(() => null),
+    loadCreditIndicators(date).catch((e) => {
+      logger.warn("MarketData", `loadCreditIndicators 실패: ${e instanceof Error ? e.message : String(e)}`);
+      return [] as CreditIndicatorRow[];
+    }),
   ]);
 
   if (sectors.length === 0 && breadth == null) {
@@ -419,6 +509,7 @@ export async function loadMarketSnapshot(requestedDate: string): Promise<MarketS
     breadth,
     indices,
     fearGreed,
+    creditIndicators,
     phaseTransitionDrilldown,
   };
 }
@@ -469,6 +560,39 @@ export function formatMarketSnapshot(snapshot: MarketSnapshot): string {
   // Fear & Greed
   if (snapshot.fearGreed != null) {
     sections.push(`- CNN 공포탐욕지수: ${snapshot.fearGreed.score} (${snapshot.fearGreed.rating})`);
+  }
+
+  // 1.5. Credit indicators
+  if (snapshot.creditIndicators.length > 0) {
+    const headerLine = "| 지표 | 현재값 | 1주 변화 | 1개월 변화 | 상태 |";
+    const sepLine = "|------|--------|---------|-----------|------|";
+    const dataLines = snapshot.creditIndicators.map((ci) => {
+      const label = CREDIT_SERIES_LABELS[ci.seriesId] ?? ci.seriesId;
+      const change1w = ci.change1w != null
+        ? `${ci.change1w >= 0 ? "+" : ""}${ci.change1w}`
+        : "N/A";
+      const change1m = ci.change1m != null
+        ? `${ci.change1m >= 0 ? "+" : ""}${ci.change1m}`
+        : "N/A";
+
+      let status = "정상";
+      if (ci.zScore != null) {
+        const absZ = Math.abs(ci.zScore);
+        if (absZ >= Z_SCORE_WARNING) {
+          status = `🔴 경고 (z=${ci.zScore})`;
+        } else if (absZ >= Z_SCORE_CAUTION) {
+          status = `⚠️ 주의 (z=${ci.zScore})`;
+        } else {
+          status = `정상 (z=${ci.zScore})`;
+        }
+      }
+
+      return `| ${label} | ${ci.value} | ${change1w} | ${change1m} | ${status} |`;
+    });
+
+    sections.push(
+      `### 신용시장 지표\n${headerLine}\n${sepLine}\n${dataLines.join("\n")}`,
+    );
   }
 
   // 2. Market breadth

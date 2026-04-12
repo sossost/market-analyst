@@ -74,6 +74,34 @@ export function validateEnvironmentVariables(): ValidationResult {
 }
 
 /**
+ * Validate environment for FRED API ETL jobs (DATABASE_URL + FRED_API_KEY).
+ */
+export function validateFredEnvironment(): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl == null || dbUrl === "") {
+    errors.push("Missing required environment variable: DATABASE_URL");
+  } else {
+    try {
+      new URL(dbUrl);
+    } catch {
+      errors.push("DATABASE_URL format is invalid");
+    }
+  }
+
+  const fredKey = process.env.FRED_API_KEY;
+  if (fredKey == null || fredKey === "") {
+    errors.push("Missing required environment variable: FRED_API_KEY");
+  } else if (fredKey.length < 10) {
+    warnings.push("FRED_API_KEY seems too short — verify it is correct");
+  }
+
+  return { isValid: errors.length === 0, errors, warnings };
+}
+
+/**
  * Alias: DB-only environment validation.
  */
 export const validateDatabaseOnlyEnvironment = validateEnvironment;

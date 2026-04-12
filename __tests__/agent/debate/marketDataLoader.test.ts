@@ -10,6 +10,7 @@ function createSnapshot(overrides: Partial<MarketSnapshot> = {}): MarketSnapshot
     breadth: null,
     indices: [],
     fearGreed: null,
+    creditIndicators: [],
     ...overrides,
   };
 }
@@ -223,6 +224,56 @@ describe("formatMarketSnapshot", () => {
     );
 
     expect(result).toContain("절대 추정하지 마세요");
+  });
+
+  it("includes credit indicators with warning status", () => {
+    const result = formatMarketSnapshot(
+      createSnapshot({
+        creditIndicators: [
+          { seriesId: "BAMLH0A0HYM2", value: 272, zScore: 1.6, change1w: 15, change1m: 48 },
+          { seriesId: "BAMLH0A3HYC", value: 890, zScore: 2.3, change1w: 45, change1m: 120 },
+          { seriesId: "BAMLC0A4CBBB", value: 150, zScore: 0.8, change1w: -5, change1m: 10 },
+          { seriesId: "STLFSI4", value: -0.5, zScore: null, change1w: null, change1m: null },
+        ],
+      }),
+    );
+
+    expect(result).toContain("신용시장 지표");
+    expect(result).toContain("HY 스프레드");
+    expect(result).toContain("272");
+    expect(result).toContain("+15");
+    expect(result).toContain("⚠️ 주의 (z=1.6)");
+    expect(result).toContain("CCC 스프레드");
+    expect(result).toContain("🔴 경고 (z=2.3)");
+    expect(result).toContain("BBB 스프레드");
+    expect(result).toContain("정상 (z=0.8)");
+    expect(result).toContain("금융 스트레스");
+    expect(result).toContain("정상");
+  });
+
+  it("omits credit indicators section when empty", () => {
+    const result = formatMarketSnapshot(
+      createSnapshot({
+        indices: [{ name: "S&P 500", close: 5200, changePercent: 0 }],
+        creditIndicators: [],
+      }),
+    );
+
+    expect(result).not.toContain("신용시장 지표");
+  });
+
+  it("shows negative credit indicator changes correctly", () => {
+    const result = formatMarketSnapshot(
+      createSnapshot({
+        creditIndicators: [
+          { seriesId: "BAMLC0A4CBBB", value: 120, zScore: -1.8, change1w: -10, change1m: -25 },
+        ],
+      }),
+    );
+
+    expect(result).toContain("-10");
+    expect(result).toContain("-25");
+    expect(result).toContain("⚠️ 주의 (z=-1.8)");
   });
 
   it("shows negative breadth change correctly", () => {
