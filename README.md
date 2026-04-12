@@ -244,7 +244,7 @@ yarn db:studio              # Drizzle Studio UI
 | Catalyst Loader | `catalystLoader.ts` | 종목 뉴스/실적 서프라이즈/임박 실적 발표 → 촉매 컨텍스트 |
 | Promote Learnings | `promote-learnings.ts` | 반복 적중 패턴 → 장기 기억 승격 |
 | Failure Tracker | `collect-failure-patterns.ts` | Phase 2 실패 조건 자동 기록 + 패턴 축적 |
-| Narrative Chain | `narrativeChainService.ts` | 병목 생애주기 추적 (식별→해소→다음 병목) |
+| Narrative Chain | `narrativeChainService.ts` | 병목 생애주기 추적 (식별→해소→다음 병목) + 동의어 정규화 키워드 매칭 (#753) |
 | Sector Lag Stats | `sectorLagStats.ts` | 섹터 쌍별 Phase 전이 시차 통계 + 선행 경보 |
 | Bias Detector | `biasDetector.ts` | bull-bias 80% 초과 경고 |
 | Statistical Tests | `statisticalTests.ts` | 이항 검정 + Cohen's h 유의성 필터 |

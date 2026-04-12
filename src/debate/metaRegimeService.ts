@@ -9,6 +9,10 @@ import {
 import { eq, inArray, asc, isNull, and, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { sanitizeCell } from "@/lib/markdown";
+import {
+  replaceMultiWordSynonyms,
+  normalizeSingleWord,
+} from "@/debate/synonymDictionary";
 
 // ─── Keyword Utilities ───────────────────────────────────────────────
 
@@ -23,14 +27,22 @@ const STOP_WORDS = new Set([
 /**
  * Extract significant keywords from text for matching.
  * Filters out common stop words and short tokens.
+ *
+ * Normalization pipeline:
+ * 1. Lowercase + strip non-alphanum
+ * 2. Replace multi-word synonym phrases with canonical form
+ * 3. Tokenize on whitespace
+ * 4. Normalize single-word synonyms to canonical form
+ * 5. Filter stop words and short tokens
  */
 export function extractKeywords(text: string): Set<string> {
+  const cleaned = text.toLowerCase().replace(/[^a-zA-Z가-힣0-9\s]/g, " ");
+  const phraseNormalized = replaceMultiWordSynonyms(cleaned);
   return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-zA-Z가-힣0-9\s]/g, " ")
+    phraseNormalized
       .split(/\s+/)
-      .filter((w) => w.length >= 2 && !STOP_WORDS.has(w)),
+      .filter((w) => w.length >= 2 && !STOP_WORDS.has(w))
+      .map(normalizeSingleWord),
   );
 }
 
@@ -256,20 +268,21 @@ export async function transitionMetaRegimeStatuses(): Promise<number> {
 // ─── Chain ↔ Regime Linking ─────────────────────────────────────────
 
 /** Stop words for megatrend keyword extraction. */
-const STOP_WORDS = new Set([
+const MEGATREND_STOP_WORDS = new Set([
   "의", "에", "에서", "로", "으로", "가", "이", "을", "를", "는", "은", "과", "와", "및",
   "중", "후", "내", "기준", "현재", "상태", "상승", "하락", "유지", "전환", "진입",
   "the", "a", "an", "in", "on", "at", "to", "for", "of", "is", "are",
 ]);
 
-/** Extract significant keywords from megatrend text. */
+/** Extract significant keywords from megatrend text with synonym normalization. */
 function extractMegatrendKeywords(text: string): Set<string> {
+  const cleaned = text.toLowerCase().replace(/[^a-zA-Z가-힣0-9\s]/g, " ");
+  const phraseNormalized = replaceMultiWordSynonyms(cleaned);
   return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-zA-Z가-힣0-9\s]/g, " ")
+    phraseNormalized
       .split(/\s+/)
-      .filter((w) => w.length >= 2 && !STOP_WORDS.has(w)),
+      .filter((w) => w.length >= 2 && !MEGATREND_STOP_WORDS.has(w))
+      .map(normalizeSingleWord),
   );
 }
 
