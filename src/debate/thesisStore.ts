@@ -65,6 +65,7 @@ export async function saveTheses(
       dissentReason: t.dissentReason ?? null,
       minorityView: t.minorityView ?? null,
       consensusUnverified: t.consensusUnverified ?? null,
+      contradictionDetected: t.contradictionDetected ?? null,
       isStatusQuo,
       status: "ACTIVE" as const,
     };

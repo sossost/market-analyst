@@ -26,6 +26,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 서사 체인 + 국면 컨텍스트를 Round 3 합성 프롬프트에 주입 — 공급망 경로 + 선행 포착 후보 제공
    → 모더레이터(Claude)가 thesis 구조화 + 합의도(consensus_score) 기록
    → Consensus 알고리즘 검증: Round 1 에이전트 출력 키워드 매칭으로 합의도 교차 검증 + 불일치 플래그(#713)
+   → Cross-thesis 모순 탐지: 같은 target entity에 방향성 상반 thesis 쌍 감지 → lower consensus 쪽에 `contradiction_detected` 플래그 부착 (#752)
 
 3. 학습 루프 (자동)
    → ACTIVE thesis를 시장 데이터로 검증 (CONFIRMED/INVALIDATED)
