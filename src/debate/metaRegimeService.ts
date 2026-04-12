@@ -41,8 +41,8 @@ export function extractKeywords(text: string): Set<string> {
   return new Set(
     phraseNormalized
       .split(/\s+/)
-      .filter((w) => w.length >= 2 && !STOP_WORDS.has(w))
-      .map(normalizeSingleWord),
+      .map(normalizeSingleWord)
+      .filter((w) => w.length >= 2 && !STOP_WORDS.has(w)),
   );
 }
 
@@ -268,12 +268,6 @@ export async function transitionMetaRegimeStatuses(): Promise<number> {
 // ─── Chain ↔ Regime Linking ─────────────────────────────────────────
 
 /** Stop words for megatrend keyword extraction. */
-const MEGATREND_STOP_WORDS = new Set([
-  "의", "에", "에서", "로", "으로", "가", "이", "을", "를", "는", "은", "과", "와", "및",
-  "중", "후", "내", "기준", "현재", "상태", "상승", "하락", "유지", "전환", "진입",
-  "the", "a", "an", "in", "on", "at", "to", "for", "of", "is", "are",
-]);
-
 /** Extract significant keywords from megatrend text with synonym normalization. */
 function extractMegatrendKeywords(text: string): Set<string> {
   const cleaned = text.toLowerCase().replace(/[^a-zA-Z가-힣0-9\s]/g, " ");
@@ -281,8 +275,8 @@ function extractMegatrendKeywords(text: string): Set<string> {
   return new Set(
     phraseNormalized
       .split(/\s+/)
-      .filter((w) => w.length >= 2 && !MEGATREND_STOP_WORDS.has(w))
-      .map(normalizeSingleWord),
+      .map(normalizeSingleWord)
+      .filter((w) => w.length >= 2 && !STOP_WORDS.has(w)),
   );
 }
 
