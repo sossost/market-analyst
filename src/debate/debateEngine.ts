@@ -32,6 +32,8 @@ interface DebateConfig {
   narrativeChainContext?: string;
   /** LLM 뉴스 테마 분석 — HIGH severity 인과 테마 (#751) */
   themeContext?: string;
+  /** 기존 ACTIVE/CONFIRMED thesis — 모더레이터 중복 생성 방지 (#764) */
+  existingThesesContext?: string;
 }
 
 /**
@@ -58,6 +60,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     catalystContext,
     narrativeChainContext,
     themeContext,
+    existingThesesContext,
   } = config;
   const startTime = Date.now();
 
@@ -141,6 +144,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     earlyDetectionContext,
     catalystContext,
     narrativeChainContext,
+    existingThesesContext,
   });
 
   const totalDurationMs = Date.now() - startTime;

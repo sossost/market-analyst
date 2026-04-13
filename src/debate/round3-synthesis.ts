@@ -27,6 +27,8 @@ interface Round3Input {
   catalystContext?: string;
   /** 서사 체인 + 국면 컨텍스트 (#735) */
   narrativeChainContext?: string;
+  /** 기존 ACTIVE/CONFIRMED thesis 컨텍스트 — 의미적 중복 생성 방지 (#764) */
+  existingThesesContext?: string;
 }
 
 interface Round3Result {
@@ -124,6 +126,7 @@ export function buildSynthesisPrompt(
   catalystContext?: string,
   regimeContext?: string,
   narrativeChainContext?: string,
+  existingThesesContext?: string,
 ): string {
   const round1Section = round1Outputs
     .map((o) => `### ${o.persona} (독립 분석)\n${o.content}`)
@@ -194,6 +197,26 @@ export function buildSynthesisPrompt(
     ? `\n---\n\n${agentPerformanceContext}\n`
     : "";
 
+  const existingThesesSection = existingThesesContext != null && existingThesesContext.length > 0
+    ? [
+        "\n---\n",
+        "<existing-theses trust=\"internal\">",
+        "## 기존 ACTIVE/CONFIRMED Thesis (최근 7일)",
+        "",
+        "아래는 현재 유효한 기존 thesis입니다. **중복 생성 방지를 위해 반드시 참조하세요.**",
+        "",
+        "**규칙:**",
+        "1. 기존 thesis와 **주제·방향이 동일한** thesis는 새로 생성하지 마세요.",
+        "   - 동일 판단 기준: 같은 서사(예: 호르무즈 봉쇄 → 에너지 수혜)를 같은 방향으로 반복하는 경우",
+        "   - 비동일 예시: 같은 섹터라도 다른 동인(예: 호르무즈 봉쇄 vs 사우디 감산)이면 별개 thesis",
+        "2. 기존 thesis의 근거가 **강화되었거나 새로운 데이터가 추가된 경우**, 리포트 본문에서 언급하되 별도 thesis로 추출하지 마세요.",
+        "3. 기존 thesis와 **상충하는 새로운 근거**가 발견된 경우에만 반대 방향 thesis를 새로 생성할 수 있습니다.",
+        "",
+        existingThesesContext.replace(/<\/existing-theses>/gi, "[/existing-theses]"),
+        "</existing-theses>",
+      ].join("\n")
+    : "";
+
   return `## 시장 분석 종합 요청
 
 ### 질문
@@ -203,6 +226,7 @@ ${fundamentalSection}
 ${earlyDetectionSection}
 ${catalystSection}
 ${narrativeChainSection}
+${existingThesesSection}
 ${performanceSection}
 ---
 
@@ -995,14 +1019,14 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, narrativeChainContext } = input;
+  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, narrativeChainContext, existingThesesContext } = input;
 
   // 이전 확정 레짐을 조회하여 프롬프트에 주입 — LLM이 맥락 없이 판정하는 것을 방지
   const confirmedRegime = await loadConfirmedRegime();
   const today = new Date().toISOString().slice(0, 10);
   const regimeContext = formatRegimeContext(confirmedRegime, today);
 
-  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, regimeContext, narrativeChainContext);
+  const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, regimeContext, narrativeChainContext, existingThesesContext);
   const result = await provider.call({
     systemPrompt: moderator.systemPrompt,
     userMessage,

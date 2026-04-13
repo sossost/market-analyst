@@ -7,7 +7,7 @@ import { buildMemoryContext } from "@/debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "@/debate/marketDataLoader";
 import { collectNews, formatNewsForPersona } from "@/debate/newsCollector";
 import { loadNewsForPersona } from "@/debate/newsLoader";
-import { saveTheses, resolveOrExpireStaleTheses, expireStalledTheses, getThesisStats } from "@/debate/thesisStore";
+import { saveTheses, resolveOrExpireStaleTheses, expireStalledTheses, getThesisStats, loadRecentThesesForDedup, formatExistingThesesForSynthesis } from "@/debate/thesisStore";
 import {
   validateRegimeInput,
   validateRegimeTransition,
@@ -710,6 +710,21 @@ async function main() {
     );
   }
 
+  // 4.8. 기존 ACTIVE/CONFIRMED thesis 로드 — Round 3 중복 생성 방지 (#764)
+  let existingThesesContext = "";
+  try {
+    const recentTheses = await loadRecentThesesForDedup(debateDate);
+    existingThesesContext = formatExistingThesesForSynthesis(recentTheses);
+    if (existingThesesContext.length > 0) {
+      logger.info("ThesisDedup", `기존 thesis ${recentTheses.length}건 로드 — 모더레이터 중복 방지 컨텍스트 주입`);
+    }
+  } catch (err) {
+    logger.warn(
+      "ThesisDedup",
+      `기존 thesis 로드 실패 (토론 계속): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   // 5. 토론 실행
   logger.step(`[5/7] Running debate for ${debateDate}...`);
 
@@ -726,6 +741,7 @@ async function main() {
     catalystContext,
     narrativeChainContext,
     themeContext,
+    existingThesesContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);

@@ -1,6 +1,6 @@
 import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
-import { eq, and, sql, inArray, asc } from "drizzle-orm";
+import { eq, and, sql, inArray, asc, gte } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import type { Thesis, ThesisCategory, Confidence, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "@/types/debate";
 import { recordNarrativeChain } from "./narrativeChainService.js";
@@ -754,6 +754,71 @@ export async function forceExpireTheses(
 
   logger.info("ThesisStore", `${result.length}개 thesis 강제 만료: [${result.map((r) => r.id).join(", ")}]`);
   return result.length;
+}
+
+/**
+ * 최근 N일 ACTIVE/CONFIRMED thesis를 조회한다 (#764).
+ * Round 3 모더레이터 프롬프트에 주입하여 의미적 중복 생성을 방지.
+ *
+ * @param today YYYY-MM-DD 형식 날짜
+ * @param lookbackDays 조회 범위 (기본 7일)
+ */
+export const DEDUP_LOOKBACK_DAYS = 7;
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export async function loadRecentThesesForDedup(
+  today: string,
+  lookbackDays: number = DEDUP_LOOKBACK_DAYS,
+): Promise<Awaited<ReturnType<typeof loadActiveTheses>>> {
+  if (!DATE_PATTERN.test(today)) {
+    throw new Error(`Invalid date format for dedup query: ${today}`);
+  }
+
+  const cutoff = sql`(${today}::date - ${lookbackDays} * interval '1 day')::date`;
+
+  return db
+    .select()
+    .from(theses)
+    .where(
+      and(
+        inArray(theses.status, ["ACTIVE", "CONFIRMED"]),
+        gte(theses.createdAt, sql`${cutoff}::timestamp`),
+      ),
+    );
+}
+
+/**
+ * 기존 thesis를 Round 3 모더레이터 프롬프트용 텍스트로 변환 (#764).
+ * 에이전트별로 그룹화하여 모더레이터가 중복을 식별할 수 있게 한다.
+ * 빈 배열이면 빈 문자열 반환.
+ */
+export function formatExistingThesesForSynthesis(
+  rows: Awaited<ReturnType<typeof loadActiveTheses>>,
+): string {
+  if (rows.length === 0) return "";
+
+  // 에이전트별 그룹화
+  const byPersona = new Map<string, typeof rows>();
+  for (const t of rows) {
+    const existing = byPersona.get(t.agentPersona) ?? [];
+    existing.push(t);
+    byPersona.set(t.agentPersona, existing);
+  }
+
+  const sections: string[] = [];
+
+  for (const [persona, personaTheses] of byPersona) {
+    const label = PERSONA_LABEL[persona] ?? persona;
+    const lines = personaTheses.map((t) => {
+      const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "SHORT";
+      const status = t.status === "ACTIVE" ? "ACTIVE" : "CONFIRMED";
+      return `  - [${catLabel}][${status}] ${t.thesis} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`;
+    });
+    sections.push(`**${label}**:\n${lines.join("\n")}`);
+  }
+
+  return sections.join("\n\n");
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { formatFundamentalContext, buildSynthesisPrompt, formatRegimeContext } from "../round3-synthesis.js";
+import { formatExistingThesesForSynthesis, DEDUP_LOOKBACK_DAYS } from "../thesisStore.js";
 import type { MarketRegimeRow } from "../regimeStore.js";
 import type { FundamentalScore } from "@/types/fundamental";
 import type { RoundOutput, AgentPersona } from "@/types/debate";
@@ -350,5 +351,150 @@ describe("formatRegimeContext", () => {
     const result = formatRegimeContext(regime, "2026-04-07");
 
     expect(result).toContain("0일 경과");
+  });
+});
+
+// ─── formatExistingThesesForSynthesis (#764) ────────────────────────────────
+
+function makeThesisRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 1,
+    debateDate: "2026-04-10",
+    agentPersona: "geopolitics",
+    thesis: "호르무즈 위기 → Energy RS 60일 지속",
+    timeframeDays: 60,
+    verificationMetric: "Energy RS",
+    targetCondition: "Energy RS > 55",
+    invalidationCondition: null,
+    confidence: "high",
+    consensusLevel: "3/4",
+    category: "structural_narrative",
+    status: "ACTIVE",
+    verificationDate: null,
+    verificationResult: null,
+    causalAnalysis: null,
+    closeReason: null,
+    verificationMethod: null,
+    nextBottleneck: null,
+    consensusScore: 3,
+    dissentReason: null,
+    minorityView: null,
+    consensusUnverified: null,
+    isStatusQuo: null,
+    contradictionDetected: null,
+    createdAt: new Date("2026-04-10T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+describe("formatExistingThesesForSynthesis", () => {
+  it("빈 배열이면 빈 문자열을 반환한다", () => {
+    expect(formatExistingThesesForSynthesis([])).toBe("");
+  });
+
+  it("단일 thesis를 에이전트 라벨과 함께 포맷한다", () => {
+    const rows = [makeThesisRow()] as any;
+    const result = formatExistingThesesForSynthesis(rows);
+
+    expect(result).toContain("지정학 전략가");
+    expect(result).toContain("[STRUCTURAL]");
+    expect(result).toContain("[ACTIVE]");
+    expect(result).toContain("호르무즈 위기");
+    expect(result).toContain("Energy RS > 55");
+  });
+
+  it("CONFIRMED thesis의 status를 올바르게 표시한다", () => {
+    const rows = [makeThesisRow({ status: "CONFIRMED" })] as any;
+    const result = formatExistingThesesForSynthesis(rows);
+
+    expect(result).toContain("[CONFIRMED]");
+    expect(result).not.toContain("[ACTIVE]");
+  });
+
+  it("여러 에이전트의 thesis를 에이전트별로 그룹화한다", () => {
+    const rows = [
+      makeThesisRow({ id: 1, agentPersona: "geopolitics", thesis: "호르무즈 thesis" }),
+      makeThesisRow({ id: 2, agentPersona: "macro", thesis: "금리 인하 thesis" }),
+      makeThesisRow({ id: 3, agentPersona: "geopolitics", thesis: "대만 thesis" }),
+    ] as any;
+    const result = formatExistingThesesForSynthesis(rows);
+
+    expect(result).toContain("지정학 전략가");
+    expect(result).toContain("매크로 이코노미스트");
+    // geopolitics 섹션에 두 thesis가 모두 포함
+    expect(result).toContain("호르무즈 thesis");
+    expect(result).toContain("대만 thesis");
+    expect(result).toContain("금리 인하 thesis");
+  });
+
+  it("sector_rotation 카테고리는 ROTATION으로 표시한다", () => {
+    const rows = [makeThesisRow({ category: "sector_rotation" })] as any;
+    const result = formatExistingThesesForSynthesis(rows);
+
+    expect(result).toContain("[ROTATION]");
+  });
+
+  it("short_term_outlook 카테고리는 SHORT로 표시한다", () => {
+    const rows = [makeThesisRow({ category: "short_term_outlook" })] as any;
+    const result = formatExistingThesesForSynthesis(rows);
+
+    expect(result).toContain("[SHORT]");
+  });
+});
+
+// ─── DEDUP_LOOKBACK_DAYS (#764) ──────────────────────────────────────────────
+
+describe("DEDUP_LOOKBACK_DAYS", () => {
+  it("기본값이 7일이다", () => {
+    expect(DEDUP_LOOKBACK_DAYS).toBe(7);
+  });
+});
+
+// ─── buildSynthesisPrompt: existingThesesContext (#764) ──────────────────────
+
+describe("buildSynthesisPrompt — existingThesesContext", () => {
+  const round1: RoundOutput[] = [
+    { persona: "macro" as AgentPersona, content: "매크로 분석" },
+  ];
+  const round2: RoundOutput[] = [
+    { persona: "macro" as AgentPersona, content: "매크로 교차검증" },
+  ];
+  const question = "오늘의 시장 분석";
+
+  it("existingThesesContext가 없으면 기존 thesis 섹션이 포함되지 않는다", () => {
+    const prompt = buildSynthesisPrompt(round1, round2, question);
+
+    expect(prompt).not.toContain("<existing-theses");
+    expect(prompt).not.toContain("중복 생성 방지");
+  });
+
+  it("existingThesesContext가 빈 문자열이면 기존 thesis 섹션이 포함되지 않는다", () => {
+    const prompt = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, undefined, undefined, "");
+
+    expect(prompt).not.toContain("<existing-theses");
+  });
+
+  it("existingThesesContext가 제공되면 XML 태그와 중복 방지 규칙이 포함된다", () => {
+    const context = "**지정학 전략가**:\n  - [STRUCTURAL][ACTIVE] 호르무즈 위기";
+    const prompt = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, undefined, undefined, context);
+
+    expect(prompt).toContain("<existing-theses trust=\"internal\">");
+    expect(prompt).toContain("</existing-theses>");
+    expect(prompt).toContain("중복 생성 방지");
+    expect(prompt).toContain("호르무즈 위기");
+    expect(prompt).toContain("주제·방향이 동일한");
+    expect(prompt).toContain("호르무즈 봉쇄 vs 사우디 감산");
+  });
+
+  it("existingThesesContext는 분석가 그룹 섹션 앞에 위치한다", () => {
+    const context = "기존 thesis 컨텍스트";
+    const prompt = buildSynthesisPrompt(round1, round2, question, undefined, undefined, undefined, undefined, undefined, undefined, undefined, context);
+
+    const existingIdx = prompt.indexOf("<existing-theses");
+    const analysisIdx = prompt.indexOf("## 분석가 A 그룹");
+
+    expect(existingIdx).toBeGreaterThan(-1);
+    expect(analysisIdx).toBeGreaterThan(-1);
+    expect(existingIdx).toBeLessThan(analysisIdx);
   });
 });
