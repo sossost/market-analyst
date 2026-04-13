@@ -108,6 +108,68 @@ describe("computeYoYGrowths", () => {
     expect(growths[0].yoyGrowth).toBe(80); // index 1 vs 5
   });
 
+  it("skips quarters where year-ago value is negative (turnaround case)", () => {
+    // EPS -$0.01 → +$0.10 should NOT produce 1100% growth
+    const quarters = [
+      makeQuarter("AAPL", "2025-12-31", "0.10", null),
+      makeQuarter("AAPL", "2025-09-30", "1.80", null),
+      makeQuarter("AAPL", "2025-06-30", "1.50", null),
+      makeQuarter("AAPL", "2025-03-31", "1.20", null),
+      makeQuarter("AAPL", "2024-12-31", "-0.01", null), // negative year-ago
+      makeQuarter("AAPL", "2024-09-30", "1.00", null),
+      makeQuarter("AAPL", "2024-06-30", "1.00", null),
+      makeQuarter("AAPL", "2024-03-31", "1.00", null),
+    ];
+
+    const growths = computeYoYGrowths(quarters, "eps_diluted");
+
+    // Index 0 vs 4: year-ago is negative, skipped
+    expect(growths).toHaveLength(3);
+    expect(growths[0].yoyGrowth).toBe(80); // index 1 vs 5
+  });
+
+  it("skips quarters where year-ago is negative even with negative current (loss deepening)", () => {
+    // EPS -$0.50 → -$0.10: both negative, should skip
+    const quarters = [
+      makeQuarter("AAPL", "2025-12-31", "-0.10", null),
+      makeQuarter("AAPL", "2025-09-30", "1.80", null),
+      makeQuarter("AAPL", "2025-06-30", "1.50", null),
+      makeQuarter("AAPL", "2025-03-31", "1.20", null),
+      makeQuarter("AAPL", "2024-12-31", "-0.50", null), // negative year-ago
+      makeQuarter("AAPL", "2024-09-30", "1.00", null),
+      makeQuarter("AAPL", "2024-06-30", "1.00", null),
+      makeQuarter("AAPL", "2024-03-31", "1.00", null),
+    ];
+
+    const growths = computeYoYGrowths(quarters, "eps_diluted");
+
+    // Index 0 vs 4: year-ago is negative, skipped
+    expect(growths).toHaveLength(3);
+    expect(growths[0].yoyGrowth).toBe(80); // index 1 vs 5
+  });
+
+  it("calculates correctly when all year-ago values are positive", () => {
+    // Normal case: positive → positive
+    const quarters = [
+      makeQuarter("AAPL", "2025-12-31", "2.00", null),
+      makeQuarter("AAPL", "2025-09-30", "1.80", null),
+      makeQuarter("AAPL", "2025-06-30", "1.50", null),
+      makeQuarter("AAPL", "2025-03-31", "1.20", null),
+      makeQuarter("AAPL", "2024-12-31", "1.00", null),
+      makeQuarter("AAPL", "2024-09-30", "1.00", null),
+      makeQuarter("AAPL", "2024-06-30", "1.00", null),
+      makeQuarter("AAPL", "2024-03-31", "1.00", null),
+    ];
+
+    const growths = computeYoYGrowths(quarters, "eps_diluted");
+
+    expect(growths).toHaveLength(4);
+    expect(growths[0].yoyGrowth).toBe(100); // 2.00 vs 1.00
+    expect(growths[1].yoyGrowth).toBe(80);  // 1.80 vs 1.00
+    expect(growths[2].yoyGrowth).toBe(50);  // 1.50 vs 1.00
+    expect(growths[3].yoyGrowth).toBe(20);  // 1.20 vs 1.00
+  });
+
   it("returns empty for insufficient quarters", () => {
     const quarters = [
       makeQuarter("AAPL", "2025-12-31", "2.00", null),
