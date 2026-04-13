@@ -39,7 +39,7 @@ log "=== 일간 ETL 파이프라인 시작 ==="
 # Phase 1
 run_step "Load Daily Prices" "src/etl/jobs/load-daily-prices.ts"
 run_step "Load Index Prices" "src/etl/jobs/load-index-prices.ts"
-run_step "Collect Credit Indicators" "src/etl/jobs/collect-credit-indicators.ts"
+run_step_optional "Collect Credit Indicators" "src/etl/jobs/collect-credit-indicators.ts"
 
 # [휴일 감지] Phase 1 완료 후 거래일 여부 확인
 log "▶ 거래일 확인"
@@ -94,9 +94,9 @@ run_step "Scan Recommendation Candidates" "src/etl/jobs/scan-recommendation-cand
 
 # Phase 3.9 (종목 촉매 데이터 — stock_phases 완료 후 실행하여 오늘의 Phase 2 기준 일치)
 # 순차 실행: 3개 잡이 동시에 FMP API를 호출하면 rate limit(429)에 걸림
-run_step "Load Earning Calendar" "src/etl/jobs/load-earning-calendar.ts"
-run_step "Load Stock News" "src/etl/jobs/load-stock-news.ts"
-run_step "Load Earnings Surprises FMP" "src/etl/jobs/load-earnings-surprises-fmp.ts"
+run_step_optional "Load Earning Calendar" "src/etl/jobs/load-earning-calendar.ts"
+run_step_optional "Load Stock News" "src/etl/jobs/load-stock-news.ts"
+run_step_optional "Load Earnings Surprises FMP" "src/etl/jobs/load-earnings-surprises-fmp.ts"
 
 # Phase 4
 run_step "Validate Data" "src/etl/jobs/validate-data.ts"
