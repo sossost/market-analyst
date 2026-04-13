@@ -783,7 +783,7 @@ export async function loadRecentThesesForDedup(
     .where(
       and(
         inArray(theses.status, ["ACTIVE", "CONFIRMED"]),
-        gte(theses.createdAt, sql`${cutoff}::timestamp`),
+        gte(theses.createdAt, cutoff),
       ),
     );
 }
@@ -813,7 +813,7 @@ export function formatExistingThesesForSynthesis(
     const lines = personaTheses.map((t) => {
       const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "SHORT";
       const status = t.status === "ACTIVE" ? "ACTIVE" : "CONFIRMED";
-      return `  - [${catLabel}][${status}] ${t.thesis} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`;
+      return `  - [${catLabel}][${status}] ${t.thesis.replace(/\n/g, " ")} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`;
     });
     sections.push(`**${label}**:\n${lines.join("\n")}`);
   }
