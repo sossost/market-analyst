@@ -41,6 +41,7 @@ import { formatFundamentalContext } from "@/debate/round3-synthesis";
 import { loadEarlyDetectionContext } from "@/debate/earlyDetectionLoader";
 import { loadCatalystContext } from "@/debate/catalystLoader";
 import { loadThemeContext } from "@/debate/themeContextLoader";
+import { loadGapContext } from "@/debate/gapContextLoader";
 // extractDailyInsight는 insightExtractor에서 관리 — 순환 참조 방지를 위해 분리
 export { extractDailyInsight } from "@/debate/insightExtractor";
 
@@ -586,6 +587,17 @@ async function main() {
     logger.warn("Theme", `Theme context loading failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // 3.6. 뉴스 사각지대 컨텍스트 로드 — Gap Analyzer가 식별한 미수집 테마
+  let gapContext = "";
+  try {
+    gapContext = await loadGapContext(debateDate);
+    if (gapContext.length > 0) {
+      logger.info("Gap", `Gap context loaded: ${gapContext.length} chars`);
+    }
+  } catch (err) {
+    logger.warn("Gap", `Gap context loading failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 4. 과거 유사 세션 로드 (few-shot)
   logger.step("[4/7] Loading similar past sessions...");
   let fewShotContext = "";
@@ -742,6 +754,7 @@ async function main() {
     narrativeChainContext,
     themeContext,
     existingThesesContext,
+    gapContext,
   });
 
   logger.info("Debate", `Round 1: ${result.round1.outputs.length}/4 agents`);
