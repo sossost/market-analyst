@@ -1271,3 +1271,31 @@ export const marketBreadthDaily = pgTable("market_breadth_daily", {
 }, (t) => ({
   pk: primaryKey({ columns: [t.date] }),
 }));
+
+/**
+ * news_themes — LLM 기반 뉴스 테마 추출 결과.
+ * 수집된 뉴스 배치를 LLM에 전달하여 인과적 섹터 영향 테마를 추출.
+ * 토론 에이전트에 HIGH severity 테마를 컨텍스트로 주입.
+ */
+export type ThemeSeverity = "low" | "medium" | "high";
+
+export const newsThemes = pgTable(
+  "news_themes",
+  {
+    id: serial("id").primaryKey(),
+    date: text("date").notNull(), // YYYY-MM-DD
+    theme: text("theme").notNull(), // "PE/CLO 신용경색"
+    impactedIndustries: jsonb("impacted_industries").notNull(), // string[] — FMP 정규화된 업종명
+    impactMechanism: text("impact_mechanism").notNull(), // 인과 메커니즘 설명
+    severity: text("severity").notNull(), // 'low' | 'medium' | 'high'
+    sourceCount: integer("source_count").notNull(), // 이 테마를 언급한 뉴스 수
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqDateTheme: unique("uq_news_themes_date_theme").on(t.date, t.theme),
+    idxDate: index("idx_news_themes_date").on(t.date),
+    idxSeverity: index("idx_news_themes_severity").on(t.severity),
+  }),
+);
