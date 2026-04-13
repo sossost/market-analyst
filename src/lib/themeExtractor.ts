@@ -184,25 +184,36 @@ export async function saveThemes(
 ): Promise<number> {
   if (themes.length === 0) return 0;
 
-  let inserted = 0;
+  let saved = 0;
   for (const theme of themes) {
     try {
-      await db.insert(newsThemes).values({
-        date,
-        theme: theme.theme,
-        impactedIndustries: theme.impactedIndustries,
-        impactMechanism: theme.impactMechanism,
-        severity: theme.severity,
-        sourceCount: theme.sourceCount,
-      });
-      inserted++;
+      await db
+        .insert(newsThemes)
+        .values({
+          date,
+          theme: theme.theme,
+          impactedIndustries: theme.impactedIndustries,
+          impactMechanism: theme.impactMechanism,
+          severity: theme.severity,
+          sourceCount: theme.sourceCount,
+        })
+        .onConflictDoUpdate({
+          target: [newsThemes.date, newsThemes.theme],
+          set: {
+            impactedIndustries: theme.impactedIndustries,
+            impactMechanism: theme.impactMechanism,
+            severity: theme.severity,
+            sourceCount: theme.sourceCount,
+          },
+        });
+      saved++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn(TAG, `테마 저장 실패: ${theme.theme} — ${msg}`);
     }
   }
 
-  return inserted;
+  return saved;
 }
 
 // ─── 메인 ─────────────────────────────────────────────────────────────────────

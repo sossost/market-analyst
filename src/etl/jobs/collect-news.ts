@@ -3,6 +3,7 @@ import { db, pool } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
 import { desc, gte } from "drizzle-orm";
 import { assertValidEnvironment } from "@/etl/utils/validation";
+import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { classifyCategory, classifySentiment } from "@/lib/newsClassifier";
 import { extractAndSaveThemes, type NewsItem } from "@/lib/themeExtractor";
 import { logger } from "@/lib/logger";
@@ -261,11 +262,12 @@ async function main() {
   logger.info(TAG, `Collect news archive — done: ${totalFetched} fetched, ${inserted} new inserted`);
 
   // 테마 추출 — 뉴스 수집 후 비동기 실행 (실패해도 뉴스 수집 결과에 영향 없음)
+  // getLatestPriceDate()로 토론 에이전트와 동일한 날짜 기준 사용 (주말/휴일 불일치 방지)
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const themeDate = await getLatestPriceDate() ?? new Date().toISOString().slice(0, 10);
     const newsItems = await loadRecentNewsForTheme();
-    const { extracted, saved } = await extractAndSaveThemes(newsItems, today);
-    logger.info(TAG, `Theme extraction — ${extracted} themes extracted, ${saved} saved`);
+    const { extracted, saved } = await extractAndSaveThemes(newsItems, themeDate);
+    logger.info(TAG, `Theme extraction — ${extracted} themes extracted, ${saved} saved (date: ${themeDate})`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn(TAG, `Theme extraction failed (non-blocking): ${msg}`);

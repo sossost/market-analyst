@@ -1294,6 +1294,7 @@ export const newsThemes = pgTable(
       .notNull(),
   },
   (t) => ({
+    uqDateTheme: unique("uq_news_themes_date_theme").on(t.date, t.theme),
     idxDate: index("idx_news_themes_date").on(t.date),
     idxSeverity: index("idx_news_themes_severity").on(t.severity),
   }),

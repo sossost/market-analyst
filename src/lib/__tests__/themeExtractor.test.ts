@@ -28,7 +28,9 @@ vi.mock("@/lib/anthropic-client", () => ({
 vi.mock("@/db/client", () => ({
   db: {
     insert: vi.fn(() => ({
-      values: vi.fn(() => Promise.resolve({ rowCount: 1 })),
+      values: vi.fn(() => ({
+        onConflictDoUpdate: vi.fn(() => Promise.resolve({ rowCount: 1 })),
+      })),
     })),
   },
 }));
