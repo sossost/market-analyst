@@ -123,9 +123,9 @@ export function computeYoYGrowths(
     const currentVal = current[field] != null ? toNum(current[field]!) : null;
     const yearAgoVal = yearAgo[field] != null ? toNum(yearAgo[field]!) : null;
 
-    if (currentVal == null || yearAgoVal == null || yearAgoVal === 0) continue;
+    if (currentVal == null || yearAgoVal == null || yearAgoVal <= 0) continue;
 
-    const growth = ((currentVal - yearAgoVal) / Math.abs(yearAgoVal)) * 100;
+    const growth = ((currentVal - yearAgoVal) / yearAgoVal) * 100;
     growths.push({
       quarter: current.period_end_date,
       yoyGrowth: Number(growth.toFixed(1)),
