@@ -239,6 +239,15 @@ async function executeRegister(
   const sector = typeof rawInput.sector === "string" ? rawInput.sector : null;
   const industry = typeof rawInput.industry === "string" ? rawInput.industry : null;
   const priceAtEntry = typeof rawInput.price_at_entry === "number" ? rawInput.price_at_entry : null;
+
+  if (priceAtEntry == null || priceAtEntry === 0) {
+    return JSON.stringify({
+      success: false,
+      blocked: true,
+      symbol,
+      message: "등록 거부: 진입 가격(price_at_entry)이 필요합니다.",
+    });
+  }
   const sepaGrade = typeof rawInput.sepa_grade === "string" ? rawInput.sepa_grade.toUpperCase() : null;
 
   const rawTier = typeof rawInput.tier === "string" ? rawInput.tier : null;
@@ -273,7 +282,7 @@ async function executeRegister(
       source: "agent",
       tier,
       entryDate: date,
-      entryPrice: priceAtEntry ?? 0,
+      entryPrice: priceAtEntry,
       entryPhase: phase,
       entryPrevPhase: null,
       entryRsScore: rsScore,

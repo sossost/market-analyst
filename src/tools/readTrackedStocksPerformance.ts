@@ -174,8 +174,8 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
            FROM tracked_stocks
            ${nonActiveWhere.clause}
            ORDER BY exit_date DESC NULLS LAST
-           LIMIT $${nonActiveWhere.params.length}`,
-          nonActiveWhere.params,
+           LIMIT $${nonActiveWhere.params.length + 1}`,
+          [...nonActiveWhere.params, limit],
         ),
       )
     : Promise.resolve({ rows: [] as TrackedStockPerfRow[] });

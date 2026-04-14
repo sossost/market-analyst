@@ -243,7 +243,7 @@ async function processTrackedStock(
   const entryPrice = toNum(item.entry_price);
   const pnlPercent = calculatePnlPercent(entryPrice === 0 ? null : entryPrice, currentPrice);
   const prevMax = item.max_pnl_percent != null ? toNum(item.max_pnl_percent) : null;
-  const maxPnlPercent = calculateMaxPnlPercent(prevMax === 0 ? null : prevMax, pnlPercent);
+  const maxPnlPercent = calculateMaxPnlPercent(prevMax, pnlPercent);
 
   // 경과일
   const daysTracked = calculateDaysTracked(item.entry_date, date);
