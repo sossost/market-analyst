@@ -37,7 +37,7 @@ const SCORE_THRESHOLD_FOR_ISSUE = 6;
 interface CollectedData {
   thesisWeekly: WeeklyQaThesisWeeklyRow[] | null;
   thesisOverall: WeeklyQaThesisOverallRow[] | null;
-  recommendations: WeeklyQaRecommendationRow[] | null;
+  trackedStocks: WeeklyQaRecommendationRow[] | null;
   learnings: WeeklyQaLearningRow[] | null;
   recentReports: WeeklyQaReportLogRow[] | null;
   verificationMethods: WeeklyQaVerificationMethodRow[] | null;
@@ -58,18 +58,18 @@ async function queryOrNullFn<T>(
 }
 
 async function collectData(): Promise<CollectedData> {
-  const [thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods, biasMetrics] =
+  const [thesisWeekly, thesisOverall, trackedStocks, learnings, recentReports, verificationMethods, biasMetrics] =
     await Promise.all([
       queryOrNullFn("thesis_weekly", () => queryWeeklyQaThesisWeekly(pool)),
       queryOrNullFn("thesis_overall", () => queryWeeklyQaThesisOverall(pool)),
-      queryOrNullFn("recommendations", () => queryWeeklyQaRecommendations(pool)),
+      queryOrNullFn("tracked_stocks", () => queryWeeklyQaRecommendations(pool)),
       queryOrNullFn("learnings", () => queryWeeklyQaLearnings(pool)),
       queryOrNullFn("recent_reports", () => queryWeeklyQaRecentReports(pool)),
       queryOrNullFn("verification_methods", () => queryWeeklyQaVerificationMethods(pool)),
       queryOrNullFn("bias_metrics", () => queryWeeklyQaBiasMetrics(pool)),
     ]);
 
-  return { thesisWeekly, thesisOverall, recommendations, learnings, recentReports, verificationMethods, biasMetrics };
+  return { thesisWeekly, thesisOverall, trackedStocks, learnings, recentReports, verificationMethods, biasMetrics };
 }
 
 // --- 프롬프트 구성 ---
@@ -92,7 +92,7 @@ function buildUserPrompt(data: CollectedData, today: string): string {
     "",
     formatDataSection("1. Thesis 성과 (최근 7일)", data.thesisWeekly),
     formatDataSection("2. Thesis 전체 적중률 (애널리스트별)", data.thesisOverall),
-    formatDataSection("3. 추천 성과", data.recommendations),
+    formatDataSection("3. 추적 종목 성과 (tracked_stocks)", data.trackedStocks),
     formatDataSection("4. 학습 원칙 현황", data.learnings),
     formatDataSection("5. 최근 리포트 로그", data.recentReports),
     formatDataSection("6. 검증 방식별 통계 (정량/LLM)", data.verificationMethods),
@@ -123,7 +123,7 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 | 항목 | 배점 | 기준 |
 |------|------|------|
 | 애널리스트 적중률 | 2점 | 전체 confirmed/(confirmed+invalidated) ≥ 50%: 2점, ≥ 30%: 1점, < 30%: 0점 |
-| 추천 성과 | 2점 | 종료 추천 승률 ≥ 60%: 2점, ≥ 40%: 1점, < 40%: 0점 |
+| 추적 종목 성과 | 2점 | 종료 추적 종목 승률 ≥ 60%: 2점, ≥ 40%: 1점, < 40%: 0점 |
 | 데이터 파이프라인 | 2점 | 7일 중 리포트 발행일 ≥ 5일: 2점, ≥ 3일: 1점, < 3일: 0점 |
 | 골 달성도 (초입 포착) | 2점 | Phase 1 후기 또는 RS 30~60 종목이 추천에 포함: 2점, 언급만: 1점, 없음: 0점 |
 | 편향 모니터링 | 2점 | bull-bias 미감지 + 정량 검증 비율 ≥ 50%: 2점, 하나만 충족: 1점, 둘 다 미충족: 0점 |
@@ -131,7 +131,7 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 **감점 규칙** (위 합산 점수에서 차감):
 - 학습 원칙 0개 활성: -1점
 - 검증 방식 중 LLM 전용 비율 > 70%: -1점
-- 추천 종목 중 Phase 이탈 2건 이상: -1점
+- 추적 종목 중 Phase 이탈(EXITED) 2건 이상: -1점
 
 최종 점수 = max(0, 합산 - 감점)
 
@@ -151,9 +151,10 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 - 이번 주 신규 thesis: N건
 - 처방: [필요시]
 
-## 2. 추천 성과
-- 활성 추천: N건, 평균 수익률 X%
-- 종료 추천: N건, 승률 X%
+## 2. 추적 종목 성과 (tracked_stocks)
+- ACTIVE: N건, 평균 수익률 X%
+- 종료(EXPIRED/EXITED): N건, 승률 X%
+- 소스별(etl_auto/agent/thesis_aligned) 분포 포함
 - 추세: [개선/악화/유지]
 
 ## 3. 시스템 건강도
