@@ -1188,7 +1188,7 @@ describe("renderFearGreedCard", () => {
   /** 공포탐욕 카드 영역만 추출하는 헬퍼 */
   function extractFearGreedCard(html: string): string {
     const match = html.match(
-      /<div class="index-card">[\s\S]*?<div class="label">공포탐욕[\s\S]*?<\/div>\s*<\/div>/,
+      /<div class="index-card">\s*<div class="label">공포탐욕[\s\S]*?<\/div>\s*<\/div>/,
     );
     return match?.[0] ?? "";
   }
