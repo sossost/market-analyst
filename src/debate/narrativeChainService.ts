@@ -452,8 +452,8 @@ export async function recordNarrativeChain(
             "NarrativeChain",
             `Inherited beneficiary data for new chain (megatrend: ${info.megatrend}): sectors=${finalBeneficiarySectors.join(",")}, tickers=${finalBeneficiaryTickers.join(",")}`,
           );
-        } else {
-          // 상속 실패 → 빈 껍데기 chain 재생산 방지
+        } else if (nextBeneficiaryTickers.length === 0) {
+          // 상속 실패 + nextBeneficiary도 없음 → 빈 껍데기 chain 재생산 방지
           logger.warn(
             "NarrativeChain",
             `beneficiary_tickers 없어 chain 생성 거부 (thesis #${thesisId}, megatrend: ${info.megatrend})`,

@@ -3,56 +3,6 @@ import { narrativeChains, type NarrativeChainStatus } from "../db/schema/analyst
 import { eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { sanitizeCell } from "./markdown.js";
 
-/**
- * ACTIVE/RESOLVING chain의 핵심 식별 정보를 반환.
- * Round 3 프롬프트 서사 다양성 가드레일 생성에 사용.
- */
-export async function getActiveChainLabels(): Promise<Array<{
-  id: number;
-  megatrend: string;
-  bottleneck: string;
-}>> {
-  const activeStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
-  const chains = await db
-    .select({
-      id: narrativeChains.id,
-      megatrend: narrativeChains.megatrend,
-      bottleneck: narrativeChains.bottleneck,
-    })
-    .from(narrativeChains)
-    .where(inArray(narrativeChains.status, activeStatuses));
-
-  return chains.map((chain) => ({
-    id: chain.id,
-    megatrend: chain.megatrend,
-    bottleneck: chain.bottleneck,
-  }));
-}
-
-/**
- * Round 3 프롬프트에 주입할 서사 다양성 가드레일 텍스트 생성.
- * ACTIVE/RESOLVING chain 목록을 테이블로 포맷하여 중복 서사 생성을 억제한다.
- * chain이 없으면 빈 문자열 반환.
- */
-export async function formatActiveChainsForDiversityGuard(): Promise<string> {
-  const chains = await getActiveChainLabels();
-  if (chains.length === 0) return "";
-
-  const rows = chains.map(
-    (chain) =>
-      `| #${chain.id} | ${sanitizeCell(chain.megatrend)} | ${sanitizeCell(chain.bottleneck)} |`,
-  );
-
-  return [
-    "## 현재 추적 중인 서사 (중복 생성 금지)\n",
-    "아래 서사는 이미 narrative_chains에 등록되어 있습니다.",
-    "동일 병목 구조의 새 structural_narrative thesis 생성을 억제하고, 아직 추적되지 않은 병목 서사를 우선 탐색하세요.\n",
-    "| 체인 | 메가트렌드 | 현재 병목 |",
-    "|------|----------|---------|",
-    ...rows,
-  ].join("\n");
-}
-
 const MIN_RESOLVED_FOR_STATS = 3;
 
 export interface ChainStats {
