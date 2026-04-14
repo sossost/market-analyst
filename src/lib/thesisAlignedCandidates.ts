@@ -187,7 +187,7 @@ export async function buildThesisAlignedCandidates(
           eq(stockPhases.date, date),
           eq(stockPhases.phase, PHASE_2),
           sql`${stockPhases.rsScore} >= ${RS_THRESHOLD}`,
-          sql`COALESCE(${symbolIndustryOverrides.industry}, ${symbols.industry}) = ANY(${sectorList})`,
+          inArray(sql`COALESCE(${symbolIndustryOverrides.industry}, ${symbols.industry})`, sectorList),
         ),
       );
 
