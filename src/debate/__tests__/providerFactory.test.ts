@@ -7,9 +7,8 @@ import { FallbackProvider } from "../llm/fallbackProvider.js";
 /**
  * createProvider 단위 테스트.
  *
- * Claude 계열: 항상 ClaudeCliProvider 단독.
+ * Claude 계열: ANTHROPIC_API_KEY 있으면 FallbackProvider(CLI → API), 없으면 ClaudeCliProvider 단독.
  * GPT/Gemini 계열: 항상 FallbackProvider(원본 → ClaudeCliProvider 폴백).
- * API 키 유무와 무관하게 AnthropicProvider(API 직접 호출)는 사용하지 않는다.
  */
 
 describe("createProvider", () => {
@@ -31,30 +30,38 @@ describe("createProvider", () => {
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = saved.GOOGLE_GENERATIVE_AI_API_KEY;
   });
 
-  describe("Claude 계열 — 항상 ClaudeCliProvider 단독", () => {
-    it("'sonnet' alias → ClaudeCliProvider 반환 (API 키 있어도)", () => {
+  describe("Claude 계열 — API 키 있으면 FallbackProvider(CLI → API)", () => {
+    it("'sonnet' + API 키 → FallbackProvider 반환", () => {
       const provider = createProvider("sonnet");
-      expect(provider).toBeInstanceOf(ClaudeCliProvider);
+      expect(provider).toBeInstanceOf(FallbackProvider);
     });
 
-    it("'claude-sonnet-4-20250514' → ClaudeCliProvider 반환", () => {
+    it("'claude-sonnet-4-20250514' + API 키 → FallbackProvider 반환", () => {
       const provider = createProvider("claude-sonnet-4-20250514");
-      expect(provider).toBeInstanceOf(ClaudeCliProvider);
+      expect(provider).toBeInstanceOf(FallbackProvider);
     });
 
-    it("'haiku' alias → ClaudeCliProvider 반환", () => {
+    it("'haiku' + API 키 → FallbackProvider 반환", () => {
       const provider = createProvider("haiku");
-      expect(provider).toBeInstanceOf(ClaudeCliProvider);
+      expect(provider).toBeInstanceOf(FallbackProvider);
     });
 
-    it("'opus' alias → ClaudeCliProvider 반환", () => {
+    it("'opus' + API 키 → FallbackProvider 반환", () => {
       const provider = createProvider("opus");
-      expect(provider).toBeInstanceOf(ClaudeCliProvider);
+      expect(provider).toBeInstanceOf(FallbackProvider);
     });
+  });
 
-    it("API 키 없어도 동일하게 ClaudeCliProvider 반환", () => {
+  describe("Claude 계열 — API 키 없으면 ClaudeCliProvider 단독", () => {
+    it("'sonnet' + API 키 없음 → ClaudeCliProvider 반환", () => {
       delete process.env.ANTHROPIC_API_KEY;
       const provider = createProvider("sonnet");
+      expect(provider).toBeInstanceOf(ClaudeCliProvider);
+    });
+
+    it("'opus' + API 키 빈 문자열 → ClaudeCliProvider 반환", () => {
+      process.env.ANTHROPIC_API_KEY = "";
+      const provider = createProvider("opus");
       expect(provider).toBeInstanceOf(ClaudeCliProvider);
     });
   });
