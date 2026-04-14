@@ -10,7 +10,7 @@ import { getIndexReturns } from "@/tools/getIndexReturns";
 import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getPhase2Stocks } from "@/tools/getPhase2Stocks";
-import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
+import { getTrackedStocks } from "@/tools/getTrackedStocks";
 import { getVCPCandidates } from "@/tools/getVCPCandidates";
 import { getConfirmedBreakouts } from "@/tools/getConfirmedBreakouts";
 import { getSectorLagPatterns } from "@/tools/getSectorLagPatterns";
@@ -86,13 +86,13 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   logger.step("[4/7] Collecting data from tools...");
 
   // 병렬 호출
-  const [indexRaw, breadthRaw, sectorRaw, industryRaw, watchlistRaw, phase2Raw, allIndustryRaw, thesisAlignedRaw, vcpRaw, breakoutRaw, lagRaw] =
+  const [indexRaw, breadthRaw, sectorRaw, industryRaw, trackedStocksRaw, phase2Raw, allIndustryRaw, thesisAlignedRaw, vcpRaw, breakoutRaw, lagRaw] =
     await Promise.all([
       getIndexReturns.execute({ mode: "weekly", date: targetDate }),
       getMarketBreadth.execute({ mode: "weekly", date: targetDate }),
       getLeadingSectors.execute({ mode: "weekly", date: targetDate }),
       getLeadingSectors.execute({ mode: "industry", limit: 10, date: targetDate }),
-      getWatchlistStatus.execute({ include_trajectory: true, date: targetDate }),
+      getTrackedStocks.execute({ include_trajectory: true }),
       getPhase2Stocks.execute({ min_rs: 60, date: targetDate }),
       getLeadingSectors.execute({ mode: "industry", limit: 200, date: targetDate }),
       buildThesisAlignedCandidates(targetDate).catch((err: unknown) => {
@@ -117,7 +117,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   const breadthData = parse(breadthRaw);
   const sectorData = parse(sectorRaw);
   const industryData = parse(industryRaw);
-  const watchlistData = parse(watchlistRaw);
+  const trackedStocksData = parse(trackedStocksRaw);
   const phase2Data = parse(phase2Raw);
   const allIndustryData = parse(allIndustryRaw);
 
@@ -169,8 +169,8 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
     sectorRanking: (Array.isArray(sectorData.sectors) ? sectorData.sectors : []) as WeeklyReportData["sectorRanking"],
     industryTop10: allIndustries as WeeklyReportData["industryTop10"],
     watchlist: {
-      summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as WeeklyReportData["watchlist"]["summary"],
-      items: Array.isArray(watchlistData.items) ? watchlistData.items : [],
+      summary: (trackedStocksData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as WeeklyReportData["watchlist"]["summary"],
+      items: Array.isArray(trackedStocksData.items) ? trackedStocksData.items : [],
     },
     gate5Candidates: stocks as WeeklyReportData["gate5Candidates"],
     watchlistChanges: {
@@ -424,13 +424,13 @@ async function main() {
 
   const signalPerformance = loadSignalPerformanceSummary();
 
-  let watchlistContext = "";
+  let trackedStocksContext = "";
   try {
-    const watchlistRaw = await getWatchlistStatus.execute({ include_trajectory: false });
-    const wd = JSON.parse(watchlistRaw) as { summary?: { totalActive: number; phaseChanges: unknown[] } };
-    const totalActive = wd.summary?.totalActive ?? 0;
+    const trackedRaw = await getTrackedStocks.execute({ include_trajectory: false });
+    const td = JSON.parse(trackedRaw) as { summary?: { totalActive: number; phaseChanges: unknown[] } };
+    const totalActive = td.summary?.totalActive ?? 0;
     if (totalActive > 0) {
-      watchlistContext = `현재 ACTIVE 관심종목 ${totalActive}개 추적 중`;
+      trackedStocksContext = `현재 ACTIVE 추적 종목 ${totalActive}개 추적 중`;
     }
   } catch {
     // fail-open
@@ -443,7 +443,7 @@ async function main() {
     narrativeChainsSummary,
     sectorLagContext,
     regimeContext,
-    watchlistContext,
+    watchlistContext: trackedStocksContext,
     sectorClusterContext,
   });
 
