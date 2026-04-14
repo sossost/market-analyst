@@ -65,7 +65,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 
 7. 에이전트 리포트
    → 일간: 시장 온도 + 시장 환경 멀티게이트(S&P 500 MA·신고가>신저가·A/D) + Thesis-Aligned Candidates(ACTIVE thesis 수혜주 기술적 상태 자동 조인 — Phase/RS/SEPA 게이트 충족 현황) + 토론 핵심 발견 + 관심종목 현황 브리핑 (조건부 발송)
-   → 주간: 지표 4×2 그리드(10Y·DXY·공포탐욕 통합) + 시장 브레드스(Phase 분포·5일 추이·LLM 해석) + 섹터 로테이션 + 업종 RS Top 10 + 관심종목 궤적 + 5중 게이트 + 다음 주 관전 포인트 (HTML 리포트 + Discord 요약)
+   → 주간: 지표 4×2 그리드(10Y·DXY·공포탐욕 통합) + 시장 브레드스(Phase 분포·5일 추이·LLM 해석) + 섹터 로테이션 + 업종 RS Top 10 + tracked_stocks 궤적 + 다음 주 관전 포인트 (HTML 리포트 + Discord 요약)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
 
 8. 전략 참모 (매일 04:00)
@@ -127,7 +127,8 @@ yarn etl:stock-news         # 종목 뉴스 수집 (Phase 2 + 관심종목)
 yarn etl:earning-calendar   # 실적 발표 일정 수집 (-7일 ~ +30일)
 yarn etl:earnings-surprises-fmp  # EPS 서프라이즈 수집 (최근 4분기)
 yarn etl:validate           # 데이터 검증
-yarn etl:update-watchlist   # 관심종목 Phase 궤적 업데이트
+yarn etl:update-tracked-stocks  # tracked_stocks Phase 궤적 + 수익률 스냅샷 업데이트
+yarn etl:scan-thesis-aligned    # narrative_chains 수혜주 → tracked_stocks 자동 등록
 yarn etl:verify-theses      # thesis 시장 데이터 검증
 yarn etl:failure-patterns   # Phase 2 실패 패턴 수집
 yarn etl:promote-learnings  # 반복 적중 패턴 → 장기 기억 승격
