@@ -9,6 +9,7 @@ import type {
   MarketPhase2RatioRow,
   Phase2PersistenceBySymbolRow,
   Phase2PersistenceRow,
+  Phase2SinceRow,
   Phase2StabilityRow,
   UnusualStockRow,
   RisingRsStockRow,
@@ -287,6 +288,47 @@ export async function findPhase2Stability(
      HAVING COUNT(*) = $3
         AND COUNT(*) FILTER (WHERE phase = 2) = $3`,
     [symbols, endDate, requiredDays],
+  );
+
+  return rows;
+}
+
+/**
+ * 각 종목의 Phase 2 연속 진입 시작일을 배치 조회한다.
+ * asOfDate 기준 역순으로 Phase 2가 연속된 구간의 첫 날을 반환.
+ *
+ * 동작: asOfDate 이하의 stock_phases를 역순으로 순회하여,
+ * Phase 2가 깨지는 시점 직후를 phase2_since로 산출.
+ * Phase 2가 한 번도 없거나 asOfDate 당일이 Phase 2가 아닌 종목은 결과에 미포함.
+ */
+export async function findPhase2SinceDates(
+  symbols: string[],
+  asOfDate: string,
+): Promise<Phase2SinceRow[]> {
+  if (symbols.length === 0) {
+    return [];
+  }
+
+  const { rows } = await pool.query<Phase2SinceRow>(
+    `WITH ranked AS (
+       SELECT symbol, date, phase,
+         ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+       FROM stock_phases
+       WHERE symbol = ANY($1) AND date <= $2
+     ),
+     first_break AS (
+       SELECT symbol, MIN(rn) AS break_rn
+       FROM ranked
+       WHERE phase <> 2
+       GROUP BY symbol
+     )
+     SELECT r.symbol, MIN(r.date) AS phase2_since
+     FROM ranked r
+     LEFT JOIN first_break fb ON r.symbol = fb.symbol
+     WHERE r.phase = 2
+       AND r.rn < COALESCE(fb.break_rn, 999999)
+     GROUP BY r.symbol`,
+    [symbols, asOfDate],
   );
 
   return rows;

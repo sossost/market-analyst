@@ -76,6 +76,7 @@ function makeInsertInput(overrides: Partial<InsertTrackedStockInput> = {}): Inse
     entrySector: "Technology",
     entryIndustry: "Semiconductors",
     entryReason: "AI 수요 가속, Phase 2 진입",
+    phase2Since: "2026-04-10",
     marketRegime: "EARLY_BULL",
     trackingEndDate: "2026-07-13",
     ...overrides,
@@ -253,6 +254,7 @@ describe("insertTrackedStock", () => {
 
     const sql = getLastCallSql();
     expect(sql).toContain("INSERT INTO tracked_stocks");
+    expect(sql).toContain("phase2_since");
     expect(sql).toContain("ON CONFLICT (symbol, entry_date) DO NOTHING");
     expect(sql).toContain("RETURNING id");
   });

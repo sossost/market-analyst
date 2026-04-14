@@ -411,6 +411,11 @@ export interface Phase2PersistenceBySymbolRow {
   phase2_count: string;
 }
 
+export interface Phase2SinceRow {
+  symbol: string;
+  phase2_since: string;
+}
+
 export interface UnusualStockRow {
   symbol: string;
   close: string;

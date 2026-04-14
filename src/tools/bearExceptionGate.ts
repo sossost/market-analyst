@@ -51,6 +51,15 @@ export const BEAR_EXCEPTION_ALLOWED_GRADES_TEXT = Array.from(BEAR_EXCEPTION_ALLO
 export const EARLY_BEAR_ALLOWED_GRADES: ReadonlySet<string> = new Set(["S", "A", "B"]);
 export const EARLY_BEAR_ALLOWED_GRADES_TEXT = Array.from(EARLY_BEAR_ALLOWED_GRADES).join("/");
 
+/**
+ * RS 최상위 경로 — Bear 예외 2차 경로.
+ * 섹터/SEPA 무관, 시장 전체 상대 강도 최상위 종목만 통과.
+ * RS 과열 게이트(>95)가 이후 별도 적용되므로 실질 윈도우는 90~95.
+ * 근거: 3중 AND 게이트(섹터RS + SEPA + 지속성) 단일 경로에서
+ * 1,510건 중 0건 통과 (#777). RS 최상위 종목은 Bear에서도 추적 가치 있음.
+ */
+export const BEAR_EXCEPTION_RS_TOP_TIER_THRESHOLD = 90;
+
 /** [Bear 예외] 태그 — reason 접두사 */
 export const BEAR_EXCEPTION_TAG = "[Bear 예외]";
 
@@ -60,10 +69,16 @@ export interface BearExceptionInput {
   date: string;
   /** 현재 확정 레짐. EARLY_BEAR와 BEAR에 따라 게이트 엄격도가 달라진다. */
   regime?: string;
+  /** 종목 RS 스코어 (RS 최상위 경로 판정용). null이면 RS 최상위 경로 비활성. */
+  rsScore?: number | null;
+  /** Phase 2 안정성 여부 — 최근 N 거래일 연속 Phase 2 (RS 최상위 경로용). */
+  isStable?: boolean;
 }
 
 export interface BearExceptionResult {
   passed: boolean;
+  /** 통과 경로. "defensive_sector" = 기존 방어섹터 경로, "rs_top_tier" = RS 최상위 경로 */
+  path?: "defensive_sector" | "rs_top_tier";
   reason: string;
   details: {
     sectorRsRank: number | null;
@@ -77,13 +92,16 @@ export interface BearExceptionResult {
 /**
  * 개별 종목이 Bear 예외 조건을 충족하는지 검사한다.
  *
- * 3가지 조건 모두 충족 시 passed: true.
+ * 2개 경로 중 하나만 충족하면 passed: true (OR):
+ *   1. 방어 섹터 경로: 섹터RS 상위 N% + SEPA S/A(/B) + Phase 2 지속 3일
+ *   2. RS 최상위 경로: RS >= 90 + Phase 2 지속 3일 + 안정성 3일 (#777)
+ *
  * DB 조회 실패 시 fail-closed (예외 불허) — Bear 레짐에서는 보수적으로.
  */
 export async function evaluateBearException(
   input: BearExceptionInput,
 ): Promise<BearExceptionResult> {
-  const { symbol, sector, date, regime } = input;
+  const { symbol, sector, date, regime, rsScore, isStable } = input;
 
   // EARLY_BEAR는 BEAR보다 완화된 기준 적용 (#711)
   const isEarlyBear = regime === "EARLY_BEAR";
@@ -99,7 +117,7 @@ export async function evaluateBearException(
 
   const persistenceStart = getDateOffset(date, BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS);
 
-  // 3개 조건 병렬 조회
+  // 3개 조건 병렬 조회 (방어 섹터 경로용)
   const [sectorResult, gradeResult, persistenceResult] = await Promise.all([
     querySectorRsRank(sector, date),
     queryFundamentalGrade(symbol, date),
@@ -116,7 +134,7 @@ export async function evaluateBearException(
       ? Math.round((sectorRsRank / totalSectors) * 100)
       : null;
 
-  // 3가지 조건 판정 — 레짐별 차등 기준
+  // ── 경로 1: 방어 섹터 경로 (기존) ──
   const isSectorRsTop =
     sectorRsPercentile != null &&
     sectorRsPercentile <= sectorRsThreshold;
@@ -126,30 +144,61 @@ export async function evaluateBearException(
   const isPhase2Persistent =
     phase2Count >= BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS;
 
-  const passed = isSectorRsTop && isFundamentalQualified && isPhase2Persistent;
+  const defensiveSectorPassed = isSectorRsTop && isFundamentalQualified && isPhase2Persistent;
+
+  // ── 경로 2: RS 최상위 경로 (#777) ──
+  // RS >= 90 + Phase 2 지속 3일 + 안정성 3일. 섹터/SEPA 무관.
+  const isRsTopTier = rsScore != null && rsScore >= BEAR_EXCEPTION_RS_TOP_TIER_THRESHOLD;
+  const isStablePhase2 = isStable === true;
+  const rsTopTierPassed = isRsTopTier && isPhase2Persistent && isStablePhase2;
+
+  const passed = defensiveSectorPassed || rsTopTierPassed;
+
+  // 통과 경로 식별
+  const path: BearExceptionResult["path"] = passed
+    ? (defensiveSectorPassed ? "defensive_sector" : "rs_top_tier")
+    : undefined;
 
   // 실패 사유 구성
-  const failReasons: string[] = [];
-  if (!isSectorRsTop) {
-    failReasons.push(
-      `섹터RS ${sectorRsPercentile ?? "N/A"}% (기준: ≤${sectorRsThreshold}%)`,
-    );
-  }
-  if (!isFundamentalQualified) {
-    failReasons.push(
-      `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${allowedGradesText})`,
-    );
-  }
-  if (!isPhase2Persistent) {
-    failReasons.push(
-      `Phase2 지속 ${phase2Count}일 (기준: ≥${BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS}일)`,
-    );
-  }
-
   const regimeLabel = isEarlyBear ? "Early Bear 예외" : "Bear 예외";
-  const reason = passed
-    ? `${regimeLabel} 통과: 섹터RS 상위${sectorRsPercentile}%, SEPA ${fundamentalGrade}, Phase2 ${phase2Count}일`
-    : `${regimeLabel} 미충족: ${failReasons.join(", ")}`;
+  let reason: string;
+
+  if (defensiveSectorPassed) {
+    reason = `${regimeLabel} 통과 [방어섹터]: 섹터RS 상위${sectorRsPercentile}%, SEPA ${fundamentalGrade}, Phase2 ${phase2Count}일`;
+  } else if (rsTopTierPassed) {
+    reason = `${regimeLabel} 통과 [RS최상위]: RS ${rsScore}, Phase2 ${phase2Count}일, 안정성 충족`;
+  } else {
+    // 두 경로 모두 실패 — 각 경로의 실패 사유 나열
+    const defensiveReasons: string[] = [];
+    if (!isSectorRsTop) {
+      defensiveReasons.push(
+        `섹터RS ${sectorRsPercentile ?? "N/A"}% (기준: ≤${sectorRsThreshold}%)`,
+      );
+    }
+    if (!isFundamentalQualified) {
+      defensiveReasons.push(
+        `SEPA ${fundamentalGrade ?? "N/A"} (기준: ${allowedGradesText})`,
+      );
+    }
+    if (!isPhase2Persistent) {
+      defensiveReasons.push(
+        `Phase2 지속 ${phase2Count}일 (기준: ≥${BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS}일)`,
+      );
+    }
+
+    const rsReasons: string[] = [];
+    if (!isRsTopTier) {
+      rsReasons.push(`RS ${rsScore ?? "N/A"} (기준: ≥${BEAR_EXCEPTION_RS_TOP_TIER_THRESHOLD})`);
+    }
+    if (!isPhase2Persistent) {
+      rsReasons.push(`Phase2 지속 ${phase2Count}일 (기준: ≥${BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS}일)`);
+    }
+    if (!isStablePhase2) {
+      rsReasons.push("안정성 미충족");
+    }
+
+    reason = `${regimeLabel} 미충족 — 방어섹터: ${defensiveReasons.join(", ")}; RS최상위: ${rsReasons.join(", ")}`;
+  }
 
   if (passed) {
     logger.info(
@@ -160,6 +209,7 @@ export async function evaluateBearException(
 
   return {
     passed,
+    path,
     reason,
     details: {
       sectorRsRank,

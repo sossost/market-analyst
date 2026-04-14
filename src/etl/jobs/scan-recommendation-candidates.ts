@@ -49,6 +49,7 @@ import {
   findStockPhaseDetail,
   findMarketPhase2Ratio,
   findPhase2Persistence,
+  findPhase2SinceDates,
   findPhase2Stability,
 } from "@/db/repositories/stockPhaseRepository.js";
 import {
@@ -153,6 +154,7 @@ async function main() {
     stabilityRows,
     fundamentalGradeRows,
     priceRows,
+    phase2SinceRows,
   ] = await Promise.all([
     // 중복 체크: tracked_stocks ACTIVE 기준
     retryDatabaseOperation(() => findActiveTrackedStocksBySymbols(symbols)),
@@ -166,6 +168,7 @@ async function main() {
     ),
     retryDatabaseOperation(() => findFundamentalGrades(symbols, targetDate)),
     retryDatabaseOperation(() => findLatestClose(symbols, targetDate)),
+    retryDatabaseOperation(() => findPhase2SinceDates(symbols, targetDate)),
   ]);
 
   const activeSymbols = new Set(activeRows.map((r) => r.symbol));
@@ -179,6 +182,9 @@ async function main() {
   );
   const dbPriceMap = new Map(
     priceRows.map((r) => [r.symbol, toNum(r.close)]),
+  );
+  const phase2SinceMap = new Map(
+    phase2SinceRows.map((r) => [r.symbol, r.phase2_since]),
   );
 
   let skippedCount = 0;
@@ -236,6 +242,8 @@ async function main() {
         sector: sector ?? "",
         date: targetDate,
         regime: regimeForGate ?? undefined,
+        rsScore: rs_score ?? null,
+        isStable: stableSymbols.has(symbol),
       });
 
       if (!exceptionResult.passed) {
@@ -409,6 +417,7 @@ async function main() {
         entrySector: sector ?? null,
         entryIndustry: industry ?? null,
         entryReason: reason,
+        phase2Since: phase2SinceMap.get(symbol) ?? null,
         marketRegime: marketRegimeForRecord,
         trackingEndDate,
       }),

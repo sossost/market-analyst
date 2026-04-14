@@ -26,6 +26,7 @@ import {
   insertTrackedStock,
 } from "@/db/repositories/trackedStocksRepository.js";
 import { findLatestClose } from "@/db/repositories/priceRepository.js";
+import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
 import { toNum } from "@/etl/utils/common";
 
 const TAG = "SCAN_THESIS_ALIGNED_CANDIDATES";
@@ -141,10 +142,12 @@ async function main() {
   const allNewSymbols = certifiedData.chains.flatMap((c) => c.candidates.map((p) => p.symbol));
   const uniqueNewSymbols = [...new Set(allNewSymbols)];
 
-  const priceRows = await retryDatabaseOperation(() =>
-    findLatestClose(uniqueNewSymbols, targetDate),
-  );
+  const [priceRows, phase2SinceRows] = await Promise.all([
+    retryDatabaseOperation(() => findLatestClose(uniqueNewSymbols, targetDate)),
+    retryDatabaseOperation(() => findPhase2SinceDates(uniqueNewSymbols, targetDate)),
+  ]);
   const priceMap = new Map(priceRows.map((r) => [r.symbol, toNum(r.close)]));
+  const phase2SinceMap = new Map(phase2SinceRows.map((r) => [r.symbol, r.phase2_since]));
 
   // 6. INSERT — thesis_aligned
   let savedCount = 0;
@@ -181,6 +184,7 @@ async function main() {
           entrySector: candidate.sector,
           entryIndustry: candidate.industry,
           entryReason: `[thesis_aligned] ${chain.megatrend} — ${chain.bottleneck}`,
+          phase2Since: phase2SinceMap.get(candidate.symbol) ?? null,
           marketRegime: null,
           trackingEndDate,
         }),

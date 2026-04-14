@@ -291,6 +291,7 @@ async function executeRegister(
       entrySector: sector,
       entryIndustry: industry,
       entryReason: reason,
+      phase2Since: null,
       marketRegime: null,
       trackingEndDate,
     }),
