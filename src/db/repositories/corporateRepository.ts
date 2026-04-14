@@ -27,7 +27,7 @@ import type {
   CorporateSectorRsRow,
   CorporateIndustryRsRow,
   CorporateAnalysisReportRow,
-  CorporateActiveRecommendationRow,
+  CorporateActiveTrackedRow,
   CorporateStockNewsRow,
   CorporateEarningCalendarRow,
 } from "./types.js";
@@ -337,13 +337,12 @@ export async function findUpcomingEarnings(
 
 /**
  * ACTIVE 상태 트래킹 종목 전체 조회.
- * entry_date를 recommendation_date 별칭으로 반환하여 호출부 인터페이스를 유지한다.
  */
 export async function findAllActiveTrackedStocks(
   pool: Pool,
-): Promise<CorporateActiveRecommendationRow[]> {
-  const { rows } = await pool.query<CorporateActiveRecommendationRow>(
-    `SELECT symbol, entry_date AS recommendation_date
+): Promise<CorporateActiveTrackedRow[]> {
+  const { rows } = await pool.query<CorporateActiveTrackedRow>(
+    `SELECT symbol, entry_date
      FROM tracked_stocks
      WHERE status = 'ACTIVE'
      ORDER BY entry_date DESC`,
@@ -353,14 +352,13 @@ export async function findAllActiveTrackedStocks(
 
 /**
  * 단일 종목 ACTIVE 트래킹 최신 1건 조회.
- * entry_date를 recommendation_date 별칭으로 반환하여 호출부 인터페이스를 유지한다.
  */
 export async function findActiveTrackedStockBySymbol(
   symbol: string,
   pool: Pool,
-): Promise<CorporateActiveRecommendationRow[]> {
-  const { rows } = await pool.query<CorporateActiveRecommendationRow>(
-    `SELECT symbol, entry_date AS recommendation_date
+): Promise<CorporateActiveTrackedRow[]> {
+  const { rows } = await pool.query<CorporateActiveTrackedRow>(
+    `SELECT symbol, entry_date
      FROM tracked_stocks
      WHERE symbol = $1 AND status = 'ACTIVE'
      ORDER BY entry_date DESC

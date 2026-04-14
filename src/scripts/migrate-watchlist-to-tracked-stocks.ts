@@ -36,6 +36,7 @@
  *   실행 모드:       npx tsx src/scripts/migrate-watchlist-to-tracked-stocks.ts --dry-run=false
  */
 import "dotenv/config";
+import type { PoolClient } from "pg";
 import { db, pool } from "../db/client.js";
 import { sql } from "drizzle-orm";
 
@@ -128,7 +129,10 @@ async function fetchTotalTrackedCount(): Promise<number> {
 }
 
 /** 단건 INSERT. ON CONFLICT DO NOTHING으로 중복 및 멱등성 보장. */
-async function insertTrackedStock(row: WatchlistRow): Promise<"inserted" | "skipped"> {
+async function insertTrackedStock(
+  row: WatchlistRow,
+  client: PoolClient,
+): Promise<"inserted" | "skipped"> {
   // watchlist_stocks에 tracking_end_date가 이미 있으면 그것을 사용,
   // 없으면 entry_date + 90일로 계산
   const trackingEndDate = row.tracking_end_date ?? computeTrackingEndDate(row.entry_date);
@@ -136,7 +140,7 @@ async function insertTrackedStock(row: WatchlistRow): Promise<"inserted" | "skip
   // entry_price: watchlist는 price_at_entry 컬럼. null이면 스킵
   // (tracked_stocks.entry_price는 NOT NULL, 0은 PnL 계산 불가)
   if (row.price_at_entry == null || row.price_at_entry === "0") {
-    console.warn(`  ⚠ ${row.symbol} (${row.entry_date}): price_at_entry 없음 — 스킵`);
+    process.stderr.write(`  [WARN] ${row.symbol} (${row.entry_date}): price_at_entry 없음 — 스킵\n`);
     return "skipped";
   }
   const entryPrice = row.price_at_entry;
@@ -144,62 +148,35 @@ async function insertTrackedStock(row: WatchlistRow): Promise<"inserted" | "skip
   const phaseTrajectoryJson =
     row.phase_trajectory != null ? JSON.stringify(row.phase_trajectory) : null;
 
-  const result = await db.execute(sql`
-    INSERT INTO tracked_stocks (
-      symbol,
-      source,
-      tier,
-      entry_date,
-      entry_price,
-      entry_phase,
-      entry_prev_phase,
-      entry_rs_score,
-      entry_sepa_grade,
-      entry_thesis_id,
-      entry_sector,
-      entry_industry,
-      entry_reason,
-      status,
-      current_price,
-      current_phase,
-      current_rs_score,
-      pnl_percent,
-      max_pnl_percent,
-      days_tracked,
-      last_updated,
-      tracking_end_date,
-      phase_trajectory,
-      exit_date,
-      exit_reason
+  const result = await client.query(
+    `INSERT INTO tracked_stocks (
+      symbol, source, tier, entry_date, entry_price,
+      entry_phase, entry_prev_phase, entry_rs_score,
+      entry_sepa_grade, entry_thesis_id,
+      entry_sector, entry_industry, entry_reason, status,
+      current_price, current_phase, current_rs_score,
+      pnl_percent, max_pnl_percent, days_tracked, last_updated,
+      tracking_end_date, phase_trajectory, exit_date, exit_reason
     ) VALUES (
-      ${row.symbol},
-      'agent',
-      'standard',
-      ${row.entry_date},
-      ${entryPrice},
-      ${row.entry_phase},
-      ${null},
-      ${row.entry_rs_score},
-      ${row.entry_sepa_grade},
-      ${row.entry_thesis_id},
-      ${row.entry_sector},
-      ${row.entry_industry},
-      ${row.entry_reason},
-      ${row.status},
-      ${row.current_price},
-      ${row.current_phase},
-      ${row.current_rs_score},
-      ${row.pnl_percent},
-      ${row.max_pnl_percent},
-      ${row.days_tracked ?? 0},
-      ${row.last_updated},
-      ${trackingEndDate},
-      ${phaseTrajectoryJson != null ? sql`${phaseTrajectoryJson}::jsonb` : sql`NULL`},
-      ${row.exit_date},
-      ${row.exit_reason}
+      $1, 'agent', 'standard', $2, $3,
+      $4, NULL, $5,
+      $6, $7,
+      $8, $9, $10, $11,
+      $12, $13, $14,
+      $15, $16, $17, $18,
+      $19, $20::jsonb, $21, $22
     )
-    ON CONFLICT (symbol, entry_date) DO NOTHING
-  `);
+    ON CONFLICT (symbol, entry_date) DO NOTHING`,
+    [
+      row.symbol, row.entry_date, entryPrice,
+      row.entry_phase, row.entry_rs_score,
+      row.entry_sepa_grade, row.entry_thesis_id,
+      row.entry_sector, row.entry_industry, row.entry_reason, row.status,
+      row.current_price, row.current_phase, row.current_rs_score,
+      row.pnl_percent, row.max_pnl_percent, row.days_tracked ?? 0, row.last_updated,
+      trackingEndDate, phaseTrajectoryJson, row.exit_date, row.exit_reason,
+    ],
+  );
 
   return (result.rowCount ?? 0) > 0 ? "inserted" : "skipped";
 }
@@ -208,16 +185,28 @@ async function runMigration(rows: WatchlistRow[]): Promise<MigrationResult> {
   let insertedCount = 0;
   let skippedCount = 0;
 
-  for (const row of rows) {
-    const outcome = await insertTrackedStock(row);
-    if (outcome === "inserted") {
-      insertedCount++;
-    } else {
-      skippedCount++;
-      process.stdout.write(
-        `  [SKIP] ${row.symbol} (${row.entry_date}) — 이미 존재 (ON CONFLICT)\n`,
-      );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    for (const row of rows) {
+      const outcome = await insertTrackedStock(row, client);
+      if (outcome === "inserted") {
+        insertedCount++;
+      } else {
+        skippedCount++;
+        process.stdout.write(
+          `  [SKIP] ${row.symbol} (${row.entry_date}) — 이미 존재 (ON CONFLICT)\n`,
+        );
+      }
     }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
 
   return { insertedCount, skippedCount };

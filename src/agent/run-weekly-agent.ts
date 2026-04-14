@@ -282,17 +282,25 @@ ${data.sectorLagPatterns != null && data.sectorLagPatterns.length > 0
   return { system: systemPrompt, user: dataSummary };
 }
 
+interface InsightResult {
+  insight: WeeklyReportInsight;
+  tokensUsed: { input: number; output: number };
+  executionTimeMs: number;
+}
+
 async function generateInsight(
   data: WeeklyReportData,
   systemPrompt: string,
-): Promise<WeeklyReportInsight> {
+): Promise<InsightResult> {
   logger.step("[5/7] Generating insight via Claude CLI...");
 
   const cli = new ClaudeCliProvider("claude-sonnet-4-6", 600_000); // 10분 타임아웃
   const { system, user } = buildInsightPrompt(data, systemPrompt);
+  const startMs = Date.now();
 
   try {
     const result = await cli.call({ systemPrompt: system, userMessage: user });
+    const executionTimeMs = Date.now() - startMs;
     logger.info("CLI", `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`);
 
     // JSON 파싱
@@ -307,14 +315,26 @@ async function generateInsight(
       parsed = JSON.parse(jsonStr);
     } catch {
       logger.warn("CLI", `JSON 파싱 실패 — 기본값으로 폴백. 응답 앞 200자: ${content.slice(0, 200)}`);
-      return fillInsightDefaults({});
+      return {
+        insight: fillInsightDefaults({}),
+        tokensUsed: result.tokensUsed,
+        executionTimeMs,
+      };
     }
 
-    return fillInsightDefaults(parsed);
+    return {
+      insight: fillInsightDefaults(parsed),
+      tokensUsed: result.tokensUsed,
+      executionTimeMs,
+    };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.error("CLI", `LLM 호출 실패: ${reason}`);
-    return fillInsightDefaults({});
+    return {
+      insight: fillInsightDefaults({}),
+      tokensUsed: { input: 0, output: 0 },
+      executionTimeMs: Date.now() - startMs,
+    };
   } finally {
     cli.dispose();
   }
@@ -445,7 +465,7 @@ async function main() {
   const data = await collectWeeklyData(targetDate);
 
   // 5. LLM 인사이트 생성 (CLI 단발 호출)
-  const insight = await generateInsight(data, systemPrompt);
+  const { insight, tokensUsed, executionTimeMs } = await generateInsight(data, systemPrompt);
 
   // 6. HTML 조립 + 발행
   logger.step("[6/7] Building and publishing report...");
@@ -468,9 +488,9 @@ async function main() {
       fullContent: null,
       metadata: {
         model: "claude-sonnet-4-6 (CLI)",
-        tokensUsed: { input: 0, output: 0 },
+        tokensUsed,
         toolCalls: 0,
-        executionTime: 0,
+        executionTime: executionTimeMs,
       },
     });
     await updateReportFullContent(targetDate, "weekly", html);

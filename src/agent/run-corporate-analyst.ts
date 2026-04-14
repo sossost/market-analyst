@@ -27,9 +27,9 @@ interface ParsedArgs {
   all: boolean;
 }
 
-interface ActiveRecommendation {
+interface ActiveTrackedStock {
   symbol: string;
-  recommendation_date: string;
+  entry_date: string;
 }
 
 interface BatchResult {
@@ -71,20 +71,20 @@ function validateEnvironment(): void {
 }
 
 // ------- DB 쿼리: ACTIVE 트래킹 종목 전체 조회 -------
-async function fetchActiveRecommendations(): Promise<ActiveRecommendation[]> {
+async function fetchActiveRecommendations(): Promise<ActiveTrackedStock[]> {
   return findAllActiveTrackedStocks(pool);
 }
 
 // ------- DB 쿼리: 이미 리포트가 있는 (symbol, date) 집합 조회 -------
 async function fetchSymbolsWithReports(
-  candidates: ActiveRecommendation[],
+  candidates: ActiveTrackedStock[],
 ): Promise<Set<string>> {
   if (candidates.length === 0) {
     return new Set();
   }
 
   const rows = await findExistingAnalysisReports(
-    candidates.map((c) => ({ symbol: c.symbol, recommendation_date: c.recommendation_date })),
+    candidates.map((c) => ({ symbol: c.symbol, recommendation_date: c.entry_date })),
     pool,
   );
 
@@ -109,7 +109,7 @@ async function runBatchMode(all: boolean): Promise<BatchResult> {
     logger.step("[2/3] 기존 리포트 보유 종목 확인 중...");
     const symbolsWithReports = await fetchSymbolsWithReports(activeRecommendations);
     targets = activeRecommendations.filter(
-      (rec) => symbolsWithReports.has(`${rec.symbol}::${rec.recommendation_date}`) === false,
+      (rec) => symbolsWithReports.has(`${rec.symbol}::${rec.entry_date}`) === false,
     );
     const skippedCount = activeRecommendations.length - targets.length;
     if (skippedCount > 0) {
@@ -129,7 +129,7 @@ async function runBatchMode(all: boolean): Promise<BatchResult> {
   const limit = pLimit(CONCURRENCY_LIMIT);
   const results = await Promise.all(
     targets.map((rec) =>
-      limit(() => runCorporateAnalyst(rec.symbol, rec.recommendation_date, pool)),
+      limit(() => runCorporateAnalyst(rec.symbol, rec.entry_date, pool)),
     ),
   );
 
@@ -156,10 +156,10 @@ async function runSingleMode(symbol: string): Promise<BatchResult> {
   }
 
   const rec = rows[0];
-  logger.info("Single", `${symbol} (${rec.recommendation_date}) 리포트 생성 시작`);
+  logger.info("Single", `${symbol} (${rec.entry_date}) 리포트 생성 시작`);
 
   logger.step("[2/2] runCorporateAnalyst 실행 중...");
-  const analystResult = await runCorporateAnalyst(symbol, rec.recommendation_date, pool);
+  const analystResult = await runCorporateAnalyst(symbol, rec.entry_date, pool);
 
   if (analystResult.success) {
     return { successCount: 1, failureCount: 0, failedSymbols: [] };

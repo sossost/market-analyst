@@ -19,7 +19,7 @@ import {
   upsertWeeklyQaReport,
   type WeeklyQaThesisWeeklyRow,
   type WeeklyQaThesisOverallRow,
-  type WeeklyQaRecommendationRow,
+  type WeeklyQaTrackedStockRow,
   type WeeklyQaLearningRow,
   type WeeklyQaReportLogRow,
   type WeeklyQaVerificationMethodRow,
@@ -37,7 +37,7 @@ const SCORE_THRESHOLD_FOR_ISSUE = 6;
 interface CollectedData {
   thesisWeekly: WeeklyQaThesisWeeklyRow[] | null;
   thesisOverall: WeeklyQaThesisOverallRow[] | null;
-  trackedStocks: WeeklyQaRecommendationRow[] | null;
+  trackedStocks: WeeklyQaTrackedStockRow[] | null;
   learnings: WeeklyQaLearningRow[] | null;
   recentReports: WeeklyQaReportLogRow[] | null;
   verificationMethods: WeeklyQaVerificationMethodRow[] | null;

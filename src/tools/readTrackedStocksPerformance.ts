@@ -111,6 +111,17 @@ export const readTrackedStocksPerformance: AgentTool = {
   },
 };
 
+// ─── 헬퍼: 파라미터 배열에 값을 추가하고 플레이스홀더 인덱스를 반환 ───────────
+
+/**
+ * params 배열에 value를 추가한 뒤, 새 플레이스홀더 문자열($N)을 반환한다.
+ * off-by-one 오류 없이 동적 WHERE 조건을 안전하게 빌드하기 위해 사용한다.
+ */
+function addParam(params: unknown[], value: unknown): string {
+  params.push(value);
+  return `$${params.length}`;
+}
+
 // ─── 전체 조회 ────────────────────────────────────────────────────────────────
 
 async function executeAll(input: Record<string, unknown>): Promise<string> {
@@ -124,13 +135,11 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
   const params: unknown[] = [];
 
   if (sourceFilter != null) {
-    params.push(sourceFilter);
-    whereConditions.push(`source = $${params.length}`);
+    whereConditions.push(`source = ${addParam(params, sourceFilter)}`);
   }
 
   if (tierFilter != null) {
-    params.push(tierFilter);
-    whereConditions.push(`tier = $${params.length}`);
+    whereConditions.push(`tier = ${addParam(params, tierFilter)}`);
   }
 
   const baseWhere =
@@ -142,6 +151,7 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
   const fetchActive = statusFilter === "ACTIVE" || statusFilter === "ALL";
   const fetchNonActive = statusFilter === "EXPIRED" || statusFilter === "EXITED" || statusFilter === "ALL";
 
+  const activeParams = [...params];
   const activeQuery = fetchActive
     ? retryDatabaseOperation(() =>
         pool.query<TrackedStockPerfRow>(
@@ -154,14 +164,15 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
            FROM tracked_stocks
            ${baseWhere !== "" ? baseWhere + " AND" : "WHERE"} status = 'ACTIVE'
            ORDER BY entry_date DESC
-           LIMIT $${params.length + 1}`,
-          [...params, limit],
+           LIMIT ${addParam(activeParams, limit)}`,
+          activeParams,
         ),
       )
     : Promise.resolve({ rows: [] as TrackedStockPerfRow[] });
 
   // 비ACTIVE 조회 (EXPIRED + EXITED)
   const nonActiveWhere = buildNonActiveWhere(statusFilter, params, whereConditions);
+  const nonActiveParams = [...nonActiveWhere.params];
   const nonActiveQuery = fetchNonActive
     ? retryDatabaseOperation(() =>
         pool.query<TrackedStockPerfRow>(
@@ -174,8 +185,8 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
            FROM tracked_stocks
            ${nonActiveWhere.clause}
            ORDER BY exit_date DESC NULLS LAST
-           LIMIT $${nonActiveWhere.params.length + 1}`,
-          [...nonActiveWhere.params, limit],
+           LIMIT ${addParam(nonActiveParams, limit)}`,
+          nonActiveParams,
         ),
       )
     : Promise.resolve({ rows: [] as TrackedStockPerfRow[] });
@@ -358,11 +369,9 @@ function buildNonActiveWhere(
   const conditions = [...baseConditions];
 
   if (statusFilter === "EXPIRED") {
-    params.push("EXPIRED");
-    conditions.push(`status = $${params.length}`);
+    conditions.push(`status = ${addParam(params, "EXPIRED")}`);
   } else if (statusFilter === "EXITED") {
-    params.push("EXITED");
-    conditions.push(`status = $${params.length}`);
+    conditions.push(`status = ${addParam(params, "EXITED")}`);
   } else {
     conditions.push("status <> 'ACTIVE'");
   }

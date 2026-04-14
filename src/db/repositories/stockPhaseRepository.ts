@@ -44,7 +44,7 @@ import type {
   ReportLogPhase2CountRow,
   WeeklyQaThesisWeeklyRow,
   WeeklyQaThesisOverallRow,
-  WeeklyQaRecommendationRow,
+  WeeklyQaTrackedStockRow,
   WeeklyQaLearningRow,
   WeeklyQaReportLogRow,
   WeeklyQaVerificationMethodRow,
@@ -1010,7 +1010,7 @@ export async function findPhase2CountForReport(
 
 // ─── run-weekly-qa 전용 ───────────────────────────────────────────────────────
 
-export type { WeeklyQaThesisWeeklyRow, WeeklyQaThesisOverallRow, WeeklyQaRecommendationRow, WeeklyQaLearningRow, WeeklyQaReportLogRow, WeeklyQaVerificationMethodRow, WeeklyQaBiasMetricsRow } from "./types.js";
+export type { WeeklyQaThesisWeeklyRow, WeeklyQaThesisOverallRow, WeeklyQaTrackedStockRow, WeeklyQaLearningRow, WeeklyQaReportLogRow, WeeklyQaVerificationMethodRow, WeeklyQaBiasMetricsRow } from "./types.js";
 
 /**
  * run-weekly-qa 전용: graceful degradation 래퍼와 함께 사용되는 raw SQL 쿼리들을 Pool을 통해 실행한다.
@@ -1042,8 +1042,8 @@ export async function queryWeeklyQaThesisOverall(pool: Pool): Promise<WeeklyQaTh
   return rows;
 }
 
-export async function queryWeeklyQaRecommendations(pool: Pool): Promise<WeeklyQaRecommendationRow[]> {
-  const { rows } = await pool.query<WeeklyQaRecommendationRow>(
+export async function queryWeeklyQaRecommendations(pool: Pool): Promise<WeeklyQaTrackedStockRow[]> {
+  const { rows } = await pool.query<WeeklyQaTrackedStockRow>(
     `SELECT status,
        COUNT(*)::int as cnt,
        ROUND(AVG(pnl_percent)::numeric, 2)::float as avg_return

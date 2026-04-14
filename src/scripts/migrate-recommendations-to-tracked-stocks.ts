@@ -35,6 +35,7 @@
  *   실행 모드:       npx tsx src/scripts/migrate-recommendations-to-tracked-stocks.ts --dry-run=false
  */
 import "dotenv/config";
+import type { PoolClient } from "pg";
 import { db, pool } from "../db/client.js";
 import { sql } from "drizzle-orm";
 
@@ -123,63 +124,40 @@ async function fetchEtlAutoCount(): Promise<number> {
 }
 
 /** 단건 INSERT. ON CONFLICT DO NOTHING으로 멱등성 보장. */
-async function insertTrackedStock(rec: RecommendationRow): Promise<"inserted" | "skipped"> {
+async function insertTrackedStock(
+  rec: RecommendationRow,
+  client: PoolClient,
+): Promise<"inserted" | "skipped"> {
   const entryDate = rec.recommendation_date;
   const trackingEndDate = computeTrackingEndDate(entryDate);
   const mappedStatus = mapStatus(rec.status);
 
-  const result = await db.execute(sql`
-    INSERT INTO tracked_stocks (
-      symbol,
-      source,
-      tier,
-      entry_date,
-      entry_price,
-      entry_phase,
-      entry_prev_phase,
-      entry_rs_score,
-      entry_sector,
-      entry_industry,
-      entry_reason,
-      status,
-      market_regime,
-      current_price,
-      current_phase,
-      current_rs_score,
-      pnl_percent,
-      max_pnl_percent,
-      days_tracked,
-      last_updated,
-      tracking_end_date,
-      exit_date,
-      exit_reason
+  const result = await client.query(
+    `INSERT INTO tracked_stocks (
+      symbol, source, tier, entry_date, entry_price,
+      entry_phase, entry_prev_phase, entry_rs_score,
+      entry_sector, entry_industry, entry_reason, status,
+      market_regime, current_price, current_phase, current_rs_score,
+      pnl_percent, max_pnl_percent, days_tracked, last_updated,
+      tracking_end_date, exit_date, exit_reason
     ) VALUES (
-      ${rec.symbol},
-      'etl_auto',
-      'standard',
-      ${entryDate},
-      ${rec.entry_price},
-      ${rec.entry_phase},
-      ${rec.entry_prev_phase},
-      ${rec.entry_rs_score},
-      ${rec.sector},
-      ${rec.industry},
-      ${rec.reason},
-      ${mappedStatus},
-      ${rec.market_regime},
-      ${rec.current_price},
-      ${rec.current_phase},
-      ${rec.current_rs_score},
-      ${rec.pnl_percent},
-      ${rec.max_pnl_percent},
-      ${rec.days_held ?? 0},
-      ${rec.last_updated},
-      ${trackingEndDate},
-      ${rec.close_date},
-      ${rec.close_reason}
+      $1, 'etl_auto', 'standard', $2, $3,
+      $4, $5, $6,
+      $7, $8, $9, $10,
+      $11, $12, $13, $14,
+      $15, $16, $17, $18,
+      $19, $20, $21
     )
-    ON CONFLICT (symbol, entry_date) DO NOTHING
-  `);
+    ON CONFLICT (symbol, entry_date) DO NOTHING`,
+    [
+      rec.symbol, entryDate, rec.entry_price,
+      rec.entry_phase, rec.entry_prev_phase, rec.entry_rs_score,
+      rec.sector, rec.industry, rec.reason, mappedStatus,
+      rec.market_regime, rec.current_price, rec.current_phase, rec.current_rs_score,
+      rec.pnl_percent, rec.max_pnl_percent, rec.days_held ?? 0, rec.last_updated,
+      trackingEndDate, rec.close_date, rec.close_reason,
+    ],
+  );
 
   return (result.rowCount ?? 0) > 0 ? "inserted" : "skipped";
 }
@@ -188,16 +166,28 @@ async function runMigration(recs: RecommendationRow[]): Promise<MigrationResult>
   let insertedCount = 0;
   let skippedCount = 0;
 
-  for (const rec of recs) {
-    const outcome = await insertTrackedStock(rec);
-    if (outcome === "inserted") {
-      insertedCount++;
-    } else {
-      skippedCount++;
-      process.stdout.write(
-        `  [SKIP] ${rec.symbol} (${rec.recommendation_date}) — 이미 존재 (ON CONFLICT)\n`,
-      );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    for (const rec of recs) {
+      const outcome = await insertTrackedStock(rec, client);
+      if (outcome === "inserted") {
+        insertedCount++;
+      } else {
+        skippedCount++;
+        process.stdout.write(
+          `  [SKIP] ${rec.symbol} (${rec.recommendation_date}) — 이미 존재 (ON CONFLICT)\n`,
+        );
+      }
     }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
 
   return { insertedCount, skippedCount };

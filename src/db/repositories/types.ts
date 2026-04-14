@@ -648,9 +648,9 @@ export interface CorporateIndustryRsRow {
   group_phase: number | null;
 }
 
-export interface CorporateActiveRecommendationRow {
+export interface CorporateActiveTrackedRow {
   symbol: string;
-  recommendation_date: string;
+  entry_date: string;
 }
 
 export interface CorporateAnalysisReportRow {
@@ -846,7 +846,7 @@ export interface WeeklyQaThesisOverallRow {
   total: number;
 }
 
-export interface WeeklyQaRecommendationRow {
+export interface WeeklyQaTrackedStockRow {
   status: string;
   cnt: number;
   avg_return: number | null;
