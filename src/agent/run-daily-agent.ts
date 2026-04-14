@@ -13,8 +13,7 @@ import { getUnusualStocks } from "@/tools/getUnusualStocks";
 import { getRisingRS } from "@/tools/getRisingRS";
 import { getTrackedStocks } from "@/tools/getTrackedStocks";
 import { getMarketPosition } from "@/tools/getMarketPosition";
-
-
+import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
 
 // 업종 RS — 일간은 절대 RS 상위 + 섹터캡 (주간의 변화량 정렬과 분리)
 import { findTopIndustriesGlobal } from "@/db/repositories/index";
@@ -106,6 +105,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     risingRsRaw,
     trackedStocksRaw,
     marketPositionRaw,
+    thesisAlignedRaw,
   ] = await Promise.all([
     getIndexReturns.execute({ mode: "daily", date: targetDate }).catch((err: unknown) => {
       logger.warn("Tool", `getIndexReturns 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -140,6 +140,10 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     }),
     getMarketPosition(targetDate).catch((err: unknown) => {
       logger.warn("Tool", `getMarketPosition 실패: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }),
+    buildThesisAlignedCandidates(targetDate).catch((err: unknown) => {
+      logger.warn("ThesisAligned", `수집 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }),
   ]);
@@ -194,7 +198,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       items: Array.isArray(trackedStocksData.items) ? trackedStocksData.items as DailyReportData["watchlist"]["items"] : [],
     },
     marketPosition: marketPositionRaw,
-    thesisAlignedCandidates: null,
+    thesisAlignedCandidates: thesisAlignedRaw,
   };
 
   const gateLabel =
@@ -202,9 +206,13 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       ? `게이트: ${data.marketPosition.passCount}/${data.marketPosition.totalCount}`
       : "게이트: 수집 실패";
 
+  const taLabel = thesisAlignedRaw != null
+    ? `서사수혜: 체인 ${thesisAlignedRaw.chains.length}, 후보 ${thesisAlignedRaw.totalCandidates}`
+    : "서사수혜: 수집 실패";
+
   logger.info(
     "Data",
-    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 추적종목 ${data.watchlist.summary.totalActive} | ${gateLabel}`,
+    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 추적종목 ${data.watchlist.summary.totalActive} | ${gateLabel} | ${taLabel}`,
   );
 
   return data;
@@ -536,22 +544,41 @@ async function main() {
   // 7. DB 저장
   logger.step("[7/8] Saving to DB...");
   const executionTime = Date.now() - startTime;
+  // thesis_aligned 후보의 고유 심볼 수집 (체인 간 중복 제거)
+  const thesisAlignedSymbols = new Map<string, { phase: number; rsScore: number; sector: string; industry: string }>();
+  if (data.thesisAlignedCandidates != null) {
+    for (const chain of data.thesisAlignedCandidates.chains) {
+      for (const c of chain.candidates) {
+        if (!thesisAlignedSymbols.has(c.symbol)) {
+          thesisAlignedSymbols.set(c.symbol, {
+            phase: c.phase ?? 0,
+            rsScore: c.rsScore ?? 0,
+            sector: c.sector ?? "",
+            industry: c.industry ?? "",
+          });
+        }
+      }
+    }
+  }
+
   const reportedSymbols = Array.from(new Set([
     ...data.unusualStocks.map((s) => s.symbol),
     ...data.risingRS.map((s) => s.symbol),
     ...data.watchlist.items.map((w) => w.symbol), // tracked_stocks
+    ...thesisAlignedSymbols.keys(),
   ])).map((symbol) => {
     const unusual = data.unusualStocks.find((s) => s.symbol === symbol);
     const rising = data.risingRS.find((s) => s.symbol === symbol);
     const watchItem = data.watchlist.items.find((w) => w.symbol === symbol);
+    const taCandidate = thesisAlignedSymbols.get(symbol);
     return {
       symbol,
-      phase: unusual?.phase ?? rising?.phase ?? watchItem?.currentPhase ?? watchItem?.entryPhase ?? 0,
+      phase: unusual?.phase ?? rising?.phase ?? watchItem?.currentPhase ?? watchItem?.entryPhase ?? taCandidate?.phase ?? 0,
       prevPhase: unusual?.prevPhase ?? null,
-      rsScore: unusual?.rsScore ?? rising?.rsScore ?? watchItem?.currentRsScore ?? 0,
-      sector: unusual?.sector ?? rising?.sector ?? watchItem?.entrySector ?? "",
-      industry: unusual?.industry ?? rising?.industry ?? watchItem?.entryIndustry ?? "",
-      reason: unusual != null ? "특이종목" : rising != null ? "RS상승초기" : "관심종목",
+      rsScore: unusual?.rsScore ?? rising?.rsScore ?? watchItem?.currentRsScore ?? taCandidate?.rsScore ?? 0,
+      sector: unusual?.sector ?? rising?.sector ?? watchItem?.entrySector ?? taCandidate?.sector ?? "",
+      industry: unusual?.industry ?? rising?.industry ?? watchItem?.entryIndustry ?? taCandidate?.industry ?? "",
+      reason: unusual != null ? "특이종목" : rising != null ? "RS상승초기" : watchItem != null ? "관심종목" : "서사수혜",
       firstReportedDate: targetDate,
     };
   });

@@ -7,6 +7,7 @@ import {
   renderUnusualStocksSection,
   renderRisingRSSection,
   renderWatchlistSection,
+  renderThesisAlignedSection,
   renderInsightSection,
   buildDailyHtml,
 } from "../daily-html-builder.js";
@@ -1277,5 +1278,118 @@ describe("renderFearGreedCard", () => {
   it("fearGreed가 null이면 공포탐욕 카드를 렌더링하지 않는다", () => {
     const html = renderIndexTable([mockIndex], null);
     expect(html).not.toContain("공포탐욕");
+  });
+});
+
+// ─── renderThesisAlignedSection ──────────────────────────────────────────────
+
+describe("renderThesisAlignedSection", () => {
+  it("null이면 빈 문자열을 반환한다", () => {
+    const html = renderThesisAlignedSection(null);
+    expect(html).toBe("");
+  });
+
+  it("undefined이면 빈 문자열을 반환한다", () => {
+    const html = renderThesisAlignedSection(undefined);
+    expect(html).toBe("");
+  });
+
+  it("chains가 빈 배열이면 빈 문자열을 반환한다", () => {
+    const html = renderThesisAlignedSection({ chains: [], totalCandidates: 0, phase2Count: 0 });
+    expect(html).toBe("");
+  });
+
+  it("체인 데이터가 있으면 요약과 후보 테이블을 렌더링한다", () => {
+    const html = renderThesisAlignedSection({
+      chains: [
+        {
+          chainId: 1,
+          megatrend: "AI 인프라",
+          bottleneck: "GPU 공급 부족",
+          chainStatus: "ACTIVE",
+          alphaCompatible: true,
+          daysSinceIdentified: 30,
+          candidates: [
+            {
+              symbol: "NVDA",
+              chainId: 1,
+              megatrend: "AI 인프라",
+              bottleneck: "GPU 공급 부족",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 85,
+              pctFromHigh52w: -5.2,
+              sepaGrade: "S",
+              sector: "Technology",
+              industry: "Semiconductors",
+              marketCap: 3000000,
+              gatePassCount: 4,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+          ],
+        },
+      ],
+      totalCandidates: 1,
+      phase2Count: 1,
+    });
+    expect(html).toContain("활성 체인");
+    expect(html).toContain("수혜 후보");
+    expect(html).toContain("Phase 2");
+    expect(html).toContain("NVDA");
+    expect(html).toContain("AI 인프라");
+  });
+});
+
+// ─── buildDailyHtml — 서사 수혜주 섹션 통합 ──────────────────────────────────
+
+describe("buildDailyHtml thesis-aligned integration", () => {
+  it("thesisAlignedCandidates가 null이면 서사 수혜주 섹션이 출력되지 않는다", () => {
+    const data = createMockDailyReportData({ thesisAlignedCandidates: null });
+    const insight = createMockInsight();
+    const html = buildDailyHtml(data, insight, "2026-04-14");
+    expect(html).not.toContain("<h2>서사 수혜주</h2>");
+  });
+
+  it("thesisAlignedCandidates 데이터가 있으면 서사 수혜주 섹션이 출력된다", () => {
+    const data = createMockDailyReportData({
+      thesisAlignedCandidates: {
+        chains: [
+          {
+            chainId: 1,
+            megatrend: "AI 인프라",
+            bottleneck: "GPU 공급 부족",
+            chainStatus: "ACTIVE",
+            alphaCompatible: true,
+            daysSinceIdentified: 30,
+            candidates: [
+              {
+                symbol: "NVDA",
+                chainId: 1,
+                megatrend: "AI 인프라",
+                bottleneck: "GPU 공급 부족",
+                chainStatus: "ACTIVE",
+                phase: 2,
+                rsScore: 85,
+                pctFromHigh52w: -5.2,
+                sepaGrade: "S",
+                sector: "Technology",
+                industry: "Semiconductors",
+                marketCap: 3000000,
+                gatePassCount: 4,
+                gateTotalCount: 4,
+                source: "llm",
+              },
+            ],
+          },
+        ],
+        totalCandidates: 1,
+        phase2Count: 1,
+      },
+    });
+    const insight = createMockInsight();
+    const html = buildDailyHtml(data, insight, "2026-04-14");
+    expect(html).toContain("서사 수혜주");
+    expect(html).toContain("NVDA");
   });
 });

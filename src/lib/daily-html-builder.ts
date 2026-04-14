@@ -1564,6 +1564,7 @@ export function buildDailyHtml(
     data.watchlist,
     insight.watchlistNarrative,
   );
+  const thesisAlignedHtml = renderThesisAlignedSection(data.thesisAlignedCandidates);
   const insightHtml = renderInsightSection(insight);
 
   return `<!DOCTYPE html>
@@ -1627,7 +1628,14 @@ export function buildDailyHtml(
         ${risingRSHtml}
       </section>` : ""}
 
-      <!-- 섹션 8: 관심종목 현황 -->
+      <!-- 섹션 8: 서사 수혜주 (데이터 없으면 섹션 미출력) -->
+      ${thesisAlignedHtml !== "" ? `
+      <section>
+        <h2>서사 수혜주</h2>
+        ${thesisAlignedHtml}
+      </section>` : ""}
+
+      <!-- 섹션 9: 관심종목 현황 -->
       <section>
         <h2>관심종목 현황</h2>
         ${watchlistHtml}
