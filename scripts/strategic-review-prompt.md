@@ -7,7 +7,7 @@
 "시스템이 이 골을 더 잘 달성하려면 무엇을 개선/추가해야 하는가?"라는 단 하나의 질문에 답해라.
 
 **네 업무가 아닌 것:**
-- 코드 품질, 린트, 커버리지, 의존성 감사 — CI가 할 일
+- 코드 품질, 린트, 커버리지, 의존성 감사 — CI + 주간 시스템 감사(`system-audit-weekly.sh`)가 할 일
 - 개별 리포트 품질 평가 (팩트 정합성, 편향, 구조, 신규성) — `validate-*.sh` QA가 할 일. **겹치지 마라.**
 
 너는 **코드 레벨 + 결과물 레벨 양쪽을 종합한 전략적 인사이트**만 다룬다.
@@ -23,6 +23,8 @@ Phase 2 초입 포착 도구들이 정확하게 작동하는가?
 - `src/agent/tools/getRisingRS.ts` — RS 범위 조건
 - `src/agent/tools/getFundamentalAcceleration.ts` — EPS 가속 조건
 - `src/lib/fundamental-scorer.ts` — SEPA 스코어링
+- `src/db/repositories/groupRsRepository.ts` — 업종/섹터 RS 집계
+- `src/etl/jobs/scan-recommendation-candidates.ts` — 자동 추천 게이트 로직
 
 질문:
 - 각 도구의 파라미터/임계값에 통계적 근거가 있는가?
@@ -86,20 +88,20 @@ FROM market_regimes ORDER BY regime_date DESC LIMIT 10;
 분석 방법:
 ```sql
 -- 최근 90일 추천 종목 성과 요약
-SELECT symbol, sector, recommendation_date, entry_price, current_price,
-       pnl_percent, max_pnl_percent, days_held, status, entry_rs_score,
-       entry_phase, current_phase, market_regime, close_reason
-FROM recommendations
-WHERE recommendation_date > NOW() - INTERVAL '90 days'
-ORDER BY recommendation_date DESC;
+SELECT symbol, entry_sector, entry_date, entry_price, current_price,
+       pnl_percent, max_pnl_percent, days_tracked, status, entry_rs_score,
+       entry_phase, current_phase, market_regime, exit_reason
+FROM tracked_stocks
+WHERE entry_date > (NOW() - INTERVAL '90 days')::date::text
+ORDER BY entry_date DESC;
 
 -- 성과 통계
 SELECT status, COUNT(*) as cnt,
-       ROUND(AVG(pnl_percent)::numeric, 2) as avg_pnl,
-       ROUND(AVG(max_pnl_percent)::numeric, 2) as avg_max_pnl,
-       ROUND(AVG(days_held)::numeric, 0) as avg_days
-FROM recommendations
-WHERE recommendation_date > NOW() - INTERVAL '90 days'
+       ROUND(AVG(pnl_percent::numeric), 2) as avg_pnl,
+       ROUND(AVG(max_pnl_percent::numeric), 2) as avg_max_pnl,
+       ROUND(AVG(days_tracked), 0) as avg_days
+FROM tracked_stocks
+WHERE entry_date > (NOW() - INTERVAL '90 days')::date::text
 GROUP BY status;
 ```
 
@@ -115,10 +117,11 @@ GROUP BY status;
 
 분석 방법:
 ```sql
--- Thesis 판정 결과 통계
+-- Thesis 판정 결과 통계 (is_status_quo 제외 — 현상유지 thesis는 적중률 왜곡)
 SELECT status, category, COUNT(*) as cnt
 FROM theses
 WHERE created_at > NOW() - INTERVAL '90 days'
+AND (is_status_quo IS NULL OR is_status_quo = false)
 GROUP BY status, category ORDER BY category, status;
 
 -- CONFIRMED vs INVALIDATED 상세
@@ -127,6 +130,7 @@ SELECT agent_persona, status, confidence, consensus_level, thesis,
 FROM theses
 WHERE status IN ('CONFIRMED', 'INVALIDATED')
 AND created_at > NOW() - INTERVAL '90 days'
+AND (is_status_quo IS NULL OR is_status_quo = false)
 ORDER BY verification_date DESC LIMIT 20;
 
 -- 에이전트별 적중률
@@ -136,6 +140,7 @@ SELECT agent_persona,
        COUNT(*) FILTER (WHERE status = 'ACTIVE') as active
 FROM theses
 WHERE created_at > NOW() - INTERVAL '90 days'
+AND (is_status_quo IS NULL OR is_status_quo = false)
 GROUP BY agent_persona;
 ```
 
