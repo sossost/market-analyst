@@ -196,7 +196,7 @@ export async function evaluateBearException(
     const defensiveReasons: string[] = [];
     if (!isGroupRsTop) {
       defensiveReasons.push(
-        `섹터RS ${sectorRsPercentile ?? "N/A"}%/업종RS ${industryRsPercentile ?? "N/A"}% (기준: ≤${sectorRsThreshold}%)`,
+        "섹터RS " + (sectorRsPercentile ?? "N/A") + "%" + (hasIndustry ? "/업종RS " + (industryRsPercentile ?? "N/A") + "%" : "") + " (기준: ≤" + sectorRsThreshold + "%)",
       );
     }
     if (!isFundamentalQualified) {
