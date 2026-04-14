@@ -8,18 +8,15 @@
  * 호출 위치: collect-news.ts (고정 쿼리 완료 후)
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { db, pool } from "@/db/client";
 import { newsArchive, newsGapAnalysis } from "@/db/schema/analyst";
-import { getAnthropicClient } from "@/lib/anthropic-client";
-import { CLAUDE_HAIKU } from "@/lib/models";
+import { createProvider } from "@/debate/llm/providerFactory.js";
 import { logger } from "@/lib/logger";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 
 const TAG = "GAP_ANALYZER";
 
 const MAX_TOKENS = 2_048;
-const TEMPERATURE = 0.3;
 const MAX_GAP_RESULTS = 5;
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -310,25 +307,17 @@ export function parseGapResponse(content: string): GapResult[] {
  * Haiku를 호출하여 사각지대 테마를 식별한다.
  */
 export async function callGapAnalysis(input: GapAnalyzerInput): Promise<GapResult[]> {
-  const client = getAnthropicClient();
   const userMessage = buildGapPrompt(input);
 
-  const response = await client.messages.create({
-    model: CLAUDE_HAIKU,
-    max_tokens: MAX_TOKENS,
-    temperature: TEMPERATURE,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userMessage }],
+  const result = await createProvider("haiku").call({
+    systemPrompt: SYSTEM_PROMPT,
+    userMessage,
+    maxTokens: MAX_TOKENS,
   });
 
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("");
+  logger.info(TAG, `LLM 호출 완료 (${result.tokensUsed.input}/${result.tokensUsed.output} tokens)`);
 
-  logger.info(TAG, `LLM 호출 완료 (${response.usage.input_tokens}/${response.usage.output_tokens} tokens)`);
-
-  return parseGapResponse(text);
+  return parseGapResponse(result.content);
 }
 
 // ─── DB 저장 ──────────────────────────────────────────────────────────────
