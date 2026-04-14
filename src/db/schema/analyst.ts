@@ -958,6 +958,9 @@ export const trackedStocks = pgTable(
     entryIndustry: text("entry_industry"),
     entryReason: text("entry_reason"),
 
+    // Phase 2 연속 진입 시작일 (YYYY-MM-DD)
+    phase2Since: text("phase2_since"),
+
     // 상태
     status: text("status").notNull().default("ACTIVE"), // 'ACTIVE' | 'EXPIRED' | 'EXITED'
     marketRegime: text("market_regime"),

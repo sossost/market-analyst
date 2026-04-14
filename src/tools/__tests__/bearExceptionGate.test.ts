@@ -34,6 +34,7 @@ import {
   BEAR_EXCEPTION_TAG,
   BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS,
   BEAR_EXCEPTION_SECTOR_RS_PERCENTILE,
+  BEAR_EXCEPTION_RS_TOP_TIER_THRESHOLD,
   BEAR_EXCEPTION_ALLOWED_GRADES,
   EARLY_BEAR_SECTOR_RS_PERCENTILE,
   EARLY_BEAR_ALLOWED_GRADES,
@@ -120,7 +121,8 @@ describe("evaluateBearException", () => {
     expect(result.details.sectorRsPercentile).toBe(10);
     expect(result.details.fundamentalGrade).toBe("A");
     expect(result.details.phase2Count).toBe(3);
-    expect(result.reason).toContain("Bear 예외 통과");
+    expect(result.reason).toContain("Bear 예외 통과 [방어섹터]");
+    expect(result.path).toBe("defensive_sector");
   });
 
   it("S등급도 통과한다", async () => {
@@ -365,7 +367,8 @@ describe("evaluateBearException — EARLY_BEAR 차등 기준", () => {
 
     expect(result.passed).toBe(true);
     expect(result.details.sectorRsPercentile).toBe(20);
-    expect(result.reason).toContain("Early Bear 예외 통과");
+    expect(result.reason).toContain("Early Bear 예외 통과 [방어섹터]");
+    expect(result.path).toBe("defensive_sector");
   });
 
   it("EARLY_BEAR에서 섹터 RS 25%는 경계값으로 통과한다", async () => {
@@ -503,6 +506,170 @@ describe("evaluateBearException — EARLY_BEAR 차등 기준", () => {
     // 섹터RS 20% > 15% 실패, SEPA B 불허
     expect(result.reason).toContain("섹터RS");
     expect(result.reason).toContain("SEPA B");
+  });
+});
+
+// =============================================================================
+// evaluateBearException — RS 최상위 경로 (#777)
+// =============================================================================
+
+describe("evaluateBearException — RS 최상위 경로", () => {
+  it("RS 최상위 상수는 90이다", () => {
+    expect(BEAR_EXCEPTION_RS_TOP_TIER_THRESHOLD).toBe(90);
+  });
+
+  function setupDefensiveSectorFailMocks() {
+    // 방어 섹터 경로 실패: 섹터RS 50%, SEPA C, Phase 2 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "10", total_sectors: "20" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "C" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+  }
+
+  it("RS 90+, Phase 2 지속 3일+, 안정성 충족이면 RS 최상위 경로로 통과한다", async () => {
+    setupDefensiveSectorFailMocks();
+
+    const result = await evaluateBearException({
+      symbol: "NVDA",
+      sector: "Technology",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+      rsScore: 92,
+      isStable: true,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.path).toBe("rs_top_tier");
+    expect(result.reason).toContain("RS최상위");
+    expect(result.reason).toContain("RS 92");
+  });
+
+  it("RS 90 경계값은 통과한다", async () => {
+    setupDefensiveSectorFailMocks();
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Technology",
+      date: "2026-04-10",
+      rsScore: 90,
+      isStable: true,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.path).toBe("rs_top_tier");
+  });
+
+  it("RS 89는 RS 최상위 경로 실패한다", async () => {
+    setupDefensiveSectorFailMocks();
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Technology",
+      date: "2026-04-10",
+      rsScore: 89,
+      isStable: true,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.reason).toContain("RS 89");
+  });
+
+  it("RS 92이지만 안정성 미충족이면 RS 최상위 경로 실패한다", async () => {
+    setupDefensiveSectorFailMocks();
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Technology",
+      date: "2026-04-10",
+      rsScore: 92,
+      isStable: false,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.reason).toContain("안정성 미충족");
+  });
+
+  it("RS 92이지만 Phase 2 지속 부족이면 RS 최상위 경로 실패한다", async () => {
+    // Phase 2 지속성만 부족하게 설정
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "10", total_sectors: "20" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "C" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "2" }], // 3일 미만
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Technology",
+      date: "2026-04-10",
+      rsScore: 92,
+      isStable: true,
+    });
+
+    expect(result.passed).toBe(false);
+  });
+
+  it("rsScore가 null이면 RS 최상위 경로 비활성", async () => {
+    setupDefensiveSectorFailMocks();
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Technology",
+      date: "2026-04-10",
+      rsScore: null,
+      isStable: true,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.reason).toContain("RS N/A");
+  });
+
+  it("isStable 미전달 시 RS 최상위 경로 비활성", async () => {
+    setupDefensiveSectorFailMocks();
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Technology",
+      date: "2026-04-10",
+      rsScore: 95,
+      // isStable 미전달
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.reason).toContain("안정성 미충족");
+  });
+
+  it("방어 섹터 경로와 RS 최상위 경로 모두 충족 시 방어 섹터가 우선한다", async () => {
+    // 방어 섹터 경로 통과: 섹터RS 10%, SEPA A, Phase 2 3일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "2", total_sectors: "20" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Industrials",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+      rsScore: 92,
+      isStable: true,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.path).toBe("defensive_sector");
   });
 });
 

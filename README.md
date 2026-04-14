@@ -370,6 +370,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **국면(Meta-Regime) 계층 + 공급망 자금흐름 순서** — meta_regimes 테이블 + 체인 간 순차 활성화 모델링 + supplyChain/nextBeneficiary 프롬프트 주입 (#735)
 - [x] **메타 레짐 자동 관리** — 토론 에이전트에 국면 상태 자동 동기화(ACTIVE/PEAKED/RESOLVED) + megatrend 키워드 그루핑 기반 신규 국면 자동 생성/체인 연결 (#743)
 - [x] **FRED 신용 지표** — HY OAS/CCC/BBB 스프레드 + 금융 스트레스 지수 일간 수집, 90일 z-score 이상 감지, 토론 컨텍스트 전 에이전트 주입 (#748)
+- [x] **Bear 게이트 정밀화** — Bear 예외 RS 최상위 경로(RS 90+ / 지속 3일+ / 안정 3일) 추가 + Phase 2 경과일(`phase2_since`) 기록 — 하락장에서도 상대 강도 최상위 종목 추적 가능 (#777)
 
 ### Next (진행 예정)
 

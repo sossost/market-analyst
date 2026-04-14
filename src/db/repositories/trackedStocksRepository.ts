@@ -27,6 +27,7 @@ export interface TrackedStockRow {
   entry_sector: string | null;
   entry_industry: string | null;
   entry_reason: string | null;
+  phase2_since: string | null;
   status: TrackedStockStatus;
   market_regime: string | null;
   current_price: string | null;
@@ -77,6 +78,7 @@ export interface InsertTrackedStockInput {
   entrySector: string | null;
   entryIndustry: string | null;
   entryReason: string | null;
+  phase2Since: string | null;
   marketRegime: string | null;
   trackingEndDate: string;
 }
@@ -110,6 +112,7 @@ const SELECT_COLUMNS = `
   entry_date, entry_price::text, entry_phase, entry_prev_phase,
   entry_rs_score, entry_sepa_grade, entry_thesis_id,
   entry_sector, entry_industry, entry_reason,
+  phase2_since,
   status, market_regime,
   current_price::text, current_phase, current_rs_score,
   pnl_percent::text, max_pnl_percent::text,
@@ -268,10 +271,11 @@ export async function insertTrackedStock(
        entry_date, entry_price, entry_phase, entry_prev_phase,
        entry_rs_score, entry_sepa_grade, entry_thesis_id,
        entry_sector, entry_industry, entry_reason,
+       phase2_since,
        status, market_regime, tracking_end_date,
        days_tracked
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'ACTIVE', $14, $15, 0)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'ACTIVE', $15, $16, 0)
      ON CONFLICT (symbol, entry_date) DO NOTHING
      RETURNING id`,
     [
@@ -288,6 +292,7 @@ export async function insertTrackedStock(
       data.entrySector,
       data.entryIndustry,
       data.entryReason,
+      data.phase2Since,
       data.marketRegime,
       data.trackingEndDate,
     ],
