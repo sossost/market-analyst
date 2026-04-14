@@ -195,8 +195,9 @@ describe("findRecentTrackedBySymbol", () => {
     const params = getLastCallParams();
     expect(sql).toContain("symbol = $1");
     expect(sql).toContain("status <> 'ACTIVE'");
-    expect(sql).toContain("INTERVAL '30 days'");
+    expect(sql).toContain("$2::integer * INTERVAL '1 day'");
     expect(params[0]).toBe("NVDA");
+    expect(params[1]).toBe(30);
   });
 
   it("쿨다운 기간 내에 EXITED/EXPIRED 이력이 있으면 반환한다", async () => {

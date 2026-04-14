@@ -185,8 +185,8 @@ export async function findRecentTrackedBySymbol(
      FROM tracked_stocks
      WHERE symbol = $1
        AND status <> 'ACTIVE'
-       AND exit_date >= CURRENT_DATE - INTERVAL '${days} days'`,
-    [symbol],
+       AND exit_date >= CURRENT_DATE - $2::integer * INTERVAL '1 day'`,
+    [symbol, days],
   );
 
   return rows;
