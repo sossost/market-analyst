@@ -153,6 +153,9 @@ export const industryRsDaily = pgTable(
 /**
  * recommendations — 추천 종목 성과 트래킹.
  * 주간 에이전트가 저장, 일간 ETL이 업데이트.
+ *
+ * @deprecated tracked_stocks로 통합 완료 (Phase 0~5 이관 완료, 2026-04).
+ * 이관 데이터 보존을 위해 테이블은 유지. DROP은 별도 이슈.
  */
 export const recommendations = pgTable(
   "recommendations",
@@ -874,6 +877,9 @@ export const stockAnalysisReports = pgTable(
  * watchlist_stocks — 관심종목 등록/해제/이력.
  * 5중 교집합 게이트(Phase 2 + 섹터RS + 개별RS + 서사 근거 + SEPA S/A)를 통과한 종목만 등록.
  * 90일 고정 윈도우로 Phase 궤적을 추적하며, 추천 승률이 아닌 포착 선행성이 핵심 KPI.
+ *
+ * @deprecated tracked_stocks로 통합 완료 (Phase 0~5 이관 완료, 2026-04).
+ * 이관 데이터 보존을 위해 테이블은 유지. DROP은 별도 이슈.
  */
 export const watchlistStocks = pgTable(
   "watchlist_stocks",

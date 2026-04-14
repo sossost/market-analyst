@@ -344,15 +344,7 @@ export interface GroupPrevPhaseRow {
   group_phase: number;
 }
 
-// ─── recommendationRepository ─────────────────────────────────────────────────
-
-export interface ActiveRecommendationRow {
-  symbol: string;
-}
-
-export interface RecentlyClosedRow {
-  symbol: string;
-}
+// ─── stockPhaseRepository (Phase2 검사) ───────────────────────────────────────
 
 export interface Phase2PersistenceRow {
   symbol: string;

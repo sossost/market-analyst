@@ -18,9 +18,22 @@ import {
   insertTrackedStock,
   type TrackedStockTier,
 } from "@/db/repositories/trackedStocksRepository.js";
-import { calculateTrackingEndDate } from "@/lib/watchlistTracker.js";
 import { logger } from "@/lib/logger";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/** 관심종목 트래킹 최대 기간 (캘린더일) */
+const TRACKING_WINDOW_DAYS = 90;
+
+// ─── Pure helpers ──────────────────────────────────────────────────────────────
+
+/** entry_date로부터 90일 뒤의 날짜를 계산한다. */
+function calculateTrackingEndDate(entryDate: string): string {
+  const d = new Date(`${entryDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + TRACKING_WINDOW_DAYS);
+  return d.toISOString().slice(0, 10);
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

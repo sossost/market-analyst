@@ -38,10 +38,6 @@ import {
   evaluateFundamentalGate,
   applySectorCap,
 } from "@/tools/recommendationGates.js";
-import {
-  findPhase2Persistence,
-  findPhase2Stability,
-} from "@/db/repositories/recommendationRepository.js";
 import { findFundamentalGrades } from "@/db/repositories/fundamentalRepository.js";
 import {
   findActiveTrackedStocksBySymbols,
@@ -52,6 +48,8 @@ import {
   findAllPhase2Stocks,
   findStockPhaseDetail,
   findMarketPhase2Ratio,
+  findPhase2Persistence,
+  findPhase2Stability,
 } from "@/db/repositories/stockPhaseRepository.js";
 import {
   findSymbolMeta,
