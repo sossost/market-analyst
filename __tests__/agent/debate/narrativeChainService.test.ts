@@ -369,7 +369,7 @@ describe("narrativeChainService", () => {
 
       // "AI 인프라 GPU supply shortage" — overlap: "ai", "인프라", "gpu", "supply", "shortage" >= 2
       const result = await findMatchingChain(makeInfo("AI 인프라", "GPU supply shortage"));
-      expect(result).toEqual({ id: 1, linkedThesisIds: [10, 20], bottleneckIdentifiedAt: identifiedAt });
+      expect(result).toEqual({ id: 1, linkedThesisIds: [10, 20], bottleneckIdentifiedAt: identifiedAt, metaRegimeId: null });
     });
 
     it("returns null when keyword overlap < 2", async () => {
@@ -401,7 +401,7 @@ describe("narrativeChainService", () => {
 
       // "AI 인프라 확장 GPU 공급 부족 심화" — many keyword overlaps
       const result = await findMatchingChain(makeInfo("AI 인프라", "GPU 공급 부족"));
-      expect(result).toEqual({ id: 1, linkedThesisIds: [], bottleneckIdentifiedAt: identifiedAt });
+      expect(result).toEqual({ id: 1, linkedThesisIds: [], bottleneckIdentifiedAt: identifiedAt, metaRegimeId: null });
     });
   });
 
@@ -424,7 +424,7 @@ describe("narrativeChainService", () => {
       expect(mockInsert).not.toHaveBeenCalled();
     });
 
-    it("creates new chain when no matching chain exists", async () => {
+    it("rejects new chain when beneficiary and nextBeneficiary are both empty", async () => {
       const thesis: Thesis = {
         agentPersona: "tech",
         thesis: "AI 인프라 GPU 공급 부족 지속",
@@ -445,22 +445,13 @@ describe("narrativeChainService", () => {
 
       // findMatchingChain returns no candidates
       mockWhere.mockResolvedValueOnce([]);
-      // findBeneficiaryFromSameNarrative: thesis has empty beneficiary, no matching chain with data
+      // findBeneficiaryFromSameNarrative: no matching chain with data
       mockWhere.mockResolvedValueOnce([]);
-      // insert returns id
-      mockReturning.mockResolvedValueOnce([{ id: 1 }]);
 
       await recordNarrativeChain(thesis, 100);
 
-      expect(mockInsert).toHaveBeenCalled();
-      expect(mockValues).toHaveBeenCalledWith(
-        expect.objectContaining({
-          megatrend: "AI 인프라",
-          bottleneck: "GPU 공급 부족",
-          nextBottleneck: "전력 인프라",
-          linkedThesisIds: [100],
-        }),
-      );
+      // beneficiary + nextBeneficiary 모두 없으면 빈 껍데기 방지를 위해 chain 생성 거부
+      expect(mockInsert).not.toHaveBeenCalled();
     });
 
     it("inherits beneficiary from existing chain when new chain has empty beneficiary", async () => {
@@ -506,7 +497,7 @@ describe("narrativeChainService", () => {
       );
     });
 
-    it("keeps empty beneficiary when no existing chain has data", async () => {
+    it("rejects chain when existing chains also have empty beneficiary", async () => {
       const thesis: Thesis = {
         agentPersona: "tech",
         thesis: "완전히 새로운 서사 병목 발생",
@@ -526,7 +517,7 @@ describe("narrativeChainService", () => {
 
       // findMatchingChain: no match
       mockWhere.mockResolvedValueOnce([]);
-      // findBeneficiaryFromSameNarrative: all existing chains also have empty beneficiary
+      // findBeneficiaryFromSameNarrative: existing chains have empty beneficiary → null 반환
       mockWhere.mockResolvedValueOnce([
         {
           megatrend: "완전히 새로운 서사",
@@ -534,18 +525,11 @@ describe("narrativeChainService", () => {
           beneficiaryTickers: null,
         },
       ]);
-      // insert returns id
-      mockReturning.mockResolvedValueOnce([{ id: 3 }]);
 
       await recordNarrativeChain(thesis, 102);
 
-      expect(mockInsert).toHaveBeenCalled();
-      expect(mockValues).toHaveBeenCalledWith(
-        expect.objectContaining({
-          beneficiarySectors: [],
-          beneficiaryTickers: [],
-        }),
-      );
+      // beneficiary 상속 불가 + nextBeneficiary도 없음 → 빈 껍데기 방지
+      expect(mockInsert).not.toHaveBeenCalled();
     });
 
     it("updates existing chain and appends thesis ID", async () => {

@@ -168,6 +168,10 @@ export async function formatChainsForDailyPrompt(): Promise<string> {
     "리포트 작성 시 위 체인과 관련된 섹터/종목에 [체인명 / 상태] 태그를 추가하세요.",
     "수혜 종목이 당일 특이종목(get_unusual_stocks)에 포함되면 반드시 서사 체인과 연결하여 분석하세요.",
     "Alpha Gate \"구조적 관찰\" 체인의 수혜 종목은 종목 추천에서 제외하되, 거시 분석 참고용으로 언급할 수 있습니다.",
+    "",
+    "### 서사 다양성 가드레일",
+    "위 체인과 동일한 병목 구조의 structural_narrative thesis는 새로 생성하지 마세요.",
+    "아직 추적되지 않은 병목(예: 전력 인프라, 반도체 소재, 방산 부품 등)을 우선 탐색하세요.",
   );
 
   return lines.join("\n");
