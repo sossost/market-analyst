@@ -13,8 +13,8 @@ import { logger } from "@/lib/logger";
 import { sendDiscordMessage, sendDiscordError } from "@/lib/discord";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
 import {
-  findAllActiveRecommendations,
-  findActiveRecommendationBySymbol,
+  findAllActiveTrackedStocks,
+  findActiveTrackedStockBySymbol,
   findExistingAnalysisReports,
 } from "@/db/repositories/index.js";
 
@@ -70,9 +70,9 @@ function validateEnvironment(): void {
   }
 }
 
-// ------- DB 쿼리: ACTIVE 추천 종목 전체 조회 -------
+// ------- DB 쿼리: ACTIVE 트래킹 종목 전체 조회 -------
 async function fetchActiveRecommendations(): Promise<ActiveRecommendation[]> {
-  return findAllActiveRecommendations(pool);
+  return findAllActiveTrackedStocks(pool);
 }
 
 // ------- DB 쿼리: 이미 리포트가 있는 (symbol, date) 집합 조회 -------
@@ -148,7 +148,7 @@ async function runBatchMode(all: boolean): Promise<BatchResult> {
 async function runSingleMode(symbol: string): Promise<BatchResult> {
   logger.step(`[1/2] ${symbol} ACTIVE 추천 조회 중...`);
 
-  const rows = await findActiveRecommendationBySymbol(symbol, pool);
+  const rows = await findActiveTrackedStockBySymbol(symbol, pool);
 
   if (rows.length === 0) {
     logger.warn("Single", `${symbol}: ACTIVE 추천 없음`);

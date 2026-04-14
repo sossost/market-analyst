@@ -1000,7 +1000,7 @@ export async function queryWeeklyQaRecommendations(pool: Pool): Promise<WeeklyQa
     `SELECT status,
        COUNT(*)::int as cnt,
        ROUND(AVG(pnl_percent)::numeric, 2)::float as avg_return
-     FROM recommendations
+     FROM tracked_stocks
      GROUP BY status
      ORDER BY status`,
   );

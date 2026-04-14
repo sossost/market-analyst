@@ -336,32 +336,34 @@ export async function findUpcomingEarnings(
 // ---------------------------------------------------------------------------
 
 /**
- * ACTIVE 상태 추천 종목 전체 조회.
+ * ACTIVE 상태 트래킹 종목 전체 조회.
+ * entry_date를 recommendation_date 별칭으로 반환하여 호출부 인터페이스를 유지한다.
  */
-export async function findAllActiveRecommendations(
+export async function findAllActiveTrackedStocks(
   pool: Pool,
 ): Promise<CorporateActiveRecommendationRow[]> {
   const { rows } = await pool.query<CorporateActiveRecommendationRow>(
-    `SELECT symbol, recommendation_date
-     FROM recommendations
+    `SELECT symbol, entry_date AS recommendation_date
+     FROM tracked_stocks
      WHERE status = 'ACTIVE'
-     ORDER BY recommendation_date DESC`,
+     ORDER BY entry_date DESC`,
   );
   return rows;
 }
 
 /**
- * 단일 종목 ACTIVE 추천 최신 1건 조회.
+ * 단일 종목 ACTIVE 트래킹 최신 1건 조회.
+ * entry_date를 recommendation_date 별칭으로 반환하여 호출부 인터페이스를 유지한다.
  */
-export async function findActiveRecommendationBySymbol(
+export async function findActiveTrackedStockBySymbol(
   symbol: string,
   pool: Pool,
 ): Promise<CorporateActiveRecommendationRow[]> {
   const { rows } = await pool.query<CorporateActiveRecommendationRow>(
-    `SELECT symbol, recommendation_date
-     FROM recommendations
+    `SELECT symbol, entry_date AS recommendation_date
+     FROM tracked_stocks
      WHERE symbol = $1 AND status = 'ACTIVE'
-     ORDER BY recommendation_date DESC
+     ORDER BY entry_date DESC
      LIMIT 1`,
     [symbol],
   );
