@@ -11,7 +11,7 @@ import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getUnusualStocks } from "@/tools/getUnusualStocks";
 import { getRisingRS } from "@/tools/getRisingRS";
-import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
+import { getTrackedStocks } from "@/tools/getTrackedStocks";
 import { getMarketPosition } from "@/tools/getMarketPosition";
 
 
@@ -104,7 +104,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     industryRaw,
     unusualRaw,
     risingRsRaw,
-    watchlistRaw,
+    trackedStocksRaw,
     marketPositionRaw,
   ] = await Promise.all([
     getIndexReturns.execute({ mode: "daily", date: targetDate }).catch((err: unknown) => {
@@ -134,8 +134,8 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       logger.warn("Tool", `getRisingRS 실패: ${err instanceof Error ? err.message : String(err)}`);
       return JSON.stringify({ stocks: [] });
     }),
-    getWatchlistStatus.execute({ include_trajectory: false, date: targetDate }).catch((err: unknown) => {
-      logger.warn("Tool", `getWatchlistStatus 실패: ${err instanceof Error ? err.message : String(err)}`);
+    getTrackedStocks.execute({ include_trajectory: false }).catch((err: unknown) => {
+      logger.warn("Tool", `getTrackedStocks 실패: ${err instanceof Error ? err.message : String(err)}`);
       return JSON.stringify({ summary: { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }, items: [] });
     }),
     getMarketPosition(targetDate).catch((err: unknown) => {
@@ -150,7 +150,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
   const industryData = parse(industryRaw);
   const unusualData = parse(unusualRaw);
   const risingRsData = parse(risingRsRaw);
-  const watchlistData = parse(watchlistRaw);
+  const trackedStocksData = parse(trackedStocksRaw);
 
   const MIN_VOL_RATIO = 1.0;
   const rawUnusualStocks = (Array.isArray(unusualData.stocks) ? unusualData.stocks : []) as DailyReportData["unusualStocks"];
@@ -190,8 +190,8 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     unusualStocks: filteredUnusualStocks,
     risingRS: (Array.isArray(risingRsData.stocks) ? risingRsData.stocks : []) as DailyReportData["risingRS"],
     watchlist: {
-      summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
-      items: Array.isArray(watchlistData.items) ? watchlistData.items as DailyReportData["watchlist"]["items"] : [],
+      summary: (trackedStocksData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
+      items: Array.isArray(trackedStocksData.items) ? trackedStocksData.items as DailyReportData["watchlist"]["items"] : [],
     },
     marketPosition: marketPositionRaw,
     thesisAlignedCandidates: null,
@@ -204,7 +204,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
 
   logger.info(
     "Data",
-    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 관심종목 ${data.watchlist.summary.totalActive} | ${gateLabel}`,
+    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 추적종목 ${data.watchlist.summary.totalActive} | ${gateLabel}`,
   );
 
   return data;
@@ -273,8 +273,8 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
     .map((s) => `${s.symbol} [P${s.phase}] RS ${s.rsScore} (+${s.rsChange?.toFixed(0) ?? "?"}) ${s.sector ?? "—"} / ${s.industry ?? "—"}`)
     .join("\n");
 
-  const watchlistLine = `ACTIVE: ${data.watchlist.summary.totalActive}개, 평균 P&L: ${data.watchlist.summary.avgPnlPercent.toFixed(1)}%`;
-  const watchlistItemLines = data.watchlist.items
+  const trackedStocksLine = `ACTIVE: ${data.watchlist.summary.totalActive}개, 평균 P&L: ${data.watchlist.summary.avgPnlPercent.toFixed(1)}%`;
+  const trackedStocksItemLines = data.watchlist.items
     .map((w) => `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%`)
     .join("\n") || "없음";
 
@@ -300,9 +300,9 @@ ${unusualLines || "없음"}
 ${risingRsSectorDist}
 ${risingRsLines || "없음"}
 
-## 관심종목
-${watchlistLine}
-${watchlistItemLines}
+## 추적 종목 (tracked_stocks)
+${trackedStocksLine}
+${trackedStocksItemLines}
 
 ---
 
@@ -534,7 +534,7 @@ async function main() {
   const reportedSymbols = Array.from(new Set([
     ...data.unusualStocks.map((s) => s.symbol),
     ...data.risingRS.map((s) => s.symbol),
-    ...data.watchlist.items.map((w) => w.symbol),
+    ...data.watchlist.items.map((w) => w.symbol), // tracked_stocks
   ])).map((symbol) => {
     const unusual = data.unusualStocks.find((s) => s.symbol === symbol);
     const rising = data.risingRS.find((s) => s.symbol === symbol);
