@@ -34,7 +34,7 @@ interface FmpStockNewsRow {
 /**
  * 대상 종목 조회:
  * - Phase 2 종목 중 RS >= 70 OR vol_ratio >= 1.5
- * - watchlist_stocks ACTIVE 종목 (무조건 포함)
+ * - tracked_stocks ACTIVE 종목 (무조건 포함)
  */
 async function fetchTargetSymbols(): Promise<string[]> {
   const result = await db.execute(sql`
@@ -49,7 +49,7 @@ async function fetchTargetSymbols(): Promise<string[]> {
         )
       UNION
       SELECT symbol
-      FROM watchlist_stocks
+      FROM tracked_stocks
       WHERE status = 'ACTIVE'
     ) t
     ORDER BY symbol
@@ -151,7 +151,7 @@ async function main() {
 
   logger.info(
     TAG,
-    `Processing ${symbols.length} symbols (Phase 2 RS>=${MIN_RS_SCORE}/vol>=${MIN_VOL_RATIO} + watchlist ACTIVE)`,
+    `Processing ${symbols.length} symbols (Phase 2 RS>=${MIN_RS_SCORE}/vol>=${MIN_VOL_RATIO} + tracked_stocks ACTIVE)`,
   );
 
   const limit = pLimit(CONCURRENCY);

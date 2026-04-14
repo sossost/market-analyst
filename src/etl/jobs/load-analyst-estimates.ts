@@ -207,9 +207,9 @@ async function loadOne(
   );
 }
 
-async function fetchRecommendedSymbols(): Promise<string[]> {
+async function fetchTrackedSymbols(): Promise<string[]> {
   const rs = await db.execute(
-    sql`SELECT DISTINCT symbol FROM recommendations WHERE status IN ('ACTIVE', 'CLOSED') ORDER BY symbol`,
+    sql`SELECT DISTINCT symbol FROM tracked_stocks ORDER BY symbol`,
   );
   return (rs.rows as Record<string, unknown>[]).map((r) => r.symbol as string);
 }
@@ -228,14 +228,14 @@ async function main() {
 
   const { api, key } = getApiConfig();
 
-  const syms = await fetchRecommendedSymbols();
+  const syms = await fetchTrackedSymbols();
 
   if (syms.length === 0) {
-    logger.warn(TAG, "No recommended symbols found. Skipping.");
+    logger.warn(TAG, "No tracked symbols found. Skipping.");
     return;
   }
 
-  logger.info(TAG, `Processing ${syms.length} recommended symbols`);
+  logger.info(TAG, `Processing ${syms.length} tracked symbols`);
 
   // Bulk EPS surprises를 미리 가져옴 (종목별 호출 대신 연도별 bulk 2회)
   const symbolSet = new Set(syms);
