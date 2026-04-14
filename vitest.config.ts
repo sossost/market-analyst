@@ -10,6 +10,12 @@ export default defineConfig({
     setupFiles: ["./src/test-setup.ts"],
     coverage: {
       provider: "v8",
+      include: ["src/**/*.ts"],
+      exclude: [
+        "src/**/*.test.ts",
+        "src/**/*.spec.ts",
+        "src/test-setup.ts",
+      ],
       thresholds: {
         statements: 80,
         branches: 80,
