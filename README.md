@@ -66,8 +66,8 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → 어닝콜 핵심 발언, 포워드 EPS, 피어 비교 등 Seeking Alpha 수준 리포트
 
 7. 에이전트 리포트
-   → 일간: 시장 온도 + 시장 환경 멀티게이트(S&P 500 MA·신고가>신저가·A/D) + Thesis-Aligned Candidates(ACTIVE thesis 수혜주 기술적 상태 자동 조인 — Phase/RS/SEPA 게이트 충족 현황) + 토론 핵심 발견 + 관심종목 현황 브리핑 (조건부 발송)
-   → 주간: 지표 4×2 그리드(10Y·DXY·공포탐욕 통합) + 시장 브레드스(Phase 분포·5일 추이·LLM 해석) + 섹터 로테이션 + 업종 RS Top 10 + tracked_stocks 궤적 + 다음 주 관전 포인트 (HTML 리포트 + Discord 요약)
+   → 일간: 시장 온도 + 시장 환경 멀티게이트(S&P 500 MA·신고가>신저가·A/D) + Thesis-Aligned Candidates(ACTIVE thesis 수혜주 기술적 상태 자동 조인 — Phase/RS/SEPA 게이트 충족 현황) + 토론 핵심 발견 + 관심종목 현황 브리핑 + Phase 2 구간 분류(초입/진행/확립) (조건부 발송)
+   → 주간: 지표 4×2 그리드(10Y·DXY·공포탐욕 통합) + 시장 브레드스(Phase 분포·5일 추이·LLM 해석) + 섹터 로테이션 + 업종 RS Top 10 + tracked_stocks 궤적 + Phase 2 구간 분류 + 다음 주 관전 포인트 (HTML 리포트 + Discord 요약)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
 
 8. 전략 참모 (매일 04:00)
@@ -371,6 +371,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **메타 레짐 자동 관리** — 토론 에이전트에 국면 상태 자동 동기화(ACTIVE/PEAKED/RESOLVED) + megatrend 키워드 그루핑 기반 신규 국면 자동 생성/체인 연결 (#743)
 - [x] **FRED 신용 지표** — HY OAS/CCC/BBB 스프레드 + 금융 스트레스 지수 일간 수집, 90일 z-score 이상 감지, 토론 컨텍스트 전 에이전트 주입 (#748)
 - [x] **Bear 게이트 정밀화** — Bear 예외 RS 최상위 경로(RS 90+ / 지속 3일+ / 안정 3일) 추가 + Phase 2 경과일(`phase2_since`) 기록 — 하락장에서도 상대 강도 최상위 종목 추적 가능 (#777)
+- [x] **Phase 2 구간 분류** — `phase2_since` 경과일 기반 구간 분류(초입/진행/확립) 리포트 표시 — 일간/주간 HTML 테이블 + LLM 프롬프트 컨텍스트 (#781)
 
 ### Next (진행 예정)
 

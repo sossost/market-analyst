@@ -281,6 +281,18 @@ const WEEKLY_REPORT_CSS = `
   .phase-badge.p3 { background: #fff8c5; color: var(--yellow); }
   .phase-badge.p4 { background: #ffebe9; color: var(--down); }
 
+  /* Phase 2 Segment Badges */
+  .p2-segment {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .p2-초입 { background: #ddf4ff; color: #0969da; }
+  .p2-진행 { background: #f0e6ff; color: #8250df; }
+  .p2-확립 { background: #eef1f4; color: var(--text-muted); }
+
   /* Phase Distribution Bar */
   .phase-bar {
     display: flex;
@@ -1139,6 +1151,10 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
             ? `RS ${item.entryRsScore.toFixed(0)} (진입)`
             : "—";
 
+      const p2SegmentBadge = item.phase2Segment != null && item.phase2SinceDays != null
+        ? `<span class="p2-segment p2-${escapeHtml(item.phase2Segment)}">${escapeHtml(item.phase2Segment)} ${escapeHtml(String(item.phase2SinceDays))}일</span>`
+        : "—";
+
       return `
         <tr>
           <td><strong>${escapeHtml(item.symbol)}</strong></td>
@@ -1150,6 +1166,7 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
           <td class="${escapeHtml(pnlCls)}">${escapeHtml(pnlStr)}</td>
           <td>${escapeHtml(rsStr)}</td>
           <td>${sepaStr}</td>
+          <td>${p2SegmentBadge}</td>
         </tr>`;
     })
     .join("");
@@ -1167,6 +1184,7 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
           <th>P&amp;L</th>
           <th>RS</th>
           <th>SEPA</th>
+          <th>P2 구간</th>
         </tr>
       </thead>
       <tbody>${itemRows}</tbody>
