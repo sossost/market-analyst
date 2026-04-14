@@ -19,11 +19,9 @@ import {
 
 // ─── 모킹 ──────────────────────────────────────────────────────────────────
 
-vi.mock("@/lib/anthropic-client", () => ({
-  getAnthropicClient: vi.fn(() => ({
-    messages: {
-      create: vi.fn(),
-    },
+vi.mock("@/debate/llm/providerFactory.js", () => ({
+  createProvider: vi.fn(() => ({
+    call: vi.fn(),
   })),
 }));
 
@@ -242,24 +240,19 @@ describe("callGapAnalysis", () => {
   });
 
   it("LLM 응답을 파싱하여 GapResult[] 반환", async () => {
-    const { getAnthropicClient } = await import("@/lib/anthropic-client");
-    const mockCreate = vi.fn().mockResolvedValue({
-      content: [{ type: "text", text: JSON.stringify(validGaps.slice(0, 2)) }],
-      usage: { input_tokens: 500, output_tokens: 200 },
+    const { createProvider } = await import("@/debate/llm/providerFactory.js");
+    const mockCall = vi.fn().mockResolvedValue({
+      content: JSON.stringify(validGaps.slice(0, 2)),
+      tokensUsed: { input: 500, output: 200 },
     });
-    vi.mocked(getAnthropicClient).mockReturnValue({
-      messages: { create: mockCreate },
-    } as any);
+    vi.mocked(createProvider).mockReturnValue({ call: mockCall });
 
     const result = await callGapAnalysis(sampleInput);
 
     expect(result).toHaveLength(2);
     expect(result[0]!.theme).toBe(validGaps[0]!.theme);
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-
-    // Haiku 모델 사용 확인
-    const callArgs = mockCreate.mock.calls[0]![0];
-    expect(callArgs.model).toContain("haiku");
+    expect(createProvider).toHaveBeenCalledWith("haiku");
+    expect(mockCall).toHaveBeenCalledTimes(1);
   });
 });
 

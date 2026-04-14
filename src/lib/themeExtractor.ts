@@ -7,17 +7,14 @@
  * 비용: 1~2회/일, ~$0.03~0.05. 배치 1회 호출 (건별 호출 금지).
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/db/client";
 import { newsThemes, type ThemeSeverity } from "@/db/schema/analyst";
-import { getAnthropicClient } from "@/lib/anthropic-client";
-import { CLAUDE_SONNET } from "@/lib/models";
+import { createProvider } from "@/debate/llm/providerFactory.js";
 import { logger } from "@/lib/logger";
 
 const TAG = "THEME_EXTRACTOR";
 
 const MAX_TOKENS = 4_096;
-const TEMPERATURE = 0.2; // 환각 인과관계 최소화
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -153,27 +150,17 @@ export function parseThemeResponse(content: string): NewsTheme[] {
 // ─── LLM 호출 ─────────────────────────────────────────────────────────────────
 
 export async function callThemeExtraction(newsItems: NewsItem[]): Promise<NewsTheme[]> {
-  const client = getAnthropicClient();
   const userMessage = buildUserMessage(newsItems);
 
-  const response = await client.messages.create({
-    model: CLAUDE_SONNET,
-    max_tokens: MAX_TOKENS,
-    temperature: TEMPERATURE,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userMessage }],
+  const result = await createProvider("sonnet").call({
+    systemPrompt: SYSTEM_PROMPT,
+    userMessage,
+    maxTokens: MAX_TOKENS,
   });
 
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("");
+  logger.info(TAG, `LLM 호출 완료 (${result.tokensUsed.input}/${result.tokensUsed.output} tokens)`);
 
-  const inputTokens = response.usage.input_tokens;
-  const outputTokens = response.usage.output_tokens;
-  logger.info(TAG, `LLM 호출 완료 (${inputTokens}/${outputTokens} tokens)`);
-
-  return parseThemeResponse(text);
+  return parseThemeResponse(result.content);
 }
 
 // ─── DB 저장 ──────────────────────────────────────────────────────────────────
