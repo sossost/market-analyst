@@ -84,7 +84,11 @@ run_step() {
   local total=$((max_retries + 1))
 
   for attempt in $(seq 1 "$total"); do
-    log "▶ $name"
+    if [ "$attempt" -eq 1 ]; then
+      log "▶ $name"
+    else
+      log "▶ $name (재시도 ${attempt}/${total})"
+    fi
     if npx tsx "$script" >> "$LOG_FILE" 2>&1; then
       log "✓ $name 완료"
       return 0
@@ -101,13 +105,24 @@ run_step() {
   done
 }
 
-# 비필수 step 실행 (실패해도 파이프라인 계속)
+# 비필수 step 실행 (1회 재시도 후 실패해도 파이프라인 계속)
 run_step_optional() {
   local name="$1"
   local script="$2"
+  local retry_delay="${DEFAULT_RETRY_DELAY:-30}"
+
   log "▶ $name (optional)"
   if npx tsx "$script" >> "$LOG_FILE" 2>&1; then
     log "✓ $name 완료"
+    return 0
+  fi
+
+  log "⚠ $name 실패 — ${retry_delay}초 후 1회 재시도"
+  sleep "$retry_delay"
+
+  log "▶ $name (optional, 재시도)"
+  if npx tsx "$script" >> "$LOG_FILE" 2>&1; then
+    log "✓ $name 완료 (재시도 성공)"
   else
     log "⚠ $name 실패 (비필수 — 계속 진행)"
     send_error "$name 실패 (비필수 — 파이프라인 계속)" "ETL"
