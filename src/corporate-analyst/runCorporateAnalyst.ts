@@ -26,14 +26,14 @@ export interface CorporateAnalystResult {
  */
 export async function runCorporateAnalyst(
   symbol: string,
-  recommendationDate: string,
+  entryDate: string,
   pool: Pool,
 ): Promise<CorporateAnalystResult> {
   try {
-    logger.info("CorporateAnalyst", `${symbol} (${recommendationDate}) 분석 시작`);
+    logger.info("CorporateAnalyst", `${symbol} (${entryDate}) 분석 시작`);
 
     // 1. 분석 입력 데이터 수집
-    const inputs = await loadAnalysisInputs(symbol, recommendationDate, pool);
+    const inputs = await loadAnalysisInputs(symbol, entryDate, pool);
 
     // 2. LLM 리포트 생성
     const { report, tokensInput, tokensOutput, priceTargetResult } = await generateAnalysisReport(
@@ -46,7 +46,7 @@ export async function runCorporateAnalyst(
     await upsertStockAnalysisReport(
       {
         symbol,
-        recommendationDate,
+        recommendationDate: entryDate,
         investmentSummary: report.investmentSummary,
         technicalAnalysis: report.technicalAnalysis,
         fundamentalTrend: report.fundamentalTrend,
@@ -68,7 +68,7 @@ export async function runCorporateAnalyst(
 
     logger.info(
       "CorporateAnalyst",
-      `${symbol} (${recommendationDate}) 리포트 저장 완료`,
+      `${symbol} (${entryDate}) 리포트 저장 완료`,
     );
 
     return { success: true, symbol };
@@ -76,7 +76,7 @@ export async function runCorporateAnalyst(
     const errorMessage = err instanceof Error ? err.message : String(err);
     logger.error(
       "CorporateAnalyst",
-      `${symbol} (${recommendationDate}) 리포트 생성 실패: ${errorMessage}`,
+      `${symbol} (${entryDate}) 리포트 생성 실패: ${errorMessage}`,
     );
     return { success: false, symbol, error: errorMessage };
   }

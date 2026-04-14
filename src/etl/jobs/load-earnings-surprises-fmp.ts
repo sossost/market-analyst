@@ -27,7 +27,7 @@ interface FmpEarningsSurpriseRow {
 }
 
 /**
- * 대상 종목 조회: Phase 2 전체 + watchlist ACTIVE.
+ * 대상 종목 조회: Phase 2 전체 + tracked_stocks ACTIVE.
  * SEPA 스코어러가 Non-GAAP EPS를 사용하므로 Phase 2 전 종목에 대해 적재.
  */
 async function fetchTargetSymbols(): Promise<string[]> {
@@ -39,7 +39,7 @@ async function fetchTargetSymbols(): Promise<string[]> {
         AND sp.phase = 2
       UNION
       SELECT symbol
-      FROM watchlist_stocks
+      FROM tracked_stocks
       WHERE status = 'ACTIVE'
     ) t
     ORDER BY symbol
@@ -121,7 +121,7 @@ async function main() {
 
   logger.info(
     TAG,
-    `Processing ${symbols.length} symbols (Phase 2 전체 + watchlist ACTIVE)`,
+    `Processing ${symbols.length} symbols (Phase 2 전체 + tracked_stocks ACTIVE)`,
   );
 
   const limit = pLimit(CONCURRENCY);

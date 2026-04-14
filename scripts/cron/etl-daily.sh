@@ -87,10 +87,12 @@ run_step "Update Sector Lag Patterns" "src/etl/jobs/update-sector-lag-patterns.t
 run_step "Track Phase Exits" "src/etl/jobs/track-phase-exits.ts"
 run_step "Collect Failure Patterns" "src/etl/jobs/collect-failure-patterns.ts"
 
-# Phase 3.8 (추천 종목 성과 갱신 + 관심종목 Phase 궤적 갱신 + 신규 추천 스캔)
-run_step "Update Recommendation Status" "src/etl/jobs/update-recommendation-status.ts"
-run_step "Update Watchlist Tracking" "src/etl/jobs/update-watchlist-tracking.ts"
+# Phase 3.8 — tracked_stocks 통합 ETL (#773)
+# update-recommendation-status, update-watchlist-tracking → update-tracked-stocks로 통합
+# scan-thesis-aligned-candidates: thesis 수혜주 Phase 2 진입 시 자동 등록
+run_step "Update Tracked Stocks" "src/etl/jobs/update-tracked-stocks.ts"
 run_step "Scan Recommendation Candidates" "src/etl/jobs/scan-recommendation-candidates.ts"
+run_step_optional "Scan Thesis Aligned Candidates" "src/etl/jobs/scan-thesis-aligned-candidates.ts"
 
 # Phase 3.9 (종목 촉매 데이터 — stock_phases 완료 후 실행하여 오늘의 Phase 2 기준 일치)
 # 순차 실행: 3개 잡이 동시에 FMP API를 호출하면 rate limit(429)에 걸림

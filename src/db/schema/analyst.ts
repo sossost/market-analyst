@@ -153,6 +153,9 @@ export const industryRsDaily = pgTable(
 /**
  * recommendations — 추천 종목 성과 트래킹.
  * 주간 에이전트가 저장, 일간 ETL이 업데이트.
+ *
+ * @deprecated tracked_stocks로 통합 완료 (Phase 0~5 이관 완료, 2026-04).
+ * 이관 데이터 보존을 위해 테이블은 유지. DROP은 별도 이슈.
  */
 export const recommendations = pgTable(
   "recommendations",
@@ -874,6 +877,9 @@ export const stockAnalysisReports = pgTable(
  * watchlist_stocks — 관심종목 등록/해제/이력.
  * 5중 교집합 게이트(Phase 2 + 섹터RS + 개별RS + 서사 근거 + SEPA S/A)를 통과한 종목만 등록.
  * 90일 고정 윈도우로 Phase 궤적을 추적하며, 추천 승률이 아닌 포착 선행성이 핵심 KPI.
+ *
+ * @deprecated tracked_stocks로 통합 완료 (Phase 0~5 이관 완료, 2026-04).
+ * 이관 데이터 보존을 위해 테이블은 유지. DROP은 별도 이슈.
  */
 export const watchlistStocks = pgTable(
   "watchlist_stocks",
@@ -919,6 +925,80 @@ export const watchlistStocks = pgTable(
     idxStatus: index("idx_watchlist_stocks_status").on(t.status),
     idxEntryDate: index("idx_watchlist_stocks_entry_date").on(t.entryDate),
     idxSymbol: index("idx_watchlist_stocks_symbol").on(t.symbol),
+  }),
+);
+
+/**
+ * tracked_stocks — 종목 트래킹 통합 테이블.
+ * recommendations(etl_auto)와 watchlist_stocks(agent)를 단일 테이블로 통합.
+ * thesis 수혜주 자동 등록(thesis_aligned) 경로 추가.
+ * 90일 고정 윈도우로 Phase 궤적과 듀레이션 수익률을 추적한다.
+ *
+ * @deprecated watchlist_stocks, recommendations 대체 (Phase 0~5 이관 완료 후 구 테이블 삭제 예정)
+ */
+export const trackedStocks = pgTable(
+  "tracked_stocks",
+  {
+    id: serial("id").primaryKey(),
+    symbol: text("symbol").notNull(),
+
+    // 진입 경로
+    source: text("source").notNull(), // 'etl_auto' | 'agent' | 'thesis_aligned'
+    tier: text("tier").notNull().default("standard"), // 'standard' | 'featured'
+
+    // 진입 시점 스냅샷
+    entryDate: text("entry_date").notNull(), // YYYY-MM-DD
+    entryPrice: numeric("entry_price").notNull(),
+    entryPhase: smallint("entry_phase").notNull(),
+    entryPrevPhase: smallint("entry_prev_phase"),
+    entryRsScore: integer("entry_rs_score"),
+    entrySepaGrade: text("entry_sepa_grade"), // 'S' | 'A' | 'B' | 'C' | 'F'
+    entryThesisId: integer("entry_thesis_id"), // thesis 연결 (nullable)
+    entrySector: text("entry_sector"),
+    entryIndustry: text("entry_industry"),
+    entryReason: text("entry_reason"),
+
+    // 상태
+    status: text("status").notNull().default("ACTIVE"), // 'ACTIVE' | 'EXPIRED' | 'EXITED'
+    marketRegime: text("market_regime"),
+
+    // 현재 상태 (매일 ETL 갱신)
+    currentPrice: numeric("current_price"),
+    currentPhase: smallint("current_phase"),
+    currentRsScore: integer("current_rs_score"),
+    pnlPercent: numeric("pnl_percent"),
+    maxPnlPercent: numeric("max_pnl_percent"),
+    daysTracked: integer("days_tracked").default(0),
+    lastUpdated: text("last_updated"),
+
+    // 듀레이션 수익률 스냅샷 (해당 시점 경과 후 계산, immutable)
+    return7d: numeric("return_7d"),
+    return30d: numeric("return_30d"),
+    return90d: numeric("return_90d"),
+
+    // 90일 윈도우
+    trackingEndDate: text("tracking_end_date"), // entry_date + 90일
+    phaseTrajectory: jsonb("phase_trajectory").$type<
+      Array<{ date: string; phase: number; rsScore: number | null }>
+    >(), // [{date, phase, rsScore}] — 매일 ETL 누적
+    sectorRelativePerf: numeric("sector_relative_perf"),
+
+    // 종료 정보
+    exitDate: text("exit_date"),
+    exitReason: text("exit_reason"),
+
+    // 타임스탬프
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uq: unique("uq_tracked_stocks_symbol_date").on(t.symbol, t.entryDate),
+    idxStatus: index("idx_tracked_stocks_status").on(t.status),
+    idxSource: index("idx_tracked_stocks_source").on(t.source),
+    idxEntryDate: index("idx_tracked_stocks_entry_date").on(t.entryDate),
+    idxSymbol: index("idx_tracked_stocks_symbol").on(t.symbol),
+    idxTier: index("idx_tracked_stocks_tier").on(t.tier),
   }),
 );
 

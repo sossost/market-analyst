@@ -225,6 +225,13 @@
       "when": 1775528857990,
       "tag": "0031_add_daily_prices_date_index",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1776128137007,
+      "tag": "0032_third_sebastian_shaw",
+      "breakpoints": true
     }
   ]
 }

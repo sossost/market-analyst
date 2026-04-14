@@ -33,7 +33,7 @@ interface FmpEarningCalendarRow {
 }
 
 /**
- * Phase 2 + watchlist ACTIVE 종목 심볼 SET 로드.
+ * Phase 2 + tracked_stocks ACTIVE 종목 심볼 SET 로드.
  * earning_calendar 필터링에 사용.
  *
  * RS/vol 필터 없는 이유: 1회 API 호출이므로 대상 넓혀도 비용 차이 없음.
@@ -47,7 +47,7 @@ async function fetchTargetSymbolSet(): Promise<Set<string>> {
         AND phase = 2
       UNION
       SELECT symbol
-      FROM watchlist_stocks
+      FROM tracked_stocks
       WHERE status = 'ACTIVE'
     ) t
   `);

@@ -10,7 +10,7 @@ import { getIndexReturns } from "@/tools/getIndexReturns";
 import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getPhase2Stocks } from "@/tools/getPhase2Stocks";
-import { getWatchlistStatus } from "@/tools/getWatchlistStatus";
+import { getTrackedStocks } from "@/tools/getTrackedStocks";
 import { getVCPCandidates } from "@/tools/getVCPCandidates";
 import { getConfirmedBreakouts } from "@/tools/getConfirmedBreakouts";
 import { getSectorLagPatterns } from "@/tools/getSectorLagPatterns";
@@ -63,12 +63,6 @@ function parse(json: string): Record<string, unknown> {
   }
 }
 
-function colorClass(value: number): "up" | "down" | "neutral-color" {
-  if (value > 0) return "up";
-  if (value < 0) return "down";
-  return "neutral-color";
-}
-
 function validateEnvironment(): void {
   const required = ["DATABASE_URL", "DISCORD_WEEKLY_WEBHOOK_URL"];
   const missing = required.filter(
@@ -86,13 +80,13 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   logger.step("[4/7] Collecting data from tools...");
 
   // 병렬 호출
-  const [indexRaw, breadthRaw, sectorRaw, industryRaw, watchlistRaw, phase2Raw, allIndustryRaw, thesisAlignedRaw, vcpRaw, breakoutRaw, lagRaw] =
+  const [indexRaw, breadthRaw, sectorRaw, industryRaw, trackedStocksRaw, phase2Raw, allIndustryRaw, thesisAlignedRaw, vcpRaw, breakoutRaw, lagRaw] =
     await Promise.all([
       getIndexReturns.execute({ mode: "weekly", date: targetDate }),
       getMarketBreadth.execute({ mode: "weekly", date: targetDate }),
       getLeadingSectors.execute({ mode: "weekly", date: targetDate }),
       getLeadingSectors.execute({ mode: "industry", limit: 10, date: targetDate }),
-      getWatchlistStatus.execute({ include_trajectory: true, date: targetDate }),
+      getTrackedStocks.execute({ include_trajectory: true }),
       getPhase2Stocks.execute({ min_rs: 60, date: targetDate }),
       getLeadingSectors.execute({ mode: "industry", limit: 200, date: targetDate }),
       buildThesisAlignedCandidates(targetDate).catch((err: unknown) => {
@@ -117,7 +111,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   const breadthData = parse(breadthRaw);
   const sectorData = parse(sectorRaw);
   const industryData = parse(industryRaw);
-  const watchlistData = parse(watchlistRaw);
+  const trackedStocksData = parse(trackedStocksRaw);
   const phase2Data = parse(phase2Raw);
   const allIndustryData = parse(allIndustryRaw);
 
@@ -169,8 +163,8 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
     sectorRanking: (Array.isArray(sectorData.sectors) ? sectorData.sectors : []) as WeeklyReportData["sectorRanking"],
     industryTop10: allIndustries as WeeklyReportData["industryTop10"],
     watchlist: {
-      summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as WeeklyReportData["watchlist"]["summary"],
-      items: Array.isArray(watchlistData.items) ? watchlistData.items : [],
+      summary: (trackedStocksData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as WeeklyReportData["watchlist"]["summary"],
+      items: Array.isArray(trackedStocksData.items) ? trackedStocksData.items : [],
     },
     gate5Candidates: stocks as WeeklyReportData["gate5Candidates"],
     watchlistChanges: {
@@ -288,17 +282,25 @@ ${data.sectorLagPatterns != null && data.sectorLagPatterns.length > 0
   return { system: systemPrompt, user: dataSummary };
 }
 
+interface InsightResult {
+  insight: WeeklyReportInsight;
+  tokensUsed: { input: number; output: number };
+  executionTimeMs: number;
+}
+
 async function generateInsight(
   data: WeeklyReportData,
   systemPrompt: string,
-): Promise<WeeklyReportInsight> {
+): Promise<InsightResult> {
   logger.step("[5/7] Generating insight via Claude CLI...");
 
   const cli = new ClaudeCliProvider("claude-sonnet-4-6", 600_000); // 10분 타임아웃
   const { system, user } = buildInsightPrompt(data, systemPrompt);
+  const startMs = Date.now();
 
   try {
     const result = await cli.call({ systemPrompt: system, userMessage: user });
+    const executionTimeMs = Date.now() - startMs;
     logger.info("CLI", `Tokens: ${result.tokensUsed.input} input / ${result.tokensUsed.output} output`);
 
     // JSON 파싱
@@ -313,14 +315,26 @@ async function generateInsight(
       parsed = JSON.parse(jsonStr);
     } catch {
       logger.warn("CLI", `JSON 파싱 실패 — 기본값으로 폴백. 응답 앞 200자: ${content.slice(0, 200)}`);
-      return fillInsightDefaults({});
+      return {
+        insight: fillInsightDefaults({}),
+        tokensUsed: result.tokensUsed,
+        executionTimeMs,
+      };
     }
 
-    return fillInsightDefaults(parsed);
+    return {
+      insight: fillInsightDefaults(parsed),
+      tokensUsed: result.tokensUsed,
+      executionTimeMs,
+    };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.error("CLI", `LLM 호출 실패: ${reason}`);
-    return fillInsightDefaults({});
+    return {
+      insight: fillInsightDefaults({}),
+      tokensUsed: { input: 0, output: 0 },
+      executionTimeMs: Date.now() - startMs,
+    };
   } finally {
     cli.dispose();
   }
@@ -424,13 +438,13 @@ async function main() {
 
   const signalPerformance = loadSignalPerformanceSummary();
 
-  let watchlistContext = "";
+  let trackedStocksContext = "";
   try {
-    const watchlistRaw = await getWatchlistStatus.execute({ include_trajectory: false });
-    const wd = JSON.parse(watchlistRaw) as { summary?: { totalActive: number; phaseChanges: unknown[] } };
-    const totalActive = wd.summary?.totalActive ?? 0;
+    const trackedRaw = await getTrackedStocks.execute({ include_trajectory: false });
+    const td = JSON.parse(trackedRaw) as { summary?: { totalActive: number; phaseChanges: unknown[] } };
+    const totalActive = td.summary?.totalActive ?? 0;
     if (totalActive > 0) {
-      watchlistContext = `현재 ACTIVE 관심종목 ${totalActive}개 추적 중`;
+      trackedStocksContext = `현재 ACTIVE 추적 종목 ${totalActive}개 추적 중`;
     }
   } catch {
     // fail-open
@@ -443,7 +457,7 @@ async function main() {
     narrativeChainsSummary,
     sectorLagContext,
     regimeContext,
-    watchlistContext,
+    watchlistContext: trackedStocksContext,
     sectorClusterContext,
   });
 
@@ -451,7 +465,7 @@ async function main() {
   const data = await collectWeeklyData(targetDate);
 
   // 5. LLM 인사이트 생성 (CLI 단발 호출)
-  const insight = await generateInsight(data, systemPrompt);
+  const { insight, tokensUsed, executionTimeMs } = await generateInsight(data, systemPrompt);
 
   // 6. HTML 조립 + 발행
   logger.step("[6/7] Building and publishing report...");
@@ -474,9 +488,9 @@ async function main() {
       fullContent: null,
       metadata: {
         model: "claude-sonnet-4-6 (CLI)",
-        tokensUsed: { input: 0, output: 0 },
+        tokensUsed,
         toolCalls: 0,
-        executionTime: 0,
+        executionTime: executionTimeMs,
       },
     });
     await updateReportFullContent(targetDate, "weekly", html);

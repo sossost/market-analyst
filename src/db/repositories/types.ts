@@ -344,15 +344,7 @@ export interface GroupPrevPhaseRow {
   group_phase: number;
 }
 
-// ─── recommendationRepository ─────────────────────────────────────────────────
-
-export interface ActiveRecommendationRow {
-  symbol: string;
-}
-
-export interface RecentlyClosedRow {
-  symbol: string;
-}
+// ─── stockPhaseRepository (Phase2 검사) ───────────────────────────────────────
 
 export interface Phase2PersistenceRow {
   symbol: string;
@@ -656,9 +648,9 @@ export interface CorporateIndustryRsRow {
   group_phase: number | null;
 }
 
-export interface CorporateActiveRecommendationRow {
+export interface CorporateActiveTrackedRow {
   symbol: string;
-  recommendation_date: string;
+  entry_date: string;
 }
 
 export interface CorporateAnalysisReportRow {
@@ -786,13 +778,6 @@ export interface EtlPhaseExitRow {
   low_since_entry: string | null;
 }
 
-export interface EtlRecommendationDataRow {
-  symbol: string;
-  close: string;
-  phase: number | null;
-  rs_score: number | null;
-}
-
 // ─── Agent QA (Phase 4 추가) ──────────────────────────────────────────────────
 
 export interface QaTopSectorRow {
@@ -861,7 +846,7 @@ export interface WeeklyQaThesisOverallRow {
   total: number;
 }
 
-export interface WeeklyQaRecommendationRow {
+export interface WeeklyQaTrackedStockRow {
   status: string;
   cnt: number;
   avg_return: number | null;

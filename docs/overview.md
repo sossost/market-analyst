@@ -2,7 +2,7 @@
 
 **Status:** Active (운영 중)
 **Created:** 2026-03-04
-**Last Updated:** 2026-04-06
+**Last Updated:** 2026-04-14
 
 ---
 
@@ -119,7 +119,7 @@ PR 리뷰어:       KST 09:30~02:30 매 :30분 (18회/일)
 | F8 | Report/Debate Dashboard | **→ control-tower 이관** | Next.js 대시보드 → control-tower 레포 분리 |
 | F9 | Strategic Auto-Review | **완료** | Claude Code CLI 기반 전략 참모 자동 리뷰 (#266) |
 | F10 | Corporate Analyst | **완료** | 종목 심층 분석 + 정량 목표주가 (#277) |
-| F11 | Insight Briefing Pivot | **완료** | 추천→관심종목, 5중 교집합 게이트, 리포트 4→3개, 90일 트래킹, KPI 전환 (#390) |
+| F11 | Insight Briefing Pivot | **완료** | 추천→관심종목→tracked_stocks 통합, 리포트 4→3개, 90일 트래킹, KPI 전환 (#390, #773) |
 | Layer 14 | 학습 루프 안정화 | **완료** | thesis 검증 수리 + 피드백 루프 보강 (#322~#332) |
 | Phase N-2 | 검증 인프라 | **대기 중** | 데이터 축적 중 (착수: 3/22~) |
 | ~~F3~~ | ~~Industry Intelligence~~ | 폐기 | F6 토론 엔진이 시장 분석 역할을 대체 |
@@ -141,8 +141,9 @@ PR 리뷰어:       KST 09:30~02:30 매 :30분 (18회/일)
 | `getStockDetail` | O | O | 개별 종목 상세 분석 (Phase, RS, MA, 섹터 컨텍스트) |
 | `searchCatalyst` | O | O | Brave Search 뉴스 기반 카탈리스트 |
 | `readReportHistory` | | O | 과거 리포트 이력 (중복 방지) |
-| `readRecommendationPerformance` | | O | 추천 성과 트래킹 (주간: 신규/종료/Phase 이탈 집계) |
-| `saveRecommendations` | O | O | 추천 종목 DB 저장 (팩터 스냅샷 포함) |
+| `readTrackedStocksPerformance` | | O | tracked_stocks 성과 트래킹 (주간: 신규/종료/Phase 이탈 집계) |
+| `saveTrackedStock` | O | O | tracked_stocks DB 저장 (source/tier/팩터 스냅샷) |
+| `getTrackedStocks` | O | O | tracked_stocks 조회 (Phase/RS/SEPA 현황 브리핑) |
 | `saveReportLog` | O | O | 리포트 결과 저장 |
 | `sendDiscordReport` | | | Discord + Gist 리포트 발송 (리뷰 파이프라인 전용) |
 
@@ -266,8 +267,9 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── stock_phases           → Weinstein Phase 판별 결과
 ├── sector_rs_daily        → 섹터별 RS 점수/가속도/브레드스
 ├── industry_rs_daily      → 산업별 RS 점수/가속도/브레드스
-├── recommendations        → 추천 종목 기록 + 성과 트래킹
-├── recommendation_factors → 추천 팩터 스냅샷
+├── tracked_stocks         → 관심종목 통합 테이블 (source: etl_auto/agent/thesis_aligned, tier: standard/featured, 90일 윈도우, 7d/30d/90d 수익률 스냅샷)
+├── ~~recommendations~~    → deprecated (tracked_stocks로 통합)
+├── ~~watchlist_stocks~~   → deprecated (tracked_stocks로 통합)
 ├── theses                 → 토론 thesis (카테고리 분리)
 ├── debate_sessions        → 토론 세션 저장
 ├── agent_learnings        → 장기 기억 (검증된 원칙 + 경계 패턴)
@@ -319,9 +321,9 @@ market-analyst/
 │   │   └── narrativeChainService.ts  # 병목 체인 추적
 │   ├── corporate-analyst/  # F10: 기업 심층 분석 + 정량 목표주가
 │   ├── fundamental/        # F7: SEPA 펀더멘탈 검증
-│   ├── tools/              # 에이전트 도구 (18개 + 내부 유틸 2개)
+│   ├── tools/              # 에이전트 도구 (save_tracked_stock / get_tracked_stocks / read_tracked_stocks_performance 등)
 │   ├── etl/                # F1: ETL Pipeline
-│   │   ├── jobs/               # ETL 실행 파일
+│   │   ├── jobs/               # ETL 실행 파일 (update-tracked-stocks, scan-thesis-aligned-candidates 포함)
 │   │   └── utils/              # Phase 판별, RS 계산, 유틸리티
 │   ├── issue-processor/    # 자율 이슈 처리 (Claude Code CLI)
 │   ├── pr-reviewer/        # 자동 PR 리뷰 (Strategic + Code 병렬 리뷰어)

@@ -47,7 +47,7 @@ ${ANALYSIS_FRAMEWORK}
   "marketTemperatureRationale": "2~3문장. 시장 온도 판단 근거. 지수·Phase2 비율·VIX·공포탐욕지수를 종합한 해석. 데이터 나열 금지.",
   "unusualStocksNarrative": "2~3문장. 특이종목 공통 테마 또는 이질적 패턴 해석. 없으면 '해당 없음'.",
   "risingRSNarrative": "1~2문장. RS 상승 초기 종목군의 공통 업종/테마 관찰. 없으면 '해당 없음'.",
-  "watchlistNarrative": "1~2문장. ACTIVE 관심종목 서사 유효성. Phase 전이 종목이 있으면 방향 언급. 없으면 '해당 없음'.",
+  "watchlistNarrative": "1~2문장. ACTIVE 추적 종목(tracked_stocks) 서사 유효성. Phase 전이 종목이 있으면 방향 언급. 없으면 '해당 없음'.",
   "breadthNarrative": "1~2문장. 브레드스 추세 + 맥락 해석. Phase 2 비율 방향, A/D ratio, 신고가/신저가 흐름을 종합한 한줄 판단. 없으면 '해당 없음'.",
   "todayInsight": "2~3문장. 토론 인사이트가 있는 경우 핵심만. 시장 데이터와 일치/상충 여부 포함. 없으면 '해당 없음'.",
   "discordMessage": "3~5줄. 지수 변화 + Phase2 비율 + 특이종목 수 요약. 링크 금지."
@@ -61,7 +61,7 @@ ${ANALYSIS_FRAMEWORK}
 - **marketTemperatureRationale**: 왜 그 온도인지 판단 근거. VIX 레벨, Phase2 비율 방향, 공포탐욕 구간, A/D ratio를 종합해 해석하라. 숫자 테이블 만들지 마라.
 - **unusualStocksNarrative**: 특이종목이 공통 업종/테마에 집중되면 그 해석. 이질적(개별 악재, 이상 급등 등) 패턴이면 그 의미. 없으면 "해당 없음".
 - **risingRSNarrative**: RS 상승 초기 종목군의 소속 업종·섹터 공통점과 자금 유입 방향. 섹터별 종목 수를 언급할 때는 반드시 데이터에 포함된 '섹터 분포' 사전 집계 수치를 그대로 인용하라. 직접 카운트 금지. 없으면 "해당 없음".
-- **watchlistNarrative**: ACTIVE 관심종목의 오늘 서사 유효성. Phase 이탈 우려 종목이 있으면 간략히 언급. 없으면 "해당 없음".
+- **watchlistNarrative**: ACTIVE 추적 종목(tracked_stocks)의 오늘 서사 유효성. Phase 이탈 우려 종목이 있으면 간략히 언급. 없으면 "해당 없음".
 - **breadthNarrative**: 시장 브레드스 추세 한줄 해석. Phase 2 비율 방향(확대/축소/보합), A/D ratio 수준, 신고가·신저가 비율을 종합해 시장 참여 폭이 넓어지는지 좁아지는지 판단. 없으면 "해당 없음".
 - **todayInsight**: 토론 인사이트(debateInsight 컨텍스트)가 제공된 경우에만 작성. 시장 데이터와 일치하면 "토론과 일치", 충돌하면 "토론과 상충" 명시. 없으면 "해당 없음".
 - **discordMessage**: 구독자에게 전달하는 핵심 요약. 텍스트만, 링크 금지. 예시:
@@ -131,7 +131,7 @@ ${sanitized}
 ## 서사 체인 태그 (종목 분류 참조)
 
 아래는 현재 추적 중인 구조적 서사 체인입니다.
-unusualStocksNarrative 또는 watchlistNarrative 작성 시 관련 종목이 있으면 체인명을 언급하세요.
+unusualStocksNarrative 또는 watchlistNarrative(추적 종목 서사) 작성 시 관련 종목이 있으면 체인명을 언급하세요.
 RESOLVING 상태 체인에 연결된 종목은 "이탈 준비 검토" 경고를 포함하세요.
 
 <narrative-chains trust="internal">
@@ -170,7 +170,7 @@ ${sanitizeXml(regimeContext)}
 
 ## 직전 리포트 컨텍스트
 
-watchlistNarrative 작성 시 전일 대비 Phase 변화를 참고하라.
+watchlistNarrative(추적 종목 서사) 작성 시 전일 대비 Phase 변화를 참고하라.
 todayInsight 작성 시 전일 핵심 인사이트의 후속 상태(유효/무효/진행중)를 포함하라.
 이 컨텍스트가 있으면 "전일 데이터 없음"으로 표기하지 마라.
 
