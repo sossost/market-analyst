@@ -196,6 +196,12 @@ describe("saveTrackedStock.execute — exit", () => {
     ]);
     mockExit.mockResolvedValue(undefined);
 
+    // fetchLatestCloseForExit → pool.query mock
+    const { pool } = await import("@/db/client");
+    (pool.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      rows: [{ close: "185.50" }],
+    });
+
     const result = JSON.parse(
       await saveTrackedStock.execute({
         action: "exit",
@@ -210,7 +216,7 @@ describe("saveTrackedStock.execute — exit", () => {
     expect(result.success).toBe(true);
     expect(result.symbol).toBe("AAPL");
     expect(result.exitReason).toBe("Phase 3 진입");
-    expect(mockExit).toHaveBeenCalledWith(5, "2026-03-22", "Phase 3 진입");
+    expect(mockExit).toHaveBeenCalledWith(5, "2026-03-22", "Phase 3 진입", 185.5);
   });
 
   it("ACTIVE 종목 없으면 실패 반환", async () => {

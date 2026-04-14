@@ -387,8 +387,11 @@ async function executeExit(
 
   const targetRow = activeRows[0];
 
+  // exit 시점의 최신 종가 조회 — current_price를 갱신하여 exit_date와 가격 일관성 유지
+  const latestPrice = await fetchLatestCloseForExit(symbol, exitDate);
+
   await retryDatabaseOperation(() =>
-    exitTrackedStock(targetRow.id, exitDate, exitReason),
+    exitTrackedStock(targetRow.id, exitDate, exitReason, latestPrice),
   );
 
   logger.info(
@@ -487,4 +490,24 @@ async function executeQuery(
     trackedStocks: found,
     message: `${date} 기준 ETL 자동 등록 종목 ${found.length}건`,
   });
+}
+
+// ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
+
+/** exit 시점의 최신 종가를 조회한다. 없으면 null. */
+async function fetchLatestCloseForExit(
+  symbol: string,
+  exitDate: string,
+): Promise<number | null> {
+  const { rows } = await pool.query<{ close: string }>(
+    `SELECT close::text
+     FROM daily_prices
+     WHERE symbol = $1 AND date <= $2
+     ORDER BY date DESC
+     LIMIT 1`,
+    [symbol, exitDate],
+  );
+  if (rows.length === 0) return null;
+  const val = Number(rows[0].close);
+  return Number.isFinite(val) ? val : null;
 }

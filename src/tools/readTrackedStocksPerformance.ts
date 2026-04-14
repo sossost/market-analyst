@@ -287,8 +287,14 @@ async function executeThisWeek(input: Record<string, unknown>): Promise<string> 
            FROM tracked_stocks
            WHERE status = 'ACTIVE'
              AND current_phase IS NOT NULL
-             AND current_phase != entry_phase
-             AND last_updated >= $1
+             AND current_phase != COALESCE(
+               (SELECT (elem->>'phase')::int
+                FROM jsonb_array_elements(phase_trajectory) AS elem
+                WHERE (elem->>'date') < $1
+                ORDER BY (elem->>'date') DESC
+                LIMIT 1),
+               entry_phase
+             )
              ${optionalFilter}`,
           filterParams,
         ),

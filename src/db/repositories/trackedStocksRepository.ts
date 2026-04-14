@@ -179,14 +179,16 @@ export async function findTrackedStockById(
 export async function findRecentTrackedBySymbol(
   symbol: string,
   days: number,
+  referenceDate?: string,
 ): Promise<TrackedStockActiveBySymbolRow[]> {
+  const refDate = referenceDate ?? new Date().toISOString().slice(0, 10);
   const { rows } = await pool.query<TrackedStockActiveBySymbolRow>(
     `SELECT id, symbol, entry_date
      FROM tracked_stocks
      WHERE symbol = $1
        AND status <> 'ACTIVE'
-       AND exit_date >= CURRENT_DATE - $2::integer * INTERVAL '1 day'`,
-    [symbol, days],
+       AND exit_date >= $3::date - $2::integer * INTERVAL '1 day'`,
+    [symbol, days, refDate],
   );
 
   return rows;
@@ -345,13 +347,23 @@ export async function exitTrackedStock(
   id: number,
   exitDate: string,
   exitReason: string,
+  exitPrice?: number | null,
 ): Promise<void> {
-  await pool.query(
-    `UPDATE tracked_stocks
-     SET status = 'EXITED', exit_date = $1, exit_reason = $2
-     WHERE id = $3`,
-    [exitDate, exitReason, id],
-  );
+  if (exitPrice != null) {
+    await pool.query(
+      `UPDATE tracked_stocks
+       SET status = 'EXITED', exit_date = $1, exit_reason = $2, current_price = $3
+       WHERE id = $4`,
+      [exitDate, exitReason, exitPrice, id],
+    );
+  } else {
+    await pool.query(
+      `UPDATE tracked_stocks
+       SET status = 'EXITED', exit_date = $1, exit_reason = $2
+       WHERE id = $3`,
+      [exitDate, exitReason, id],
+    );
+  }
 }
 
 /**
