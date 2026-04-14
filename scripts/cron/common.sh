@@ -71,50 +71,114 @@ run_claude_p() {
   env -u ANTHROPIC_API_KEY "$@"
 }
 
-# 단일 step 실행
+# 기본 재시도 설정
+DEFAULT_RETRIES=2
+DEFAULT_RETRY_DELAY=30
+
+# 단일 step 실행 (재시도 포함)
 run_step() {
   local name="$1"
   local script="$2"
-  log "▶ $name"
+  local max_retries="${3:-$DEFAULT_RETRIES}"
+  local retry_delay="${4:-$DEFAULT_RETRY_DELAY}"
+  local total=$((max_retries + 1))
+
+  for attempt in $(seq 1 "$total"); do
+    if [ "$attempt" -eq 1 ]; then
+      log "▶ $name"
+    else
+      log "▶ $name (재시도 ${attempt}/${total})"
+    fi
+    if npx tsx "$script" >> "$LOG_FILE" 2>&1; then
+      log "✓ $name 완료"
+      return 0
+    fi
+
+    if [ "$attempt" -lt "$total" ]; then
+      log "✗ $name 실패 (시도 ${attempt}/${total}) — ${retry_delay}초 후 재시도"
+      sleep "$retry_delay"
+    else
+      log "✗ $name 실패 (${total}회 시도 모두 실패)"
+      send_error "$name ${total}회 시도 실패" "ETL"
+      exit 1
+    fi
+  done
+}
+
+# 비필수 step 실행 (1회 재시도 후 실패해도 파이프라인 계속)
+run_step_optional() {
+  local name="$1"
+  local script="$2"
+  local retry_delay="${DEFAULT_RETRY_DELAY:-30}"
+
+  log "▶ $name (optional)"
   if npx tsx "$script" >> "$LOG_FILE" 2>&1; then
     log "✓ $name 완료"
+    return 0
+  fi
+
+  log "⚠ $name 실패 — ${retry_delay}초 후 1회 재시도"
+  sleep "$retry_delay"
+
+  log "▶ $name (optional, 재시도)"
+  if npx tsx "$script" >> "$LOG_FILE" 2>&1; then
+    log "✓ $name 완료 (재시도 성공)"
   else
-    log "✗ $name 실패"
-    send_error "$name 실패" "ETL"
-    exit 1
+    log "⚠ $name 실패 (비필수 — 계속 진행)"
+    send_error "$name 실패 (비필수 — 파이프라인 계속)" "ETL"
   fi
 }
 
-# 병렬 step 실행 (하나 실패 시 나머지 kill)
+# 병렬 step 실행 (재시도 포함 — 실패 시 전체 그룹 재시도)
 run_parallel() {
-  local pids=()
-  local names=()
-  local failed=0
+  local max_retries="${DEFAULT_RETRIES:-2}"
+  local retry_delay="${DEFAULT_RETRY_DELAY:-30}"
+  local total=$((max_retries + 1))
+  local all_args=("$@")
 
-  while [ $# -gt 0 ]; do
-    local name="$1"
-    local script="$2"
-    shift 2
+  for attempt in $(seq 1 "$total"); do
+    local pids=()
+    local names=()
+    local failed=0
 
-    log "▶ $name (병렬)"
-    npx tsx "$script" >> "$LOG_FILE" 2>&1 &
-    pids+=($!)
-    names+=("$name")
-  done
+    set -- "${all_args[@]}"
 
-  for i in "${!pids[@]}"; do
-    if ! wait "${pids[$i]}"; then
-      log "✗ ${names[$i]} 실패"
-      failed=1
-      # 나머지 잡 즉시 종료
-      for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
-      break
+    while [ $# -gt 0 ]; do
+      local name="$1"
+      local script="$2"
+      shift 2
+
+      if [ "$attempt" -eq 1 ]; then
+        log "▶ $name (병렬)"
+      else
+        log "▶ $name (병렬, 재시도 ${attempt}/${total})"
+      fi
+      npx tsx "$script" >> "$LOG_FILE" 2>&1 &
+      pids+=($!)
+      names+=("$name")
+    done
+
+    for i in "${!pids[@]}"; do
+      if ! wait "${pids[$i]}"; then
+        log "✗ ${names[$i]} 실패"
+        failed=1
+        for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
+        break
+      fi
+      log "✓ ${names[$i]} 완료"
+    done
+
+    if [ $failed -eq 0 ]; then
+      return 0
     fi
-    log "✓ ${names[$i]} 완료"
-  done
 
-  if [ $failed -eq 1 ]; then
-    send_error "병렬 step 실패 (${names[*]})" "ETL"
-    exit 1
-  fi
+    if [ "$attempt" -lt "$total" ]; then
+      log "⏳ 병렬 step 실패 — ${retry_delay}초 후 재시도 (${attempt}/${total})"
+      sleep "$retry_delay"
+    else
+      log "✗ 병렬 step ${total}회 시도 모두 실패 (${names[*]})"
+      send_error "병렬 step 실패 (${names[*]}) — ${total}회 시도 실패" "ETL"
+      exit 1
+    fi
+  done
 }
