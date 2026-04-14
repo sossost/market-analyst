@@ -49,14 +49,14 @@ export function computePhase2SinceDays(
   const sinceMs = new Date(phase2Since).getTime();
   const asOfMs = asOfDate != null
     ? new Date(asOfDate).getTime()
-    : Date.now();
+    : new Date(new Date().toISOString().substring(0, 10)).getTime();
 
   if (Number.isNaN(sinceMs) || Number.isNaN(asOfMs)) {
     return null;
   }
 
   const MS_PER_DAY = 86_400_000;
-  const days = Math.floor((asOfMs - sinceMs) / MS_PER_DAY);
+  const days = Math.floor((asOfMs - sinceMs) / MS_PER_DAY) + 1;
 
   return Math.max(days, 1);
 }

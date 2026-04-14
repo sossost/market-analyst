@@ -34,10 +34,10 @@ describe("computePhase2SinceDays", () => {
     expect(computePhase2SinceDays("not-a-date")).toBe(null);
   });
 
-  it("computes correct days between two dates", () => {
-    expect(computePhase2SinceDays("2026-04-10", "2026-04-14")).toBe(4);
-    expect(computePhase2SinceDays("2026-04-01", "2026-04-14")).toBe(13);
-    expect(computePhase2SinceDays("2026-03-20", "2026-04-14")).toBe(25);
+  it("computes correct days between two dates (start day = day 1)", () => {
+    expect(computePhase2SinceDays("2026-04-10", "2026-04-14")).toBe(5);
+    expect(computePhase2SinceDays("2026-04-01", "2026-04-14")).toBe(14);
+    expect(computePhase2SinceDays("2026-03-20", "2026-04-14")).toBe(26);
   });
 
   it("returns minimum 1 day for same-day or future dates", () => {
@@ -53,16 +53,16 @@ describe("getPhase2SegmentInfo", () => {
 
   it("returns days and segment for valid dates", () => {
     const result = getPhase2SegmentInfo("2026-04-12", "2026-04-14");
-    expect(result).toEqual({ days: 2, segment: "초입" });
+    expect(result).toEqual({ days: 3, segment: "초입" });
   });
 
   it("returns 진행 segment for 10-day gap", () => {
     const result = getPhase2SegmentInfo("2026-04-04", "2026-04-14");
-    expect(result).toEqual({ days: 10, segment: "진행" });
+    expect(result).toEqual({ days: 11, segment: "진행" });
   });
 
   it("returns 확립 segment for 30-day gap", () => {
     const result = getPhase2SegmentInfo("2026-03-15", "2026-04-14");
-    expect(result).toEqual({ days: 30, segment: "확립" });
+    expect(result).toEqual({ days: 31, segment: "확립" });
   });
 });
