@@ -63,12 +63,6 @@ function parse(json: string): Record<string, unknown> {
   }
 }
 
-function colorClass(value: number): "up" | "down" | "neutral-color" {
-  if (value > 0) return "up";
-  if (value < 0) return "down";
-  return "neutral-color";
-}
-
 function validateEnvironment(): void {
   const required = ["DATABASE_URL", "DISCORD_WEEKLY_WEBHOOK_URL"];
   const missing = required.filter(

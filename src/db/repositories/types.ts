@@ -778,13 +778,6 @@ export interface EtlPhaseExitRow {
   low_since_entry: string | null;
 }
 
-export interface EtlRecommendationDataRow {
-  symbol: string;
-  close: string;
-  phase: number | null;
-  rs_score: number | null;
-}
-
 // ─── Agent QA (Phase 4 추가) ──────────────────────────────────────────────────
 
 export interface QaTopSectorRow {

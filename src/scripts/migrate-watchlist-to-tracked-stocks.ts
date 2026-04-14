@@ -133,9 +133,13 @@ async function insertTrackedStock(row: WatchlistRow): Promise<"inserted" | "skip
   // 없으면 entry_date + 90일로 계산
   const trackingEndDate = row.tracking_end_date ?? computeTrackingEndDate(row.entry_date);
 
-  // entry_price: watchlist는 price_at_entry 컬럼. null이면 0으로 대체
-  // (tracked_stocks.entry_price는 NOT NULL)
-  const entryPrice = row.price_at_entry ?? "0";
+  // entry_price: watchlist는 price_at_entry 컬럼. null이면 스킵
+  // (tracked_stocks.entry_price는 NOT NULL, 0은 PnL 계산 불가)
+  if (row.price_at_entry == null || row.price_at_entry === "0") {
+    console.warn(`  ⚠ ${row.symbol} (${row.entry_date}): price_at_entry 없음 — 스킵`);
+    return "skipped";
+  }
+  const entryPrice = row.price_at_entry;
 
   const phaseTrajectoryJson =
     row.phase_trajectory != null ? JSON.stringify(row.phase_trajectory) : null;

@@ -33,7 +33,6 @@ import type {
   EtlCurrentDataRow,
   EtlTradingDaysRow,
   EtlPhaseExitRow,
-  EtlRecommendationDataRow,
   QaTopSectorRow,
   QaPhase2RatioRow,
   QaStockPhaseRow,
@@ -847,25 +846,6 @@ export async function findPhaseAndLowSinceEntry(
        ) AS low_since_entry
      FROM stock_phases sp
      WHERE sp.symbol = ANY($1) AND sp.date = $2`,
-    [symbols, targetDate],
-  );
-  return rows;
-}
-
-// ─── ETL: update-tracked-stocks 전용 ──────────────────────────────────────────
-
-/**
- * 현재 종가 + Phase + RS를 조회한다 (update-tracked-stocks 전용).
- */
-export async function findRecommendationCurrentData(
-  symbols: string[],
-  targetDate: string,
-): Promise<EtlRecommendationDataRow[]> {
-  const { rows } = await pool.query<EtlRecommendationDataRow>(
-    `SELECT p.symbol, p.close::text, sp.phase, sp.rs_score
-     FROM daily_prices p
-     LEFT JOIN stock_phases sp ON p.symbol = sp.symbol AND p.date = sp.date
-     WHERE p.symbol = ANY($1) AND p.date = $2`,
     [symbols, targetDate],
   );
   return rows;

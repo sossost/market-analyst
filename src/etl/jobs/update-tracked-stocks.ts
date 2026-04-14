@@ -267,10 +267,10 @@ async function processTrackedStock(
   );
 
   // 듀레이션 수익률 스냅샷 (entry_date 기준)
-  const entryPriceClean = entryPrice === 0 ? 0 : entryPrice;
+  const entryPriceForDuration = entryPrice === 0 ? null : entryPrice;
   const return7d = calculateDurationReturn({
     entryDate: item.entry_date,
-    entryPrice: entryPriceClean,
+    entryPrice: entryPriceForDuration,
     currentDate: date,
     currentPrice,
     existingSnapshot: item.return_7d != null ? toNum(item.return_7d) : null,
@@ -278,7 +278,7 @@ async function processTrackedStock(
   });
   const return30d = calculateDurationReturn({
     entryDate: item.entry_date,
-    entryPrice: entryPriceClean,
+    entryPrice: entryPriceForDuration,
     currentDate: date,
     currentPrice,
     existingSnapshot: item.return_30d != null ? toNum(item.return_30d) : null,
@@ -286,7 +286,7 @@ async function processTrackedStock(
   });
   const return90d = calculateDurationReturn({
     entryDate: item.entry_date,
-    entryPrice: entryPriceClean,
+    entryPrice: entryPriceForDuration,
     currentDate: date,
     currentPrice,
     existingSnapshot: item.return_90d != null ? toNum(item.return_90d) : null,
