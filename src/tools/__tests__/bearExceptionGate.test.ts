@@ -119,6 +119,9 @@ describe("evaluateBearException", () => {
     expect(result.details.sectorRsRank).toBe(2);
     expect(result.details.totalSectors).toBe(20);
     expect(result.details.sectorRsPercentile).toBe(10);
+    expect(result.details.industryRsRank).toBeNull();
+    expect(result.details.totalIndustries).toBeNull();
+    expect(result.details.industryRsPercentile).toBeNull();
     expect(result.details.fundamentalGrade).toBe("A");
     expect(result.details.phase2Count).toBe(3);
     expect(result.reason).toContain("Bear 예외 통과 [방어섹터]");
@@ -506,6 +509,313 @@ describe("evaluateBearException — EARLY_BEAR 차등 기준", () => {
     // 섹터RS 20% > 15% 실패, SEPA B 불허
     expect(result.reason).toContain("섹터RS");
     expect(result.reason).toContain("SEPA B");
+  });
+});
+
+// =============================================================================
+// evaluateBearException — 업종 RS 대안 경로 (#785)
+// =============================================================================
+
+describe("evaluateBearException — 업종 RS 대안 경로", () => {
+  it("섹터 RS 탈락이지만 업종 RS 상위 25%이면 업종 경로로 통과한다 (EARLY_BEAR)", async () => {
+    // 섹터 RS: rank 6 / total 20 → 30% (EARLY_BEAR 25% 초과 → 섹터 탈락)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "6", total_sectors: "20" }],
+    });
+    // 업종 RS: rank 30 / total 135 → 22% (≤25% 통과)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "30", total_industries: "135" }],
+    });
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "ECPG",
+      sector: "Financial Services",
+      industry: "Banks - Regional",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.path).toBe("defensive_sector");
+    expect(result.details.sectorRsPercentile).toBe(30);
+    expect(result.details.industryRsRank).toBe(30);
+    expect(result.details.totalIndustries).toBe(135);
+    expect(result.details.industryRsPercentile).toBe(22);
+    expect(result.reason).toContain("업종RS 상위22%");
+    expect(result.reason).toContain("Banks - Regional");
+  });
+
+  it("섹터 RS 통과 시 섹터 경로로 표시한다 (업종도 통과하더라도)", async () => {
+    // 섹터 RS: rank 2 / total 20 → 10% (통과)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "2", total_sectors: "20" }],
+    });
+    // 업종 RS: rank 10 / total 135 → 7% (통과)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "10", total_industries: "135" }],
+    });
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 3일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "3" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "LMT",
+      sector: "Industrials",
+      industry: "Aerospace & Defense",
+      date: "2026-04-10",
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.reason).toContain("섹터RS 상위10%");
+  });
+
+  it("섹터 RS와 업종 RS 모두 탈락하면 실패한다", async () => {
+    // 섹터 RS: rank 6 / total 20 → 30% (>25%)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "6", total_sectors: "20" }],
+    });
+    // 업종 RS: rank 50 / total 135 → 37% (>25%)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "50", total_industries: "135" }],
+    });
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Financial Services",
+      industry: "Asset Management",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.reason).toContain("섹터RS 30%/업종RS 37%");
+  });
+
+  it("업종 RS 경계값 (rank 34 / total 135 ≈ 25%) 통과한다", async () => {
+    // 섹터 RS: 탈락
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "8", total_sectors: "20" }],
+    });
+    // 업종 RS: rank 34 / total 135 → 25% (경계)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "34", total_industries: "135" }],
+    });
+    // SEPA: B등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "B" }],
+    });
+    // Phase 2: 3일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "3" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Financial Services",
+      industry: "Banks - Diversified",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.details.industryRsPercentile).toBe(25);
+  });
+
+  it("업종 RS 경계값 초과 (rank 35 / total 135 ≈ 26%) 실패한다", async () => {
+    // 섹터 RS: 탈락
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "8", total_sectors: "20" }],
+    });
+    // 업종 RS: rank 35 / total 135 → 26% (초과)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "35", total_industries: "135" }],
+    });
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Financial Services",
+      industry: "Banks - Diversified",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.details.industryRsPercentile).toBe(26);
+  });
+
+  it("업종이 null이면 업종 경로를 시도하지 않는다", async () => {
+    // 섹터 RS: 탈락
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "6", total_sectors: "20" }],
+    });
+    // 업종 쿼리 없음 (industry: null)
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Financial Services",
+      industry: null,
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.details.industryRsRank).toBeNull();
+    expect(result.details.industryRsPercentile).toBeNull();
+    // DB 호출은 3회 (섹터 + 펀더멘탈 + Phase2)
+    expect(mockPool.query).toHaveBeenCalledTimes(3);
+  });
+
+  it("업종이 빈 문자열이면 업종 경로를 시도하지 않는다", async () => {
+    // 섹터 RS: 탈락
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "6", total_sectors: "20" }],
+    });
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Financial Services",
+      industry: "",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.details.industryRsRank).toBeNull();
+    expect(mockPool.query).toHaveBeenCalledTimes(3);
+  });
+
+  it("업종 RS 데이터가 없으면 업종 경로만 탈락한다 (fail-closed)", async () => {
+    // 섹터 RS: 탈락
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "6", total_sectors: "20" }],
+    });
+    // 업종 RS: 데이터 없음
+    mockPool.query.mockResolvedValueOnce({ rows: [] });
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Financial Services",
+      industry: "Banks - Regional",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.details.industryRsRank).toBeNull();
+    expect(result.details.industryRsPercentile).toBeNull();
+  });
+
+  it("업종 RS DB 에러 시 업종 경로만 탈락한다 (fail-closed)", async () => {
+    // 섹터 RS: 탈락
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "6", total_sectors: "20" }],
+    });
+    // 업종 RS: DB 에러
+    mockPool.query.mockRejectedValueOnce(new Error("DB timeout"));
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 5일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "5" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "TEST",
+      sector: "Financial Services",
+      industry: "Banks - Regional",
+      date: "2026-04-10",
+      regime: "EARLY_BEAR",
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.details.industryRsRank).toBeNull();
+    expect(mockLogger.error).toHaveBeenCalled();
+  });
+
+  it("BEAR 레짐에서 업종 RS 상위 15%이면 업종 경로로 통과한다", async () => {
+    // 섹터 RS: rank 4 / total 20 → 20% (>15%, BEAR에서 탈락)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "4", total_sectors: "20" }],
+    });
+    // 업종 RS: rank 15 / total 135 → 11% (≤15% 통과)
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ rs_rank: "15", total_industries: "135" }],
+    });
+    // SEPA: A등급
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ grade: "A" }],
+    });
+    // Phase 2: 3일
+    mockPool.query.mockResolvedValueOnce({
+      rows: [{ phase2_count: "3" }],
+    });
+
+    const result = await evaluateBearException({
+      symbol: "ECPG",
+      sector: "Financial Services",
+      industry: "Banks - Regional",
+      date: "2026-04-10",
+      regime: "BEAR",
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.path).toBe("defensive_sector");
+    expect(result.reason).toContain("업종RS 상위11%");
   });
 });
 

@@ -4,16 +4,16 @@
  * EARLY_BEAR / BEAR 레짐에서도 구조적으로 강한 종목에 대해
  * 조건부 예외 진입을 허용하는 게이트.
  *
- * 레짐별 차등 기준 (#711):
- *   EARLY_BEAR: 섹터 RS 상위 25%, SEPA S/A/B 등급, Phase 2 지속성 3일
- *   BEAR:       섹터 RS 상위 15%, SEPA S/A 등급,   Phase 2 지속성 3일
+ * 레짐별 차등 기준 (#711, #785):
+ *   EARLY_BEAR: (섹터 OR 업종) RS 상위 25%, SEPA S/A/B 등급, Phase 2 지속성 3일
+ *   BEAR:       (섹터 OR 업종) RS 상위 15%, SEPA S/A 등급,   Phase 2 지속성 3일
  *
  * 모든 조건을 충족해야 통과. DB 조회 실패 시 fail-closed.
  */
 
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { logger } from "@/lib/logger";
-import { findSectorRsRankWithTotal } from "@/db/repositories/sectorRepository.js";
+import { findSectorRsRankWithTotal, findIndustryRsRankWithTotal } from "@/db/repositories/sectorRepository.js";
 import { findLatestFundamentalGrade } from "@/db/repositories/fundamentalRepository.js";
 import { findPhase2PersistenceBySymbol } from "@/db/repositories/stockPhaseRepository.js";
 
@@ -66,6 +66,8 @@ export const BEAR_EXCEPTION_TAG = "[Bear 예외]";
 export interface BearExceptionInput {
   symbol: string;
   sector: string;
+  /** 종목의 업종. 업종 RS 대안 경로 판정용. null/빈 문자열이면 업종 경로 비활성. */
+  industry?: string | null;
   date: string;
   /** 현재 확정 레짐. EARLY_BEAR와 BEAR에 따라 게이트 엄격도가 달라진다. */
   regime?: string;
@@ -84,6 +86,9 @@ export interface BearExceptionResult {
     sectorRsRank: number | null;
     totalSectors: number | null;
     sectorRsPercentile: number | null;
+    industryRsRank: number | null;
+    totalIndustries: number | null;
+    industryRsPercentile: number | null;
     fundamentalGrade: string | null;
     phase2Count: number;
   };
@@ -93,7 +98,7 @@ export interface BearExceptionResult {
  * 개별 종목이 Bear 예외 조건을 충족하는지 검사한다.
  *
  * 2개 경로 중 하나만 충족하면 passed: true (OR):
- *   1. 방어 섹터 경로: 섹터RS 상위 N% + SEPA S/A(/B) + Phase 2 지속 3일
+ *   1. 방어 섹터/업종 경로: (섹터RS OR 업종RS) 상위 N% + SEPA S/A(/B) + Phase 2 지속 3일 (#785)
  *   2. RS 최상위 경로: RS >= 90 + Phase 2 지속 3일 + 안정성 3일 (#777)
  *
  * DB 조회 실패 시 fail-closed (예외 불허) — Bear 레짐에서는 보수적으로.
@@ -101,7 +106,7 @@ export interface BearExceptionResult {
 export async function evaluateBearException(
   input: BearExceptionInput,
 ): Promise<BearExceptionResult> {
-  const { symbol, sector, date, regime, rsScore, isStable } = input;
+  const { symbol, sector, industry, date, regime, rsScore, isStable } = input;
 
   // EARLY_BEAR는 BEAR보다 완화된 기준 적용 (#711)
   const isEarlyBear = regime === "EARLY_BEAR";
@@ -117,14 +122,17 @@ export async function evaluateBearException(
 
   const persistenceStart = getDateOffset(date, BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS);
 
-  // 3개 조건 병렬 조회 (방어 섹터 경로용)
-  const [sectorResult, gradeResult, persistenceResult] = await Promise.all([
+  // 4개 조건 병렬 조회 (방어 섹터/업종 경로용)
+  const hasIndustry = industry != null && industry !== "";
+  const [sectorResult, industryResult, gradeResult, persistenceResult] = await Promise.all([
     querySectorRsRank(sector, date),
+    hasIndustry ? queryIndustryRsRank(industry, date) : Promise.resolve({ rank: null, totalIndustries: null }),
     queryFundamentalGrade(symbol, date),
     queryPhase2Persistence(symbol, persistenceStart, date),
   ]);
 
   const { rank: sectorRsRank, totalSectors } = sectorResult;
+  const { rank: industryRsRank, totalIndustries } = industryResult;
   const fundamentalGrade = gradeResult;
   const phase2Count = persistenceResult;
 
@@ -134,17 +142,29 @@ export async function evaluateBearException(
       ? Math.round((sectorRsRank / totalSectors) * 100)
       : null;
 
-  // ── 경로 1: 방어 섹터 경로 (기존) ──
+  // 업종 RS 퍼센타일 계산 (#785)
+  const industryRsPercentile =
+    industryRsRank != null && totalIndustries != null && totalIndustries > 0
+      ? Math.round((industryRsRank / totalIndustries) * 100)
+      : null;
+
+  // ── 경로 1: 방어 섹터/업종 경로 (#785: 업종 RS 대안 경로 추가) ──
   const isSectorRsTop =
     sectorRsPercentile != null &&
     sectorRsPercentile <= sectorRsThreshold;
+
+  const isIndustryRsTop =
+    industryRsPercentile != null &&
+    industryRsPercentile <= sectorRsThreshold;
+
+  const isGroupRsTop = isSectorRsTop || isIndustryRsTop;
 
   const isFundamentalQualified = fundamentalGrade != null && allowedGrades.has(fundamentalGrade);
 
   const isPhase2Persistent =
     phase2Count >= BEAR_EXCEPTION_PHASE2_PERSISTENCE_DAYS;
 
-  const defensiveSectorPassed = isSectorRsTop && isFundamentalQualified && isPhase2Persistent;
+  const defensiveSectorPassed = isGroupRsTop && isFundamentalQualified && isPhase2Persistent;
 
   // ── 경로 2: RS 최상위 경로 (#777) ──
   // RS >= 90 + Phase 2 지속 3일 + 안정성 3일. 섹터/SEPA 무관.
@@ -164,15 +184,19 @@ export async function evaluateBearException(
   let reason: string;
 
   if (defensiveSectorPassed) {
-    reason = `${regimeLabel} 통과 [방어섹터]: 섹터RS 상위${sectorRsPercentile}%, SEPA ${fundamentalGrade}, Phase2 ${phase2Count}일`;
+    // 업종 RS로 통과했는지 섹터 RS로 통과했는지 명시
+    const rsPassedVia = isSectorRsTop
+      ? `섹터RS 상위${sectorRsPercentile}%`
+      : `업종RS 상위${industryRsPercentile}% (${industry})`;
+    reason = `${regimeLabel} 통과 [방어섹터]: ${rsPassedVia}, SEPA ${fundamentalGrade}, Phase2 ${phase2Count}일`;
   } else if (rsTopTierPassed) {
     reason = `${regimeLabel} 통과 [RS최상위]: RS ${rsScore}, Phase2 ${phase2Count}일, 안정성 충족`;
   } else {
     // 두 경로 모두 실패 — 각 경로의 실패 사유 나열
     const defensiveReasons: string[] = [];
-    if (!isSectorRsTop) {
+    if (!isGroupRsTop) {
       defensiveReasons.push(
-        `섹터RS ${sectorRsPercentile ?? "N/A"}% (기준: ≤${sectorRsThreshold}%)`,
+        "섹터RS " + (sectorRsPercentile ?? "N/A") + "%" + (hasIndustry ? "/업종RS " + (industryRsPercentile ?? "N/A") + "%" : "") + " (기준: ≤" + sectorRsThreshold + "%)",
       );
     }
     if (!isFundamentalQualified) {
@@ -215,6 +239,9 @@ export async function evaluateBearException(
       sectorRsRank,
       totalSectors,
       sectorRsPercentile,
+      industryRsRank,
+      totalIndustries,
+      industryRsPercentile,
       fundamentalGrade,
       phase2Count,
     },
@@ -261,6 +288,32 @@ async function querySectorRsRank(
       `섹터 RS 조회 실패 (${sector}): ${err instanceof Error ? err.message : String(err)}`,
     );
     return { rank: null, totalSectors: null };
+  }
+}
+
+async function queryIndustryRsRank(
+  industry: string,
+  date: string,
+): Promise<{ rank: number | null; totalIndustries: number | null }> {
+  try {
+    const row = await retryDatabaseOperation(() =>
+      findIndustryRsRankWithTotal(industry, date),
+    );
+
+    if (row == null) {
+      return { rank: null, totalIndustries: null };
+    }
+
+    return {
+      rank: Number(row.rs_rank),
+      totalIndustries: Number(row.total_industries),
+    };
+  } catch (err) {
+    logger.error(
+      "BearExceptionGate",
+      `업종 RS 조회 실패 (${industry}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { rank: null, totalIndustries: null };
   }
 }
 

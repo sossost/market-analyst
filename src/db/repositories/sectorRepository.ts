@@ -14,6 +14,7 @@ import type {
   SectorRsContextRow,
   SectorRsDetailContextRow,
   SectorRsRankWithTotalRow,
+  IndustryRsRankWithTotalRow,
   EtlSectorPhaseTransitionRow,
   IndustryDrilldownRow,
   IndustryWeeklyChangeRow,
@@ -318,6 +319,25 @@ export async function findSectorRsRankWithTotal(
      FROM sector_rs_daily srd
      WHERE srd.sector = $1 AND srd.date = $2`,
     [sector, date],
+  );
+
+  return rows[0] ?? null;
+}
+
+/**
+ * 단일 업종의 RS 랭크 + 전체 업종 수를 조회한다 (bearExceptionGate 업종 RS 경로용).
+ */
+export async function findIndustryRsRankWithTotal(
+  industry: string,
+  date: string,
+): Promise<IndustryRsRankWithTotalRow | null> {
+  const { rows } = await pool.query<IndustryRsRankWithTotalRow>(
+    `SELECT
+       ird.rs_rank,
+       (SELECT COUNT(*) FROM industry_rs_daily WHERE date = $2) AS total_industries
+     FROM industry_rs_daily ird
+     WHERE ird.industry = $1 AND ird.date = $2`,
+    [industry, date],
   );
 
   return rows[0] ?? null;

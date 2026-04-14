@@ -492,6 +492,11 @@ export interface SectorRsRankWithTotalRow {
   total_sectors: string;
 }
 
+export interface IndustryRsRankWithTotalRow {
+  rs_rank: string;
+  total_industries: string;
+}
+
 // ─── priceRepository (Phase 3 추가) ───────────────────────────────────────────
 
 export interface PriceWithMaRow {

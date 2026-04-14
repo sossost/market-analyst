@@ -240,6 +240,7 @@ async function main() {
       const exceptionResult = await evaluateBearException({
         symbol,
         sector: sector ?? "",
+        industry: industry ?? null,
         date: targetDate,
         regime: regimeForGate ?? undefined,
         rsScore: rs_score ?? null,
