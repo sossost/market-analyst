@@ -1185,47 +1185,90 @@ describe("buildDailyHtml", () => {
 describe("renderFearGreedCard", () => {
   const mockIndex = createMockDailyIndexReturn();
 
-  it("previousClose와 previous1Week가 모두 있을 때 전일·1주전 변화량을 표시한다", () => {
-    const fg = createMockFearGreed({ score: 37.7, previousClose: 23.7, previous1Week: 23.7 });
+  /** 공포탐욕 카드 영역만 추출하는 헬퍼 */
+  function extractFearGreedCard(html: string): string {
+    const match = html.match(
+      /<div class="index-card">[\s\S]*?<div class="label">공포탐욕[\s\S]*?<\/div>\s*<\/div>/,
+    );
+    return match?.[0] ?? "";
+  }
+
+  it("label에 rating이 병기된다", () => {
+    const fg = createMockFearGreed({ score: 55, rating: "Greed" });
     const html = renderIndexTable([mockIndex], fg);
-    expect(html).toContain("전일 23.7");
-    expect(html).toContain("+14.0");
-    expect(html).toContain("1주전 23.7");
+    expect(html).toContain("공포탐욕 · Greed");
   });
 
-  it("previousClose가 null이면 공포탐욕 카드에 전일 서브텍스트를 표시하지 않는다", () => {
+  it(".change에 전일 대비 변화량과 방향 색상이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 37.7, previousClose: 23.7 });
+    const html = renderIndexTable([mockIndex], fg);
+    const card = extractFearGreedCard(html);
+    expect(card).toContain("▲");
+    expect(card).toContain("+14.0");
+    expect(card).toContain("up");
+  });
+
+  it("score가 previousClose보다 낮으면 .change에 하락 방향과 down 클래스가 붙는다", () => {
+    const fg = createMockFearGreed({ score: 20.0, previousClose: 35.0, previous1Week: null });
+    const html = renderIndexTable([mockIndex], fg);
+    const card = extractFearGreedCard(html);
+    expect(card).toContain("▼");
+    expect(card).toContain("-15.0");
+    expect(card).toContain("down");
+  });
+
+  it("previousClose가 null이면 .change에 '—'이 표시된다", () => {
     const fg = createMockFearGreed({ score: 37.7, previousClose: null, previous1Week: 23.7 });
     const html = renderIndexTable([mockIndex], fg);
-    // 공포탐욕 카드 부분만 추출 (일반 인덱스 카드의 '전일 대비' 텍스트와 분리)
-    const fearGreedCardMatch = html.match(/<div class="label">공포탐욕<\/div>([\s\S]*?)<\/div>\s*<\/div>/);
-    const fearGreedSection = fearGreedCardMatch?.[0] ?? "";
-    expect(fearGreedSection).not.toContain("전일 ");
-    expect(fearGreedSection).toContain("1주전 23.7");
+    const card = extractFearGreedCard(html);
+    expect(card).toContain("neutral-color");
+    expect(card).toContain("1주전 23.7");
   });
 
-  it("previous1Week가 null이면 1주전 서브텍스트를 표시하지 않는다", () => {
+  it("previous1Week가 있으면 sub에 방향 라벨과 1주전 비교가 표시된다", () => {
+    const fg = createMockFearGreed({ score: 37.7, previousClose: 23.7, previous1Week: 23.7 });
+    const html = renderIndexTable([mockIndex], fg);
+    expect(html).toContain("1주전 23.7");
+    expect(html).toContain("(+14.0)");
+    expect(html).toContain("공포 완화");
+  });
+
+  it("previous1Week가 null이면 sub에 1주전 비교가 없다", () => {
     const fg = createMockFearGreed({ score: 37.7, previousClose: 23.7, previous1Week: null });
     const html = renderIndexTable([mockIndex], fg);
-    const fearGreedCardMatch = html.match(/<div class="label">공포탐욕<\/div>([\s\S]*?)<\/div>\s*<\/div>/);
-    const fearGreedSection = fearGreedCardMatch?.[0] ?? "";
-    expect(fearGreedSection).toContain("전일 23.7");
-    expect(fearGreedSection).not.toContain("1주전");
+    const card = extractFearGreedCard(html);
+    expect(card).not.toContain("1주전");
   });
 
   it("previousClose와 previous1Week가 모두 null이면 서브텍스트 div 자체가 없다", () => {
     const fg = createMockFearGreed({ score: 37.7, previousClose: null, previous1Week: null });
     const html = renderIndexTable([mockIndex], fg);
-    const fearGreedCardMatch = html.match(/<div class="label">공포탐욕<\/div>([\s\S]*?)<\/div>\s*<\/div>/);
-    const fearGreedSection = fearGreedCardMatch?.[0] ?? "";
-    expect(fearGreedSection).not.toContain("전일 ");
-    expect(fearGreedSection).not.toContain("1주전");
+    const card = extractFearGreedCard(html);
+    expect(card).not.toContain("1주전");
   });
 
-  it("score가 previousClose보다 낮을 때 음수 부호가 붙는다", () => {
-    const fg = createMockFearGreed({ score: 20.0, previousClose: 35.0, previous1Week: null });
+  it("score가 previousClose와 같으면 '— 0.0'이 표시된다", () => {
+    const fg = createMockFearGreed({ score: 50.0, previousClose: 50.0, previous1Week: 45.0 });
     const html = renderIndexTable([mockIndex], fg);
-    expect(html).toContain("전일 35.0");
-    expect(html).toContain("(-15.0)");
+    const card = extractFearGreedCard(html);
+    expect(card).toContain("— 0.0");
+    expect(card).not.toContain("▲");
+    expect(card).not.toContain("▼");
+  });
+
+  it("previousClose가 null이고 previous1Week만 있으면 sub에 방향라벨+1주전만 표시된다", () => {
+    const fg = createMockFearGreed({ score: 40.0, previousClose: null, previous1Week: 35.0 });
+    const html = renderIndexTable([mockIndex], fg);
+    const card = extractFearGreedCard(html);
+    expect(card).toContain("공포 완화");
+    expect(card).toContain("1주전 35.0 (+5.0)");
+  });
+
+  it("score가 previous1Week과 같으면 방향 라벨이 '변동 없음'이다", () => {
+    const fg = createMockFearGreed({ score: 50.0, previousClose: 48.0, previous1Week: 50.0 });
+    const html = renderIndexTable([mockIndex], fg);
+    const card = extractFearGreedCard(html);
+    expect(card).toContain("변동 없음");
   });
 
   it("fearGreed가 null이면 공포탐욕 카드를 렌더링하지 않는다", () => {

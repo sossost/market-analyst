@@ -719,35 +719,39 @@ export function renderMarketPositionGates(
 }
 
 function renderFearGreedCard(fg: FearGreedData): string {
-  // 공포(낮은 점수)=파랑(down), 탐욕(높은 점수)=빨강(up)
+  // .value — zone 색상: 공포(≤25)=파랑, 탐욕(≥75)=빨강
   const scoreCls = fg.score <= 25 ? "down" : fg.score >= 75 ? "up" : "";
-  const directionStr =
-    fg.previous1Week != null
-      ? escapeHtml(getFearGreedDirectionLabel(fg.score, fg.previous1Week))
-      : "";
-  function buildChangeSub(label: string, prev: number, current: number): string {
-    const diff = current - prev;
-    const sign = diff >= 0 ? "+" : "";
-    return `${label} ${escapeHtml(prev.toFixed(1))} (${sign}${escapeHtml(diff.toFixed(1))})`;
-  }
 
-  const prevCloseSub =
-    fg.previousClose != null
-      ? buildChangeSub("전일", fg.previousClose, fg.score)
-      : "";
-  const prev1wSub =
+  // .change — 전일 대비 변화량 + direction 색상 (다른 지수 카드와 동일 문법)
+  const prevDiff = fg.previousClose != null ? fg.score - fg.previousClose : null;
+  const changeCls = prevDiff != null ? colorClass(prevDiff) : "neutral-color";
+  const changeLabel = prevDiff != null
+    ? prevDiff === 0
+      ? "— 0.0"
+      : `${prevDiff > 0 ? "▲" : "▼"} ${prevDiff > 0 ? "+" : ""}${prevDiff.toFixed(1)}`
+    : "—";
+
+  // [sub] — 방향 라벨 + 1주전 비교
+  const directionLabel =
     fg.previous1Week != null
-      ? buildChangeSub("1주전", fg.previous1Week, fg.score)
+      ? getFearGreedDirectionLabel(fg.score, fg.previous1Week)
       : "";
+  const prev1wSub = (() => {
+    if (fg.previous1Week == null) return "";
+    const diff = fg.score - fg.previous1Week;
+    const sign = diff >= 0 ? "+" : "";
+    return `1주전 ${fg.previous1Week.toFixed(1)} (${sign}${diff.toFixed(1)})`;
+  })();
+  const subParts = [directionLabel, prev1wSub].filter(Boolean);
 
   return `
     <div class="index-card">
-      <div class="label">공포탐욕</div>
+      <div class="label">공포탐욕 · ${escapeHtml(fg.rating)}</div>
       <div class="value ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
-      <div class="change">${escapeHtml(fg.rating)}</div>
-      ${directionStr !== "" || prevCloseSub !== "" || prev1wSub !== ""
+      <div class="change ${escapeHtml(changeCls)}">${escapeHtml(changeLabel)}</div>
+      ${subParts.length > 0
         ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
-            ${[directionStr, prevCloseSub, prev1wSub].filter(Boolean).join(" · ")}
+            ${subParts.map((s) => escapeHtml(s)).join(" · ")}
           </div>`
         : ""}
     </div>`;
