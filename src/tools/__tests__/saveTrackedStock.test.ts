@@ -26,6 +26,10 @@ vi.mock("@/db/repositories/trackedStocksRepository.js", () => ({
   insertTrackedStock: vi.fn(),
 }));
 
+vi.mock("@/db/repositories/stockPhaseRepository.js", () => ({
+  findPhase2SinceDates: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock("@/corporate-analyst/runCorporateAnalyst.js", () => ({
   runCorporateAnalyst: vi.fn().mockResolvedValue({ success: true }),
 }));
@@ -47,11 +51,13 @@ import {
   exitTrackedStock,
   insertTrackedStock,
 } from "@/db/repositories/trackedStocksRepository.js";
+import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
 
 const mockPool = pool as unknown as { query: ReturnType<typeof vi.fn> };
 const mockFindActive = findActiveTrackedStocksBySymbols as ReturnType<typeof vi.fn>;
 const mockExit = exitTrackedStock as ReturnType<typeof vi.fn>;
 const mockInsert = insertTrackedStock as ReturnType<typeof vi.fn>;
+const mockFindPhase2Since = findPhase2SinceDates as ReturnType<typeof vi.fn>;
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +88,7 @@ describe("saveTrackedStock.execute — register", () => {
     vi.clearAllMocks();
     mockFindActive.mockResolvedValue([]);
     mockInsert.mockResolvedValue(1); // 정상 삽입
+    mockFindPhase2Since.mockResolvedValue([]); // 기본: Phase 2 시작일 없음
   });
 
   it("Phase 2 + 이유 명시 시 등록 성공", async () => {
@@ -179,6 +186,24 @@ describe("saveTrackedStock.execute — register", () => {
     await saveTrackedStock.execute(makeValidRegisterInput());
     expect(mockInsert).toHaveBeenCalledWith(
       expect.objectContaining({ source: "agent" }),
+    );
+  });
+
+  it("Phase 2 시작일이 존재하면 phase2Since를 채워서 전달", async () => {
+    mockFindPhase2Since.mockResolvedValue([
+      { symbol: "AAPL", phase2_since: "2026-03-10" },
+    ]);
+    await saveTrackedStock.execute(makeValidRegisterInput());
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ phase2Since: "2026-03-10" }),
+    );
+  });
+
+  it("Phase 2 시작일이 없으면 phase2Since를 null로 전달", async () => {
+    mockFindPhase2Since.mockResolvedValue([]);
+    await saveTrackedStock.execute(makeValidRegisterInput());
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ phase2Since: null }),
     );
   });
 });

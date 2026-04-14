@@ -326,7 +326,7 @@ export async function findPhase2SinceDates(
      FROM ranked r
      LEFT JOIN first_break fb ON r.symbol = fb.symbol
      WHERE r.phase = 2
-       AND r.rn < COALESCE(fb.break_rn, 999999)
+       AND (fb.break_rn IS NULL OR r.rn < fb.break_rn)
      GROUP BY r.symbol`,
     [symbols, asOfDate],
   );
