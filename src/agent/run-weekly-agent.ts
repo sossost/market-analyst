@@ -231,7 +231,12 @@ ${data.industryTop10.slice(0, 10).map((i, idx) => `${idx + 1}. ${i.industry} (${
 
 ## 관심종목
 ACTIVE: ${data.watchlist.summary.totalActive}개
-${data.watchlist.items.map((w) => `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%`).join("\n") || "없음"}
+${data.watchlist.items.map((w) => {
+  const p2Label = w.phase2Segment != null && w.phase2SinceDays != null
+    ? ` [P2 ${w.phase2Segment} ${w.phase2SinceDays}일]` : "";
+  return `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%${p2Label}`;
+}).join("\n") || "없음"}
+※ P2 구간: 초입(1~5일)=최고 주목, 진행(6~20일)=추세 확인, 확립(21일+)=이미 진행 중
 
 ## 예비 관심종목 (4/5 통과, thesis 미충족)
 ${data.watchlistChanges.pending4of5.map((p) => `${p.symbol}: ${p.reason}`).join("\n") || "없음"}

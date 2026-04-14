@@ -16,6 +16,7 @@ import {
   type TrackedStockTier,
   type TrackedStockRow,
 } from "@/db/repositories/trackedStocksRepository.js";
+import { getPhase2SegmentInfo, type Phase2Segment } from "@/lib/phase2Segment.js";
 import type { AgentTool } from "./types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -52,6 +53,9 @@ interface TrackedStockStatusItem {
   entryReason: string | null;
   hasThesisBasis: boolean;
   entryThesisId: number | null;
+  phase2Since: string | null;
+  phase2SinceDays: number | null;
+  phase2Segment: Phase2Segment | null;
 }
 
 const VALID_SOURCES = new Set<string>(["etl_auto", "agent", "thesis_aligned"]);
@@ -151,6 +155,8 @@ export const getTrackedStocks: AgentTool = {
       const sectorRelativePerf =
         row.sector_relative_perf != null ? toNum(row.sector_relative_perf) : null;
 
+      const phase2Info = getPhase2SegmentInfo(row.phase2_since);
+
       return {
         symbol: row.symbol,
         source: row.source,
@@ -177,6 +183,9 @@ export const getTrackedStocks: AgentTool = {
         entryReason: row.entry_reason,
         hasThesisBasis: row.entry_thesis_id != null,
         entryThesisId: row.entry_thesis_id,
+        phase2Since: row.phase2_since,
+        phase2SinceDays: phase2Info?.days ?? null,
+        phase2Segment: phase2Info?.segment ?? null,
       };
     });
 

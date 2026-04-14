@@ -1,4 +1,5 @@
 import type { ThesisAlignedData } from "@/lib/thesisAlignedCandidates.js";
+import type { Phase2Segment } from "@/lib/phase2Segment.js";
 
 /**
  * 주간 리포트 스키마 — 데이터 필드 / 해석 필드 분리
@@ -162,6 +163,12 @@ export interface WatchlistItem {
   phaseTrajectory: TrajectoryPoint[];
   entryReason: string | null;
   hasThesisBasis: boolean;
+  /** Phase 2 연속 진입 시작일 (YYYY-MM-DD). Phase 2 아니면 null */
+  phase2Since: string | null;
+  /** Phase 2 경과일. null = Phase 2 아니거나 데이터 없음 */
+  phase2SinceDays: number | null;
+  /** Phase 2 구간 분류. 초입(1~5일)/진행(6~20일)/확립(21일+). null = 해당 없음 */
+  phase2Segment: Phase2Segment | null;
 }
 
 interface WatchlistPhaseChange {

@@ -275,7 +275,11 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
 
   const trackedStocksLine = `ACTIVE: ${data.watchlist.summary.totalActive}개, 평균 P&L: ${data.watchlist.summary.avgPnlPercent.toFixed(1)}%`;
   const trackedStocksItemLines = data.watchlist.items
-    .map((w) => `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%`)
+    .map((w) => {
+      const p2Label = w.phase2Segment != null && w.phase2SinceDays != null
+        ? ` [P2 ${w.phase2Segment} ${w.phase2SinceDays}일]` : "";
+      return `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%${p2Label}`;
+    })
     .join("\n") || "없음";
 
   const dataSummary = `아래는 오늘 수집된 시장 데이터입니다. 이 데이터를 기반으로 해석을 JSON으로 작성하세요.
@@ -303,6 +307,7 @@ ${risingRsLines || "없음"}
 ## 추적 종목 (tracked_stocks)
 ${trackedStocksLine}
 ${trackedStocksItemLines}
+※ P2 구간: 초입(1~5일)=최고 주목, 진행(6~20일)=추세 확인, 확립(21일+)=이미 진행 중
 
 ---
 
