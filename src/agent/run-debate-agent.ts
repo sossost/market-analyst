@@ -510,8 +510,8 @@ async function main() {
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn("Verify", `Thesis verification failed: ${reason}`);
-    await sendDiscordMessage(
-      `⚠️ **[Thesis 검증 경고]** ${debateDate}: Thesis 검증 실패 — ${reason}`,
+    await sendDiscordError(
+      `[Thesis 검증 경고] ${debateDate}: Thesis 검증 실패 — ${reason}`,
     ).catch((discordErr) => {
       const discordReason = discordErr instanceof Error ? discordErr.message : String(discordErr);
       logger.warn("Verify", `경고 Discord 발송 실패: ${discordReason}`);
@@ -768,7 +768,7 @@ async function main() {
       logger.warn("Debate", `Agent error: ${err.persona} (round ${err.round}): ${err.error}`);
     }
     const warningMsg = buildAgentErrorWarning(debateDate, result.metadata.agentErrors);
-    await sendDiscordMessage(warningMsg).catch((err) => {
+    await sendDiscordError(warningMsg).catch((err) => {
       const reason = err instanceof Error ? err.message : String(err);
       logger.warn("Debate", `경고 Discord 발송 실패: ${reason}`);
     });
@@ -843,8 +843,8 @@ async function main() {
     structuralTheses.every((t) => (t.beneficiaryTickers ?? []).length === 0);
   if (allTickersEmpty) {
     logger.warn("DebateIntegrity", "모든 thesis의 beneficiaryTickers가 빈 배열 — 종목 추출 실패 가능성");
-    await sendDiscordMessage(
-      `⚠️ **[토론 데이터 경고]** ${debateDate}: 모든 thesis의 beneficiaryTickers가 비어 있습니다. 종목 추출 로직을 점검하세요.`,
+    await sendDiscordError(
+      `[토론 데이터 경고] ${debateDate}: 모든 thesis의 beneficiaryTickers가 비어 있습니다. 종목 추출 로직을 점검하세요.`,
     ).catch((err) => {
       const reason = err instanceof Error ? err.message : String(err);
       logger.warn("DebateIntegrity", `경고 Discord 발송 실패: ${reason}`);
