@@ -6,6 +6,7 @@ import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestPriceDate } from "@/etl/utils/date-helpers";
 import { classifyCategory, classifySentiment } from "@/lib/newsClassifier";
 import { extractAndSaveThemes, type NewsItem } from "@/lib/themeExtractor";
+import { analyzeGaps, updateArticlesFound, type GapResult } from "@/debate/gapAnalyzer";
 import { logger } from "@/lib/logger";
 
 const TAG = "COLLECT_NEWS";
@@ -222,6 +223,68 @@ export async function collectAndStoreNews(): Promise<{
   return { totalFetched, inserted: totalInserted };
 }
 
+// ─── 동적 쿼리 실행 (Gap Analyzer) ────────────────────────────────────
+
+const MAX_DYNAMIC_QUERIES = 3;
+const GAP_ANALYZER_TIMEOUT_MS = 90_000;
+
+/**
+ * Gap Analyzer가 식별한 동적 쿼리를 실행하고 결과를 DB에 저장한다.
+ * 최대 3개 쿼리만 실행 (Brave rate limit 보수적 관리).
+ * 실패 시 graceful skip — 기존 파이프라인에 영향 없음.
+ */
+export async function executeDynamicQueries(
+  date: string,
+  apiKey: string,
+): Promise<{ dynamicFetched: number; dynamicInserted: number }> {
+  let gaps: GapResult[];
+
+  try {
+    const timeoutPromise = new Promise<GapResult[]>((_, reject) =>
+      setTimeout(() => reject(new Error("Gap analyzer timeout")), GAP_ANALYZER_TIMEOUT_MS),
+    );
+    gaps = await Promise.race([analyzeGaps(date), timeoutPromise]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(TAG, `Gap analyzer 실패 (non-blocking): ${msg}`);
+    return { dynamicFetched: 0, dynamicInserted: 0 };
+  }
+
+  if (gaps.length === 0) {
+    return { dynamicFetched: 0, dynamicInserted: 0 };
+  }
+
+  const queriesToRun = gaps.slice(0, MAX_DYNAMIC_QUERIES);
+  let totalFetched = 0;
+  let totalInserted = 0;
+
+  const isTest = process.env.NODE_ENV === "test";
+  const delayMs = isTest ? 0 : RATE_LIMIT_DELAY_MS;
+
+  for (const gap of queriesToRun) {
+    try {
+      const { fetched, inserted } = await processQuery("gap", gap.query, apiKey);
+      totalFetched += fetched;
+      totalInserted += inserted;
+
+      await updateArticlesFound(date, gap.theme, fetched).catch((err) => {
+        logger.warn(TAG, `articlesFound 업데이트 실패: ${gap.theme} — ${err instanceof Error ? err.message : String(err)}`);
+      });
+
+      logger.info(TAG, `Dynamic query: "${gap.query}" → ${fetched} fetched, ${inserted} inserted`);
+
+      if (delayMs > 0) {
+        await new Promise<void>((r) => setTimeout(r, delayMs));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(TAG, `Dynamic query 실패: ${gap.query} — ${msg}`);
+    }
+  }
+
+  return { dynamicFetched: totalFetched, dynamicInserted: totalInserted };
+}
+
 // ─── 오늘 수집된 뉴스 DB 조회 ────────────────────────────────────────
 
 const MAX_NEWS_FOR_THEME = 100;
@@ -261,13 +324,23 @@ async function main() {
 
   logger.info(TAG, `Collect news archive — done: ${totalFetched} fetched, ${inserted} new inserted`);
 
-  // 테마 추출 — 뉴스 수집 후 비동기 실행 (실패해도 뉴스 수집 결과에 영향 없음)
   // getLatestPriceDate()로 토론 에이전트와 동일한 날짜 기준 사용 (주말/휴일 불일치 방지)
+  const analysisDate = await getLatestPriceDate() ?? new Date().toISOString().slice(0, 10);
+
+  // 동적 쿼리 — Gap Analyzer 결과 기반 (1일 1회, 실패해도 기존 수집에 영향 없음)
+  const apiKey = process.env.BRAVE_API_KEY;
+  if (apiKey != null && apiKey !== "") {
+    const { dynamicFetched, dynamicInserted } = await executeDynamicQueries(analysisDate, apiKey);
+    if (dynamicFetched > 0) {
+      logger.info(TAG, `Dynamic queries — ${dynamicFetched} fetched, ${dynamicInserted} new inserted`);
+    }
+  }
+
+  // 테마 추출 — 뉴스 수집 후 비동기 실행 (실패해도 뉴스 수집 결과에 영향 없음)
   try {
-    const themeDate = await getLatestPriceDate() ?? new Date().toISOString().slice(0, 10);
     const newsItems = await loadRecentNewsForTheme();
-    const { extracted, saved } = await extractAndSaveThemes(newsItems, themeDate);
-    logger.info(TAG, `Theme extraction — ${extracted} themes extracted, ${saved} saved (date: ${themeDate})`);
+    const { extracted, saved } = await extractAndSaveThemes(newsItems, analysisDate);
+    logger.info(TAG, `Theme extraction — ${extracted} themes extracted, ${saved} saved (date: ${analysisDate})`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn(TAG, `Theme extraction failed (non-blocking): ${msg}`);

@@ -34,6 +34,8 @@ interface DebateConfig {
   themeContext?: string;
   /** 기존 ACTIVE/CONFIRMED thesis — 모더레이터 중복 생성 방지 (#764) */
   existingThesesContext?: string;
+  /** 뉴스 사각지대 분석 — Gap Analyzer가 식별한 미수집 테마 (#750) */
+  gapContext?: string;
 }
 
 /**
@@ -61,6 +63,7 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     narrativeChainContext,
     themeContext,
     existingThesesContext,
+    gapContext,
   } = config;
   const startTime = Date.now();
 
@@ -81,6 +84,11 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
   }
   if (themeContext != null && themeContext.length > 0) {
     fullQuestion += `\n\n---\n\n${themeContext}`;
+  }
+  // gapContext는 themeContext와 동일하게 Round 1에만 주입.
+  // Round 2는 Round 1 산출물 기반 교차검증이므로 원시 데이터 재주입 불필요.
+  if (gapContext != null && gapContext.length > 0) {
+    fullQuestion += `\n\n---\n\n${gapContext}`;
   }
 
   logger.info("Debate", `Starting debate for ${debateDate}`);

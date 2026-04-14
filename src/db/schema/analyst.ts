@@ -1299,3 +1299,27 @@ export const newsThemes = pgTable(
     idxSeverity: index("idx_news_themes_severity").on(t.severity),
   }),
 );
+
+/**
+ * news_gap_analysis — LLM 기반 뉴스 사각지대 분석 결과.
+ * Gap Analyzer(Haiku)가 식별한 사각지대 테마와 동적 검색 쿼리를 저장.
+ * 토론 에이전트에 gap 힌트로 주입.
+ */
+export const newsGapAnalysis = pgTable(
+  "news_gap_analysis",
+  {
+    id: serial("id").primaryKey(),
+    date: text("date").notNull(), // YYYY-MM-DD
+    theme: text("theme").notNull(), // "PE/CLO 신용경색의 소프트웨어 섹터 영향"
+    query: text("query").notNull(), // "private credit CLO software sector impact"
+    rationale: text("rationale").notNull(), // "Software RS 33 바닥권이나 원인 뉴스 0건"
+    articlesFound: integer("articles_found").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    uqDateTheme: unique("uq_news_gap_analysis_date_theme").on(t.date, t.theme),
+    idxDate: index("idx_news_gap_analysis_date").on(t.date),
+  }),
+);
