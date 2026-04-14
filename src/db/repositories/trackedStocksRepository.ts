@@ -193,6 +193,30 @@ export async function findRecentTrackedBySymbol(
 }
 
 /**
+ * 쿨다운 시작일 이후에 EXITED 또는 EXPIRED된 종목을 배치 조회한다.
+ * scan-recommendation-candidates 쿨다운 게이트용.
+ */
+export async function findRecentlyExitedBySymbols(
+  cooldownStart: string,
+  symbols: string[],
+): Promise<TrackedStockActiveBySymbolRow[]> {
+  if (symbols.length === 0) {
+    return [];
+  }
+
+  const { rows } = await pool.query<TrackedStockActiveBySymbolRow>(
+    `SELECT DISTINCT id, symbol, entry_date
+     FROM tracked_stocks
+     WHERE status <> 'ACTIVE'
+       AND exit_date >= $1
+       AND symbol = ANY($2)`,
+    [cooldownStart, symbols],
+  );
+
+  return rows;
+}
+
+/**
  * source별 ACTIVE tracked_stocks를 조회한다.
  */
 export async function findActiveTrackedStocksBySource(

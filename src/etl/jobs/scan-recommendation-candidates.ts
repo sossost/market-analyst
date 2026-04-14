@@ -1,6 +1,16 @@
+/**
+ * scan-recommendation-candidates.ts — Phase 2 종목 자동 스캔 → tracked_stocks INSERT.
+ *
+ * 기존 recommendations INSERT에서 tracked_stocks INSERT로 전환.
+ * 중복/쿨다운 체크도 tracked_stocks 기준으로 변경.
+ * 게이트 로직(recommendationGates)은 동일하게 유지.
+ *
+ * Issue #773 — tracked_stocks 통합 ETL Phase 2
+ */
+
 import "dotenv/config";
 import { db, pool } from "@/db/client";
-import { recommendations, recommendationFactors } from "@/db/schema/analyst";
+import { recommendationFactors } from "@/db/schema/analyst";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
@@ -29,12 +39,15 @@ import {
   applySectorCap,
 } from "@/tools/recommendationGates.js";
 import {
-  findActiveRecommendations,
-  findRecentlyClosed,
   findPhase2Persistence,
   findPhase2Stability,
 } from "@/db/repositories/recommendationRepository.js";
 import { findFundamentalGrades } from "@/db/repositories/fundamentalRepository.js";
+import {
+  findActiveTrackedStocksBySymbols,
+  findRecentlyExitedBySymbols,
+  insertTrackedStock,
+} from "@/db/repositories/trackedStocksRepository.js";
 import {
   findAllPhase2Stocks,
   findStockPhaseDetail,
@@ -143,8 +156,10 @@ async function main() {
     fundamentalGradeRows,
     priceRows,
   ] = await Promise.all([
-    retryDatabaseOperation(() => findActiveRecommendations(symbols)),
-    retryDatabaseOperation(() => findRecentlyClosed(cooldownStart, symbols)),
+    // 중복 체크: tracked_stocks ACTIVE 기준
+    retryDatabaseOperation(() => findActiveTrackedStocksBySymbols(symbols)),
+    // 쿨다운 체크: tracked_stocks EXITED/EXPIRED 기준
+    retryDatabaseOperation(() => findRecentlyExitedBySymbols(cooldownStart, symbols)),
     retryDatabaseOperation(() =>
       findPhase2Persistence(symbols, persistenceStart, targetDate),
     ),
@@ -369,37 +384,39 @@ async function main() {
       reason,
     } = candidate;
 
-    // INSERT (멱등성 보장)
-    const insertResult = await retryDatabaseOperation(() =>
-      db
-        .insert(recommendations)
-        .values({
-          symbol,
-          recommendationDate: targetDate,
-          entryPrice: String(entryPrice),
-          entryRsScore: rs_score ?? null,
-          entryPhase: phase ?? 2,
-          entryPrevPhase: prev_phase ?? null,
-          sector: sector ?? null,
-          industry: industry ?? null,
-          reason,
-          marketRegime: marketRegimeForRecord,
-          status: "ACTIVE",
-          currentPrice: String(entryPrice),
-          currentPhase: phase ?? 2,
-          currentRsScore: rs_score ?? null,
-          pnlPercent: "0",
-          maxPnlPercent: "0",
-          daysHeld: 0,
-          lastUpdated: targetDate,
-        })
-        .onConflictDoNothing({
-          target: [recommendations.symbol, recommendations.recommendationDate],
-        }),
+    // featured 자동 판정: SEPA S/A 등급 시 featured
+    const fundamentalGrade = fundamentalGradeMap.get(symbol) ?? null;
+    const tier = fundamentalGrade != null && ["S", "A"].includes(fundamentalGrade)
+      ? "featured" as const
+      : "standard" as const;
+
+    // 90일 트래킹 종료 날짜 계산
+    const trackingEnd = new Date(`${targetDate}T00:00:00Z`);
+    trackingEnd.setUTCDate(trackingEnd.getUTCDate() + 90);
+    const trackingEndDate = trackingEnd.toISOString().slice(0, 10);
+
+    // INSERT — tracked_stocks (UNIQUE(symbol, entry_date) 충돌 시 no-op)
+    const insertedId = await retryDatabaseOperation(() =>
+      insertTrackedStock({
+        symbol,
+        source: "etl_auto",
+        tier,
+        entryDate: targetDate,
+        entryPrice,
+        entryPhase: phase ?? 2,
+        entryPrevPhase: prev_phase ?? null,
+        entryRsScore: rs_score ?? null,
+        entrySepaGrade: fundamentalGrade,
+        entryThesisId: null,
+        entrySector: sector ?? null,
+        entryIndustry: industry ?? null,
+        entryReason: reason,
+        marketRegime: marketRegimeForRecord,
+        trackingEndDate,
+      }),
     );
 
-    const rowCount = (insertResult as unknown as { rowCount: number }).rowCount ?? 1;
-    if (rowCount === 0) {
+    if (insertedId == null) {
       // 이미 존재 (에이전트가 먼저 저장한 경우)
       skippedCount++;
       continue;
