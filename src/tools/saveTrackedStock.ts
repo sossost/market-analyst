@@ -18,6 +18,7 @@ import {
   insertTrackedStock,
   type TrackedStockTier,
 } from "@/db/repositories/trackedStocksRepository.js";
+import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
 import { logger } from "@/lib/logger";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 
@@ -276,6 +277,10 @@ async function executeRegister(
 
   const trackingEndDate = calculateTrackingEndDate(date);
 
+  // Phase 2 연속 진입 시작일 조회 (ETL과 동일한 로직)
+  const phase2SinceRows = await findPhase2SinceDates([symbol], date);
+  const phase2Since = phase2SinceRows.find((r) => r.symbol === symbol)?.phase2_since ?? null;
+
   const insertedId = await retryDatabaseOperation(() =>
     insertTrackedStock({
       symbol,
@@ -291,7 +296,7 @@ async function executeRegister(
       entrySector: sector,
       entryIndustry: industry,
       entryReason: reason,
-      phase2Since: null,
+      phase2Since,
       marketRegime: null,
       trackingEndDate,
     }),
