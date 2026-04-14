@@ -55,18 +55,21 @@ export interface GapAnalyzerInput {
 
 /**
  * DB에서 ACTIVE thesis 요약 목록을 조회한다.
+ * @param date 기준일 — 해당 일자 이전에 생성된 thesis만 반환 (백필 안전)
  */
-export async function fetchActiveThesesSummary(): Promise<string[]> {
+export async function fetchActiveThesesSummary(date: string): Promise<string[]> {
   const { rows } = await pool.query<{ persona: string; thesis: string }>(
-    `SELECT agent_persona AS persona, thesis FROM theses WHERE status = 'ACTIVE' ORDER BY debate_date DESC LIMIT 20`,
+    `SELECT agent_persona AS persona, thesis FROM theses WHERE status = 'ACTIVE' AND debate_date <= $1 ORDER BY debate_date DESC LIMIT 20`,
+    [date],
   );
   return rows.map((r) => `[${r.persona}] ${r.thesis}`);
 }
 
 /**
  * z-score > 1.5인 신용 지표 이상 신호를 조회한다.
+ * @param date 기준일 — 해당 일자 이하 데이터만 조회 (백필 안전)
  */
-export async function fetchCreditAnomalies(): Promise<string[]> {
+export async function fetchCreditAnomalies(date: string): Promise<string[]> {
   const Z_SCORE_THRESHOLD = 1.5;
   const LABELS: Record<string, string> = {
     BAMLH0A0HYM2: "HY 스프레드",
@@ -82,9 +85,9 @@ export async function fetchCreditAnomalies(): Promise<string[]> {
   }>(
     `SELECT DISTINCT ON (series_id) series_id, value::text, z_score_180d::text
      FROM credit_indicators
-     WHERE z_score_180d IS NOT NULL AND ABS(z_score_180d) >= $1
+     WHERE z_score_180d IS NOT NULL AND ABS(z_score_180d) >= $1 AND date <= $2
      ORDER BY series_id, date DESC`,
-    [Z_SCORE_THRESHOLD],
+    [Z_SCORE_THRESHOLD, date],
   );
 
   return rows.map((r) => {
@@ -94,10 +97,12 @@ export async function fetchCreditAnomalies(): Promise<string[]> {
 }
 
 /**
- * 최근 24시간 수집 뉴스의 카테고리별 건수를 조회한다.
+ * 기준일 24시간 이내 수집 뉴스의 카테고리별 건수를 조회한다.
+ * @param date 기준일 (YYYY-MM-DD) — 해당 일자 기준 24시간 윈도우 (백필 안전)
  */
-export async function fetchCategoryDistribution(): Promise<Record<string, number>> {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+export async function fetchCategoryDistribution(date: string): Promise<Record<string, number>> {
+  const dayEnd = new Date(`${date}T23:59:59.999Z`);
+  const cutoff = new Date(dayEnd.getTime() - 24 * 60 * 60 * 1000);
 
   const rows = await db
     .select({
@@ -105,7 +110,7 @@ export async function fetchCategoryDistribution(): Promise<Record<string, number
       count: sql<number>`count(*)::int`,
     })
     .from(newsArchive)
-    .where(gte(newsArchive.collectedAt, cutoff))
+    .where(and(gte(newsArchive.collectedAt, cutoff), sql`${newsArchive.collectedAt} <= ${dayEnd}`))
     .groupBy(newsArchive.category);
 
   const result: Record<string, number> = {};
@@ -117,8 +122,9 @@ export async function fetchCategoryDistribution(): Promise<Record<string, number
 
 /**
  * 섹터 RS 상위 5개 + 하위 5개를 조회한다.
+ * @param date 기준일 — 해당 일자 이하 최신 RS 데이터 조회 (백필 안전)
  */
-export async function fetchSectorRsExtremes(): Promise<{
+export async function fetchSectorRsExtremes(date: string): Promise<{
   top: string[];
   bottom: string[];
 }> {
@@ -129,9 +135,10 @@ export async function fetchSectorRsExtremes(): Promise<{
   }>(
     `SELECT sector, avg_rs::text, change_4w::text
      FROM sector_rs_daily
-     WHERE date = (SELECT MAX(date) FROM sector_rs_daily)
+     WHERE date = (SELECT MAX(date) FROM sector_rs_daily WHERE date <= $1)
      ORDER BY avg_rs DESC
      LIMIT 5`,
+    [date],
   );
 
   const { rows: bottomRows } = await pool.query<{
@@ -141,9 +148,10 @@ export async function fetchSectorRsExtremes(): Promise<{
   }>(
     `SELECT sector, avg_rs::text, change_4w::text
      FROM sector_rs_daily
-     WHERE date = (SELECT MAX(date) FROM sector_rs_daily)
+     WHERE date = (SELECT MAX(date) FROM sector_rs_daily WHERE date <= $1)
      ORDER BY avg_rs ASC
      LIMIT 5`,
+    [date],
   );
 
   const formatSector = (r: { sector: string; avg_rs: string; change_4w: string | null }) => {
@@ -160,23 +168,24 @@ export async function fetchSectorRsExtremes(): Promise<{
 /**
  * 모든 입력 데이터를 병렬 수집한다.
  * 개별 수집 실패 시 빈 값으로 대체 — 전체 분석을 중단하지 않는다.
+ * @param date 기준일 — 모든 조회가 이 날짜를 기준으로 동작 (백필 안전)
  */
-export async function collectGapInputs(): Promise<GapAnalyzerInput> {
+export async function collectGapInputs(date: string): Promise<GapAnalyzerInput> {
   const [activeTheses, creditAnomalies, categoryDistribution, sectorExtremes] =
     await Promise.all([
-      fetchActiveThesesSummary().catch((err) => {
+      fetchActiveThesesSummary(date).catch((err) => {
         logger.warn(TAG, `Active thesis 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
         return [] as string[];
       }),
-      fetchCreditAnomalies().catch((err) => {
+      fetchCreditAnomalies(date).catch((err) => {
         logger.warn(TAG, `Credit anomaly 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
         return [] as string[];
       }),
-      fetchCategoryDistribution().catch((err) => {
+      fetchCategoryDistribution(date).catch((err) => {
         logger.warn(TAG, `Category distribution 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
         return {} as Record<string, number>;
       }),
-      fetchSectorRsExtremes().catch((err) => {
+      fetchSectorRsExtremes(date).catch((err) => {
         logger.warn(TAG, `Sector RS 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
         return { top: [] as string[], bottom: [] as string[] };
       }),
@@ -416,7 +425,7 @@ export async function analyzeGaps(date: string): Promise<GapResult[]> {
 
   logger.info(TAG, "사각지대 분석 시작");
 
-  const input = await collectGapInputs();
+  const input = await collectGapInputs(date);
 
   logger.info(TAG, `입력: thesis=${input.activeTheses.length}, anomalies=${input.creditAnomalies.length}, categories=${Object.keys(input.categoryDistribution).length}`);
 
