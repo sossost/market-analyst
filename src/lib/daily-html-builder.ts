@@ -1461,7 +1461,11 @@ function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
 
 /**
  * Thesis-Aligned Candidates 섹션을 렌더링한다.
- * 데이터가 없으면 빈 문자열을 반환하여 섹션 자체를 미출력한다.
+ * SEPA S/A 포함 4/4 게이트를 모두 충족한 종목(gatePassCount === gateTotalCount)만 표시한다.
+ * 필터 후 표시할 종목이 없으면 빈 문자열을 반환하여 섹션 자체를 미출력한다.
+ *
+ * 참고: buildThesisAlignedCandidates()는 수정하지 않음 — 주간 리포트에서도 동일 함수를 사용하며,
+ * 필터링은 렌더링/저장 단계에서만 적용한다.
  */
 export function renderThesisAlignedSection(
   data: ThesisAlignedData | null | undefined,
@@ -1470,27 +1474,55 @@ export function renderThesisAlignedSection(
     return "";
   }
 
+  // SEPA S/A(4/4 게이트 충족) 종목만 필터링한 체인 그룹 구성
+  const filteredGroups = data.chains.map((group) => ({
+    ...group,
+    candidates: group.candidates.filter(
+      (c) => c.gatePassCount === c.gateTotalCount,
+    ),
+  }));
+
+  const filteredCandidateCount = filteredGroups.reduce(
+    (sum, group) => sum + group.candidates.length,
+    0,
+  );
+
+  // 필터 후 표시할 종목이 하나도 없으면 섹션 미출력
+  if (filteredCandidateCount === 0) {
+    return "";
+  }
+
+  const filteredPhase2Count = filteredGroups.reduce(
+    (sum, group) =>
+      sum + group.candidates.filter((c) => c.phase === 2).length,
+    0,
+  );
+
+  const filteredChainCount = filteredGroups.filter(
+    (group) => group.candidates.length > 0,
+  ).length;
+
   const summaryHtml = `
     <div class="stat-row">
       <div class="stat-chip">
         <span class="stat-label">활성 체인</span>
-        <span class="stat-value">${escapeHtml(String(data.chains.length))}</span>
+        <span class="stat-value">${escapeHtml(String(filteredChainCount))}</span>
       </div>
       <div class="stat-chip">
         <span class="stat-label">수혜 후보</span>
-        <span class="stat-value">${escapeHtml(String(data.totalCandidates))}</span>
+        <span class="stat-value">${escapeHtml(String(filteredCandidateCount))}</span>
       </div>
       <div class="stat-chip">
         <span class="stat-label">Phase 2</span>
-        <span class="stat-value ${data.phase2Count > 0 ? "up" : "neutral-color"}">${escapeHtml(String(data.phase2Count))}</span>
+        <span class="stat-value ${filteredPhase2Count > 0 ? "up" : "neutral-color"}">${escapeHtml(String(filteredPhase2Count))}</span>
       </div>
     </div>`;
 
-  const chainsHtml = data.chains
+  const chainsHtml = filteredGroups
     .map((group) => renderChainGroupCard(group))
     .join("");
 
-  const noteHtml = `<p style="font-size:0.75rem;color:var(--text-muted);margin:12px 0 0;">게이트 = Phase2 + RS\u226560 + SEPA S/A + thesis연결 (업종RS 미포함, 4/4 만점) · 업종 탐색은 체인당 RS 상위 10개</p>`;
+  const noteHtml = `<p style="font-size:0.75rem;color:var(--text-muted);margin:12px 0 0;">SEPA S/A 포함 4/4 게이트 충족 종목만 표시 · 업종 탐색은 체인당 RS 상위 10개</p>`;
 
   return `${summaryHtml}${chainsHtml}${noteHtml}`;
 }
