@@ -351,6 +351,9 @@ async function main() {
 
 main().catch(async (err) => {
   logger.error(TAG, `collect-news failed: ${err instanceof Error ? err.message : String(err)}`);
+  if (err instanceof Error && err.cause != null) {
+    logger.error(TAG, `Cause: ${err.cause}`);
+  }
   await pool.end();
   process.exit(1);
 });
