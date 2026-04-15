@@ -41,11 +41,15 @@ describe("weekly report DB save", () => {
       "@/lib/reportLog"
     );
 
+    const reportedSymbols = [
+      { symbol: "NVDA", phase: 2, prevPhase: 1, rsScore: 92, sector: "Technology", industry: "Semiconductors", reason: "5중게이트", firstReportedDate: targetDate },
+    ];
+
     await saveReportLog({
       date: targetDate,
       type: "weekly",
-      reportedSymbols: [],
-      marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
+      reportedSymbols,
+      marketSummary: { phase2Ratio: 35.2, leadingSectors: ["Technology", "Healthcare", "Energy"], totalAnalyzed: 500 },
       fullContent,
       metadata: DEFAULT_METADATA,
     });
@@ -57,7 +61,7 @@ describe("weekly report DB save", () => {
       expect.objectContaining({
         date: targetDate,
         type: "weekly",
-        reportedSymbols: [],
+        reportedSymbols,
         fullContent,
       }),
     );
@@ -77,17 +81,21 @@ describe("weekly report DB save", () => {
     expect(insertOrder).toBeLessThan(updateOrder);
   });
 
-  it("saveReportLog receives correct weekly report structure", async () => {
+  it("saveReportLog receives correct weekly report structure with symbols and market data", async () => {
     const targetDate = "2026-03-21";
     const fullContent = "주간 리포트 내용";
 
     const { saveReportLog } = await import("@/lib/reportLog");
 
+    const reportedSymbols = [
+      { symbol: "AAPL", phase: 2, prevPhase: null, rsScore: 85, sector: "Technology", industry: "Consumer Electronics", reason: "돌파확인", firstReportedDate: targetDate },
+    ];
+
     await saveReportLog({
       date: targetDate,
       type: "weekly",
-      reportedSymbols: [],
-      marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
+      reportedSymbols,
+      marketSummary: { phase2Ratio: 28.5, leadingSectors: ["Technology"], totalAnalyzed: 480 },
       fullContent,
       metadata: DEFAULT_METADATA,
     });
@@ -95,12 +103,12 @@ describe("weekly report DB save", () => {
     const callArg = mockSaveReportLog.mock.calls[0][0];
     expect(callArg.type).toBe("weekly");
     expect(callArg.date).toBe(targetDate);
-    expect(callArg.reportedSymbols).toEqual([]);
-    expect(callArg.marketSummary).toEqual({
-      phase2Ratio: 0,
-      leadingSectors: [],
-      totalAnalyzed: 0,
-    });
+    expect(callArg.reportedSymbols).toHaveLength(1);
+    expect(callArg.reportedSymbols[0].symbol).toBe("AAPL");
+    expect(callArg.reportedSymbols[0].reason).toBe("돌파확인");
+    expect(callArg.marketSummary.phase2Ratio).toBe(28.5);
+    expect(callArg.marketSummary.leadingSectors).toEqual(["Technology"]);
+    expect(callArg.marketSummary.totalAnalyzed).toBe(480);
     expect(callArg.fullContent).toBe(fullContent);
   });
 });
