@@ -9,9 +9,10 @@ import { describe, it, expect } from "vitest";
 import {
   fillInsightDefaults,
   type DailyReportInsight,
+  type DailyReportData,
   type DailyRisingRSStock,
 } from "@/tools/schemas/dailyReportSchema";
-import { buildRisingRsSectorDistribution } from "../run-daily-agent";
+import { buildRisingRsSectorDistribution, buildTrackedStocksEventSummary } from "../run-daily-agent";
 
 // ────────────────────────────────────────────
 // fillInsightDefaults
@@ -163,5 +164,141 @@ describe("buildRisingRsSectorDistribution", () => {
     expect(result).toContain("Financial Services 22건(73%)");
     expect(result).toContain("Energy 5건(17%)");
     expect(result).toContain("Technology 3건(10%)");
+  });
+});
+
+// ────────────────────────────────────────────
+// buildTrackedStocksEventSummary
+// ────────────────────────────────────────────
+
+type WatchlistItem = DailyReportData["watchlist"]["items"][number];
+
+function makeItem(overrides: Partial<WatchlistItem>): WatchlistItem {
+  return {
+    symbol: "TEST",
+    entryDate: "2026-01-01",
+    trackingEndDate: null,
+    daysTracked: 30,
+    entryPhase: 2,
+    currentPhase: 2,
+    entryRsScore: 65,
+    currentRsScore: 70,
+    entrySector: "Technology",
+    entryIndustry: "Semiconductors",
+    entrySepaGrade: "A",
+    priceAtEntry: 100,
+    currentPrice: 110,
+    pnlPercent: 10,
+    maxPnlPercent: 12,
+    sectorRelativePerf: 5,
+    phaseTrajectory: [
+      { date: "2026-04-14", phase: 2, rsScore: 69 },
+      { date: "2026-04-15", phase: 2, rsScore: 70 },
+    ],
+    entryReason: null,
+    hasThesisBasis: false,
+    phase2Since: null,
+    phase2SinceDays: null,
+    phase2Segment: null,
+    ...overrides,
+  } as WatchlistItem;
+}
+
+describe("buildTrackedStocksEventSummary", () => {
+  it("이벤트 없으면 '오늘 변화 없음' 반환", () => {
+    const items = [makeItem({ symbol: "AAPL", daysTracked: 30 })];
+    expect(buildTrackedStocksEventSummary(items)).toBe("오늘 변화 없음");
+  });
+
+  it("빈 배열이면 '오늘 변화 없음' 반환", () => {
+    expect(buildTrackedStocksEventSummary([])).toBe("오늘 변화 없음");
+  });
+
+  it("daysTracked <= 1 → [신규] 라인 생성", () => {
+    const items = [makeItem({ symbol: "NVDA", daysTracked: 1, entrySector: "Technology", currentPhase: 2, currentRsScore: 80 })];
+    const result = buildTrackedStocksEventSummary(items);
+    expect(result).toContain("[신규]");
+    expect(result).toContain("NVDA");
+    expect(result).toContain("Phase 2");
+    expect(result).toContain("RS 80");
+    expect(result).toContain("Technology");
+  });
+
+  it("신규 진입 종목은 P2 구간 정보를 포함한다", () => {
+    const items = [makeItem({ symbol: "AVGO", daysTracked: 0, phase2Segment: "초입" as WatchlistItem["phase2Segment"], phase2SinceDays: 3 })];
+    const result = buildTrackedStocksEventSummary(items);
+    expect(result).toContain("[P2 초입 3일]");
+  });
+
+  it("phaseTrajectory 마지막 2포인트 다르면 [전이] 라인 생성", () => {
+    const items = [makeItem({
+      symbol: "TSLA",
+      daysTracked: 30,
+      phaseTrajectory: [
+        { date: "2026-04-14", phase: 2, rsScore: 55 },
+        { date: "2026-04-15", phase: 3, rsScore: 50 },
+      ],
+      currentRsScore: 50,
+      pnlPercent: -5.3,
+    })];
+    const result = buildTrackedStocksEventSummary(items);
+    expect(result).toContain("[전이]");
+    expect(result).toContain("TSLA");
+    expect(result).toContain("Phase 2→3");
+    expect(result).toContain("-5.3%");
+  });
+
+  it("phaseTrajectory 포인트가 1개뿐이면 전이 감지 안 함", () => {
+    const items = [makeItem({
+      symbol: "AMD",
+      daysTracked: 30,
+      phaseTrajectory: [{ date: "2026-04-15", phase: 3, rsScore: 40 }],
+    })];
+    expect(buildTrackedStocksEventSummary(items)).toBe("오늘 변화 없음");
+  });
+
+  it("daysTracked >= 80 → [만료임박] 라인 생성", () => {
+    const items = [makeItem({ symbol: "MSFT", daysTracked: 85, pnlPercent: 15.2 })];
+    const result = buildTrackedStocksEventSummary(items);
+    expect(result).toContain("[만료임박]");
+    expect(result).toContain("MSFT");
+    expect(result).toContain("85일");
+    expect(result).toContain("15.2%");
+  });
+
+  it("신규 진입은 phase_change 체크를 건너뜀", () => {
+    const items = [makeItem({
+      symbol: "GOOG",
+      daysTracked: 1,
+      phaseTrajectory: [
+        { date: "2026-04-14", phase: 1, rsScore: 30 },
+        { date: "2026-04-15", phase: 2, rsScore: 45 },
+      ],
+    })];
+    const result = buildTrackedStocksEventSummary(items);
+    expect(result).toContain("[신규]");
+    expect(result).not.toContain("[전이]");
+  });
+
+  it("여러 이벤트 타입이 혼재하면 각각 라인을 생성", () => {
+    const items = [
+      makeItem({ symbol: "NEW1", daysTracked: 0 }),
+      makeItem({
+        symbol: "CHANGE1",
+        daysTracked: 20,
+        phaseTrajectory: [
+          { date: "2026-04-14", phase: 1, rsScore: 40 },
+          { date: "2026-04-15", phase: 2, rsScore: 50 },
+        ],
+      }),
+      makeItem({ symbol: "OLD1", daysTracked: 88, pnlPercent: 5 }),
+      makeItem({ symbol: "STABLE", daysTracked: 40 }),
+    ];
+    const result = buildTrackedStocksEventSummary(items);
+    const lines = result.split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain("[신규]");
+    expect(lines[1]).toContain("[전이]");
+    expect(lines[2]).toContain("[만료임박]");
   });
 });
