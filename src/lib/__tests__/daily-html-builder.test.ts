@@ -522,6 +522,25 @@ describe("renderPhaseDistribution", () => {
     expect(html).toContain("Phase 2 비율이 확대되며");
   });
 
+  it("narrative detail은 <div class=\"narrative-detail\">로 감싸고 <p>로 감싸지 않는다", () => {
+    const html = renderPhaseDistribution(
+      createMockBreadthSnapshot(),
+      makeNarrative("브레드스 확대", "Phase 2 비율이 확대되며 참여 폭이 넓어지고 있다."),
+    );
+    // <div class="narrative-detail"> 존재 확인
+    expect(html).toContain('class="narrative-detail"');
+    // <p class="narrative-detail">는 없어야 함 (<p> 중첩 방지)
+    expect(html).not.toContain('<p class="narrative-detail"');
+  });
+
+  it("narrative detail이 없으면 narrative-detail 클래스 엘리먼트를 렌더링하지 않는다", () => {
+    const html = renderPhaseDistribution(
+      createMockBreadthSnapshot(),
+      makeNarrative("브레드스 확대"),
+    );
+    expect(html).not.toContain("narrative-detail");
+  });
+
   it("narrative가 '해당 없음'이면 content-block을 렌더링하지 않는다", () => {
     const html = renderPhaseDistribution(createMockBreadthSnapshot(), makeNarrative("해당 없음"));
     expect(html).not.toContain("content-block");

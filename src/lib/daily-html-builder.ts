@@ -528,12 +528,6 @@ const DAILY_REPORT_CSS = `
     margin: 12px 0;
   }
 
-  .insight-rationale {
-    font-size: 0.9rem;
-    line-height: 1.7;
-    color: var(--text);
-  }
-
   .empty-state {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -703,7 +697,7 @@ function renderNarrativeBlock(narrative: NarrativeBlock | null | undefined): str
   if (headline === "해당 없음" || headline.trim() === "") return "";
 
   const detailHtml = detail.trim() !== ""
-    ? `<p class="narrative-detail">${mdToHtml(detail)}</p>`
+    ? `<div class="narrative-detail">${mdToHtml(detail)}</div>`
     : "";
 
   return `<div class="content-block narrative-block">

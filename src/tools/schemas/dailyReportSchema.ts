@@ -373,6 +373,15 @@ function parseNarrative(raw: unknown): NarrativeBlock {
 }
 
 /**
+ * marketTemperatureRationale은 항상 렌더링되므로 "해당 없음" 대신 빈 블록 반환.
+ * 다른 narrative 필드와 달리 헤드라인이 없으면 섹션 자체가 비어 보이는 문제를 방지한다.
+ */
+function parseRationale(raw: unknown): NarrativeBlock {
+  const parsed = parseNarrative(raw);
+  return parsed.headline === "해당 없음" ? { headline: "", detail: "" } : parsed;
+}
+
+/**
  * 누락된 해석 필드를 기본값으로 채운다.
  * 에이전트가 일부 필드를 생략한 경우 안전 폴백용.
  */
@@ -392,10 +401,7 @@ export function fillInsightDefaults(
       typeof raw["marketTemperatureLabel"] === "string" && raw["marketTemperatureLabel"] !== ""
         ? raw["marketTemperatureLabel"]
         : "중립 — 관망",
-    marketTemperatureRationale: (() => {
-      const parsed = parseNarrative(raw["marketTemperatureRationale"]);
-      return parsed.headline === "해당 없음" ? { headline: "", detail: "" } : parsed;
-    })(),
+    marketTemperatureRationale: parseRationale(raw["marketTemperatureRationale"]),
     unusualStocksNarrative: parseNarrative(raw["unusualStocksNarrative"]),
     risingRSNarrative: parseNarrative(raw["risingRSNarrative"]),
     watchlistNarrative: parseNarrative(raw["watchlistNarrative"]),
