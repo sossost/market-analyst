@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import {
   computePercentileRank,
   computeBreadthScore,
+  computeBreadthScoreV2,
+  computeBreadthScoreEma,
   computeDivergenceSignal,
 } from "../build-market-breadth.js";
 
@@ -199,5 +201,203 @@ describe("computeDivergenceSignal", () => {
   it("SPX 상승 + BreadthScore 소폭 하락(-3 이하 아님)은 null을 반환한다", () => {
     // breadthChange = -2 (> -3이므로 조건 미충족)
     expect(computeDivergenceSignal(60, [55, 56, 57, 58, 62], 2)).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────
+// computeBreadthScoreV2
+// ────────────────────────────────────────────
+describe("computeBreadthScoreV2", () => {
+  // 퍼센타일 계산에 사용할 고정 window (DESC 정렬 가정)
+  const makeWindow = (overrides: Partial<{
+    phase2Ratios:     (number | null)[];
+    phase2Momentum5d: (number | null)[];
+    netPhaseFlow5d:   (number | null)[];
+    adNet5d:          (number | null)[];
+    vixClosePrices:   (number | null)[];
+    breadthScores:    (number | null)[];
+  }> = {}) => ({
+    phase2Ratios:     [20, 30, 40, 50, 60],
+    phase2Momentum5d: [-2, -1, 0, 1, 2],
+    netPhaseFlow5d:   [-10, -5, 0, 5, 10],
+    adNet5d:          [-500, -250, 0, 250, 500],
+    vixClosePrices:   [10, 15, 20, 25, 30],
+    breadthScores:    [30, 40, 50, 60, 70],
+    ...overrides,
+  });
+
+  it("VIX가 있을 때 5개 가중치 합이 1.0이 되어 0~100 범위로 계산된다", () => {
+    // phase2Ratio=50 → phase2Pct = 4/5*100 = 80
+    // momentum=1(50-5dAgo=49 → 50-49=1) → phase2Momentum5d 배열에서 1 이하 4개 → 4/5*100 = 80
+    // netPhaseFlow5d=5 → 5 이하 4개 → 80
+    // adNet5d=250 → 4/5*100 = 80
+    // vixClose=10 → vixPct = 1/5*100 = 20, 역퍼센타일 = 100-20 = 80
+    // score = 80*0.30 + 80*0.20 + 80*0.20 + 80*0.15 + 80*0.15 = 80
+    const current = {
+      phase2Ratio:      50,
+      phase2Ratio5dAgo: 49,
+      netPhaseFlow5d:   5,
+      adNet5d:          250,
+      vixClose:         10,
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    expect(score).toBeCloseTo(80, 1);
+  });
+
+  it("VIX가 null이면 나머지 4개 가중치를 재정규화하여 합이 1.0이 된다", () => {
+    // 재정규화 가중치: 0.3529 + 0.2353 + 0.2353 + 0.1765 = 1.0
+    // 모두 pct=80이면: 80*(0.3529+0.2353+0.2353+0.1765) = 80*1.0 = 80
+    const current = {
+      phase2Ratio:      50,
+      phase2Ratio5dAgo: 49,
+      netPhaseFlow5d:   5,
+      adNet5d:          250,
+      vixClose:         null,
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    expect(score).toBeCloseTo(80, 1);
+  });
+
+  it("phase2Ratio5dAgo가 null이면 모멘텀 컴포넌트를 50으로 대체한다", () => {
+    // phase2Ratio5dAgo=null → momentumPct=50
+    // phase2Pct=80, momentumPct=50(대체), netFlowPct=80, adNetPct=80
+    // vixClose=10 → vixPct=80
+    // score = 80*0.30 + 50*0.20 + 80*0.20 + 80*0.15 + 80*0.15 = 24+10+16+12+12 = 74
+    const current = {
+      phase2Ratio:      50,
+      phase2Ratio5dAgo: null,
+      netPhaseFlow5d:   5,
+      adNet5d:          250,
+      vixClose:         10,
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    expect(score).toBeCloseTo(74, 1);
+  });
+
+  it("netPhaseFlow5d가 null이면 순유입 컴포넌트를 50으로 대체한다", () => {
+    // netPhaseFlow5d=null → netFlowPct=50
+    // score = 80*0.30 + 80*0.20 + 50*0.20 + 80*0.15 + 80*0.15 = 24+16+10+12+12 = 74
+    const current = {
+      phase2Ratio:      50,
+      phase2Ratio5dAgo: 49,
+      netPhaseFlow5d:   null,
+      adNet5d:          250,
+      vixClose:         10,
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    expect(score).toBeCloseTo(74, 1);
+  });
+
+  it("adNet5d가 null이면 A/D 컴포넌트를 50으로 대체한다", () => {
+    // adNet5d=null → adNetPct=50
+    // score = 80*0.30 + 80*0.20 + 80*0.20 + 50*0.15 + 80*0.15 = 24+16+16+7.5+12 = 75.5
+    const current = {
+      phase2Ratio:      50,
+      phase2Ratio5dAgo: 49,
+      netPhaseFlow5d:   5,
+      adNet5d:          null,
+      vixClose:         10,
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    expect(score).toBeCloseTo(75.5, 1);
+  });
+
+  it("VIX가 높을수록(공포) 역퍼센타일이 낮아 점수에 불리하게 반영된다", () => {
+    // vixClose=10(낮음) → vixPct_raw=20, 역퍼센타일=80 → 유리
+    // vixClose=30(높음) → vixPct_raw=100, 역퍼센타일=0 → 불리
+    const baseInput = {
+      phase2Ratio:      50,
+      phase2Ratio5dAgo: 49,
+      netPhaseFlow5d:   5,
+      adNet5d:          250,
+    };
+    const lowVixScore  = computeBreadthScoreV2({ ...baseInput, vixClose: 10  }, makeWindow());
+    const highVixScore = computeBreadthScoreV2({ ...baseInput, vixClose: 30  }, makeWindow());
+    expect(lowVixScore).toBeGreaterThan(highVixScore);
+  });
+
+  it("결과는 0 미만으로 내려가지 않는다 (하단 클램핑)", () => {
+    // 모든 퍼센타일이 0이 되도록: window 최댓값보다 큰 값 / VIX=최댓값
+    const current = {
+      phase2Ratio:      0,
+      phase2Ratio5dAgo: 100, // momentum이 가장 낮도록
+      netPhaseFlow5d:   -1000,
+      adNet5d:          -10000,
+      vixClose:         100,  // 역퍼센타일 = 0
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    expect(score).toBeGreaterThanOrEqual(0);
+  });
+
+  it("결과는 100을 초과하지 않는다 (상단 클램핑)", () => {
+    // 모든 퍼센타일이 100이 되도록: window 최솟값보다 작은 값 / VIX=최솟값
+    const current = {
+      phase2Ratio:      100,
+      phase2Ratio5dAgo: 0,    // momentum이 가장 높도록
+      netPhaseFlow5d:   1000,
+      adNet5d:          10000,
+      vixClose:         1,    // 역퍼센타일 = 100
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    expect(score).toBeLessThanOrEqual(100);
+  });
+
+  it("결과는 소수점 2자리로 반올림된다", () => {
+    const current = {
+      phase2Ratio:      35,
+      phase2Ratio5dAgo: 33,
+      netPhaseFlow5d:   3,
+      adNet5d:          100,
+      vixClose:         18,
+    };
+    const score = computeBreadthScoreV2(current, makeWindow());
+    const decimal = score.toString().split(".")[1];
+    expect(decimal == null || decimal.length <= 2).toBe(true);
+  });
+
+  it("phase2Momentum5d window가 빈 배열이어도 중립값(50)으로 처리된다", () => {
+    // computePercentileRank가 빈 배열이면 50 반환하므로
+    // momentumPct=50이 돼야 함
+    const current = {
+      phase2Ratio:      50,
+      phase2Ratio5dAgo: 49,
+      netPhaseFlow5d:   5,
+      adNet5d:          250,
+      vixClose:         10,
+    };
+    const windowWithEmptyMomentum = makeWindow({ phase2Momentum5d: [] });
+    const score = computeBreadthScoreV2(current, windowWithEmptyMomentum);
+    // momentumPct=50으로 대체됨
+    // score = 80*0.30 + 50*0.20 + 80*0.20 + 80*0.15 + 80*0.15 = 74
+    expect(score).toBeCloseTo(74, 1);
+  });
+});
+
+// ────────────────────────────────────────────
+// computeBreadthScoreEma
+// ────────────────────────────────────────────
+describe("computeBreadthScoreEma", () => {
+  it("prevEma가 null(첫 행)이면 rawScore를 그대로 반환한다", () => {
+    expect(computeBreadthScoreEma(70, null)).toBe(70);
+  });
+
+  it("α=0.2 적용: EMA = 0.2 × raw + 0.8 × prevEma", () => {
+    // 0.2 × 80 + 0.8 × 60 = 16 + 48 = 64
+    expect(computeBreadthScoreEma(80, 60)).toBe(64);
+  });
+
+  it("raw와 prevEma가 같으면 EMA도 동일한 값이다", () => {
+    expect(computeBreadthScoreEma(50, 50)).toBe(50);
+  });
+
+  it("결과를 소수 2자리로 반올림한다", () => {
+    // 0.2 × 73 + 0.8 × 47 = 14.6 + 37.6 = 52.2
+    expect(computeBreadthScoreEma(73, 47)).toBe(52.2);
+  });
+
+  it("0~100 범위 내에서 평활이 이루어진다", () => {
+    const ema = computeBreadthScoreEma(100, 0);
+    // 0.2 × 100 + 0.8 × 0 = 20
+    expect(ema).toBe(20);
   });
 });

@@ -6,6 +6,10 @@
 # PATH 설정 (cron 환경에서 node를 찾기 위해)
 export PATH="/opt/homebrew/opt/node@20/bin:/opt/homebrew/bin:$PATH"
 
+# HOME·USER 보장 (launchd 환경에서 미설정 시 Claude CLI 인증 실패)
+export HOME="${HOME:-/Users/$(/usr/bin/whoami)}"
+export USER="${USER:-$(/usr/bin/whoami)}"
+
 # .env 안전 로드 (source 대신 — 명령 실행 방지)
 load_env() {
   local env_file="$1"

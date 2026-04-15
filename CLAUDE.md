@@ -1,4 +1,6 @@
 @~/.claude/market-analyst-private.md
+@~/.claude/shared-domain/db-tables.md
+@~/.claude/shared-domain/glossary.md
 
 # Market Analyst — Project Instructions
 
