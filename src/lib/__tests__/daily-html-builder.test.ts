@@ -916,12 +916,12 @@ describe("renderRisingRSSection", () => {
 // ─── renderWatchlistSection ───────────────────────────────────────────────────
 
 describe("renderWatchlistSection", () => {
-  it("관심종목 테이블과 요약 통계를 렌더링한다", () => {
+  it("요약 통계(ACTIVE 종목 수 / 평균 P&L / 오늘 이벤트)를 렌더링한다", () => {
     const watchlist = createMockWatchlistData();
     const html = renderWatchlistSection(watchlist, "해당 없음");
-    expect(html).toContain("NVDA");
     expect(html).toContain("ACTIVE 종목 수");
     expect(html).toContain("평균 P&amp;L");
+    expect(html).toContain("오늘 이벤트");
   });
 
   it("빈 items이면 empty-state를 반환한다", () => {
@@ -931,35 +931,202 @@ describe("renderWatchlistSection", () => {
     expect(html).toContain("ACTIVE 관심종목 없음");
   });
 
-  it("Phase 2 종목에 p2 배지를 적용한다", () => {
-    const html = renderWatchlistSection(createMockWatchlistData(), "해당 없음");
+  it("이벤트가 없으면 '오늘 변화 없음' 메시지를 렌더링하고 전체 테이블을 출력하지 않는다", () => {
+    // daysTracked=34, phaseTrajectory 두 포인트 모두 phase=2 → 이벤트 없음
+    const watchlist = createMockWatchlistData();
+    const html = renderWatchlistSection(watchlist, "해당 없음");
+    expect(html).toContain("오늘 변화 없음");
+    expect(html).not.toContain("content-block");
+  });
+
+  it("daysTracked <= 1 이면 신규 진입 섹션을 렌더링한다", () => {
+    const watchlist = createMockWatchlistData({
+      items: [
+        {
+          symbol: "MSFT",
+          entryDate: "2026-04-15",
+          trackingEndDate: null,
+          daysTracked: 1,
+          entryPhase: 2,
+          currentPhase: 2,
+          entryRsScore: 80,
+          currentRsScore: 82,
+          entrySector: "Technology",
+          entryIndustry: "Software",
+          entrySepaGrade: "A",
+          priceAtEntry: 400,
+          currentPrice: 402,
+          pnlPercent: 0.5,
+          maxPnlPercent: 0.5,
+          sectorRelativePerf: 0.2,
+          phaseTrajectory: [{ date: "2026-04-15", phase: 2, rsScore: 82 }],
+          entryReason: "Phase 2 진입",
+          hasThesisBasis: false,
+          phase2Since: "2026-04-15",
+          phase2SinceDays: 1,
+          phase2Segment: "초입",
+        },
+      ],
+    });
+    const html = renderWatchlistSection(watchlist, "해당 없음");
+    expect(html).toContain("신규 진입");
+    expect(html).toContain("MSFT");
     expect(html).toContain("phase-badge p2");
-    expect(html).toContain("Phase 2");
   });
 
-  it("양수 P&L에 up 클래스를 적용한다", () => {
-    const html = renderWatchlistSection(createMockWatchlistData(), "해당 없음");
-    expect(html).toContain("+6.3%");
-    expect(html).toContain("up");
+  it("오늘 Phase 전이가 있으면 Phase 전이 섹션을 렌더링한다", () => {
+    const watchlist = createMockWatchlistData({
+      items: [
+        {
+          symbol: "AMD",
+          entryDate: "2026-03-01",
+          trackingEndDate: null,
+          daysTracked: 20,
+          entryPhase: 2,
+          currentPhase: 3,
+          entryRsScore: 70,
+          currentRsScore: 55,
+          entrySector: "Technology",
+          entryIndustry: "Semiconductors",
+          entrySepaGrade: "B",
+          priceAtEntry: 200,
+          currentPrice: 190,
+          pnlPercent: -5.0,
+          maxPnlPercent: 3.0,
+          sectorRelativePerf: -2.0,
+          phaseTrajectory: [
+            { date: "2026-04-14", phase: 2, rsScore: 60 },
+            { date: "2026-04-15", phase: 3, rsScore: 55 },
+          ],
+          entryReason: null,
+          hasThesisBasis: false,
+          phase2Since: null,
+          phase2SinceDays: null,
+          phase2Segment: null,
+        },
+      ],
+    });
+    const html = renderWatchlistSection(watchlist, "해당 없음");
+    expect(html).toContain("Phase 전이");
+    expect(html).toContain("AMD");
+    expect(html).toContain("phase-badge p2");
+    expect(html).toContain("phase-badge p3");
+    expect(html).toContain("-5.0%");
   });
 
-  it("Phase 궤적 도트를 렌더링한다", () => {
-    const html = renderWatchlistSection(createMockWatchlistData(), "해당 없음");
-    expect(html).toContain("traj-dot");
+  it("daysTracked >= 80 이면 만료 임박 섹션을 렌더링한다", () => {
+    const watchlist = createMockWatchlistData({
+      items: [
+        {
+          symbol: "INTC",
+          entryDate: "2026-01-15",
+          trackingEndDate: null,
+          daysTracked: 85,
+          entryPhase: 2,
+          currentPhase: 2,
+          entryRsScore: 60,
+          currentRsScore: 62,
+          entrySector: "Technology",
+          entryIndustry: "Semiconductors",
+          entrySepaGrade: "C",
+          priceAtEntry: 30,
+          currentPrice: 31,
+          pnlPercent: 3.3,
+          maxPnlPercent: 5.0,
+          sectorRelativePerf: 1.0,
+          phaseTrajectory: [
+            { date: "2026-04-14", phase: 2, rsScore: 62 },
+            { date: "2026-04-15", phase: 2, rsScore: 62 },
+          ],
+          entryReason: null,
+          hasThesisBasis: false,
+          phase2Since: "2026-01-15",
+          phase2SinceDays: 85,
+          phase2Segment: "확립",
+        },
+      ],
+    });
+    const html = renderWatchlistSection(watchlist, "해당 없음");
+    expect(html).toContain("만료 임박");
+    expect(html).toContain("INTC");
+    expect(html).toContain("85일");
   });
 
-  it("narrative가 있으면 content-block을 렌더링한다", () => {
-    const html = renderWatchlistSection(
-      createMockWatchlistData(),
-      "NVDA는 Phase 2를 유지한다.",
-    );
-    expect(html).toContain("content-block");
-    expect(html).toContain("NVDA는 Phase 2를 유지한다");
+  it("이벤트가 있을 때만 narrative content-block을 렌더링한다", () => {
+    const narrativeText = "NVDA는 Phase 2를 유지한다.";
+    const watchlistWithEvent = createMockWatchlistData({
+      items: [
+        {
+          symbol: "NVDA",
+          entryDate: "2026-04-15",
+          trackingEndDate: null,
+          daysTracked: 1,
+          entryPhase: 2,
+          currentPhase: 2,
+          entryRsScore: 90,
+          currentRsScore: 92,
+          entrySector: "Technology",
+          entryIndustry: "Semiconductors",
+          entrySepaGrade: "A",
+          priceAtEntry: 800,
+          currentPrice: 850,
+          pnlPercent: 6.25,
+          maxPnlPercent: 8.0,
+          sectorRelativePerf: 2.1,
+          phaseTrajectory: [{ date: "2026-04-15", phase: 2, rsScore: 92 }],
+          entryReason: "Phase 2 진입",
+          hasThesisBasis: true,
+          phase2Since: "2026-04-15",
+          phase2SinceDays: 1,
+          phase2Segment: "초입",
+        },
+      ],
+    });
+    const htmlWithEvent = renderWatchlistSection(watchlistWithEvent, narrativeText);
+    expect(htmlWithEvent).toContain("content-block");
+    expect(htmlWithEvent).toContain("NVDA는 Phase 2를 유지한다");
+
+    // 이벤트 없는 경우 narrative 숨김
+    const watchlistNoEvent = createMockWatchlistData();
+    const htmlNoEvent = renderWatchlistSection(watchlistNoEvent, narrativeText);
+    expect(htmlNoEvent).not.toContain("content-block");
   });
 
-  it("currentRsScore가 있으면 현재 RS를 표시한다", () => {
-    const html = renderWatchlistSection(createMockWatchlistData(), "해당 없음");
-    expect(html).toContain("RS 92");
+  it("Phase 1→2 긍정 전이에 up 클래스(상승 화살표)를 적용한다", () => {
+    const watchlist = createMockWatchlistData({
+      items: [
+        {
+          symbol: "TSM",
+          entryDate: "2026-03-01",
+          trackingEndDate: null,
+          daysTracked: 15,
+          entryPhase: 1,
+          currentPhase: 2,
+          entryRsScore: 55,
+          currentRsScore: 65,
+          entrySector: "Technology",
+          entryIndustry: "Semiconductors",
+          entrySepaGrade: "B",
+          priceAtEntry: 150,
+          currentPrice: 158,
+          pnlPercent: 5.3,
+          maxPnlPercent: 5.3,
+          sectorRelativePerf: 1.5,
+          phaseTrajectory: [
+            { date: "2026-04-14", phase: 1, rsScore: 60 },
+            { date: "2026-04-15", phase: 2, rsScore: 65 },
+          ],
+          entryReason: null,
+          hasThesisBasis: false,
+          phase2Since: "2026-04-15",
+          phase2SinceDays: 1,
+          phase2Segment: "초입",
+        },
+      ],
+    });
+    const html = renderWatchlistSection(watchlist, "해당 없음");
+    expect(html).toContain("Phase 전이");
+    expect(html).toContain("▲");
   });
 });
 
