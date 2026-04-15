@@ -594,6 +594,18 @@ const DAILY_REPORT_CSS = `
 /** 특이종목 섹션 최대 표시 건수. 노이즈 제한용. */
 const MAX_UNUSUAL_STOCKS = 8;
 
+/**
+ * 관심종목 만료 임박 경고 기준일.
+ * 90일 윈도우에서 이 일 수 이상 추적된 종목은 만료 임박으로 표시.
+ */
+const EXPIRY_WARNING_DAYS = 80;
+
+/**
+ * 신규 진입으로 간주하는 최대 추적일 수.
+ * daysTracked <= NEW_ENTRY_MAX_DAYS 이면 신규 진입 이벤트.
+ */
+const NEW_ENTRY_MAX_DAYS = 1;
+
 // ─── 유틸리티 ─────────────────────────────────────────────────────────────────
 
 function formatPercent(value: number, decimals = 2): string {
@@ -1265,21 +1277,238 @@ export function renderRisingRSSection(
   return `${sparseNoticeHtml}${table}${narrativeHtml}`;
 }
 
+// ─── 관심종목 이벤트 타입 ─────────────────────────────────────────────────────
+
+type WatchlistEventType = "new_entry" | "phase_change" | "expiring_soon";
+
+interface WatchlistEvent {
+  type: WatchlistEventType;
+  item: DailyWatchlistData["items"][number];
+  /** phase_change 이벤트 전용: 직전 Phase (phaseTrajectory[-2].phase) */
+  prevPhase?: number;
+  /** phase_change 이벤트 전용: 현재 Phase (phaseTrajectory[-1].phase) */
+  nextPhase?: number;
+}
+
+// ─── 관심종목 이벤트 감지 헬퍼 ───────────────────────────────────────────────
+
 /**
- * ACTIVE 관심종목 현황 테이블 + LLM 해석을 렌더링한다.
- * 일간 리포트: 최근 7일 궤적 포함.
+ * phaseTrajectory 마지막 2개 포인트를 비교하여 오늘 Phase 전이가 있으면
+ * 이전 Phase와 현재 Phase를 반환한다. 없으면 null.
+ */
+function detectTodayPhaseChange(
+  item: DailyWatchlistData["items"][number],
+): { prevPhase: number; nextPhase: number } | null {
+  const lastTwo = item.phaseTrajectory.slice(-2);
+  if (lastTwo.length !== 2) return null;
+  if (lastTwo[0].phase === lastTwo[1].phase) return null;
+  return { prevPhase: lastTwo[0].phase, nextPhase: lastTwo[1].phase };
+}
+
+/**
+ * items 배열에서 오늘의 이벤트(신규 진입 / Phase 전이 / 만료 임박)를 감지한다.
+ * summary.phaseChanges(누적 값)는 사용하지 않는다.
+ */
+function detectWatchlistEvents(
+  items: DailyWatchlistData["items"],
+): WatchlistEvent[] {
+  const events: WatchlistEvent[] = [];
+
+  for (const item of items) {
+    if (item.daysTracked <= NEW_ENTRY_MAX_DAYS) {
+      events.push({ type: "new_entry", item });
+      continue;
+    }
+
+    const phaseChange = detectTodayPhaseChange(item);
+    if (phaseChange != null) {
+      events.push({
+        type: "phase_change",
+        item,
+        prevPhase: phaseChange.prevPhase,
+        nextPhase: phaseChange.nextPhase,
+      });
+      continue;
+    }
+
+    if (item.daysTracked >= EXPIRY_WARNING_DAYS) {
+      events.push({ type: "expiring_soon", item });
+    }
+  }
+
+  return events;
+}
+
+// ─── 관심종목 이벤트 테이블 렌더러 ───────────────────────────────────────────
+
+function renderNewEntryRows(
+  events: WatchlistEvent[],
+): string {
+  const newEntries = events.filter((e) => e.type === "new_entry");
+  if (newEntries.length === 0) return "";
+
+  const rows = newEntries
+    .map(({ item }) => {
+      const phaseCls = phaseBadgeClass(item.currentPhase ?? item.entryPhase);
+      const rsStr =
+        item.currentRsScore != null
+          ? `RS ${item.currentRsScore.toFixed(0)}`
+          : item.entryRsScore != null
+            ? `RS ${item.entryRsScore.toFixed(0)}`
+            : "—";
+      const p2SegmentBadge =
+        item.phase2Segment != null && item.phase2SinceDays != null
+          ? `<span class="p2-segment p2-${escapeHtml(item.phase2Segment)}">${escapeHtml(item.phase2Segment)} ${escapeHtml(String(item.phase2SinceDays))}일</span>`
+          : "—";
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(item.symbol)}</strong></td>
+          <td>${escapeHtml(item.entrySector ?? "—")}</td>
+          <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(item.currentPhase ?? item.entryPhase))}</span></td>
+          <td>${escapeHtml(rsStr)}</td>
+          <td>${p2SegmentBadge}</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <h3 style="font-size:0.85rem;color:var(--up);margin:16px 0 8px;">신규 진입 (${escapeHtml(String(newEntries.length))})</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th>섹터</th>
+          <th>Phase</th>
+          <th>RS</th>
+          <th>P2 구간</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderPhaseChangeRows(
+  events: WatchlistEvent[],
+): string {
+  const phaseChanges = events.filter((e) => e.type === "phase_change");
+  if (phaseChanges.length === 0) return "";
+
+  const rows = phaseChanges
+    .map(({ item, prevPhase, nextPhase }) => {
+      const prev = prevPhase ?? item.entryPhase;
+      const next = nextPhase ?? (item.currentPhase ?? item.entryPhase);
+      // Weinstein Phase 순환: 1(바닥)→2(상승)→3(천장)→4(하락)→1
+      // 긍정: 1→2(상승진입), 4→1(바닥탈출), 3→2(상승복귀)
+      // 경고: 2→3(분배시작), 3→4(하락진입), 2→1(추세이탈)
+      const POSITIVE_TRANSITIONS = new Set(["1→2", "4→1", "3→2"]);
+      const isPositiveTransition = POSITIVE_TRANSITIONS.has(`${prev}→${next}`);
+      const transitionCls = isPositiveTransition ? "up" : "down";
+      const transitionArrow = isPositiveTransition ? "▲" : "▼";
+      const prevCls = phaseBadgeClass(prev);
+      const nextCls = phaseBadgeClass(next);
+      const pnlStr =
+        item.pnlPercent != null
+          ? item.pnlPercent >= 0
+            ? `+${item.pnlPercent.toFixed(1)}%`
+            : `${item.pnlPercent.toFixed(1)}%`
+          : "—";
+      const pnlCls =
+        item.pnlPercent != null ? colorClass(item.pnlPercent) : "neutral-color";
+      const rsStr =
+        item.currentRsScore != null
+          ? `RS ${item.currentRsScore.toFixed(0)}`
+          : "—";
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(item.symbol)}</strong></td>
+          <td>
+            <span class="phase-badge ${escapeHtml(prevCls)}">Phase ${escapeHtml(String(prev))}</span>
+            <span class="${escapeHtml(transitionCls)}" style="margin:0 4px;font-weight:700;">${transitionArrow}</span>
+            <span class="phase-badge ${escapeHtml(nextCls)}">Phase ${escapeHtml(String(next))}</span>
+          </td>
+          <td>${escapeHtml(String(item.daysTracked))}일</td>
+          <td class="${escapeHtml(pnlCls)}">${escapeHtml(pnlStr)}</td>
+          <td>${escapeHtml(rsStr)}</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <h3 style="font-size:0.85rem;color:var(--text-muted);margin:16px 0 8px;">Phase 전이 (${escapeHtml(String(phaseChanges.length))})</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th>전이</th>
+          <th>추적일</th>
+          <th>P&amp;L</th>
+          <th>RS</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderExpiringRows(
+  events: WatchlistEvent[],
+): string {
+  const expiring = events.filter((e) => e.type === "expiring_soon");
+  if (expiring.length === 0) return "";
+
+  const rows = expiring
+    .map(({ item }) => {
+      const pnlStr =
+        item.pnlPercent != null
+          ? item.pnlPercent >= 0
+            ? `+${item.pnlPercent.toFixed(1)}%`
+            : `${item.pnlPercent.toFixed(1)}%`
+          : "—";
+      const pnlCls =
+        item.pnlPercent != null ? colorClass(item.pnlPercent) : "neutral-color";
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(item.symbol)}</strong></td>
+          <td>${escapeHtml(String(item.daysTracked))}일</td>
+          <td class="${escapeHtml(pnlCls)}">${escapeHtml(pnlStr)}</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <h3 style="font-size:0.85rem;color:var(--yellow);margin:16px 0 8px;">만료 임박 (${escapeHtml(String(expiring.length))})</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th>추적일</th>
+          <th>P&amp;L</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ─── 관심종목 섹션 메인 렌더러 ───────────────────────────────────────────────
+
+/**
+ * ACTIVE 관심종목의 오늘 이벤트(신규 진입 / Phase 전이 / 만료 임박)만 표시한다.
+ * 변화 없는 날은 "오늘 변화 없음" 메시지를 출력하고 narrative를 숨긴다.
  */
 export function renderWatchlistSection(
   data: DailyWatchlistData,
   narrative: string,
 ): string {
-  const narrativeHtml = renderNarrativeBlock(narrative);
-
   if (data.items.length === 0) {
-    return `<div class="empty-state">현재 ACTIVE 관심종목 없음</div>${narrativeHtml}`;
+    return `<div class="empty-state">현재 ACTIVE 관심종목 없음</div>`;
   }
 
   const { summary, items } = data;
+  const events = detectWatchlistEvents(items);
+  const eventCount = events.length;
+
   const avgPnlStr =
     summary.avgPnlPercent >= 0
       ? `+${summary.avgPnlPercent.toFixed(1)}%`
@@ -1297,77 +1526,23 @@ export function renderWatchlistSection(
         <span class="stat-value ${escapeHtml(avgPnlCls)}">${escapeHtml(avgPnlStr)}</span>
       </div>
       <div class="stat-chip">
-        <span class="stat-label">Phase 변화 종목</span>
-        <span class="stat-value">${escapeHtml(String(summary.phaseChanges.length))}건</span>
+        <span class="stat-label">오늘 이벤트</span>
+        <span class="stat-value">${escapeHtml(String(eventCount))}건</span>
       </div>
     </div>`;
 
-  const itemRows = items
-    .map((item) => {
-      const phaseCls = phaseBadgeClass(item.currentPhase ?? item.entryPhase);
-      const pnlStr =
-        item.pnlPercent != null
-          ? item.pnlPercent >= 0
-            ? `+${item.pnlPercent.toFixed(1)}%`
-            : `${item.pnlPercent.toFixed(1)}%`
-          : "—";
-      const pnlCls =
-        item.pnlPercent != null ? colorClass(item.pnlPercent) : "neutral-color";
+  if (eventCount === 0) {
+    return `${summaryHtml}<p class="muted" style="color:var(--text-muted);font-size:0.9rem;padding:12px 0;">오늘 변화 없음 — ACTIVE ${escapeHtml(String(summary.totalActive))}개 추적 중</p>`;
+  }
 
-      // Phase 궤적 도트 (최근 7일)
-      const trajDots = item.phaseTrajectory
-        .slice(-7)
-        .map((t) => {
-          const cls = phaseBadgeClass(t.phase);
-          return `<div class="traj-dot ${escapeHtml(cls)}" title="${escapeHtml(t.date)}">${escapeHtml(String(t.phase))}</div>`;
-        })
-        .join("");
+  const eventsHtml =
+    renderNewEntryRows(events) +
+    renderPhaseChangeRows(events) +
+    renderExpiringRows(events);
 
-      const rsStr =
-        item.currentRsScore != null
-          ? `RS ${item.currentRsScore.toFixed(0)}`
-          : item.entryRsScore != null
-            ? `RS ${item.entryRsScore.toFixed(0)} (진입)`
-            : "—";
+  const narrativeHtml = renderNarrativeBlock(narrative);
 
-      const p2SegmentBadge = item.phase2Segment != null && item.phase2SinceDays != null
-        ? `<span class="p2-segment p2-${escapeHtml(item.phase2Segment)}">${escapeHtml(item.phase2Segment)} ${escapeHtml(String(item.phase2SinceDays))}일</span>`
-        : "—";
-
-      return `
-        <tr>
-          <td><strong>${escapeHtml(item.symbol)}</strong></td>
-          <td>${escapeHtml(item.entrySector ?? "—")}</td>
-          <td>${escapeHtml(item.entryDate)}</td>
-          <td>${escapeHtml(String(item.daysTracked))}일</td>
-          <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(item.currentPhase ?? item.entryPhase))}</span></td>
-          <td><div class="trajectory-dots">${trajDots}</div></td>
-          <td class="${escapeHtml(pnlCls)}">${escapeHtml(pnlStr)}</td>
-          <td>${escapeHtml(rsStr)}</td>
-          <td>${p2SegmentBadge}</td>
-        </tr>`;
-    })
-    .join("");
-
-  const table = `
-    <table>
-      <thead>
-        <tr>
-          <th>종목</th>
-          <th>섹터</th>
-          <th>진입일</th>
-          <th>추적</th>
-          <th>Phase</th>
-          <th>궤적(최근7일)</th>
-          <th>P&amp;L</th>
-          <th>RS</th>
-          <th>P2 구간</th>
-        </tr>
-      </thead>
-      <tbody>${itemRows}</tbody>
-    </table>`;
-
-  return `${summaryHtml}${table}${narrativeHtml}`;
+  return `${summaryHtml}${eventsHtml}${narrativeHtml}`;
 }
 
 /**
