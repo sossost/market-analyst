@@ -22,6 +22,7 @@ import type {
   DailyWatchlistData,
   DailyReportData,
   DailyReportInsight,
+  NarrativeBlock,
 } from "@/tools/schemas/dailyReportSchema.js";
 
 // ─── 팩토리 함수 ──────────────────────────────────────────────────────────────
@@ -211,17 +212,21 @@ function createMockWatchlistData(
   };
 }
 
+function makeNarrative(headline: string, detail = ""): NarrativeBlock {
+  return { headline, detail };
+}
+
 function createMockInsight(
   overrides?: Partial<DailyReportInsight>,
 ): DailyReportInsight {
   return {
     marketTemperature: "neutral",
     marketTemperatureLabel: "중립 — 관망",
-    marketTemperatureRationale: "지수는 혼조세를 보이고 있으며 뚜렷한 방향성이 없다.",
-    unusualStocksNarrative: "반도체 업종 중심의 급락이 관찰된다.",
-    risingRSNarrative: "에너지 업종에서 RS 가속 패턴이 포착된다.",
-    watchlistNarrative: "NVDA는 Phase 2를 유지하고 있다.",
-    breadthNarrative: "Phase 2 비율이 소폭 확대되며 시장 참여 폭이 넓어지고 있다.",
+    marketTemperatureRationale: makeNarrative("혼조세 지속 — 방향성 부재", "지수는 혼조세를 보이고 있으며 뚜렷한 방향성이 없다."),
+    unusualStocksNarrative: makeNarrative("반도체 업종 급락 — 섹터 조정 신호", "반도체 업종 중심의 급락이 관찰된다."),
+    risingRSNarrative: makeNarrative("에너지 업종 RS 가속 — 초기 모멘텀 포착", "에너지 업종에서 RS 가속 패턴이 포착된다."),
+    watchlistNarrative: makeNarrative("NVDA Phase 2 유지 — 추세 건재", "NVDA는 Phase 2를 유지하고 있다."),
+    breadthNarrative: makeNarrative("브레드스 소폭 확대 — 참여 폭 개선 중", "Phase 2 비율이 소폭 확대되며 시장 참여 폭이 넓어지고 있다."),
     todayInsight: "섹터 로테이션 조짐이 보인다.",
     discordMessage: "S&P 500 +0.88% · Phase2 30.4% · 특이종목 3건",
     ...overrides,
@@ -511,14 +516,14 @@ describe("renderPhaseDistribution", () => {
   it("narrative가 있으면 content-block을 렌더링한다", () => {
     const html = renderPhaseDistribution(
       createMockBreadthSnapshot(),
-      "Phase 2 비율이 확대되며 참여 폭이 넓어지고 있다.",
+      makeNarrative("브레드스 확대", "Phase 2 비율이 확대되며 참여 폭이 넓어지고 있다."),
     );
     expect(html).toContain("content-block");
     expect(html).toContain("Phase 2 비율이 확대되며");
   });
 
   it("narrative가 '해당 없음'이면 content-block을 렌더링하지 않는다", () => {
-    const html = renderPhaseDistribution(createMockBreadthSnapshot(), "해당 없음");
+    const html = renderPhaseDistribution(createMockBreadthSnapshot(), makeNarrative("해당 없음"));
     expect(html).not.toContain("content-block");
   });
 
@@ -719,98 +724,101 @@ describe("renderIndustryTop10Table", () => {
 // ─── renderUnusualStocksSection ────────────────────────────────────────────────
 
 describe("renderUnusualStocksSection", () => {
+  const NARRATIVE_NONE = makeNarrative("해당 없음");
+
   it("특이종목 카드 그리드를 렌더링한다", () => {
     const stock = createMockUnusualStock();
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("NVDA");
     expect(html).toContain("unusual-grid");
   });
 
   it("빈 배열이면 empty-state를 반환한다", () => {
-    const html = renderUnusualStocksSection([], "해당 없음");
+    const html = renderUnusualStocksSection([], NARRATIVE_NONE);
     expect(html).toContain("empty-state");
     expect(html).toContain("특이종목 없음");
   });
 
   it("big_move 조건 태그를 렌더링한다", () => {
     const stock = createMockUnusualStock({ conditions: ["big_move"] });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("급등락");
     expect(html).toContain("big-move");
   });
 
   it("high_volume 조건 태그를 렌더링한다", () => {
     const stock = createMockUnusualStock({ conditions: ["high_volume"] });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("거래량 급증");
   });
 
   it("phase_change 조건 태그를 렌더링한다", () => {
     const stock = createMockUnusualStock({ conditions: ["phase_change"] });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("Phase 전환");
   });
 
   it("phase2WithDrop=true이면 경고 태그를 표시한다", () => {
     const stock = createMockUnusualStock({ phase2WithDrop: true });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("P2 급락 경고");
     expect(html).toContain("phase2-drop");
   });
 
   it("splitSuspect=true이면 분할 의심 태그를 표시한다", () => {
     const stock = createMockUnusualStock({ splitSuspect: true });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("분할 의심");
     expect(html).toContain("split-suspect");
   });
 
   it("Phase 전환 시 이전 Phase를 표시한다", () => {
     const stock = createMockUnusualStock({ phase: 2, prevPhase: 1 });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("Phase 1 → Phase 2");
   });
 
   it("하락 종목에 down 클래스를 적용한다", () => {
     const stock = createMockUnusualStock({ dailyReturn: -6.2 });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("-6.20%");
     expect(html).toContain("down");
   });
 
-  it("narrative가 '해당 없음'이 아니면 content-block을 렌더링한다", () => {
+  it("narrative headline이 있으면 narrative-headline을 렌더링한다", () => {
     const html = renderUnusualStocksSection(
       [createMockUnusualStock()],
-      "반도체 업종 급락이 관찰된다.",
+      makeNarrative("반도체 업종 급락 — 섹터 조정 신호", "반도체 업종 급락이 관찰된다."),
     );
-    expect(html).toContain("content-block");
+    expect(html).toContain("narrative-headline");
+    expect(html).toContain("반도체 업종 급락 — 섹터 조정 신호");
     expect(html).toContain("반도체 업종 급락이 관찰된다");
   });
 
-  it("narrative가 '해당 없음'이면 content-block을 렌더링하지 않는다", () => {
+  it("narrative headline이 '해당 없음'이면 content-block을 렌더링하지 않는다", () => {
     const html = renderUnusualStocksSection(
       [createMockUnusualStock()],
-      "해당 없음",
+      NARRATIVE_NONE,
     );
     expect(html).not.toContain("content-block");
   });
 
   it("industry가 null이면 sector를 fallback으로 표시한다", () => {
     const stock = createMockUnusualStock({ industry: null, sector: "Technology" });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("Technology");
   });
 
   it("industry, sector 모두 null이면 대시를 표시한다", () => {
     const stock = createMockUnusualStock({ industry: null, sector: null });
-    const html = renderUnusualStocksSection([stock], "해당 없음");
+    const html = renderUnusualStocksSection([stock], NARRATIVE_NONE);
     expect(html).toContain("—");
   });
 
   it("overflowCount가 양수이면 '(외 N건)' 표시를 렌더링한다", () => {
     const html = renderUnusualStocksSection(
       [createMockUnusualStock()],
-      "해당 없음",
+      NARRATIVE_NONE,
       7,
     );
     expect(html).toContain("(외 7건)");
@@ -819,7 +827,7 @@ describe("renderUnusualStocksSection", () => {
   it("overflowCount가 0이면 '(외 N건)' 표시를 렌더링하지 않는다", () => {
     const html = renderUnusualStocksSection(
       [createMockUnusualStock()],
-      "해당 없음",
+      NARRATIVE_NONE,
       0,
     );
     expect(html).not.toContain("(외");
@@ -829,86 +837,88 @@ describe("renderUnusualStocksSection", () => {
 // ─── renderRisingRSSection ────────────────────────────────────────────────────
 
 describe("renderRisingRSSection", () => {
+  const NARRATIVE_NONE = makeNarrative("해당 없음");
+
   it("RS 상승 초기 종목 테이블을 렌더링한다", () => {
     const stock = createMockRisingRSStock();
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("AMD");
     expect(html).toContain("55");
     expect(html).toContain("Semiconductors");
   });
 
   it("빈 배열이면 빈 문자열을 반환한다 (섹션 자체를 숨김)", () => {
-    const html = renderRisingRSSection([], "해당 없음");
+    const html = renderRisingRSSection([], NARRATIVE_NONE);
     expect(html).toBe("");
   });
 
   it("rsChange 양수에 up 클래스를 적용한다", () => {
     const stock = createMockRisingRSStock({ rsChange: 13.2 });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("+13.2");
   });
 
   it("rsChange가 null이면 대시를 표시한다", () => {
     const stock = createMockRisingRSStock({ rsChange: null });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("—");
   });
 
   it("pctFromLow52w가 null이면 대시를 표시한다", () => {
     const stock = createMockRisingRSStock({ pctFromLow52w: null });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("—");
   });
 
-  it("narrative가 있으면 content-block을 렌더링한다", () => {
+  it("narrative headline이 있으면 narrative-headline을 렌더링한다", () => {
     const html = renderRisingRSSection(
       [createMockRisingRSStock()],
-      "에너지 업종 RS 가속 패턴",
+      makeNarrative("에너지 업종 RS 가속", "에너지 업종 RS 가속 패턴이 포착된다."),
     );
-    expect(html).toContain("content-block");
-    expect(html).toContain("에너지 업종 RS 가속 패턴");
+    expect(html).toContain("narrative-headline");
+    expect(html).toContain("에너지 업종 RS 가속");
   });
 
   it("industry가 null이면 대시를 표시한다", () => {
     const stock = createMockRisingRSStock({ industry: null });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("—");
   });
 
   it("SEPA 등급을 테이블에 표시한다", () => {
     const stock = createMockRisingRSStock({ sepaGrade: "S" });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("SEPA");
     expect(html).toContain("S");
   });
 
   it("sepaGrade가 null이면 대시를 표시한다", () => {
     const stock = createMockRisingRSStock({ sepaGrade: null });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("SEPA");
   });
 
   it("시총 Large 구간을 표시한다", () => {
     const stock = createMockRisingRSStock({ marketCap: 50_000_000_000 });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("Large");
   });
 
   it("시총 Mid 구간을 표시한다", () => {
     const stock = createMockRisingRSStock({ marketCap: 5_000_000_000 });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("Mid");
   });
 
   it("시총 Small 구간을 표시한다", () => {
     const stock = createMockRisingRSStock({ marketCap: 1_000_000_000 });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("Small");
   });
 
   it("marketCap이 null이면 대시를 표시한다", () => {
     const stock = createMockRisingRSStock({ marketCap: null });
-    const html = renderRisingRSSection([stock], "해당 없음");
+    const html = renderRisingRSSection([stock], NARRATIVE_NONE);
     expect(html).toContain("시총");
   });
 });
@@ -916,9 +926,11 @@ describe("renderRisingRSSection", () => {
 // ─── renderWatchlistSection ───────────────────────────────────────────────────
 
 describe("renderWatchlistSection", () => {
+  const NARRATIVE_NONE = makeNarrative("해당 없음");
+
   it("요약 통계(ACTIVE 종목 수 / 평균 P&L / 오늘 이벤트)를 렌더링한다", () => {
     const watchlist = createMockWatchlistData();
-    const html = renderWatchlistSection(watchlist, "해당 없음");
+    const html = renderWatchlistSection(watchlist, NARRATIVE_NONE);
     expect(html).toContain("ACTIVE 종목 수");
     expect(html).toContain("평균 P&amp;L");
     expect(html).toContain("오늘 이벤트");
@@ -926,7 +938,7 @@ describe("renderWatchlistSection", () => {
 
   it("빈 items이면 empty-state를 반환한다", () => {
     const watchlist = createMockWatchlistData({ items: [] });
-    const html = renderWatchlistSection(watchlist, "해당 없음");
+    const html = renderWatchlistSection(watchlist, NARRATIVE_NONE);
     expect(html).toContain("empty-state");
     expect(html).toContain("ACTIVE 관심종목 없음");
   });
@@ -934,7 +946,7 @@ describe("renderWatchlistSection", () => {
   it("이벤트가 없으면 '오늘 변화 없음' 메시지를 렌더링하고 전체 테이블을 출력하지 않는다", () => {
     // daysTracked=34, phaseTrajectory 두 포인트 모두 phase=2 → 이벤트 없음
     const watchlist = createMockWatchlistData();
-    const html = renderWatchlistSection(watchlist, "해당 없음");
+    const html = renderWatchlistSection(watchlist, NARRATIVE_NONE);
     expect(html).toContain("오늘 변화 없음");
     expect(html).not.toContain("content-block");
   });
@@ -968,7 +980,7 @@ describe("renderWatchlistSection", () => {
         },
       ],
     });
-    const html = renderWatchlistSection(watchlist, "해당 없음");
+    const html = renderWatchlistSection(watchlist, NARRATIVE_NONE);
     expect(html).toContain("신규 진입");
     expect(html).toContain("MSFT");
     expect(html).toContain("phase-badge p2");
@@ -1006,7 +1018,7 @@ describe("renderWatchlistSection", () => {
         },
       ],
     });
-    const html = renderWatchlistSection(watchlist, "해당 없음");
+    const html = renderWatchlistSection(watchlist, NARRATIVE_NONE);
     expect(html).toContain("Phase 전이");
     expect(html).toContain("AMD");
     expect(html).toContain("phase-badge p2");
@@ -1046,14 +1058,14 @@ describe("renderWatchlistSection", () => {
         },
       ],
     });
-    const html = renderWatchlistSection(watchlist, "해당 없음");
+    const html = renderWatchlistSection(watchlist, NARRATIVE_NONE);
     expect(html).toContain("만료 임박");
     expect(html).toContain("INTC");
     expect(html).toContain("85일");
   });
 
   it("이벤트가 있을 때만 narrative content-block을 렌더링한다", () => {
-    const narrativeText = "NVDA는 Phase 2를 유지한다.";
+    const narrativeBlock = makeNarrative("NVDA Phase 2 유지", "NVDA는 Phase 2를 유지한다.");
     const watchlistWithEvent = createMockWatchlistData({
       items: [
         {
@@ -1082,13 +1094,13 @@ describe("renderWatchlistSection", () => {
         },
       ],
     });
-    const htmlWithEvent = renderWatchlistSection(watchlistWithEvent, narrativeText);
+    const htmlWithEvent = renderWatchlistSection(watchlistWithEvent, narrativeBlock);
     expect(htmlWithEvent).toContain("content-block");
-    expect(htmlWithEvent).toContain("NVDA는 Phase 2를 유지한다");
+    expect(htmlWithEvent).toContain("NVDA Phase 2 유지");
 
     // 이벤트 없는 경우 narrative 숨김
     const watchlistNoEvent = createMockWatchlistData();
-    const htmlNoEvent = renderWatchlistSection(watchlistNoEvent, narrativeText);
+    const htmlNoEvent = renderWatchlistSection(watchlistNoEvent, narrativeBlock);
     expect(htmlNoEvent).not.toContain("content-block");
   });
 
@@ -1124,7 +1136,7 @@ describe("renderWatchlistSection", () => {
         },
       ],
     });
-    const html = renderWatchlistSection(watchlist, "해당 없음");
+    const html = renderWatchlistSection(watchlist, NARRATIVE_NONE);
     expect(html).toContain("Phase 전이");
     expect(html).toContain("▲");
   });

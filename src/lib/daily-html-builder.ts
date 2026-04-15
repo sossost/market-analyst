@@ -24,6 +24,7 @@ import type {
   DailyReportData,
   DailyReportInsight,
   MarketPositionData,
+  NarrativeBlock,
 } from "@/tools/schemas/dailyReportSchema.js";
 import type {
   ThesisAlignedData,
@@ -423,6 +424,20 @@ const DAILY_REPORT_CSS = `
 
   .content-block strong { font-weight: 600; }
 
+  /* Narrative headline / detail 계층화 */
+  .narrative-headline {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+  .narrative-detail {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.6;
+  }
+
   /* Unusual Stocks Cards */
   .unusual-grid {
     display: grid;
@@ -677,14 +692,24 @@ function mdToHtml(markdown: string): string {
 }
 
 /**
- * 해석(narrative) 블록을 HTML로 렌더링한다.
- * 비어 있거나 "해당 없음"이면 빈 문자열을 반환한다.
+ * 해석(narrative) 블록을 headline + detail 계층 HTML로 렌더링한다.
+ * headline이 "해당 없음"이거나 비어있으면 빈 문자열을 반환한다.
+ * headline은 plain text escape — marked가 <p> 태그를 생성하면 HTML 중첩 오류 발생.
+ * detail만 mdToHtml() 적용.
  */
-function renderNarrativeBlock(narrative: string | null | undefined): string {
-  if (narrative == null || narrative === "해당 없음" || narrative.trim() === "") {
-    return "";
-  }
-  return `<div class="content-block">${mdToHtml(narrative)}</div>`;
+function renderNarrativeBlock(narrative: NarrativeBlock | null | undefined): string {
+  if (narrative == null) return "";
+  const { headline, detail } = narrative;
+  if (headline === "해당 없음" || headline.trim() === "") return "";
+
+  const detailHtml = detail.trim() !== ""
+    ? `<p class="narrative-detail">${mdToHtml(detail)}</p>`
+    : "";
+
+  return `<div class="content-block narrative-block">
+    <p class="narrative-headline">${escapeHtml(headline)}</p>
+    ${detailHtml}
+  </div>`;
 }
 
 /**
@@ -888,7 +913,7 @@ export function renderIndexTable(
  * 일간 Phase 분포 바 + 지표 행을 렌더링한다.
  * 주간 빌더의 renderPhase2TrendTable과 달리 단일 스냅샷 기준.
  */
-export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: string): string {
+export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: NarrativeBlock): string {
   const total = data.totalStocks > 0 ? data.totalStocks : 1;
   const p1Pct = ((data.phaseDistribution.phase1 / total) * 100).toFixed(1);
   const p2Pct = ((data.phaseDistribution.phase2 / total) * 100).toFixed(1);
@@ -1132,7 +1157,7 @@ export function renderIndustryTop10Table(data: DailyIndustryItem[]): string {
  */
 export function renderUnusualStocksSection(
   stocks: DailyUnusualStock[],
-  narrative: string,
+  narrative: NarrativeBlock,
   overflowCount?: number,
 ): string {
   const narrativeHtml = renderNarrativeBlock(narrative);
@@ -1213,7 +1238,7 @@ export function renderUnusualStocksSection(
  */
 export function renderRisingRSSection(
   stocks: DailyRisingRSStock[],
-  narrative: string,
+  narrative: NarrativeBlock,
 ): string {
   const narrativeHtml = renderNarrativeBlock(narrative);
 
@@ -1499,7 +1524,7 @@ function renderExpiringRows(
  */
 export function renderWatchlistSection(
   data: DailyWatchlistData,
-  narrative: string,
+  narrative: NarrativeBlock,
 ): string {
   if (data.items.length === 0) {
     return `<div class="empty-state">현재 ACTIVE 관심종목 없음</div>`;
@@ -1705,9 +1730,7 @@ export function renderThesisAlignedSection(
 // ─── 시장 온도 섹션 ─────────────────────────────────────────────────────────
 
 export function renderInsightSection(insight: DailyReportInsight): string {
-  const rationaleHtml = insight.marketTemperatureRationale.trim() !== ""
-    ? `<div class="insight-rationale">${mdToHtml(insight.marketTemperatureRationale)}</div>`
-    : "";
+  const rationaleHtml = renderNarrativeBlock(insight.marketTemperatureRationale);
 
   const todayInsightHtml =
     insight.todayInsight !== "해당 없음" && insight.todayInsight.trim() !== ""
