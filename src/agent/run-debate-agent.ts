@@ -521,12 +521,17 @@ async function main() {
   // 2.6. 검증 후 timeframe 초과 thesis 정리 — 만료 전 정량 판정 시도
   // 순서 중요: verifyTheses가 먼저 실행되어야 검증 기회가 보장됨
   logger.step("[2.6/7] Resolving or expiring stale theses...");
-  const staleResult = await resolveOrExpireStaleTheses(debateDate, marketSnapshot);
-  if (staleResult.resolved > 0 || staleResult.expired > 0) {
-    logger.info(
-      "Thesis",
-      `만료 대상 처리: ${staleResult.resolved}개 정량 판정 해소, ${staleResult.expired}개 EXPIRED`,
-    );
+  try {
+    const staleResult = await resolveOrExpireStaleTheses(debateDate, marketSnapshot);
+    if (staleResult.resolved > 0 || staleResult.expired > 0) {
+      logger.info(
+        "Thesis",
+        `만료 대상 처리: ${staleResult.resolved}개 정량 판정 해소, ${staleResult.expired}개 EXPIRED`,
+      );
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("Thesis", `Stale thesis 만료 처리 실패: ${reason}`);
   }
   // 2.7. 진행률 50%+ 무판정 thesis 안전망 만료 및 LLM 검증 실패 시에도 독립 동작
   try {

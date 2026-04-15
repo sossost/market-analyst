@@ -1,68 +1,43 @@
 import "dotenv/config";
-import { db, pool } from "@/db/client";
-import { theses } from "@/db/schema/analyst";
-import { eq, and, lte, sql } from "drizzle-orm";
+import { pool } from "@/db/client";
+import { resolveOrExpireStaleTheses, expireStalledTheses } from "@/debate/thesisStore";
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { logger } from "@/lib/logger";
 
 const TAG = "VERIFY_THESES";
 
 /**
- * Thesis 검증 ETL.
+ * Thesis 만료 처리 ETL (독립 실행 가능).
  *
- * 흐름:
- * 1. ACTIVE thesis 중 timeframe 도래한 건 조회
- * 2. 만료된 thesis → EXPIRED 처리
+ * debate pipeline(run-debate-agent.ts)과 독립적으로 실행되는 안전망.
+ * pipeline 실패 시에도 stale thesis가 ACTIVE 상태로 체류하지 않도록 보장한다.
  *
- * Note: 실제 시장 데이터 대조 검증은 Phase 2에서 추가 예정.
- * 현재는 timeframe 만료 자동 처리만 수행.
+ * 처리 순서:
+ * 1. timeframe 100% 초과 thesis → EXPIRED (정량 판정 시도 없음 — snapshot 미제공)
+ * 2. 진행률 50%+ 무판정 thesis → EXPIRED (안전망)
  */
 async function main() {
   assertValidEnvironment();
 
   const today = new Date().toISOString().slice(0, 10);
-  logger.info(TAG, `Verify theses — date: ${today}`);
+  logger.info(TAG, `Thesis 만료 처리 시작 — date: ${today}`);
 
-  // 1. ACTIVE thesis 조회
-  const activeTheses = await db
-    .select()
-    .from(theses)
-    .where(eq(theses.status, "ACTIVE"));
+  // 1. timeframe 초과 thesis → EXPIRED (snapshot 없이 호출 → 정량 판정 불가 → 일괄 EXPIRED)
+  const staleResult = await resolveOrExpireStaleTheses(today);
 
-  if (activeTheses.length === 0) {
-    logger.info(TAG, "No active theses. Nothing to verify.");
-    await pool.end();
-    return;
+  // 2. 진행률 50%+ 무판정 thesis → EXPIRED (안전망)
+  const stalledCount = await expireStalledTheses(today);
+
+  const totalExpired = staleResult.expired + stalledCount;
+
+  if (totalExpired > 0) {
+    logger.info(
+      TAG,
+      `처리 완료: ${staleResult.expired}개 timeframe 만료, ${stalledCount}개 stale 안전망 만료`,
+    );
+  } else {
+    logger.info(TAG, "만료 대상 thesis 없음");
   }
-
-  logger.info(TAG, `Active theses: ${activeTheses.length}`);
-
-  let expiredCount = 0;
-
-  // 2. Timeframe 만료 체크
-  for (const thesis of activeTheses) {
-    const debateDate = new Date(thesis.debateDate);
-    const expiryDate = new Date(debateDate);
-    expiryDate.setDate(expiryDate.getDate() + thesis.timeframeDays);
-
-    const isExpired = new Date(today) >= expiryDate;
-
-    if (isExpired) {
-      await db
-        .update(theses)
-        .set({
-          status: "EXPIRED",
-          verificationDate: today,
-          closeReason: `Timeframe (${thesis.timeframeDays}일) 만료 — 검증 미완료`,
-        })
-        .where(eq(theses.id, thesis.id));
-
-      logger.info(TAG, `  EXPIRED: [${thesis.agentPersona}] ${thesis.thesis.slice(0, 60)}...`);
-      expiredCount++;
-    }
-  }
-
-  logger.info(TAG, `Results: ${expiredCount} expired, ${activeTheses.length - expiredCount} still active`);
 
   await pool.end();
 }

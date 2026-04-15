@@ -395,6 +395,18 @@ describe("thesisStore", () => {
       );
     });
 
+    it("includes verificationResult for tracking", async () => {
+      mockUpdateReturning.mockResolvedValueOnce([{ id: 1 }]);
+
+      await expireStaleTheses("2026-04-15");
+
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          verificationResult: expect.stringContaining("Timeframe 만료"),
+        }),
+      );
+    });
+
     it("returns 0 when no theses expired", async () => {
       mockUpdateReturning.mockResolvedValueOnce([]);
 
