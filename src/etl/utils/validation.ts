@@ -209,11 +209,15 @@ export function validatePriceData(priceData: Record<string, unknown>): Validatio
     }
   }
 
-  if (
-    typeof priceData.date === "string" &&
-    !/^\d{4}-\d{2}-\d{2}$/.test(priceData.date)
-  ) {
-    errors.push(`Invalid date format: ${priceData.date}`);
+  if (typeof priceData.date === "string") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(priceData.date)) {
+      errors.push(`Invalid date format: ${priceData.date}`);
+    } else {
+      const day = new Date(priceData.date).getUTCDay();
+      if (day === 0 || day === 6) {
+        warnings.push(`Weekend date detected: ${priceData.date}`);
+      }
+    }
   }
 
   if (priceData.volume != null) {

@@ -1,9 +1,21 @@
 import { db } from "@/db/client";
 import { sql } from "drizzle-orm";
 
+const SATURDAY = 6;
+const SUNDAY = 0;
+
 interface DateRow {
   result_date?: string;
   [key: string]: unknown;
+}
+
+/**
+ * Check if a date string (YYYY-MM-DD) falls on a weekend (Saturday or Sunday).
+ * Uses UTC to avoid local timezone issues.
+ */
+export function isWeekendDate(dateStr: string): boolean {
+  const day = new Date(dateStr).getUTCDay();
+  return day === SATURDAY || day === SUNDAY;
 }
 
 /**
@@ -15,6 +27,7 @@ export async function getLatestTradeDate(): Promise<string | null> {
     SELECT MAX(sp.date)::text AS result_date
     FROM stock_phases sp
     WHERE EXISTS (SELECT 1 FROM daily_prices dp WHERE dp.date = sp.date)
+      AND EXTRACT(DOW FROM sp.date) NOT IN (0, 6)
   `);
   const row = result.rows[0] as DateRow | undefined;
   return row?.result_date ?? null;
@@ -35,6 +48,7 @@ export async function getLatestPriceDate(): Promise<string | null> {
   const result = await db.execute(sql`
     SELECT MAX(date)::text AS result_date
     FROM daily_prices
+    WHERE EXTRACT(DOW FROM date) NOT IN (0, 6)
   `);
   const row = result.rows[0] as DateRow | undefined;
   return row?.result_date ?? null;
@@ -54,6 +68,7 @@ export async function getPreviousTradeDate(
     SELECT MAX(date)::text AS result_date
     FROM daily_prices
     WHERE date < ${currentDate}
+      AND EXTRACT(DOW FROM date) NOT IN (0, 6)
   `);
   const row = result.rows[0] as DateRow | undefined;
   return row?.result_date ?? null;
