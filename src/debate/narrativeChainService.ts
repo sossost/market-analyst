@@ -13,6 +13,8 @@ import {
 } from "@/tools/sectorAlphaGate";
 import { getActiveMetaRegimes, extractKeywords } from "@/debate/metaRegimeService";
 
+const MIN_KEYWORD_OVERLAP = 3;
+
 /**
  * Jaccard word similarity between two strings.
  * Splits on whitespace, computes |intersection| / |union|.
@@ -185,8 +187,6 @@ interface MatchingChain {
   bottleneckIdentifiedAt: Date;
   metaRegimeId: number | null;
 }
-
-const MIN_KEYWORD_OVERLAP = 3;
 
 export async function findMatchingChain(
   input: { megatrend: string; bottleneck: string },

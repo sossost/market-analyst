@@ -286,7 +286,7 @@ function extractMegatrendKeywords(text: string): Set<string> {
   );
 }
 
-const MIN_MEGATREND_OVERLAP = 2;
+const MIN_MEGATREND_OVERLAP = 3;
 
 /** Active chain statuses used for linking and regime creation. */
 const ACTIVE_CHAIN_STATUSES: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
@@ -857,7 +857,7 @@ type UnlinkedChain = {
 export function groupChainsByMegatrend(
   chains: UnlinkedChain[],
 ): Map<string, UnlinkedChain[]> {
-  const MIN_OVERLAP = 2;
+  const MIN_OVERLAP = 3;
   const groups: Array<{ keywords: Set<string>; chains: UnlinkedChain[] }> = [];
 
   for (const chain of chains) {
