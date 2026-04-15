@@ -3,17 +3,19 @@ import type { GitHubIssue } from '@/issue-processor/types'
 
 vi.mock('@/issue-processor/githubClient', () => ({
   fetchUnprocessedIssues: vi.fn(),
+  fetchTriageComment: vi.fn(),
 }))
 
 vi.mock('@/issue-processor/executeIssue', () => ({
   executeIssue: vi.fn(),
 }))
 
-import { fetchUnprocessedIssues } from '@/issue-processor/githubClient'
+import { fetchUnprocessedIssues, fetchTriageComment } from '@/issue-processor/githubClient'
 import { executeIssue } from '@/issue-processor/executeIssue'
 import { processIssues } from '@/issue-processor/index'
 
 const mockFetchUnprocessed = vi.mocked(fetchUnprocessedIssues)
+const mockFetchTriageComment = vi.mocked(fetchTriageComment)
 const mockExecuteIssue = vi.mocked(executeIssue)
 
 function makeIssue(number: number): GitHubIssue {
@@ -41,7 +43,8 @@ describe('processIssues', () => {
     await processIssues()
 
     expect(mockFetchUnprocessed).toHaveBeenCalledOnce()
-    expect(mockExecuteIssue).toHaveBeenCalledWith(makeIssue(1))
+    expect(mockFetchTriageComment).toHaveBeenCalledWith(1)
+    expect(mockExecuteIssue).toHaveBeenCalledWith(makeIssue(1), undefined)
   })
 
   it('최대 MAX_ISSUES_PER_CYCLE건만 실행한다', async () => {

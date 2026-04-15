@@ -24,7 +24,7 @@ function createSymbol(overrides: Partial<ReportedSymbol> = {}): ReportedSymbol {
 
 function createSummary(overrides: Partial<MarketSummary> = {}): MarketSummary {
   return {
-    phase2Ratio: 0.35,
+    phase2Ratio: 35,
     leadingSectors: ["Technology", "Healthcare"],
     totalAnalyzed: 500,
     ...overrides,
@@ -86,7 +86,7 @@ describe("formatReportedSymbols", () => {
 describe("formatMarketSummary", () => {
   it("시장 요약을 마크다운 형식으로 포맷한다", () => {
     const summary = createSummary({
-      phase2Ratio: 0.35,
+      phase2Ratio: 35,
       leadingSectors: ["Technology", "Healthcare"],
       totalAnalyzed: 500,
     });
@@ -107,7 +107,7 @@ describe("formatMarketSummary", () => {
     expect(result).toContain("주도 섹터: 없음");
   });
 
-  it("Phase 2 비율 0%를 정확히 표시한다", () => {
+  it("Phase 2 비율 0.0%를 정확히 표시한다", () => {
     const summary = createSummary({ phase2Ratio: 0 });
 
     const result = formatMarketSummary(summary);
@@ -116,7 +116,7 @@ describe("formatMarketSummary", () => {
   });
 
   it("Phase 2 비율 100%를 정확히 표시한다", () => {
-    const summary = createSummary({ phase2Ratio: 1.0 });
+    const summary = createSummary({ phase2Ratio: 100 });
 
     const result = formatMarketSummary(summary);
 

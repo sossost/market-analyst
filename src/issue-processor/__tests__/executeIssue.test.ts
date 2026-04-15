@@ -39,8 +39,7 @@ describe('buildClaudePrompt — 프로토콜 통일 검증', () => {
   const issue = { number: 99, title: 'feat: 테스트', body: '테스트 본문', labels: [], author: 'test' }
   const prompt = buildClaudePrompt(issue, 'feat')
 
-  it('기획서(plan.md) 작성 지시를 포함한다', () => {
-    expect(prompt).toContain('plan.md')
+  it('기획서 작성 지시를 포함한다', () => {
     expect(prompt).toContain('기획서')
   })
 
@@ -117,7 +116,7 @@ describe('buildClaudePrompt — triageComment 연동', () => {
   it('triageComment가 있어도 기본 프로토콜은 유지한다', () => {
     const prompt = buildClaudePrompt(issue, 'feat', '분석')
 
-    expect(prompt).toContain('plan.md')
+    expect(prompt).toContain('기획서')
     expect(prompt).toContain('셀프 리뷰')
     expect(prompt).toContain('git checkout main')
     expect(prompt).toContain('untrusted-issue')

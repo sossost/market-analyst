@@ -259,7 +259,7 @@ describe("renderIndexTable", () => {
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    expect(result).toContain("Fear &amp; Greed");
+    expect(result).toContain("공포탐욕");
     expect(result).toContain("72");
     expect(result).toContain("Greed");
     // 그리드 내 index-card로 통합됨 (fear-greed-row 아님)
@@ -269,7 +269,7 @@ describe("renderIndexTable", () => {
   it("fearGreed null: Fear & Greed 카드가 없다", () => {
     const result = renderIndexTable([createMockIndexReturn()], null);
 
-    expect(result).not.toContain("Fear &amp; Greed");
+    expect(result).not.toContain("공포탐욕");
   });
 
   it("양수 변화율에 up 클래스가 적용된다", () => {
@@ -501,7 +501,7 @@ describe("renderIndexTable — 10Y/DXY/FearGreed 카드", () => {
 
     // 그리드 안에 Fear & Greed 카드가 있어야 함
     const gridContent = result.match(/class="index-grid">([\s\S]*)<\/div>/)?.[1] ?? "";
-    expect(gridContent).toContain("Fear &amp; Greed");
+    expect(gridContent).toContain("공포탐욕");
   });
 
   it("4×2 배치: 8개 항목(4지수+VIX+10Y+DXY+FearGreed) 모두 index-card로 렌더링된다", () => {

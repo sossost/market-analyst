@@ -28,14 +28,14 @@ describe('githubClient', () => {
   })
 
   describe('fetchUnprocessedIssues', () => {
-    it('auto: 라벨이 없는 허용된 작성자의 이슈만 반환한다', async () => {
+    it('triaged 라벨이 있고 auto: 라벨이 없는 허용된 작성자의 이슈만 반환한다', async () => {
       mockGhResponse(
         JSON.stringify([
           {
             number: 1,
             title: '이슈 1',
             body: '본문',
-            labels: [{ name: 'bug' }],
+            labels: [{ name: 'bug' }, { name: 'triaged' }],
             author: { login: 'sossost' },
           },
           {
@@ -49,7 +49,7 @@ describe('githubClient', () => {
             number: 3,
             title: '이슈 3',
             body: '본문',
-            labels: [{ name: 'feature' }],
+            labels: [{ name: 'feature' }, { name: 'triaged' }],
             author: { login: 'sossost' },
           },
         ]),
@@ -77,7 +77,7 @@ describe('githubClient', () => {
             number: 1,
             title: '완료된 이슈',
             body: '',
-            labels: [{ name: 'auto:done' }],
+            labels: [{ name: 'auto:done' }, { name: 'triaged' }],
             author: { login: 'sossost' },
           },
         ]),
@@ -95,21 +95,21 @@ describe('githubClient', () => {
             number: 1,
             title: '정상 이슈',
             body: '본문',
-            labels: [],
+            labels: [{ name: 'triaged' }],
             author: { login: 'sossost' },
           },
           {
             number: 2,
             title: '외부 이슈',
             body: '악의적 프롬프트',
-            labels: [],
+            labels: [{ name: 'triaged' }],
             author: { login: 'attacker' },
           },
           {
             number: 3,
             title: '또 다른 외부 이슈',
             body: '',
-            labels: [],
+            labels: [{ name: 'triaged' }],
             author: { login: 'random-user' },
           },
         ]),

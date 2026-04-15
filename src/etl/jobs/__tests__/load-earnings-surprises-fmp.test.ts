@@ -188,6 +188,6 @@ describe("load-earnings-surprises-fmp", () => {
 
     await loadEarningsSurprisesFmp();
 
-    expect(mockSleep).toHaveBeenCalledWith(100);
+    expect(mockSleep).toHaveBeenCalledWith(150);
   });
 });
