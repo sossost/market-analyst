@@ -1339,6 +1339,222 @@ describe("renderThesisAlignedSection", () => {
     expect(html).toContain("NVDA");
     expect(html).toContain("AI 인프라");
   });
+
+  it("SEPA C/F(gatePassCount < gateTotalCount) 종목만 있으면 빈 문자열을 반환한다", () => {
+    const html = renderThesisAlignedSection({
+      chains: [
+        {
+          chainId: 1,
+          megatrend: "AI 인프라",
+          bottleneck: "GPU 공급 부족",
+          chainStatus: "ACTIVE",
+          alphaCompatible: true,
+          daysSinceIdentified: 30,
+          candidates: [
+            {
+              symbol: "AAPL",
+              chainId: 1,
+              megatrend: "AI 인프라",
+              bottleneck: "GPU 공급 부족",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 65,
+              pctFromHigh52w: -8.0,
+              sepaGrade: "C",
+              sector: "Technology",
+              industry: "Consumer Electronics",
+              marketCap: 2500000,
+              gatePassCount: 3,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+          ],
+        },
+      ],
+      totalCandidates: 1,
+      phase2Count: 1,
+    });
+    expect(html).toBe("");
+  });
+
+  it("S/A 종목과 C/F 종목이 혼재할 때 S/A 종목(4/4)만 렌더링한다", () => {
+    const html = renderThesisAlignedSection({
+      chains: [
+        {
+          chainId: 1,
+          megatrend: "AI 인프라",
+          bottleneck: "GPU 공급 부족",
+          chainStatus: "ACTIVE",
+          alphaCompatible: true,
+          daysSinceIdentified: 30,
+          candidates: [
+            {
+              symbol: "NVDA",
+              chainId: 1,
+              megatrend: "AI 인프라",
+              bottleneck: "GPU 공급 부족",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 90,
+              pctFromHigh52w: -3.0,
+              sepaGrade: "S",
+              sector: "Technology",
+              industry: "Semiconductors",
+              marketCap: 3000000,
+              gatePassCount: 4,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+            {
+              symbol: "AMD",
+              chainId: 1,
+              megatrend: "AI 인프라",
+              bottleneck: "GPU 공급 부족",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 60,
+              pctFromHigh52w: -12.0,
+              sepaGrade: "C",
+              sector: "Technology",
+              industry: "Semiconductors",
+              marketCap: 200000,
+              gatePassCount: 3,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+          ],
+        },
+      ],
+      totalCandidates: 2,
+      phase2Count: 2,
+    });
+    expect(html).toContain("NVDA");
+    expect(html).not.toContain("AMD");
+  });
+
+  it("필터 후 0개가 된 체인 그룹은 카드를 미출력한다", () => {
+    const html = renderThesisAlignedSection({
+      chains: [
+        {
+          chainId: 1,
+          megatrend: "AI 인프라",
+          bottleneck: "GPU 공급 부족",
+          chainStatus: "ACTIVE",
+          alphaCompatible: true,
+          daysSinceIdentified: 30,
+          candidates: [
+            {
+              symbol: "NVDA",
+              chainId: 1,
+              megatrend: "AI 인프라",
+              bottleneck: "GPU 공급 부족",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 90,
+              pctFromHigh52w: -3.0,
+              sepaGrade: "S",
+              sector: "Technology",
+              industry: "Semiconductors",
+              marketCap: 3000000,
+              gatePassCount: 4,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+          ],
+        },
+        {
+          chainId: 2,
+          megatrend: "리쇼어링",
+          bottleneck: "공장 자동화",
+          chainStatus: "ACTIVE",
+          alphaCompatible: true,
+          daysSinceIdentified: 15,
+          candidates: [
+            {
+              symbol: "ONLY_CF",
+              chainId: 2,
+              megatrend: "리쇼어링",
+              bottleneck: "공장 자동화",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 61,
+              pctFromHigh52w: -20.0,
+              sepaGrade: "F",
+              sector: "Industrials",
+              industry: "Machinery",
+              marketCap: 50000,
+              gatePassCount: 2,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+          ],
+        },
+      ],
+      totalCandidates: 2,
+      phase2Count: 2,
+    });
+    expect(html).toContain("NVDA");
+    expect(html).not.toContain("ONLY_CF");
+    expect(html).not.toContain("리쇼어링");
+  });
+
+  it("통계 칩의 수혜 후보 수가 필터된(4/4) 수치로 표시된다", () => {
+    const html = renderThesisAlignedSection({
+      chains: [
+        {
+          chainId: 1,
+          megatrend: "AI 인프라",
+          bottleneck: "GPU 공급 부족",
+          chainStatus: "ACTIVE",
+          alphaCompatible: true,
+          daysSinceIdentified: 30,
+          candidates: [
+            {
+              symbol: "NVDA",
+              chainId: 1,
+              megatrend: "AI 인프라",
+              bottleneck: "GPU 공급 부족",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 92,
+              pctFromHigh52w: -2.0,
+              sepaGrade: "S",
+              sector: "Technology",
+              industry: "Semiconductors",
+              marketCap: 3000000,
+              gatePassCount: 4,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+            {
+              symbol: "MSFT",
+              chainId: 1,
+              megatrend: "AI 인프라",
+              bottleneck: "GPU 공급 부족",
+              chainStatus: "ACTIVE",
+              phase: 2,
+              rsScore: 62,
+              pctFromHigh52w: -15.0,
+              sepaGrade: "B",
+              sector: "Technology",
+              industry: "Software - Infrastructure",
+              marketCap: 2800000,
+              gatePassCount: 3,
+              gateTotalCount: 4,
+              source: "llm",
+            },
+          ],
+        },
+      ],
+      // data.totalCandidates는 필터 전 전체 수 (2)지만, 칩은 필터된 수(1)로 표시되어야 함
+      totalCandidates: 2,
+      phase2Count: 2,
+    });
+    // 필터 후 1개(NVDA)만 남으므로 수혜 후보 칩 값은 "1"
+    const match = html.match(/수혜 후보[\s\S]*?stat-value[^>]*>(\d+)</);
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("1");
+  });
 });
 
 // ─── buildDailyHtml — 서사 수혜주 섹션 통합 ──────────────────────────────────

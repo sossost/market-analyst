@@ -545,10 +545,14 @@ async function main() {
   logger.step("[7/8] Saving to DB...");
   const executionTime = Date.now() - startTime;
   // thesis_aligned 후보의 고유 심볼 수집 (체인 간 중복 제거)
+  // SEPA S/A(4/4 게이트 충족) 종목만 저장 — 렌더링과 동일 기준 적용
   const thesisAlignedSymbols = new Map<string, { phase: number; rsScore: number; sector: string; industry: string }>();
   if (data.thesisAlignedCandidates != null) {
     for (const chain of data.thesisAlignedCandidates.chains) {
       for (const c of chain.candidates) {
+        if (c.gatePassCount !== c.gateTotalCount) {
+          continue;
+        }
         if (!thesisAlignedSymbols.has(c.symbol)) {
           thesisAlignedSymbols.set(c.symbol, {
             phase: c.phase ?? 0,
