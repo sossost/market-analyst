@@ -3,6 +3,8 @@
 // DB 의존성 없음. 입력값만으로 동작.
 // ---------------------------------------------------------------------------
 
+import type { NarrativeBlock } from "@/tools/schemas/dailyReportSchema.js";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -309,10 +311,10 @@ export function runFactCheck(dbData: DbData, reportData: ReportData): FactCheckR
 // ---------------------------------------------------------------------------
 
 export interface ContentQAInsight {
-  breadthNarrative: string;
-  unusualStocksNarrative: string;
-  risingRSNarrative: string;
-  watchlistNarrative: string;
+  breadthNarrative: NarrativeBlock;
+  unusualStocksNarrative: NarrativeBlock;
+  risingRSNarrative: NarrativeBlock;
+  watchlistNarrative: NarrativeBlock;
 }
 
 export interface ContentQABreadthData {
@@ -367,7 +369,7 @@ export function checkNarrativePresence(
 ): Mismatch[] {
   const mismatches: Mismatch[] = [];
 
-  const checks: Array<{ field: string; narrative: string; condition: boolean }> = [
+  const checks: Array<{ field: string; narrative: NarrativeBlock; condition: boolean }> = [
     { field: "breadthNarrative", narrative: insight.breadthNarrative, condition: true },
     { field: "unusualStocksNarrative", narrative: insight.unusualStocksNarrative, condition: dataCounts.unusualStocksCount > 0 },
     { field: "risingRSNarrative", narrative: insight.risingRSNarrative, condition: dataCounts.risingRSCount > 0 },
@@ -377,11 +379,12 @@ export function checkNarrativePresence(
   for (const check of checks) {
     if (!check.condition) continue;
     if (isNarrativeEmpty(check.narrative)) {
+      const combined = `${check.narrative.headline} ${check.narrative.detail}`.trim();
       mismatches.push({
         type: "narrative_missing",
         field: check.field,
         expected: "비어있지 않은 나레이션",
-        actual: check.narrative || "(빈 문자열)",
+        actual: combined !== "" ? combined : "(빈 블록)",
         severity: "warn",
       });
     }
@@ -390,10 +393,10 @@ export function checkNarrativePresence(
   return mismatches;
 }
 
-function isNarrativeEmpty(narrative: string): boolean {
-  if (narrative == null) return true;
-  const trimmed = narrative.trim();
-  return trimmed === "" || trimmed === "해당 없음";
+function isNarrativeEmpty(narrative: NarrativeBlock | null | undefined): boolean {
+  if (narrative === null || narrative === undefined) return true;
+  const headline = narrative.headline.trim();
+  return headline === "" || headline === "해당 없음";
 }
 
 // ---------------------------------------------------------------------------
@@ -421,8 +424,9 @@ export function checkToneConsistency(
     return mismatches;
   }
 
-  const hasPositive = POSITIVE_KEYWORDS.some((kw) => narrative.includes(kw));
-  const hasNegative = NEGATIVE_KEYWORDS.some((kw) => narrative.includes(kw));
+  const narrativeText = `${narrative.headline} ${narrative.detail}`;
+  const hasPositive = POSITIVE_KEYWORDS.some((kw) => narrativeText.includes(kw));
+  const hasNegative = NEGATIVE_KEYWORDS.some((kw) => narrativeText.includes(kw));
 
   // 규칙 1: 강한 Phase 2 순유입인데 양의 키워드 부재
   if (

@@ -22,6 +22,11 @@ import {
   type ContentQADataCounts,
   type ContentQAInput,
 } from "../factChecker";
+import type { NarrativeBlock } from "@/tools/schemas/dailyReportSchema.js";
+
+function makeNarrative(headline: string, detail = ""): NarrativeBlock {
+  return { headline, detail };
+}
 
 // ---------------------------------------------------------------------------
 // compareSectors
@@ -587,10 +592,10 @@ describe("runFactCheck", () => {
 
 describe("checkNarrativePresence", () => {
   const fullInsight: ContentQAInsight = {
-    breadthNarrative: "Phase 2 비율이 상승하며 시장 브레드스가 개선되고 있다.",
-    unusualStocksNarrative: "반도체 섹터에서 거래량 급증 종목이 집중되고 있다.",
-    risingRSNarrative: "헬스케어 업종에서 RS 상승 초기 종목이 다수 발견된다.",
-    watchlistNarrative: "관심종목 3개 중 2개가 Phase 2를 유지하고 있다.",
+    breadthNarrative: makeNarrative("Phase 2 비율이 상승하며 시장 브레드스가 개선되고 있다."),
+    unusualStocksNarrative: makeNarrative("반도체 섹터에서 거래량 급증 종목이 집중되고 있다."),
+    risingRSNarrative: makeNarrative("헬스케어 업종에서 RS 상승 초기 종목이 다수 발견된다."),
+    watchlistNarrative: makeNarrative("관심종목 3개 중 2개가 Phase 2를 유지하고 있다."),
   };
 
   const dataCounts: ContentQADataCounts = {
@@ -605,7 +610,7 @@ describe("checkNarrativePresence", () => {
   });
 
   it("breadthNarrative가 비어있으면 warn 반환", () => {
-    const insight = { ...fullInsight, breadthNarrative: "" };
+    const insight = { ...fullInsight, breadthNarrative: makeNarrative("") };
     const result = checkNarrativePresence(insight, dataCounts);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("narrative_missing");
@@ -614,43 +619,47 @@ describe("checkNarrativePresence", () => {
   });
 
   it("'해당 없음'은 비어있는 것으로 취급", () => {
-    const insight = { ...fullInsight, breadthNarrative: "해당 없음" };
+    const insight = { ...fullInsight, breadthNarrative: makeNarrative("해당 없음") };
     const result = checkNarrativePresence(insight, dataCounts);
     expect(result).toHaveLength(1);
     expect(result[0].field).toBe("breadthNarrative");
   });
 
   it("unusualStocks가 0건이면 unusualStocksNarrative 검증 스킵", () => {
-    const insight = { ...fullInsight, unusualStocksNarrative: "" };
+    const insight = { ...fullInsight, unusualStocksNarrative: makeNarrative("") };
     const counts = { ...dataCounts, unusualStocksCount: 0 };
     const result = checkNarrativePresence(insight, counts);
     expect(result).toHaveLength(0);
   });
 
   it("risingRS가 0건이면 risingRSNarrative 검증 스킵", () => {
-    const insight = { ...fullInsight, risingRSNarrative: "" };
+    const insight = { ...fullInsight, risingRSNarrative: makeNarrative("") };
     const counts = { ...dataCounts, risingRSCount: 0 };
     const result = checkNarrativePresence(insight, counts);
     expect(result).toHaveLength(0);
   });
 
   it("watchlist가 0건이면 watchlistNarrative 검증 스킵", () => {
-    const insight = { ...fullInsight, watchlistNarrative: "" };
+    const insight = { ...fullInsight, watchlistNarrative: makeNarrative("") };
     const counts = { ...dataCounts, watchlistActiveCount: 0 };
     const result = checkNarrativePresence(insight, counts);
     expect(result).toHaveLength(0);
   });
 
   it("여러 나레이션이 동시에 비어있으면 각각 mismatch 반환", () => {
-    const insight = { ...fullInsight, breadthNarrative: "", unusualStocksNarrative: "해당 없음" };
+    const insight = {
+      ...fullInsight,
+      breadthNarrative: makeNarrative(""),
+      unusualStocksNarrative: makeNarrative("해당 없음"),
+    };
     const result = checkNarrativePresence(insight, dataCounts);
     expect(result).toHaveLength(2);
     expect(result.map((m) => m.field)).toContain("breadthNarrative");
     expect(result.map((m) => m.field)).toContain("unusualStocksNarrative");
   });
 
-  it("공백만 있는 나레이션은 비어있는 것으로 취급", () => {
-    const insight = { ...fullInsight, breadthNarrative: "   " };
+  it("공백만 있는 나레이션 headline은 비어있는 것으로 취급", () => {
+    const insight = { ...fullInsight, breadthNarrative: makeNarrative("   ") };
     const result = checkNarrativePresence(insight, dataCounts);
     expect(result).toHaveLength(1);
   });
@@ -661,12 +670,14 @@ describe("checkNarrativePresence", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkToneConsistency", () => {
+  const emptyNarrative = makeNarrative("");
+
   it("강한 Phase 2 순유입인데 양의 키워드 있으면 mismatch 없음", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "Phase 2 순유입이 크게 증가하며 시장 참여가 활발해지고 있다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("Phase 2 순유입이 크게 증가하며 시장 참여가 활발해지고 있다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: 2.5,
@@ -679,10 +690,10 @@ describe("checkToneConsistency", () => {
 
   it("강한 Phase 2 순유입(5일평균 2배+)인데 양의 키워드 없으면 warn", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "시장은 현재 관망세를 보이고 있다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("시장은 현재 관망세를 보이고 있다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: 2.5,
@@ -696,10 +707,10 @@ describe("checkToneConsistency", () => {
 
   it("Phase 2 순유입이 2배 미만이면 규칙1 스킵", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "시장은 현재 관망세를 보이고 있다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("시장은 현재 관망세를 보이고 있다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: 1.0,
@@ -712,10 +723,10 @@ describe("checkToneConsistency", () => {
 
   it("phase2NetFlow가 null이면 규칙1 스킵", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "시장은 약세를 보이고 있다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("시장은 약세를 보이고 있다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: -1.0,
@@ -728,10 +739,10 @@ describe("checkToneConsistency", () => {
 
   it("Phase 2 비율 양의 변화인데 부정 키워드만 → warn", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "시장은 악화되고 위축된 상태가 지속되고 있다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("시장은 악화되고 위축된 상태가 지속되고 있다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: 3.0,
@@ -744,10 +755,10 @@ describe("checkToneConsistency", () => {
 
   it("Phase 2 비율 양의 변화 + 양의 키워드 + 부정 키워드 혼재 → 규칙2 통과", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "브레드스가 개선되고 있지만 일부 섹터에서 약세가 보인다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("브레드스가 개선되고 있지만 일부 섹터에서 약세가 보인다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: 2.0,
@@ -760,10 +771,10 @@ describe("checkToneConsistency", () => {
 
   it("Phase 2 비율 음의 변화이면 규칙2 스킵", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "시장은 악화되고 있다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("시장은 악화되고 있다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: -2.0,
@@ -776,10 +787,10 @@ describe("checkToneConsistency", () => {
 
   it("나레이션이 비어있으면 톤 검증 스킵", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: emptyNarrative,
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: 5.0,
@@ -792,10 +803,10 @@ describe("checkToneConsistency", () => {
 
   it("phase2EntryAvg5d가 0이면 규칙1 스킵 (0으로 나눗셈 방지)", () => {
     const insight: ContentQAInsight = {
-      breadthNarrative: "시장은 관망세이다.",
-      unusualStocksNarrative: "",
-      risingRSNarrative: "",
-      watchlistNarrative: "",
+      breadthNarrative: makeNarrative("시장은 관망세이다."),
+      unusualStocksNarrative: emptyNarrative,
+      risingRSNarrative: emptyNarrative,
+      watchlistNarrative: emptyNarrative,
     };
     const breadthData: ContentQABreadthData = {
       phase2RatioChange: 1.0,
@@ -878,12 +889,14 @@ describe("checkRenderCompleteness", () => {
 // ---------------------------------------------------------------------------
 
 describe("runContentQA", () => {
+  const emptyNarrative = makeNarrative("");
+
   const baseInput: ContentQAInput = {
     insight: {
-      breadthNarrative: "Phase 2 비율이 증가하며 시장이 개선되고 있다.",
-      unusualStocksNarrative: "반도체 섹터에서 특이 움직임.",
-      risingRSNarrative: "헬스케어 업종 RS 상승 초기.",
-      watchlistNarrative: "관심종목 현황 양호.",
+      breadthNarrative: makeNarrative("Phase 2 비율이 증가하며 시장이 개선되고 있다."),
+      unusualStocksNarrative: makeNarrative("반도체 섹터에서 특이 움직임."),
+      risingRSNarrative: makeNarrative("헬스케어 업종 RS 상승 초기."),
+      watchlistNarrative: makeNarrative("관심종목 현황 양호."),
     },
     breadthData: {
       phase2RatioChange: 1.0,
@@ -919,7 +932,7 @@ describe("runContentQA", () => {
   it("나레이션 누락 1건이면 severity warn", () => {
     const input = {
       ...baseInput,
-      insight: { ...baseInput.insight, breadthNarrative: "" },
+      insight: { ...baseInput.insight, breadthNarrative: emptyNarrative },
     };
     const result = runContentQA(input);
     expect(result.severity).toBe("warn");
@@ -930,10 +943,10 @@ describe("runContentQA", () => {
     const input: ContentQAInput = {
       ...baseInput,
       insight: {
-        breadthNarrative: "시장은 악화되고 있다.",
-        unusualStocksNarrative: "",
-        risingRSNarrative: "RS 상승 초기.",
-        watchlistNarrative: "관심종목 현황.",
+        breadthNarrative: makeNarrative("시장은 악화되고 있다."),
+        unusualStocksNarrative: emptyNarrative,
+        risingRSNarrative: makeNarrative("RS 상승 초기."),
+        watchlistNarrative: makeNarrative("관심종목 현황."),
       },
       breadthData: {
         phase2RatioChange: 3.0,

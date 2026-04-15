@@ -311,6 +311,30 @@ export interface DailyReportData {
 type MarketTemperature = "bullish" | "neutral" | "bearish";
 
 /**
+ * LLM 해석을 headline(핵심 판단 한줄) + detail(정량 근거)로 계층화한 블록.
+ * headline: 투자자 눈높이 한줄 요약, 0.95rem 굵게 렌더링.
+ * detail: 2~3문장 정량 근거, 0.82rem 연한 색 렌더링.
+ */
+export interface NarrativeBlock {
+  headline: string;
+  detail: string;
+}
+
+/**
+ * 값이 NarrativeBlock 형태인지 타입 안전하게 검사한다.
+ */
+export function isNarrativeBlock(v: unknown): v is NarrativeBlock {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "headline" in v &&
+    "detail" in v &&
+    typeof (v as Record<string, unknown>)["headline"] === "string" &&
+    typeof (v as Record<string, unknown>)["detail"] === "string"
+  );
+}
+
+/**
  * LLM이 작성하는 해석 블록.
  * 숫자 계산, 테이블 렌더링, 카운팅 금지.
  * 텍스트 판단과 서사만 작성한다.
@@ -320,20 +344,41 @@ export interface DailyReportInsight {
   marketTemperature: MarketTemperature;
   /** 시장 온도 레이블 — e.g. "약세 — 하락 3일째" */
   marketTemperatureLabel: string;
-  /** 시장 온도 판단 근거. 2~3문장. 데이터 나열 금지, 해석만. */
-  marketTemperatureRationale: string;
-  /** 특이종목 공통 테마 또는 이질적 패턴 해석. 2~3문장. 없으면 "해당 없음". */
-  unusualStocksNarrative: string;
-  /** RS 상승 초기 종목군의 공통 업종/테마 관찰. 1~2문장. 없으면 "해당 없음". */
-  risingRSNarrative: string;
-  /** ACTIVE 관심종목 서사 유효성. 1~2문장. 없으면 "해당 없음". */
-  watchlistNarrative: string;
+  /** 시장 온도 판단 근거. headline: 핵심 판단 한줄. detail: 2~3문장 근거. */
+  marketTemperatureRationale: NarrativeBlock;
+  /** 특이종목 공통 테마 또는 이질적 패턴 해석. headline: 테마 요약. detail: 2~3문장 패턴 근거. */
+  unusualStocksNarrative: NarrativeBlock;
+  /** RS 상승 초기 종목군의 공통 업종/테마 관찰. headline: 업종/테마 방향. detail: 1~2문장 근거. */
+  risingRSNarrative: NarrativeBlock;
+  /** ACTIVE 관심종목 서사 유효성. headline: 이벤트 의미. detail: 1~2문장 배경. */
+  watchlistNarrative: NarrativeBlock;
   /** 토론 인사이트가 있는 경우 2~3문장 핵심만. 없으면 "해당 없음". */
   todayInsight: string;
-  /** 브레드스 추세 + 맥락 한줄 해석. 1~2문장. 없으면 "해당 없음". */
-  breadthNarrative: string;
+  /** 브레드스 추세 + 맥락 한줄 해석. headline: 브레드스 판단. detail: 1~2문장 근거. */
+  breadthNarrative: NarrativeBlock;
   /** Discord 핵심 요약. 3~5줄. 지수 변화 + Phase2 비율 + 특이종목 수 요약. 링크 금지. */
   discordMessage: string;
+}
+
+/**
+ * unknown 값을 NarrativeBlock으로 변환한다.
+ * - 이미 NarrativeBlock이면 그대로 반환
+ * - string이면 { headline: string, detail: "" } 로 변환 (하위 호환 폴백)
+ * - 그 외는 기본값 반환
+ */
+function parseNarrative(raw: unknown): NarrativeBlock {
+  if (isNarrativeBlock(raw)) return raw;
+  if (typeof raw === "string" && raw !== "") return { headline: raw, detail: "" };
+  return { headline: "해당 없음", detail: "" };
+}
+
+/**
+ * marketTemperatureRationale은 항상 렌더링되므로 "해당 없음" 대신 빈 블록 반환.
+ * 다른 narrative 필드와 달리 헤드라인이 없으면 섹션 자체가 비어 보이는 문제를 방지한다.
+ */
+function parseRationale(raw: unknown): NarrativeBlock {
+  const parsed = parseNarrative(raw);
+  return parsed.headline === "해당 없음" ? { headline: "", detail: "" } : parsed;
 }
 
 /**
@@ -343,17 +388,7 @@ export interface DailyReportInsight {
 export function fillInsightDefaults(
   raw: Record<string, unknown>,
 ): DailyReportInsight {
-  const defaults: DailyReportInsight = {
-    marketTemperature: "neutral",
-    marketTemperatureLabel: "중립 — 관망",
-    marketTemperatureRationale: "",
-    unusualStocksNarrative: "해당 없음",
-    risingRSNarrative: "해당 없음",
-    watchlistNarrative: "해당 없음",
-    todayInsight: "해당 없음",
-    breadthNarrative: "해당 없음",
-    discordMessage: "",
-  };
+  const NARRATIVE_DEFAULT: NarrativeBlock = { headline: "해당 없음", detail: "" };
 
   const validTemperatures: MarketTemperature[] = ["bullish", "neutral", "bearish"];
   const temperature = raw["marketTemperature"];
@@ -361,38 +396,23 @@ export function fillInsightDefaults(
   return {
     marketTemperature: validTemperatures.includes(temperature as MarketTemperature)
       ? (temperature as MarketTemperature)
-      : defaults.marketTemperature,
+      : "neutral",
     marketTemperatureLabel:
       typeof raw["marketTemperatureLabel"] === "string" && raw["marketTemperatureLabel"] !== ""
         ? raw["marketTemperatureLabel"]
-        : defaults.marketTemperatureLabel,
-    marketTemperatureRationale:
-      typeof raw["marketTemperatureRationale"] === "string"
-        ? raw["marketTemperatureRationale"]
-        : defaults.marketTemperatureRationale,
-    unusualStocksNarrative:
-      typeof raw["unusualStocksNarrative"] === "string"
-        ? raw["unusualStocksNarrative"]
-        : defaults.unusualStocksNarrative,
-    risingRSNarrative:
-      typeof raw["risingRSNarrative"] === "string"
-        ? raw["risingRSNarrative"]
-        : defaults.risingRSNarrative,
-    watchlistNarrative:
-      typeof raw["watchlistNarrative"] === "string"
-        ? raw["watchlistNarrative"]
-        : defaults.watchlistNarrative,
+        : "중립 — 관망",
+    marketTemperatureRationale: parseRationale(raw["marketTemperatureRationale"]),
+    unusualStocksNarrative: parseNarrative(raw["unusualStocksNarrative"]),
+    risingRSNarrative: parseNarrative(raw["risingRSNarrative"]),
+    watchlistNarrative: parseNarrative(raw["watchlistNarrative"]),
     todayInsight:
       typeof raw["todayInsight"] === "string"
         ? raw["todayInsight"]
-        : defaults.todayInsight,
-    breadthNarrative:
-      typeof raw["breadthNarrative"] === "string"
-        ? raw["breadthNarrative"]
-        : defaults.breadthNarrative,
+        : "해당 없음",
+    breadthNarrative: parseNarrative(raw["breadthNarrative"]),
     discordMessage:
       typeof raw["discordMessage"] === "string"
         ? raw["discordMessage"]
-        : defaults.discordMessage,
+        : "",
   };
 }
