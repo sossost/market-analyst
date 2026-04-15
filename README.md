@@ -38,7 +38,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → ACTIVE thesis를 시장 데이터로 검증 (CONFIRMED/INVALIDATED)
    → 원인 분석: LLM이 "왜 맞았는지/틀렸는지" 인과 체인 추출
    → 반복 적중 패턴 → 장기 기억(agent_learnings)으로 승격
-   → 실패 패턴 자동 축적: Phase 2 신호 후 실패 조건 기록 → 70%+ 실패율 패턴은 필터링 규칙으로 승격
+   → 실패 패턴 자동 축적: Phase 2 신호 후 실패 조건 기록 → 70%+ 실패율 패턴은 필터링 규칙으로 승격 + 추천 스캔 시 프로그래밍적 자동 차단 (#799)
    → 현상유지 thesis 필터: 생성 시점에 targetCondition이 이미 충족된 thesis를 `is_status_quo`로 태깅 → 적중률 분리 집계 + 학습 루프에서 제외 (#733)
    → 유사 시장 조건의 과거 세션을 few-shot으로 주입
 
@@ -245,7 +245,7 @@ yarn db:studio              # Drizzle Studio UI
 | Thesis Verifier | `thesisVerifier.ts` | LLM 기반 자동 검증 |
 | Causal Analyzer | `causalAnalyzer.ts` | 검증 결과 원인 분석, 패턴 추출 |
 | Session Store | `sessionStore.ts` | 토론 세션 저장, 유사 세션 검색 |
-| Memory Loader | `memoryLoader.ts` | 학습 + 검증 결과 프롬프트 주입 |
+| Memory Loader | `memoryLoader.ts` | 학습 + 검증 결과 프롬프트 주입 (Round 1·2·3 전 라운드) |
 | Catalyst Loader | `catalystLoader.ts` | 종목 뉴스/실적 서프라이즈/임박 실적 발표 → 촉매 컨텍스트 |
 | Promote Learnings | `promote-learnings.ts` | 반복 적중 패턴 → 장기 기억 승격 |
 | Failure Tracker | `collect-failure-patterns.ts` | Phase 2 실패 조건 자동 기록 + 패턴 축적 |
@@ -265,7 +265,7 @@ yarn db:studio              # Drizzle Studio UI
 ### 합의도 추적 & 실패 패턴
 
 - **합의도(consensus_score)**: 4명 애널리스트 중 동의한 수. 만장일치(4/4) vs 다수(3/4) 적중률 분리 추적 — "아직 컨센서스가 안 된 thesis가 더 높은 알파를 갖는가?" 검증
-- **실패 패턴**: Phase 2 신호 후 실패한 케이스의 시장 조건(브레드스, 섹터 RS, 거래량 등)을 자동 기록. 실패율 70%+ 패턴은 필터링 규칙으로 승격되어 위양성을 사전 차단
+- **실패 패턴**: Phase 2 신호 후 실패한 케이스의 시장 조건(브레드스, 섹터 RS, 거래량 등)을 자동 기록. 실패율 70%+ 패턴은 필터링 규칙으로 승격되어 위양성을 사전 차단. 추천 스캔 시 활성 패턴을 프로그래밍적으로 매칭하여 후보 자동 차단 (#799)
 
 ### 운영 지표 (2026-03-20 기준)
 
