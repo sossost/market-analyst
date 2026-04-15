@@ -61,6 +61,9 @@ interface FearGreedResult {
   rating: string | null;
 }
 
+/**
+ * @deprecated v2로 교체됨. `Window252DataV2`를 사용하라.
+ */
 interface Window252Data {
   phase2Ratios:    (number | null)[];
   adRatios:        (number | null)[];
@@ -70,12 +73,40 @@ interface Window252Data {
   breadthScores:   (number | null)[];
 }
 
+/**
+ * @deprecated v2로 교체됨. `BreadthScoreV2Input`을 사용하라.
+ */
 interface BreadthScoreInput {
   phase2Ratio:    number;
   adRatio:        number | null;
   hlRatio:        number | null;
   marketAvgRs:    number | null;
   fearGreedScore: number | null;
+}
+
+interface Window252DataV2 {
+  phase2Ratios:     (number | null)[]; // 기존 유지
+  phase2Momentum5d: (number | null)[]; // (오늘 P2비율 - 5일전 P2비율) 시계열
+  netPhaseFlow5d:   (number | null)[]; // 5일 누적 순유입 시계열
+  adNet5d:          (number | null)[]; // 5일 누적 A/D 순 시계열
+  vixClosePrices:   (number | null)[]; // VIX 종가 시계열
+  breadthScores:    (number | null)[]; // 기존 유지 (divergence 계산용)
+}
+
+interface BreadthScoreV2Input {
+  phase2Ratio:      number;        // 오늘 Phase2 비율
+  phase2Ratio5dAgo: number | null; // 5거래일 전 Phase2 비율
+  netPhaseFlow5d:   number | null; // 5일 누적 (1→2 진입 - 2→3 이탈)
+  adNet5d:          number | null; // 5일 누적 (advancers - decliners)
+  vixClose:         number | null; // 오늘 VIX 종가
+}
+
+interface Prev5DaysBreadthRow {
+  phase2Ratio:       number | null;
+  phase1To2Count1d:  number | null;
+  phase2To3Count1d:  number | null;
+  advancers:         number | null;
+  decliners:         number | null;
 }
 
 /**
@@ -93,6 +124,7 @@ export function computePercentileRank(value: number, window: (number | null)[]):
 /**
  * 5개 지표의 퍼센타일 순위를 가중합산하여 BreadthScore(0~100)를 계산한다.
  * Fear & Greed가 null인 경우 나머지 4개 가중치를 합이 1이 되도록 재정규화한다.
+ * @deprecated `computeBreadthScoreV2()`를 사용하라.
  */
 export function computeBreadthScore(
   current: BreadthScoreInput,
@@ -118,9 +150,187 @@ export function computeBreadthScore(
   return Math.round(clamped * 100) / 100;
 }
 
+const PHASE2_RATIO_WEIGHT       = 0.30;
+const PHASE2_MOMENTUM_WEIGHT    = 0.20;
+const NET_PHASE_FLOW_WEIGHT     = 0.20;
+const AD_NET_5D_WEIGHT          = 0.15;
+const VIX_WEIGHT                = 0.15;
+
+const PHASE2_RATIO_WEIGHT_NO_VIX    = 0.3529;
+const PHASE2_MOMENTUM_WEIGHT_NO_VIX = 0.2353;
+const NET_PHASE_FLOW_WEIGHT_NO_VIX  = 0.2353;
+const AD_NET_5D_WEIGHT_NO_VIX       = 0.1765;
+
+const WINDOW_DAYS     = 252;
+const PREV_DAYS_COUNT = 5;
+const MOMENTUM_LOOKBACK = 4; // DESC 배열에서 i+4 = 5일 전
+const FLOW_WINDOW       = 5;
+
+/**
+ * 5개 지표의 퍼센타일 순위를 가중합산하여 BreadthScore v2(0~100)를 계산한다.
+ * VIX가 null인 경우 나머지 4개 가중치를 합이 1이 되도록 재정규화한다.
+ * phase2Ratio5dAgo, netPhaseFlow5d, adNet5d 중 null인 항목은 50으로 대체한다.
+ */
+export function computeBreadthScoreV2(
+  current: BreadthScoreV2Input,
+  window252: Window252DataV2,
+): number {
+  const phase2Pct = computePercentileRank(current.phase2Ratio, window252.phase2Ratios);
+
+  const momentum = current.phase2Ratio5dAgo != null
+    ? current.phase2Ratio - current.phase2Ratio5dAgo
+    : null;
+  const momentumPct = momentum != null
+    ? computePercentileRank(momentum, window252.phase2Momentum5d)
+    : 50;
+
+  const netFlowPct = current.netPhaseFlow5d != null
+    ? computePercentileRank(current.netPhaseFlow5d, window252.netPhaseFlow5d)
+    : 50;
+
+  const adNetPct = current.adNet5d != null
+    ? computePercentileRank(current.adNet5d, window252.adNet5d)
+    : 50;
+
+  const raw = current.vixClose != null
+    ? (() => {
+        const vixPct = 100 - computePercentileRank(current.vixClose, window252.vixClosePrices);
+        return (
+          phase2Pct   * PHASE2_RATIO_WEIGHT    +
+          momentumPct * PHASE2_MOMENTUM_WEIGHT  +
+          netFlowPct  * NET_PHASE_FLOW_WEIGHT   +
+          adNetPct    * AD_NET_5D_WEIGHT        +
+          vixPct      * VIX_WEIGHT
+        );
+      })()
+    : (
+        phase2Pct   * PHASE2_RATIO_WEIGHT_NO_VIX    +
+        momentumPct * PHASE2_MOMENTUM_WEIGHT_NO_VIX +
+        netFlowPct  * NET_PHASE_FLOW_WEIGHT_NO_VIX  +
+        adNetPct    * AD_NET_5D_WEIGHT_NO_VIX
+      );
+
+  const clamped = Math.max(0, Math.min(100, raw));
+  return Math.round(clamped * 100) / 100;
+}
+
+/**
+ * market_breadth_daily에서 targetDate 이전 직전 5거래일 데이터를 조회한다.
+ * DESC 정렬 (index 0 = 가장 최신, index 4 = 가장 오래된).
+ * 5행 미만이면 있는 만큼 반환한다.
+ */
+async function fetchPrev5Days(targetDate: string): Promise<Prev5DaysBreadthRow[]> {
+  const { rows } = await pool.query<{
+    phase2_ratio:        string | null;
+    phase1_to2_count_1d: string | null;
+    phase2_to3_count_1d: string | null;
+    advancers:           string | null;
+    decliners:           string | null;
+  }>(
+    `SELECT phase2_ratio::text,
+            phase1_to2_count_1d::text,
+            phase2_to3_count_1d::text,
+            advancers::text,
+            decliners::text
+     FROM market_breadth_daily
+     WHERE date < $1
+     ORDER BY date DESC
+     LIMIT $2`,
+    [targetDate, PREV_DAYS_COUNT],
+  );
+
+  return rows.map(r => ({
+    phase2Ratio:      r.phase2_ratio        != null ? toNum(r.phase2_ratio)        : null,
+    phase1To2Count1d: r.phase1_to2_count_1d != null ? toNum(r.phase1_to2_count_1d) : null,
+    phase2To3Count1d: r.phase2_to3_count_1d != null ? toNum(r.phase2_to3_count_1d) : null,
+    advancers:        r.advancers            != null ? toNum(r.advancers)            : null,
+    decliners:        r.decliners            != null ? toNum(r.decliners)            : null,
+  }));
+}
+
 /**
  * market_breadth_daily에서 targetDate 이전 최대 252거래일 데이터를 조회한다.
  * 날짜 내림차순(최신 → 과거) 순서로 반환된다.
+ * 클라이언트 측에서 phase2Momentum5d, netPhaseFlow5d, adNet5d를 파생 계산한다.
+ */
+async function fetchWindow252V2(targetDate: string): Promise<Window252DataV2> {
+  const { rows } = await pool.query<{
+    phase2_ratio:        string | null;
+    phase1_to2_count_1d: string | null;
+    phase2_to3_count_1d: string | null;
+    advancers:           string | null;
+    decliners:           string | null;
+    vix_close:           string | null;
+    breadth_score:       string | null;
+  }>(
+    `SELECT phase2_ratio,
+            phase1_to2_count_1d,
+            phase2_to3_count_1d,
+            advancers,
+            decliners,
+            vix_close,
+            breadth_score
+     FROM market_breadth_daily
+     WHERE date < $1
+     ORDER BY date DESC
+     LIMIT $2`,
+    [targetDate, WINDOW_DAYS],
+  );
+
+  const phase2Ratios = rows.map(r =>
+    r.phase2_ratio != null ? toNum(r.phase2_ratio) : null,
+  );
+
+  // phase2Momentum5d[i] = phase2Ratios[i] - phase2Ratios[i+4]
+  // DESC 배열이므로 i+4 = 5일 전. 배열 끝 MOMENTUM_LOOKBACK개는 null.
+  const phase2Momentum5d: (number | null)[] = phase2Ratios.map((ratio, i) => {
+    if (ratio == null) return null;
+    if (i + MOMENTUM_LOOKBACK >= phase2Ratios.length) return null;
+    const ratio5dAgo = phase2Ratios[i + MOMENTUM_LOOKBACK];
+    if (ratio5dAgo == null) return null;
+    return ratio - ratio5dAgo;
+  });
+
+  // netPhaseFlow5d[i] = SUM(phase1_to2 - phase2_to3) for rows[i..i+FLOW_WINDOW-1]
+  // 배열 끝 (FLOW_WINDOW-1)개는 참조 불가 → null
+  const netPhaseFlow5d: (number | null)[] = rows.map((_, i) => {
+    if (i + FLOW_WINDOW > rows.length) return null;
+    let sum = 0;
+    for (let j = i; j < i + FLOW_WINDOW; j++) {
+      const p1to2 = rows[j].phase1_to2_count_1d != null ? toNum(rows[j].phase1_to2_count_1d!) : 0;
+      const p2to3 = rows[j].phase2_to3_count_1d != null ? toNum(rows[j].phase2_to3_count_1d!) : 0;
+      sum += p1to2 - p2to3;
+    }
+    return sum;
+  });
+
+  // adNet5d[i] = SUM(advancers - decliners) for rows[i..i+FLOW_WINDOW-1]
+  // 배열 끝 (FLOW_WINDOW-1)개는 참조 불가 → null
+  const adNet5d: (number | null)[] = rows.map((_, i) => {
+    if (i + FLOW_WINDOW > rows.length) return null;
+    let sum = 0;
+    for (let j = i; j < i + FLOW_WINDOW; j++) {
+      const adv = rows[j].advancers != null ? toNum(rows[j].advancers!) : 0;
+      const dec = rows[j].decliners != null ? toNum(rows[j].decliners!) : 0;
+      sum += adv - dec;
+    }
+    return sum;
+  });
+
+  return {
+    phase2Ratios,
+    phase2Momentum5d,
+    netPhaseFlow5d,
+    adNet5d,
+    vixClosePrices: rows.map(r => r.vix_close    != null ? toNum(r.vix_close)    : null),
+    breadthScores:  rows.map(r => r.breadth_score != null ? toNum(r.breadth_score) : null),
+  };
+}
+
+/**
+ * market_breadth_daily에서 targetDate 이전 최대 252거래일 데이터를 조회한다.
+ * 날짜 내림차순(최신 → 과거) 순서로 반환된다.
+ * @deprecated `fetchWindow252V2()`를 사용하라.
  */
 async function fetchWindow252(targetDate: string): Promise<Window252Data> {
   const { rows } = await pool.query<{
@@ -480,32 +690,60 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     fetchVixData(targetDate),
   ).catch(() => ({ close: null, high: null }));
 
-  // 7. Fear & Greed (CNN 비공식 API — 실패 시 null)
+  // 7. Fear & Greed (CNN 비공식 API — 실패 시 null, DB 기록 유지용)
   const fearGreedData = await fetchFearGreed();
 
-  // 8. BreadthScore + 다이버전스 신호
-  const window252 = await retryDatabaseOperation(() => fetchWindow252(targetDate));
+  // 8. BreadthScore v2 입력 계산
+  // 오늘 당일 값은 이미 집계된 변수를 사용, 직전 4일은 DB 조회
+  const prev5Days = await retryDatabaseOperation(() => fetchPrev5Days(targetDate));
 
-  const breadthScore = computeBreadthScore(
+  // 5일 전 phase2Ratio (index 4 = 가장 오래된 날)
+  const phase2Ratio5dAgo = prev5Days.length >= PREV_DAYS_COUNT
+    ? prev5Days[PREV_DAYS_COUNT - 1].phase2Ratio
+    : null;
+
+  // netPhaseFlow5d = 직전4일 합산 + 오늘 당일
+  const todayPhase1To2 = toNum(p1to2Count1dData.count);
+  const todayPhase2To3 = toNum(p2to3Count1dData.count);
+  const prev4NetFlow = prev5Days.slice(0, PREV_DAYS_COUNT - 1).reduce((sum, row) => {
+    const p1to2 = row.phase1To2Count1d ?? 0;
+    const p2to3 = row.phase2To3Count1d ?? 0;
+    return sum + (p1to2 - p2to3);
+  }, 0);
+  const netPhaseFlow5d = prev4NetFlow + (todayPhase1To2 - todayPhase2To3);
+
+  // adNet5d = 직전4일 합산 + 오늘 당일
+  const todayAdNet = (adData.advancers ?? 0) - (adData.decliners ?? 0);
+  const prev4AdNet = prev5Days.slice(0, PREV_DAYS_COUNT - 1).reduce((sum, row) => {
+    const adv = row.advancers ?? 0;
+    const dec = row.decliners ?? 0;
+    return sum + (adv - dec);
+  }, 0);
+  const adNet5d = prev4AdNet + todayAdNet;
+
+  // 9. BreadthScore v2 + 다이버전스 신호
+  const window252V2 = await retryDatabaseOperation(() => fetchWindow252V2(targetDate));
+
+  const breadthScore = computeBreadthScoreV2(
     {
-      phase2Ratio:    phaseData.phase2Ratio,
-      adRatio:        adRatio,
-      hlRatio:        hlRatio,
-      marketAvgRs:    phaseData.marketAvgRs,
-      fearGreedScore: fearGreedData.score,
+      phase2Ratio:      phaseData.phase2Ratio,
+      phase2Ratio5dAgo: phase2Ratio5dAgo,
+      netPhaseFlow5d:   netPhaseFlow5d,
+      adNet5d:          adNet5d,
+      vixClose:         vixData.close,
     },
-    window252,
+    window252V2,
   );
 
   const spx5dChange = await fetchSpx5dChange(targetDate).catch(() => null);
 
   const divergenceSignal = computeDivergenceSignal(
     breadthScore,
-    window252.breadthScores,
+    window252V2.breadthScores,
     spx5dChange,
   );
 
-  // 9. Upsert
+  // 10. Upsert
   const row = {
     date: targetDate,
     totalStocks: phaseData.total,
