@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
   fillInsightDefaults,
+  isNarrativeBlock,
   type DailyReportInsight,
   type DailyReportData,
   type DailyRisingRSStock,
@@ -24,9 +25,11 @@ describe("fillInsightDefaults", () => {
 
     expect(result.marketTemperature).toBe("neutral");
     expect(result.marketTemperatureLabel).toBe("중립 — 관망");
-    expect(result.unusualStocksNarrative).toBe("해당 없음");
-    expect(result.risingRSNarrative).toBe("해당 없음");
-    expect(result.watchlistNarrative).toBe("해당 없음");
+    // 5개 narrative 필드는 NarrativeBlock 기본값
+    expect(result.unusualStocksNarrative).toEqual({ headline: "해당 없음", detail: "" });
+    expect(result.risingRSNarrative).toEqual({ headline: "해당 없음", detail: "" });
+    expect(result.watchlistNarrative).toEqual({ headline: "해당 없음", detail: "" });
+    expect(result.breadthNarrative).toEqual({ headline: "해당 없음", detail: "" });
     expect(result.todayInsight).toBe("해당 없음");
     expect(result.discordMessage).toBe("");
   });
@@ -45,14 +48,15 @@ describe("fillInsightDefaults", () => {
     expect(result.marketTemperature).toBe("neutral");
   });
 
-  it("제공된 문자열 필드는 유지", () => {
+  it("제공된 NarrativeBlock 객체 필드는 그대로 유지", () => {
     const raw = {
       marketTemperature: "bearish",
       marketTemperatureLabel: "약세 — 하락 3일째",
-      marketTemperatureRationale: "S&P 500이 하락하며 Phase 2 비율이 감소 중이다.",
-      unusualStocksNarrative: "반도체 업종 집중 매도세.",
-      risingRSNarrative: "에너지 업종 중소형주 RS 가속.",
-      watchlistNarrative: "NVDA Phase 2 유지.",
+      marketTemperatureRationale: { headline: "약세 지속", detail: "S&P 500이 하락하며 Phase 2 비율이 감소 중이다." },
+      unusualStocksNarrative: { headline: "반도체 급락", detail: "반도체 업종 집중 매도세." },
+      risingRSNarrative: { headline: "에너지 RS 가속", detail: "" },
+      watchlistNarrative: { headline: "NVDA Phase 2 유지", detail: "" },
+      breadthNarrative: { headline: "브레드스 축소", detail: "" },
       todayInsight: "토론과 일치 — 약세장 전환 신호 확인.",
       discordMessage: "📊 2026-04-06\nS&P500 -1.5%\nPhase 2: 32.1%",
     };
@@ -61,14 +65,21 @@ describe("fillInsightDefaults", () => {
 
     expect(result.marketTemperature).toBe("bearish");
     expect(result.marketTemperatureLabel).toBe("약세 — 하락 3일째");
-    expect(result.unusualStocksNarrative).toBe("반도체 업종 집중 매도세.");
+    expect(isNarrativeBlock(result.unusualStocksNarrative)).toBe(true);
+    expect(result.unusualStocksNarrative).toEqual({ headline: "반도체 급락", detail: "반도체 업종 집중 매도세." });
     expect(result.discordMessage).toBe("📊 2026-04-06\nS&P500 -1.5%\nPhase 2: 32.1%");
   });
 
-  it("빈 문자열 필드는 기본값으로 대체되지 않음 (빈 string 허용)", () => {
+  it("string으로 전달된 narrative 필드는 폴백: { headline: string, detail: '' }", () => {
+    const result = fillInsightDefaults({ unusualStocksNarrative: "반도체 업종 집중 매도세." });
+
+    expect(result.unusualStocksNarrative).toEqual({ headline: "반도체 업종 집중 매도세.", detail: "" });
+  });
+
+  it("빈 문자열 marketTemperatureRationale → { headline: '', detail: '' }", () => {
     const result = fillInsightDefaults({ marketTemperatureRationale: "" });
 
-    expect(result.marketTemperatureRationale).toBe("");
+    expect(result.marketTemperatureRationale).toEqual({ headline: "", detail: "" });
   });
 
   it("원본 객체를 변경하지 않는다 (불변성)", () => {
