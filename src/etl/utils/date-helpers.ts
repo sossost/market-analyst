@@ -48,7 +48,7 @@ export async function getLatestPriceDate(): Promise<string | null> {
   const result = await db.execute(sql`
     SELECT MAX(date)::text AS result_date
     FROM daily_prices
-    WHERE EXTRACT(DOW FROM date) NOT IN (0, 6)
+    WHERE EXTRACT(DOW FROM daily_prices.date) NOT IN (0, 6)
   `);
   const row = result.rows[0] as DateRow | undefined;
   return row?.result_date ?? null;
@@ -68,7 +68,7 @@ export async function getPreviousTradeDate(
     SELECT MAX(date)::text AS result_date
     FROM daily_prices
     WHERE date < ${currentDate}
-      AND EXTRACT(DOW FROM date) NOT IN (0, 6)
+      AND EXTRACT(DOW FROM daily_prices.date) NOT IN (0, 6)
   `);
   const row = result.rows[0] as DateRow | undefined;
   return row?.result_date ?? null;

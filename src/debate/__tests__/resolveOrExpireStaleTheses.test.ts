@@ -155,6 +155,7 @@ describe("resolveOrExpireStaleTheses", () => {
     const setArgs = updateSet.mock.calls[0][0] as Record<string, unknown>;
     expect(setArgs.status).toBe("EXPIRED");
     expect(setArgs.closeReason).toBe("timeframe_exceeded");
+    expect(setArgs.verificationResult).toContain("Timeframe 만료");
   });
 
   it("정량 판정 CONFIRMED → CONFIRMED 처리, resolved=1", async () => {
@@ -230,6 +231,7 @@ describe("resolveOrExpireStaleTheses", () => {
     const setArgs = updateSet.mock.calls[0][0] as Record<string, unknown>;
     expect(setArgs.status).toBe("EXPIRED");
     expect(setArgs.closeReason).toBe("timeframe_exceeded");
+    expect(setArgs.verificationResult).toContain("Timeframe 만료");
   });
 
   it("혼합: 정량 판정 가능 1건 + 불가 1건 → resolved=1, expired=1", async () => {

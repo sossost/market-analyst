@@ -195,6 +195,7 @@ export async function expireStaleTheses(today: string): Promise<number> {
     .set({
       status: "EXPIRED",
       verificationDate: today,
+      verificationResult: "Timeframe 만료 — 자동 처리",
       closeReason: "timeframe_exceeded",
     })
     .where(
@@ -314,7 +315,7 @@ export async function resolveOrExpireStaleTheses(
       ? [
           db
             .update(theses)
-            .set({ status: "EXPIRED", verificationDate: today, closeReason: "timeframe_exceeded" })
+            .set({ status: "EXPIRED", verificationDate: today, verificationResult: "Timeframe 만료 — 자동 처리", closeReason: "timeframe_exceeded" })
             .where(and(inArray(theses.id, toExpireIds), eq(theses.status, "ACTIVE"))),
         ]
       : [];
