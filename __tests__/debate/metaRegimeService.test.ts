@@ -634,8 +634,8 @@ describe("metaRegimeService", () => {
 
     it("detects narrative_shift propagation when no arrow in supply chain", async () => {
       mockWhere.mockResolvedValueOnce([
-        { id: 10, megatrend: "인플레이션 사이클 금리", supplyChain: "금리 상승" },
-        { id: 11, megatrend: "인플레이션 사이클 통화정책", supplyChain: "긴축 정책" },
+        { id: 10, megatrend: "인플레이션 사이클 거시경제 금리", supplyChain: "금리 상승" },
+        { id: 11, megatrend: "인플레이션 사이클 거시경제 통화정책", supplyChain: "긴축 정책" },
       ]);
       mockReturning.mockResolvedValueOnce([{ id: 101 }]);
       mockWhere.mockResolvedValueOnce([{ maxOrder: 0 }]);
