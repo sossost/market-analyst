@@ -393,10 +393,10 @@ export function checkNarrativePresence(
   return mismatches;
 }
 
-function isNarrativeEmpty(narrative: NarrativeBlock): boolean {
-  if (narrative == null) return true;
-  const combined = `${narrative.headline} ${narrative.detail}`.trim();
-  return combined === "" || narrative.headline.trim() === "해당 없음";
+function isNarrativeEmpty(narrative: NarrativeBlock | null | undefined): boolean {
+  if (narrative === null || narrative === undefined) return true;
+  const headline = narrative.headline.trim();
+  return headline === "" || headline === "해당 없음";
 }
 
 // ---------------------------------------------------------------------------

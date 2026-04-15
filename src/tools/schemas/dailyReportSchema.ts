@@ -408,7 +408,7 @@ export function fillInsightDefaults(
     todayInsight:
       typeof raw["todayInsight"] === "string"
         ? raw["todayInsight"]
-        : NARRATIVE_DEFAULT.headline,
+        : "해당 없음",
     breadthNarrative: parseNarrative(raw["breadthNarrative"]),
     discordMessage:
       typeof raw["discordMessage"] === "string"
