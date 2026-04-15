@@ -119,12 +119,12 @@ export async function checkDataIntegrity(): Promise<AuditFinding[]> {
 export function checkCodeDbConsistency(): AuditFinding[] {
   const findings: AuditFinding[] = [];
 
-  // 2-1. Shell Companies 필터 존재 여부 (stockPhaseRepository에 있어야 함)
-  const shellFilterExists = fileContains(
+  // 2-1. Shell Companies 필터가 쿼리에서 실제 사용되는지 (상수 정의가 아닌 SQL 사용 확인)
+  const shellFilterUsed = fileContains(
     path.join(PROJECT_ROOT, "src/db/repositories/stockPhaseRepository.ts"),
-    "Shell Companies",
+    "AND ${NOT_SHELL}",
   );
-  if (!shellFilterExists) {
+  if (!shellFilterUsed) {
     findings.push({
       category: "code-db-consistency",
       severity: "CRITICAL",
@@ -372,10 +372,13 @@ function safeReadFile(filePath: string): string | null {
 
 function grepInDir(dir: string, pattern: RegExp, globs: string[]): string[] {
   const includeArgs = globs.flatMap((g) => ["--include", g]);
+  const posixPattern = pattern.source
+    .replace(/\\s/g, "[[:space:]]")
+    .replace(/\\b/g, "[[:>:]]");
   try {
     const output = execFileSync(
       "grep",
-      ["-rl", pattern.source, ...includeArgs, dir],
+      ["-rlE", posixPattern, ...includeArgs, dir],
       { timeout: 30_000, stdio: "pipe" },
     ).toString().trim();
     if (output === "") return [];

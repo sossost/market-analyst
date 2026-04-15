@@ -143,8 +143,8 @@ describe("checkDataIntegrity", () => {
 
 describe("checkCodeDbConsistency", () => {
   it("returns empty when Shell Companies filter exists and no deprecated refs", () => {
-    // readFileSync: stockPhaseRepository.ts
-    mockReadFileSync.mockReturnValueOnce("IS DISTINCT FROM 'Shell Companies'");
+    // readFileSync: stockPhaseRepository.ts — NOT_SHELL 상수가 쿼리에서 사용되는지 확인
+    mockReadFileSync.mockReturnValueOnce("WHERE status = 'ACTIVE' AND ${NOT_SHELL}");
     // readFileSync: strategic-review-prompt.md
     mockReadFileSync.mockReturnValueOnce("FROM tracked_stocks WHERE status = 'ACTIVE'");
     // execFileSync: grep for deprecated tables
@@ -166,7 +166,7 @@ describe("checkCodeDbConsistency", () => {
   });
 
   it("detects deprecated table reference in prompt", () => {
-    mockReadFileSync.mockReturnValueOnce("Shell Companies");
+    mockReadFileSync.mockReturnValueOnce("WHERE status = 'ACTIVE' AND ${NOT_SHELL}");
     mockReadFileSync.mockReturnValueOnce("FROM recommendations WHERE status = 'ACTIVE'");
     mockExecFileSync.mockReturnValueOnce(Buffer.from(""));
 
@@ -177,7 +177,7 @@ describe("checkCodeDbConsistency", () => {
   });
 
   it("detects deprecated table refs in src code", () => {
-    mockReadFileSync.mockReturnValueOnce("Shell Companies");
+    mockReadFileSync.mockReturnValueOnce("WHERE status = 'ACTIVE' AND ${NOT_SHELL}");
     mockReadFileSync.mockReturnValueOnce("FROM tracked_stocks");
     mockExecFileSync.mockReturnValueOnce(Buffer.from("src/some-file.ts\nsrc/other.ts"));
 
@@ -441,7 +441,7 @@ describe("runAudit", () => {
 
     // readFileSync: Shell Companies filter + prompt + thesis scan file
     mockReadFileSync.mockImplementation((filePath: string) => {
-      if (typeof filePath === "string" && filePath.includes("stockPhaseRepository")) return "Shell Companies";
+      if (typeof filePath === "string" && filePath.includes("stockPhaseRepository")) return "WHERE status = 'ACTIVE' AND ${NOT_SHELL}";
       if (typeof filePath === "string" && filePath.includes("strategic-review-prompt")) return "FROM tracked_stocks";
       if (typeof filePath === "string" && filePath.includes("scan-thesis-aligned")) return "thesis_aligned";
       throw new Error("ENOENT");
@@ -462,7 +462,7 @@ describe("runAudit", () => {
     setupQueryMock({ weekend: { rows: [{ cnt: "5" }] } });
 
     mockReadFileSync.mockImplementation((filePath: string) => {
-      if (typeof filePath === "string" && filePath.includes("stockPhaseRepository")) return "Shell Companies";
+      if (typeof filePath === "string" && filePath.includes("stockPhaseRepository")) return "WHERE status = 'ACTIVE' AND ${NOT_SHELL}";
       if (typeof filePath === "string" && filePath.includes("strategic-review-prompt")) return "FROM tracked_stocks";
       if (typeof filePath === "string" && filePath.includes("scan-thesis-aligned")) return "thesis_aligned";
       throw new Error("ENOENT");
