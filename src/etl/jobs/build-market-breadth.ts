@@ -320,8 +320,8 @@ async function fetchWindow252V2(targetDate: string): Promise<Window252DataV2> {
     r.phase2_ratio != null ? toNum(r.phase2_ratio) : null,
   );
 
-  // phase2Momentum5d[i] = phase2Ratios[i] - phase2Ratios[i+4]
-  // DESC 배열이므로 i+4 = 5일 전. 배열 끝 MOMENTUM_LOOKBACK개는 null.
+  // phase2Momentum5d[i] = phase2Ratios[i] - phase2Ratios[i + MOMENTUM_LOOKBACK]
+  // DESC 배열이므로 i+5 = 5거래일 전. 배열 끝 MOMENTUM_LOOKBACK개는 null.
   const phase2Momentum5d: (number | null)[] = phase2Ratios.map((ratio, i) => {
     if (ratio == null) return null;
     if (i + MOMENTUM_LOOKBACK >= phase2Ratios.length) return null;
