@@ -168,4 +168,59 @@ describe("runRound2", () => {
     expect(callArgs.userMessage).not.toContain("<fundamental-data>");
     expect(callArgs.userMessage).not.toContain("<early-detection>");
   });
+
+  it("memoryContext가 있으면 시스템 프롬프트에 장기 기억이 주입된다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+    const round1Outputs = [makeRoundOutput("macro", "매크로 분석")];
+    const memoryCtx = "### 검증된 패턴\n- 브레드스 악화 시 Phase 2 신호 신뢰도 낮음";
+
+    await runRound2({
+      getProvider,
+      experts,
+      round1Outputs,
+      question: "시장 분석",
+      memoryContext: memoryCtx,
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.systemPrompt).toContain("장기 기억 (검증된 원칙)");
+    expect(callArgs.systemPrompt).toContain("브레드스 악화 시 Phase 2 신호 신뢰도 낮음");
+  });
+
+  it("memoryContext가 빈 문자열이면 시스템 프롬프트에 주입되지 않는다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+    const round1Outputs = [makeRoundOutput("macro", "매크로 분석")];
+
+    await runRound2({
+      getProvider,
+      experts,
+      round1Outputs,
+      question: "시장 분석",
+      memoryContext: "",
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.systemPrompt).not.toContain("장기 기억");
+  });
+
+  it("memoryContext가 없으면 시스템 프롬프트에 주입되지 않는다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+    const round1Outputs = [makeRoundOutput("macro", "매크로 분석")];
+
+    await runRound2({
+      getProvider,
+      experts,
+      round1Outputs,
+      question: "시장 분석",
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.systemPrompt).not.toContain("장기 기억");
+  });
 });

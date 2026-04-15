@@ -9,6 +9,8 @@ interface Round2Input {
   experts: PersonaDefinition[];
   round1Outputs: RoundOutput[];
   question: string;
+  /** 학습 메모리 컨텍스트 — 교차검증 시 과거 실패 패턴 반박 근거 활용 (#799) */
+  memoryContext?: string;
   /** SEPA 기반 펀더멘탈 스코어 — 교차검증 시 실적 데이터 기반 반박/보완용 */
   fundamentalContext?: string;
   /** 조기포착 도구 결과 — pre-Phase 2 후보의 교차검증용 */
@@ -101,7 +103,7 @@ ${othersAnalysis}
  * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound2(input: Round2Input): Promise<Round2Result> {
-  const { getProvider, experts, round1Outputs, question, fundamentalContext, earlyDetectionContext, catalystContext } = input;
+  const { getProvider, experts, round1Outputs, question, memoryContext = "", fundamentalContext, earlyDetectionContext, catalystContext } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -125,9 +127,13 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
       batch.map(async (expert) => {
         const persona = expert.name as AgentPersona;
         const userMessage = buildCrossfirePrompt(persona, round1Outputs, question, fundamentalContext, earlyDetectionContext, catalystContext);
+        let systemPrompt = expert.systemPrompt;
+        if (memoryContext.length > 0) {
+          systemPrompt += `\n\n## 장기 기억 (검증된 원칙)\n${memoryContext}`;
+        }
         const provider = getProvider(expert.model);
         const result = await provider.call({
-          systemPrompt: expert.systemPrompt,
+          systemPrompt,
           userMessage,
         });
         return { persona, result };

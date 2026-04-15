@@ -62,6 +62,13 @@ import {
 import {
   findLatestClose,
 } from "@/db/repositories/priceRepository.js";
+import { findActiveFailurePatterns } from "@/db/repositories/failurePatternRepository.js";
+import { findMarketBreadthSnapshot } from "@/db/repositories/marketBreadthRepository.js";
+import {
+  findMatchingPattern,
+  deriveBreadthDirection,
+  type BreadthDirection,
+} from "@/etl/utils/failurePatternFilter.js";
 
 const TAG = "SCAN_RECOMMENDATION_CANDIDATES";
 
@@ -155,6 +162,8 @@ async function main() {
     fundamentalGradeRows,
     priceRows,
     phase2SinceRows,
+    failurePatternRows,
+    breadthSnapshot,
   ] = await Promise.all([
     // 중복 체크: tracked_stocks ACTIVE 기준
     retryDatabaseOperation(() => findActiveTrackedStocksBySymbols(symbols)),
@@ -169,6 +178,10 @@ async function main() {
     retryDatabaseOperation(() => findFundamentalGrades(symbols, targetDate)),
     retryDatabaseOperation(() => findLatestClose(symbols, targetDate)),
     retryDatabaseOperation(() => findPhase2SinceDates(symbols, targetDate)),
+    // 실패 패턴 필터: isActive=true 패턴 조회 (#799)
+    retryDatabaseOperation(() => findActiveFailurePatterns()),
+    // 시장 브레드스 방향 도출용 (#799)
+    retryDatabaseOperation(() => findMarketBreadthSnapshot(targetDate)),
   ]);
 
   const activeSymbols = new Set(activeRows.map((r) => r.symbol));
@@ -187,6 +200,20 @@ async function main() {
     phase2SinceRows.map((r) => [r.symbol, r.phase2_since]),
   );
 
+  // 실패 패턴 필터용: 시장 브레드스 방향 도출 (#799)
+  const breadthDirection: BreadthDirection | null = deriveBreadthDirection(
+    breadthSnapshot?.phase2_ratio_change != null
+      ? Number(breadthSnapshot.phase2_ratio_change)
+      : null,
+  );
+
+  if (failurePatternRows.length > 0) {
+    logger.info(
+      TAG,
+      `실패 패턴 필터 활성: ${failurePatternRows.length}건, 브레드스 방향: ${breadthDirection ?? "N/A"}`,
+    );
+  }
+
   let skippedCount = 0;
   let blockedByRegime = 0;
   let bearExceptionCount = 0;
@@ -199,6 +226,7 @@ async function main() {
   let blockedByPersistence = 0;
   let blockedByStability = 0;
   let blockedByFundamental = 0;
+  let blockedByFailurePattern = 0;
 
   // Phase 1: 게이트 통과 후보 수집 (RS 내림차순 유지)
   interface GatePassedCandidate {
@@ -340,6 +368,26 @@ async function main() {
       continue;
     }
 
+    // 실패 패턴 게이트 (#799)
+    // 펀더멘탈 게이트 이후 배치: C/F 등급은 이미 차단되므로 sepa:C-F 패턴은 미도달.
+    // sepa:B, breadth:*, volume:* 등 다른 조건 조합 차단이 주 목적.
+    const patternMatch = findMatchingPattern(
+      {
+        sepaGrade: fundamentalGrade,
+        volumeConfirmed: stock.volume_confirmed ?? null,
+        breadthDirection,
+      },
+      failurePatternRows,
+    );
+    if (patternMatch != null) {
+      logger.info(
+        TAG,
+        `${symbol}: 실패 패턴 차단 — ${patternMatch.patternName} (실패율 ${(patternMatch.failureRate * 100).toFixed(0)}%, 조건: ${patternMatch.conditions})`,
+      );
+      blockedByFailurePattern++;
+      continue;
+    }
+
     // reason 구성 (Bear예외/LateBull 태깅)
     let reason = buildEtlReason(phase ?? 2, rs_score ?? 0);
     if (bearExceptionPassed) {
@@ -460,7 +508,8 @@ async function main() {
     `쿨다운차단: ${blockedByCooldown}, RS하한차단: ${blockedByLowRS}, ` +
     `RS과열차단: ${blockedByOverheatedRS}, 저가주차단: ${blockedByLowPrice}, ` +
     `지속성차단: ${blockedByPersistence}, 안정성차단: ${blockedByStability}, ` +
-    `펀더멘탈차단: ${blockedByFundamental}, 섹터상한차단: ${blockedBySectorCap}`;
+    `펀더멘탈차단: ${blockedByFundamental}, 실패패턴차단: ${blockedByFailurePattern}, ` +
+    `섹터상한차단: ${blockedBySectorCap}`;
 
   logger.info(TAG, summaryMsg);
 
@@ -470,7 +519,7 @@ async function main() {
       TAG,
       `금일 추천 0건 — 레짐: ${regimeForGate ?? "없음"}, ` +
         `Phase2 총: ${phase2Stocks.length}, ` +
-        `최다 차단: ${identifyTopBlocker(blockedByRegime, blockedByLateBull, blockedByCooldown, blockedByLowRS, blockedByOverheatedRS, blockedByLowPrice, blockedByPersistence, blockedByStability, blockedByFundamental, blockedBySectorCap)}`,
+        `최다 차단: ${identifyTopBlocker(blockedByRegime, blockedByLateBull, blockedByCooldown, blockedByLowRS, blockedByOverheatedRS, blockedByLowPrice, blockedByPersistence, blockedByStability, blockedByFundamental, blockedByFailurePattern, blockedBySectorCap)}`,
     );
   }
 
@@ -562,7 +611,7 @@ async function saveFactorSnapshot(symbol: string, date: string): Promise<void> {
 function identifyTopBlocker(...counts: number[]): string {
   const labels = [
     "Bear레짐", "LateBull", "쿨다운", "RS하한", "RS과열",
-    "저가주", "지속성", "안정성", "펀더멘탈", "섹터상한",
+    "저가주", "지속성", "안정성", "펀더멘탈", "실패패턴", "섹터상한",
   ];
 
   const top = counts.reduce(

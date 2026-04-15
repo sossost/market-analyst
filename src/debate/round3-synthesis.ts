@@ -15,6 +15,8 @@ interface Round3Input {
   round1Outputs: RoundOutput[];
   round2Outputs: RoundOutput[];
   question: string;
+  /** 학습 메모리 컨텍스트 — 모더레이터 종합 판단 시 검증된 원칙 참조 (#799) */
+  memoryContext?: string;
   /** Original market data for cross-validation */
   marketDataContext?: string;
   /** SEPA 기반 펀더멘탈 스코어 (XML 태그 래핑 텍스트) */
@@ -1019,7 +1021,7 @@ function extractMarketRegime(text: string): MarketRegimeRaw | null {
  * Moderator reads all Round 1 + Round 2 outputs and produces a synthesis report + thesis JSON.
  */
 export async function runRound3(input: Round3Input): Promise<Round3Result> {
-  const { provider, moderator, round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, narrativeChainContext, existingThesesContext } = input;
+  const { provider, moderator, round1Outputs, round2Outputs, question, memoryContext = "", marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, narrativeChainContext, existingThesesContext } = input;
 
   // 이전 확정 레짐을 조회하여 프롬프트에 주입 — LLM이 맥락 없이 판정하는 것을 방지
   const confirmedRegime = await loadConfirmedRegime();
@@ -1027,8 +1029,12 @@ export async function runRound3(input: Round3Input): Promise<Round3Result> {
   const regimeContext = formatRegimeContext(confirmedRegime, today);
 
   const userMessage = buildSynthesisPrompt(round1Outputs, round2Outputs, question, marketDataContext, fundamentalContext, agentPerformanceContext, earlyDetectionContext, catalystContext, regimeContext, narrativeChainContext, existingThesesContext);
+  let systemPrompt = moderator.systemPrompt;
+  if (memoryContext.length > 0) {
+    systemPrompt += `\n\n## 장기 기억 (검증된 원칙)\n${memoryContext}`;
+  }
   const result = await provider.call({
-    systemPrompt: moderator.systemPrompt,
+    systemPrompt,
     userMessage,
     maxTokens: MODERATOR_MAX_TOKENS,
   });
