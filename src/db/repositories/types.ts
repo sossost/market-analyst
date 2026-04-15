@@ -279,12 +279,14 @@ export interface MarketBreadthDailyRow {
   fear_greed_score: number | null;
   fear_greed_rating: string | null;
   breadth_score: string | null;
+  breadth_score_ema: string | null;
   divergence_signal: string | null;
   created_at: string;
 }
 
 export interface PrevBreadthScoreRow {
   breadth_score: string | null;
+  breadth_score_ema: string | null;
 }
 
 export interface PrevPhase2CountRow {

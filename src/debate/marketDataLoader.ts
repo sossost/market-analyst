@@ -219,7 +219,12 @@ async function loadMarketBreadth(date: string): Promise<MarketBreadthSnapshot | 
       adRatio: snapshot.ad_ratio != null ? toNum(snapshot.ad_ratio) : null,
       newHighs: snapshot.new_highs,
       newLows: snapshot.new_lows,
-      breadthScore: snapshot.breadth_score != null ? toNum(snapshot.breadth_score) : null,
+      // EMA를 우선 사용하고, EMA가 null이면 raw breadthScore로 폴백
+      breadthScore: snapshot.breadth_score_ema != null
+        ? toNum(snapshot.breadth_score_ema)
+        : snapshot.breadth_score != null
+          ? toNum(snapshot.breadth_score)
+          : null,
       divergenceSignal: toDivergenceSignal(snapshot.divergence_signal),
     };
   }

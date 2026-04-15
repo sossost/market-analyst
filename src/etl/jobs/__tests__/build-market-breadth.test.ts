@@ -3,6 +3,7 @@ import {
   computePercentileRank,
   computeBreadthScore,
   computeBreadthScoreV2,
+  computeBreadthScoreEma,
   computeDivergenceSignal,
 } from "../build-market-breadth.js";
 
@@ -369,5 +370,34 @@ describe("computeBreadthScoreV2", () => {
     // momentumPct=50으로 대체됨
     // score = 80*0.30 + 50*0.20 + 80*0.20 + 80*0.15 + 80*0.15 = 74
     expect(score).toBeCloseTo(74, 1);
+  });
+});
+
+// ────────────────────────────────────────────
+// computeBreadthScoreEma
+// ────────────────────────────────────────────
+describe("computeBreadthScoreEma", () => {
+  it("prevEma가 null(첫 행)이면 rawScore를 그대로 반환한다", () => {
+    expect(computeBreadthScoreEma(70, null)).toBe(70);
+  });
+
+  it("α=0.2 적용: EMA = 0.2 × raw + 0.8 × prevEma", () => {
+    // 0.2 × 80 + 0.8 × 60 = 16 + 48 = 64
+    expect(computeBreadthScoreEma(80, 60)).toBe(64);
+  });
+
+  it("raw와 prevEma가 같으면 EMA도 동일한 값이다", () => {
+    expect(computeBreadthScoreEma(50, 50)).toBe(50);
+  });
+
+  it("결과를 소수 2자리로 반올림한다", () => {
+    // 0.2 × 73 + 0.8 × 47 = 14.6 + 37.6 = 52.2
+    expect(computeBreadthScoreEma(73, 47)).toBe(52.2);
+  });
+
+  it("0~100 범위 내에서 평활이 이루어진다", () => {
+    const ema = computeBreadthScoreEma(100, 0);
+    // 0.2 × 100 + 0.8 × 0 = 20
+    expect(ema).toBe(20);
   });
 });

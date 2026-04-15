@@ -168,6 +168,9 @@ const PREV_DAYS_COUNT = 5;
 const MOMENTUM_LOOKBACK = 5; // DESC 배열에서 i+5 = 5거래일 전 (오늘-5일전 갭과 일치)
 const FLOW_WINDOW       = 5;
 
+// EMA 평활 계수: α = 0.2 → 반감기 약 3거래일
+const EMA_ALPHA = 0.2;
+
 /**
  * 5개 지표의 퍼센타일 순위를 가중합산하여 BreadthScore v2(0~100)를 계산한다.
  * VIX가 null인 경우 나머지 4개 가중치를 합이 1이 되도록 재정규화한다.
@@ -248,6 +251,40 @@ async function fetchPrev5Days(targetDate: string): Promise<Prev5DaysBreadthRow[]
     advancers:        r.advancers            != null ? toNum(r.advancers)            : null,
     decliners:        r.decliners            != null ? toNum(r.decliners)            : null,
   }));
+}
+
+/**
+ * market_breadth_daily에서 targetDate 직전 행의 breadth_score_ema를 조회한다.
+ * EMA 연속 계산용 시드값. 데이터가 없으면 null 반환.
+ */
+async function fetchPrevBreadthScoreEma(targetDate: string): Promise<number | null> {
+  const { rows } = await pool.query<{ breadth_score_ema: string | null }>(
+    `SELECT breadth_score_ema::text
+     FROM market_breadth_daily
+     WHERE date < $1
+     ORDER BY date DESC
+     LIMIT 1`,
+    [targetDate],
+  );
+
+  const row = rows[0];
+  if (row == null || row.breadth_score_ema == null) return null;
+  return toNum(row.breadth_score_ema);
+}
+
+/**
+ * BreadthScore EMA를 계산한다.
+ * α × rawScore + (1-α) × prevEma.
+ * prevEma가 null(최초 행)이면 rawScore를 그대로 반환.
+ */
+export function computeBreadthScoreEma(
+  rawScore: number,
+  prevEma: number | null,
+): number {
+  const ema = prevEma == null
+    ? rawScore
+    : EMA_ALPHA * rawScore + (1 - EMA_ALPHA) * prevEma;
+  return Math.round(ema * 100) / 100;
 }
 
 /**
@@ -750,7 +787,11 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     spx5dChange,
   );
 
-  // 10. Upsert
+  // 10. BreadthScore EMA 계산
+  const prevEma = await retryDatabaseOperation(() => fetchPrevBreadthScoreEma(targetDate));
+  const breadthScoreEma = computeBreadthScoreEma(breadthScore, prevEma);
+
+  // 11. Upsert
   const row = {
     date: targetDate,
     totalStocks: phaseData.total,
@@ -776,6 +817,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     fearGreedScore: fearGreedData.score,
     fearGreedRating: fearGreedData.rating,
     breadthScore: String(breadthScore),
+    breadthScoreEma: String(breadthScoreEma),
     divergenceSignal: divergenceSignal,
   };
 
@@ -809,6 +851,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
           fearGreedScore: sql`EXCLUDED.fear_greed_score`,
           fearGreedRating: sql`EXCLUDED.fear_greed_rating`,
           breadthScore: sql`EXCLUDED.breadth_score`,
+          breadthScoreEma: sql`EXCLUDED.breadth_score_ema`,
           divergenceSignal: sql`EXCLUDED.divergence_signal`,
         },
       }),
@@ -816,7 +859,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
 
   logger.info(
     TAG,
-    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% vixClose=${vixData.close ?? "null"} vixHigh=${vixData.high ?? "null"} fg=${fearGreedData.score ?? "null"} breadthScore=${breadthScore}`,
+    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% vixClose=${vixData.close ?? "null"} vixHigh=${vixData.high ?? "null"} fg=${fearGreedData.score ?? "null"} breadthScore=${breadthScore} breadthScoreEma=${breadthScoreEma}`,
   );
 }
 

@@ -556,6 +556,7 @@ export async function findMarketBreadthSnapshot(
        fear_greed_score,
        fear_greed_rating,
        breadth_score::text,
+       breadth_score_ema::text,
        divergence_signal,
        created_at::text
      FROM market_breadth_daily
@@ -601,6 +602,7 @@ export async function findMarketBreadthSnapshots(
        fear_greed_score,
        fear_greed_rating,
        breadth_score::text,
+       breadth_score_ema::text,
        divergence_signal,
        created_at::text
      FROM market_breadth_daily
@@ -621,7 +623,7 @@ export async function findPrevDayBreadthScore(
   date: string,
 ): Promise<PrevBreadthScoreRow> {
   const { rows } = await pool.query<PrevBreadthScoreRow>(
-    `SELECT breadth_score::text
+    `SELECT breadth_score::text, breadth_score_ema::text
      FROM market_breadth_daily
      WHERE date < $1
      ORDER BY date DESC
@@ -629,7 +631,7 @@ export async function findPrevDayBreadthScore(
     [date],
   );
 
-  return rows[0] ?? { breadth_score: null };
+  return rows[0] ?? { breadth_score: null, breadth_score_ema: null };
 }
 
 /**

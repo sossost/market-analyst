@@ -81,8 +81,17 @@ async function executeWeeklyMode(date: string): Promise<string> {
       findBreadthTopSectors(latestDate, 5),
     );
 
-    const latestBreadthScore = latestSnap?.breadth_score != null ? toNum(latestSnap.breadth_score) : null;
-    const firstBreadthScore = firstSnap?.breadth_score != null ? toNum(firstSnap.breadth_score) : null;
+    // EMA를 우선 사용하고, EMA가 null이면 raw breadthScore로 폴백
+    const latestBreadthScore = latestSnap?.breadth_score_ema != null
+      ? toNum(latestSnap.breadth_score_ema)
+      : latestSnap?.breadth_score != null
+        ? toNum(latestSnap.breadth_score)
+        : null;
+    const firstBreadthScore = firstSnap?.breadth_score_ema != null
+      ? toNum(firstSnap.breadth_score_ema)
+      : firstSnap?.breadth_score != null
+        ? toNum(firstSnap.breadth_score)
+        : null;
     const breadthScoreChange =
       latestBreadthScore != null && firstBreadthScore != null
         ? Number((latestBreadthScore - firstBreadthScore).toFixed(1))
@@ -229,7 +238,11 @@ async function executeDailyMode(date: string): Promise<string> {
     const newHighs = snapshot.new_highs ?? 0;
     const newLows = snapshot.new_lows ?? 0;
     const hlRatio = snapshot.hl_ratio != null ? toNum(snapshot.hl_ratio) : null;
-    const breadthScore = snapshot.breadth_score != null ? toNum(snapshot.breadth_score) : null;
+    // EMA를 우선 사용하고, EMA가 null이면 raw breadthScore로 폴백
+    const rawBreadthScore = snapshot.breadth_score != null ? toNum(snapshot.breadth_score) : null;
+    const breadthScore = snapshot.breadth_score_ema != null
+      ? toNum(snapshot.breadth_score_ema)
+      : rawBreadthScore;
     const divergenceSignal = toDivergenceSignal(snapshot.divergence_signal);
 
     // breadthScore가 null이면 변화량 계산 불가 — DB 쿼리 스킵
@@ -238,10 +251,13 @@ async function executeDailyMode(date: string): Promise<string> {
       const prevBreadthScoreRow = await retryDatabaseOperation(() =>
         findPrevDayBreadthScore(date),
       );
+      // EMA 간 차이로 변화량 계산 (EMA가 없으면 raw 폴백)
       const prevBreadthScore =
-        prevBreadthScoreRow.breadth_score != null
-          ? toNum(prevBreadthScoreRow.breadth_score)
-          : null;
+        prevBreadthScoreRow.breadth_score_ema != null
+          ? toNum(prevBreadthScoreRow.breadth_score_ema)
+          : prevBreadthScoreRow.breadth_score != null
+            ? toNum(prevBreadthScoreRow.breadth_score)
+            : null;
       breadthScoreChange =
         prevBreadthScore != null
           ? Number((breadthScore - prevBreadthScore).toFixed(1))
