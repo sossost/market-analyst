@@ -67,9 +67,9 @@ for pattern in "${SIGNIFICANT_PATTERNS[@]}"; do
   fi
 done
 
-# feat: 커밋 제목이 있으면 유의미한 변경으로 추가 표시
-if [ -n "$FEAT_ONLY_COMMITS" ]; then
-  HAS_SIGNIFICANT_CHANGE=true
+# feat: 커밋이 있고 패턴 매칭된 영역도 있을 때만 추가 표시
+# 패턴 매칭 없이 feat: 커밋만 있는 경우(내부 타입/렌더링 개선 등)는 차단하지 않음
+if [ -n "$FEAT_ONLY_COMMITS" ] && [ "$HAS_SIGNIFICANT_CHANGE" = true ]; then
   SIGNIFICANT_AREAS="$SIGNIFICANT_AREAS\n  - feat 커밋 감지"
 fi
 
