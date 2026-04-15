@@ -106,19 +106,10 @@ export function buildChainFields(thesis: Thesis): BottleneckInfo | null {
   }
 
   // Legacy fallback: thesis created before narrativeChain prompt was added.
-  // megatrend and bottleneck will be identical (first sentence) — this is expected.
-  // These theses will expire via timeframe and be replaced by new-style entries.
-  const firstSentence = text.split(/[.\n]/)[0]?.trim() ?? text.slice(0, 100);
-  return {
-    megatrend: firstSentence,
-    demandDriver: "",
-    supplyChain: "",
-    bottleneck: firstSentence,
-    nextBottleneck: thesis.nextBottleneck ?? null,
-    status,
-    beneficiarySectors,
-    beneficiaryTickers,
-  };
+  // These produce megatrend === bottleneck with empty demandDriver/supplyChain,
+  // which causes false-positive keyword matching. Reject to prevent corrupted chains.
+  // Legacy theses will expire via timeframe and be replaced by new-style entries.
+  return null;
 }
 
 /**
@@ -195,7 +186,7 @@ interface MatchingChain {
   metaRegimeId: number | null;
 }
 
-const MIN_KEYWORD_OVERLAP = 2;
+const MIN_KEYWORD_OVERLAP = 3;
 
 export async function findMatchingChain(
   input: { megatrend: string; bottleneck: string },

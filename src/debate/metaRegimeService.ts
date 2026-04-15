@@ -18,9 +18,15 @@ import {
 
 /** Stop words filtered out during keyword extraction. */
 const STOP_WORDS = new Set([
+  // Korean particles & postpositions
   "의", "에", "에서", "로", "으로", "가", "이", "을", "를", "는", "은", "과", "와", "및",
   "중", "후", "내", "기준", "현재", "상태", "상승", "하락", "유지", "전환", "진입",
+  // Generic Korean analysis words — too common to distinguish narratives (#793)
+  "지속", "가능성", "영향", "발생", "관련", "대한", "통해", "따른", "위한", "대비",
+  "수준", "예상", "변화", "확대", "축소", "증가", "감소",
+  // English articles & prepositions
   "the", "a", "an", "in", "on", "at", "to", "for", "of", "is", "are", "was", "were",
+  // Status keywords (to avoid matching on status text itself)
   "active", "resolving", "resolved",
 ]);
 
