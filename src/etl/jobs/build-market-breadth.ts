@@ -156,14 +156,16 @@ const NET_PHASE_FLOW_WEIGHT     = 0.20;
 const AD_NET_5D_WEIGHT          = 0.15;
 const VIX_WEIGHT                = 0.15;
 
-const PHASE2_RATIO_WEIGHT_NO_VIX    = 0.3529;
-const PHASE2_MOMENTUM_WEIGHT_NO_VIX = 0.2353;
-const NET_PHASE_FLOW_WEIGHT_NO_VIX  = 0.2353;
-const AD_NET_5D_WEIGHT_NO_VIX       = 0.1765;
+// VIX 제외 시 나머지 가중치를 합이 1.0이 되도록 재정규화
+const NO_VIX_TOTAL = PHASE2_RATIO_WEIGHT + PHASE2_MOMENTUM_WEIGHT + NET_PHASE_FLOW_WEIGHT + AD_NET_5D_WEIGHT;
+const PHASE2_RATIO_WEIGHT_NO_VIX    = PHASE2_RATIO_WEIGHT    / NO_VIX_TOTAL;
+const PHASE2_MOMENTUM_WEIGHT_NO_VIX = PHASE2_MOMENTUM_WEIGHT / NO_VIX_TOTAL;
+const NET_PHASE_FLOW_WEIGHT_NO_VIX  = NET_PHASE_FLOW_WEIGHT  / NO_VIX_TOTAL;
+const AD_NET_5D_WEIGHT_NO_VIX       = AD_NET_5D_WEIGHT       / NO_VIX_TOTAL;
 
 const WINDOW_DAYS     = 252;
 const PREV_DAYS_COUNT = 5;
-const MOMENTUM_LOOKBACK = 4; // DESC 배열에서 i+4 = 5일 전
+const MOMENTUM_LOOKBACK = 5; // DESC 배열에서 i+5 = 5거래일 전 (오늘-5일전 갭과 일치)
 const FLOW_WINDOW       = 5;
 
 /**
@@ -713,13 +715,18 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
   const netPhaseFlow5d = prev4NetFlow + (todayPhase1To2 - todayPhase2To3);
 
   // adNet5d = 직전4일 합산 + 오늘 당일
-  const todayAdNet = (adData.advancers ?? 0) - (adData.decliners ?? 0);
-  const prev4AdNet = prev5Days.slice(0, PREV_DAYS_COUNT - 1).reduce((sum, row) => {
-    const adv = row.advancers ?? 0;
-    const dec = row.decliners ?? 0;
-    return sum + (adv - dec);
-  }, 0);
-  const adNet5d = prev4AdNet + todayAdNet;
+  // adData가 실패(.catch 경로)하면 advancers/decliners가 null → adNet5d도 null로 전파
+  const adNet5d: number | null = adData.advancers == null || adData.decliners == null
+    ? null
+    : (() => {
+        const todayAdNet = adData.advancers - adData.decliners;
+        const prev4AdNet = prev5Days.slice(0, PREV_DAYS_COUNT - 1).reduce((sum, row) => {
+          const adv = row.advancers ?? 0;
+          const dec = row.decliners ?? 0;
+          return sum + (adv - dec);
+        }, 0);
+        return prev4AdNet + todayAdNet;
+      })();
 
   // 9. BreadthScore v2 + 다이버전스 신호
   const window252V2 = await retryDatabaseOperation(() => fetchWindow252V2(targetDate));
