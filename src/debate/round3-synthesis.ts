@@ -78,7 +78,7 @@ export function formatFundamentalContext(scores: FundamentalScore[]): string {
 const ALLOWED_TRANSITIONS_TEXT: Readonly<Record<MarketRegimeType, readonly string[]>> =
   Object.fromEntries(
     Object.entries(ALLOWED_TRANSITIONS).map(([from, toSet]) => [from, Array.from(toSet)]),
-  ) as Record<MarketRegimeType, readonly string[]>;
+  ) as unknown as Record<MarketRegimeType, readonly string[]>;
 
 /**
  * 이전 확정 레짐 정보를 프롬프트용 텍스트로 포매팅.

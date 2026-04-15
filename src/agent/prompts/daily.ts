@@ -59,17 +59,17 @@ ${ANALYSIS_FRAMEWORK}
 
 - **headline**: 투자자가 한눈에 읽는 핵심 판단 한줄. 예시: "반도체 장비군 강세 — 수급 집중", "브레드스 확대 — Phase 2 진입 가속". 기술 용어만 나열 금지.
 - **detail**: 현재 narrative 수준의 정량 근거. headline에서 이미 말한 결론을 반복하지 마라. 수치 인용은 허용, 데이터 나열은 금지.
-- **"해당 없음"인 경우**: `{ "headline": "해당 없음", "detail": "" }` 정확히 이 형태로. 다른 형태 금지.
+- **"해당 없음"인 경우**: \`{ "headline": "해당 없음", "detail": "" }\` 정확히 이 형태로. 다른 형태 금지.
 
 ### 필드별 작성 지침
 
 - **marketTemperature**: "bullish" / "neutral" / "bearish" 중 정확히 하나. 다른 값 금지.
 - **marketTemperatureLabel**: 예시: "강세 — 모멘텀 가속", "중립 — 관망", "약세 — 하락 3일째". 한 줄 이내.
 - **marketTemperatureRationale**: headline에 왜 그 온도인지 핵심 한줄. detail에 VIX 레벨, Phase2 비율 방향, 공포탐욕 구간, A/D ratio를 종합한 근거 2~3문장. 숫자 테이블 만들지 마라.
-- **unusualStocksNarrative**: headline에 특이종목 공통 테마를 한줄로. detail에 공통 업종/테마 집중 해석 또는 이질적(개별 악재, 이상 급등 등) 패턴 의미를 2~3문장. 없으면 `{ "headline": "해당 없음", "detail": "" }`.
-- **risingRSNarrative**: headline에 RS 상승 초기 종목군의 소속 업종·테마 방향 한줄. detail에 자금 유입 방향과 배경. 섹터별 종목 수를 언급할 때는 반드시 데이터에 포함된 '섹터 분포' 사전 집계 수치를 그대로 인용하라. 직접 카운트 금지. 없으면 `{ "headline": "해당 없음", "detail": "" }`.
-- **watchlistNarrative**: 오늘 발생한 이벤트(신규 진입/Phase 전이/만료 임박)가 있으면 headline에 이벤트 핵심 한줄, detail에 배경 해석. 이벤트 없으면 반드시 `{ "headline": "해당 없음", "detail": "" }`.
-- **breadthNarrative**: headline에 시장 브레드스 추세 한줄 판단. detail에 Phase 2 비율 방향(확대/축소/보합), A/D ratio 수준, 신고가·신저가 비율을 종합해 시장 참여 폭이 넓어지는지 좁아지는지 판단 근거. 없으면 `{ "headline": "해당 없음", "detail": "" }`.
+- **unusualStocksNarrative**: headline에 특이종목 공통 테마를 한줄로. detail에 공통 업종/테마 집중 해석 또는 이질적(개별 악재, 이상 급등 등) 패턴 의미를 2~3문장. 없으면 \`{ "headline": "해당 없음", "detail": "" }\`.
+- **risingRSNarrative**: headline에 RS 상승 초기 종목군의 소속 업종·테마 방향 한줄. detail에 자금 유입 방향과 배경. 섹터별 종목 수를 언급할 때는 반드시 데이터에 포함된 '섹터 분포' 사전 집계 수치를 그대로 인용하라. 직접 카운트 금지. 없으면 \`{ "headline": "해당 없음", "detail": "" }\`.
+- **watchlistNarrative**: 오늘 발생한 이벤트(신규 진입/Phase 전이/만료 임박)가 있으면 headline에 이벤트 핵심 한줄, detail에 배경 해석. 이벤트 없으면 반드시 \`{ "headline": "해당 없음", "detail": "" }\`.
+- **breadthNarrative**: headline에 시장 브레드스 추세 한줄 판단. detail에 Phase 2 비율 방향(확대/축소/보합), A/D ratio 수준, 신고가·신저가 비율을 종합해 시장 참여 폭이 넓어지는지 좁아지는지 판단 근거. 없으면 \`{ "headline": "해당 없음", "detail": "" }\`.
 - **todayInsight**: 토론 인사이트(debateInsight 컨텍스트)가 제공된 경우에만 작성. 시장 데이터와 일치하면 "토론과 일치", 충돌하면 "토론과 상충" 명시. 없으면 "해당 없음". (이 필드는 단일 문자열 — 객체 아님)
 - **discordMessage**: 구독자에게 전달하는 핵심 요약. 텍스트만, 링크 금지. 예시:
   "📊 [날짜] S&P500 +X.XX%, NASDAQ -X.XX%

@@ -64,7 +64,7 @@ async function getLatestDailyPriceDate(): Promise<string | null> {
     SELECT MAX(date)::text AS result_date
     FROM daily_prices
   `);
-  const row = result.rows[0] as DateRow | undefined;
+  const row = result.rows[0] as unknown as DateRow | undefined;
   return row?.result_date ?? null;
 }
 

@@ -123,7 +123,7 @@ export function buildUpdatedTrajectory(
  */
 export function calculateDurationReturn(params: {
   entryDate: string;
-  entryPrice: number;
+  entryPrice: number | null;
   currentDate: string;
   currentPrice: number | null;
   existingSnapshot: number | null;
@@ -133,7 +133,7 @@ export function calculateDurationReturn(params: {
 
   if (existingSnapshot != null) return existingSnapshot;
   if (currentPrice == null || currentPrice === 0) return null;
-  if (entryPrice === 0) return null;
+  if (entryPrice == null || entryPrice === 0) return null;
 
   const entry = new Date(`${entryDate}T00:00:00Z`);
   entry.setUTCDate(entry.getUTCDate() + durationDays);
