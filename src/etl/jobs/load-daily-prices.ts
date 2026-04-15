@@ -14,6 +14,7 @@ import {
   retryDatabaseOperation,
   DEFAULT_RETRY_OPTIONS,
 } from "@/etl/utils/retry";
+import { isWeekendDate } from "@/etl/utils/date-helpers";
 import { logger } from "@/lib/logger";
 
 const TAG = "LOAD_DAILY_PRICES";
@@ -67,9 +68,15 @@ async function loadOne(sym: string, N: number) {
     );
   }
 
+  const tradingDayRows = rows.filter((r) => !isWeekendDate(r.date as string));
+  const weekendCount = rows.length - tradingDayRows.length;
+  if (weekendCount > 0) {
+    logger.warn(TAG, `Filtered ${weekendCount} weekend records for ${sym}`);
+  }
+
   const batchSize = 50;
-  for (let i = 0; i < rows.length; i += batchSize) {
-    const batch = rows.slice(i, i + batchSize);
+  for (let i = 0; i < tradingDayRows.length; i += batchSize) {
+    const batch = tradingDayRows.slice(i, i + batchSize);
 
     const insertValues = batch.map((r) => ({
       symbol: sym,
@@ -102,7 +109,7 @@ async function loadOne(sym: string, N: number) {
     );
   }
 
-  logger.info(TAG, `Loaded ${rows.length} price records for ${sym}`);
+  logger.info(TAG, `Loaded ${tradingDayRows.length} price records for ${sym}`);
 }
 
 async function main() {
