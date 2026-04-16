@@ -528,6 +528,33 @@ const DAILY_REPORT_CSS = `
     margin: 12px 0;
   }
 
+  .insight-card-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 10px;
+  }
+
+  .insight-card-body p {
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .insight-card-body p:last-child { margin-bottom: 0; }
+
+  .insight-card-body ul, .insight-card-body ol {
+    margin: 4px 0 8px 20px;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .insight-card-body li { margin-bottom: 4px; }
+
+  .insight-card-body strong { font-weight: 600; }
+
   .empty-state {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -1729,15 +1756,13 @@ export function renderInsightSection(insight: DailyReportInsight): string {
   const todayInsightHtml =
     insight.todayInsight !== "해당 없음" && insight.todayInsight.trim() !== ""
       ? `
-        <h3>오늘의 인사이트</h3>
-        <div class="content-block">${mdToHtml(insight.todayInsight)}</div>`
+        <div class="insight-card">
+          <p class="insight-card-title">오늘의 인사이트</p>
+          <div class="insight-card-body">${mdToHtml(insight.todayInsight)}</div>
+        </div>`
       : "";
 
-  return `
-    <div class="insight-card">
-      ${rationaleHtml}
-    </div>
-    ${todayInsightHtml}`;
+  return `${rationaleHtml}${todayInsightHtml}`;
 }
 
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────
