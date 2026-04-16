@@ -46,6 +46,8 @@ import type {
   WeeklyQaThesisWeeklyRow,
   WeeklyQaThesisOverallRow,
   WeeklyQaTrackedStockRow,
+  WeeklyQaDetectionLagRow,
+  WeeklyQaExitReasonPerfRow,
   WeeklyQaLearningRow,
   WeeklyQaReportLogRow,
   WeeklyQaVerificationMethodRow,
@@ -1092,6 +1094,49 @@ export async function queryWeeklyQaRecommendations(pool: Pool): Promise<WeeklyQa
      FROM tracked_stocks
      GROUP BY status
      ORDER BY status`,
+  );
+  return rows;
+}
+
+export async function queryWeeklyQaDetectionLag(pool: Pool): Promise<WeeklyQaDetectionLagRow[]> {
+  const { rows } = await pool.query<WeeklyQaDetectionLagRow>(
+    `SELECT
+       source,
+       COUNT(*)::int as cnt,
+       ROUND(AVG(entry_date::date - phase2_since::date)::numeric, 1)::float as avg_lag,
+       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY entry_date::date - phase2_since::date)::float as median_lag,
+       COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date <= 3)::int as early_cnt,
+       COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date BETWEEN 4 AND 7)::int as normal_cnt,
+       COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date > 7)::int as late_cnt
+     FROM tracked_stocks
+     WHERE phase2_since IS NOT NULL
+     GROUP BY source
+     ORDER BY source`,
+  );
+  return rows;
+}
+
+export async function queryWeeklyQaExitReasonPerf(pool: Pool): Promise<WeeklyQaExitReasonPerfRow[]> {
+  const { rows } = await pool.query<WeeklyQaExitReasonPerfRow>(
+    `SELECT
+       CASE
+         WHEN exit_reason LIKE 'phase_exit%' THEN 'phase_exit'
+         ELSE COALESCE(exit_reason, 'unknown')
+       END as exit_reason_group,
+       COUNT(*)::int as cnt,
+       ROUND(AVG(pnl_percent)::numeric, 2)::float as avg_return,
+       CASE
+         WHEN COUNT(*) FILTER (WHERE pnl_percent IS NOT NULL) > 0
+         THEN ROUND(
+           COUNT(*) FILTER (WHERE pnl_percent > 0)::numeric
+           / COUNT(*) FILTER (WHERE pnl_percent IS NOT NULL)::numeric * 100
+         , 0)::float
+         ELSE NULL
+       END as win_rate
+     FROM tracked_stocks
+     WHERE status <> 'ACTIVE'
+     GROUP BY exit_reason_group
+     ORDER BY cnt DESC`,
   );
   return rows;
 }

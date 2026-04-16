@@ -49,6 +49,7 @@ function makeActiveRow(overrides: Record<string, unknown> = {}) {
     return_7d: "3.5",
     return_30d: "7.0",
     return_90d: null,
+    phase2_since: "2025-12-30",
     ...overrides,
   };
 }
@@ -73,6 +74,7 @@ function makeExitedRow(overrides: Record<string, unknown> = {}) {
     return_7d: "5.0",
     return_30d: "10.0",
     return_90d: "20.0",
+    phase2_since: "2025-11-28",
     ...overrides,
   };
 }
@@ -406,6 +408,189 @@ describe("readTrackedStocksPerformance.execute — 아이템 필드 포맷", () 
 
     expect(result.recentClosed[0].source).toBe("thesis_aligned");
     expect(result.recentClosed[0].tier).toBe("featured");
+  });
+});
+
+// ─── detection_lag 통계 테스트 ────────────────────────────────────────────────
+
+describe("readTrackedStocksPerformance.execute — detection_lag 통계", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("detectionLag 통계가 all 기간 조회 결과에 포함된다", async () => {
+    // entry_date=2026-01-01, phase2_since=2025-12-30 → lag = 2일
+    mockPool.query
+      .mockResolvedValueOnce({
+        rows: [makeActiveRow({ entry_date: "2026-01-01", phase2_since: "2025-12-30" })],
+      })
+      .mockResolvedValueOnce({
+        rows: [makeExitedRow({ entry_date: "2025-12-01", phase2_since: "2025-11-28" })],
+      });
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({}),
+    );
+
+    expect(result.detectionLag).toBeDefined();
+    expect(result.detectionLag.sampleSize).toBe(2);
+    expect(result.detectionLag.avgLag).toBeCloseTo(2.5, 1);
+    expect(result.detectionLag.distribution.early).toBe(2);
+    expect(result.detectionLag.distribution.normal).toBe(0);
+    expect(result.detectionLag.distribution.late).toBe(0);
+  });
+
+  it("phase2_since가 null인 종목은 detectionLag 계산에서 제외된다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({
+        rows: [
+          makeActiveRow({ phase2_since: null }),
+          makeActiveRow({ symbol: "MSFT", id: 3, phase2_since: "2025-12-31", entry_date: "2026-01-01" }),
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({}),
+    );
+
+    expect(result.detectionLag).toBeDefined();
+    expect(result.detectionLag.sampleSize).toBe(1);
+    expect(result.detectionLag.avgLag).toBe(1);
+  });
+
+  it("모든 종목의 phase2_since가 null이면 detectionLag가 null이다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({
+        rows: [makeActiveRow({ phase2_since: null })],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({}),
+    );
+
+    expect(result.detectionLag).toBeNull();
+  });
+
+  it("detectionLagBySource에 소스별 통계가 포함된다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({
+        rows: [
+          makeActiveRow({ source: "etl_auto", entry_date: "2026-01-03", phase2_since: "2026-01-01" }),
+          makeActiveRow({ symbol: "MSFT", id: 2, source: "agent", entry_date: "2026-01-10", phase2_since: "2026-01-01" }),
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({}),
+    );
+
+    expect(result.detectionLagBySource).toBeDefined();
+    expect(result.detectionLagBySource.etl_auto).toBeDefined();
+    expect(result.detectionLagBySource.etl_auto.avgLag).toBe(2);
+    expect(result.detectionLagBySource.agent.avgLag).toBe(9);
+    expect(result.detectionLagBySource.thesis_aligned).toBeNull();
+  });
+
+  it("detection_lag 구간 분류가 올바르다 (early/normal/late)", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({
+        rows: [
+          makeActiveRow({ entry_date: "2026-01-01", phase2_since: "2025-12-30" }),  // lag=2 → early
+          makeActiveRow({ symbol: "MSFT", id: 2, entry_date: "2026-01-06", phase2_since: "2026-01-01" }),  // lag=5 → normal
+          makeActiveRow({ symbol: "TSLA", id: 3, entry_date: "2026-01-15", phase2_since: "2026-01-01" }),  // lag=14 → late
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({}),
+    );
+
+    expect(result.detectionLag.distribution.early).toBe(1);
+    expect(result.detectionLag.distribution.normal).toBe(1);
+    expect(result.detectionLag.distribution.late).toBe(1);
+  });
+
+  it("this_week 조회 시 detectionLag가 포함된다", async () => {
+    mockQueryByKeyword([
+      ["entry_date >= $1", {
+        rows: [makeActiveRow({ entry_date: "2026-01-03", phase2_since: "2026-01-01" })],
+      }],
+      ["exit_date >= $1", { rows: [] }],
+      ["current_phase IS NOT NULL", { rows: [] }],
+    ]);
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({ period: "this_week" }),
+    );
+
+    expect(result.detectionLag).toBeDefined();
+    expect(result.detectionLag.sampleSize).toBe(1);
+    expect(result.detectionLag.avgLag).toBe(2);
+  });
+});
+
+// ─── exitReasonPerf 통계 테스트 ──────────────────────────────────────────────
+
+describe("readTrackedStocksPerformance.execute — exitReasonPerf 통계", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("exitReasonPerf에 phase_exit과 tracking_window_expired가 분리된다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          makeExitedRow({ exit_reason: "phase_exit: 2 → 1", pnl_percent: "10.0" }),
+          makeExitedRow({ symbol: "TSLA", id: 3, exit_reason: "phase_exit: 2 → 4", pnl_percent: "-5.0" }),
+          makeExitedRow({ symbol: "AMZN", id: 4, status: "EXPIRED", exit_reason: "tracking_window_expired", pnl_percent: "15.0" }),
+        ],
+      });
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({}),
+    );
+
+    expect(result.exitReasonPerf).toBeDefined();
+    expect(result.exitReasonPerf.phase_exit).toBeDefined();
+    expect(result.exitReasonPerf.phase_exit.count).toBe(2);
+    expect(result.exitReasonPerf.phase_exit.winRate).toBe(50);
+    expect(result.exitReasonPerf.tracking_window_expired).toBeDefined();
+    expect(result.exitReasonPerf.tracking_window_expired.count).toBe(1);
+    expect(result.exitReasonPerf.tracking_window_expired.winRate).toBe(100);
+  });
+
+  it("ACTIVE 종목은 exitReasonPerf에 포함되지 않는다", async () => {
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [makeActiveRow()] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({}),
+    );
+
+    expect(Object.keys(result.exitReasonPerf)).toHaveLength(0);
+  });
+
+  it("this_week 조회 시 exitReasonPerf가 포함된다", async () => {
+    mockQueryByKeyword([
+      ["entry_date >= $1", { rows: [] }],
+      ["exit_date >= $1", {
+        rows: [makeExitedRow({ exit_reason: "phase_exit: 2 → 1", pnl_percent: "8.0" })],
+      }],
+      ["current_phase IS NOT NULL", { rows: [] }],
+    ]);
+
+    const result = JSON.parse(
+      await readTrackedStocksPerformance.execute({ period: "this_week" }),
+    );
+
+    expect(result.exitReasonPerf).toBeDefined();
+    expect(result.exitReasonPerf.phase_exit.count).toBe(1);
   });
 });
 
