@@ -27,6 +27,7 @@ import {
 } from "@/db/repositories/trackedStocksRepository.js";
 import { findLatestClose } from "@/db/repositories/priceRepository.js";
 import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
+import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 import { toNum } from "@/etl/utils/common";
 
 const TAG = "SCAN_THESIS_ALIGNED_CANDIDATES";
@@ -152,6 +153,7 @@ async function main() {
   // 6. INSERT — thesis_aligned
   let savedCount = 0;
   let skippedCount = 0;
+  const corporateAnalystPromises: Promise<void>[] = [];
 
   for (const chain of certifiedData.chains) {
     for (const candidate of chain.candidates) {
@@ -199,8 +201,28 @@ async function main() {
           TAG,
           `${candidate.symbol}: 등록 완료 (tier=${tier}, chain=${chain.bottleneck})`,
         );
+
+        // 기업 분석 리포트 — featured tier 종목만 생성 (#847)
+        if (tier === "featured") {
+          corporateAnalystPromises.push(
+            runCorporateAnalyst(candidate.symbol, targetDate, pool)
+              .then((result) => {
+                if (!result.success) {
+                  logger.warn(TAG, `${candidate.symbol} 리포트 생성 실패: ${result.error}`);
+                }
+              })
+              .catch((err) =>
+                logger.error(TAG, `${candidate.symbol} CorporateAnalyst 에러: ${String(err)}`),
+              ),
+          );
+        }
       }
     }
+  }
+
+  if (corporateAnalystPromises.length > 0) {
+    logger.info(TAG, `CorporateAnalyst ${corporateAnalystPromises.length}건 대기 중...`);
+    await Promise.allSettled(corporateAnalystPromises);
   }
 
   logger.info(

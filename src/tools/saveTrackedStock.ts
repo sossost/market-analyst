@@ -321,22 +321,24 @@ async function executeRegister(
     `${symbol}: 트래킹 종목 등록 완료 (source=agent, tier=${tier}, Phase: ${phase}, RS: ${rsScore ?? "N/A"}, thesis: ${thesisId ?? "없음"})`,
   );
 
-  // 종목 심층 리포트 생성 (fire-and-forget)
-  runCorporateAnalyst(symbol, date, pool)
-    .then((result) => {
-      if (result.success === false) {
-        logger.warn(
+  // 종목 심층 리포트 생성 — featured tier만 (fire-and-forget) (#847)
+  if (tier === "featured") {
+    runCorporateAnalyst(symbol, date, pool)
+      .then((result) => {
+        if (result.success === false) {
+          logger.warn(
+            "CorporateAnalyst",
+            `${symbol} 트래킹 등록 후 심층 리포트 생성 실패: ${result.error}`,
+          );
+        }
+      })
+      .catch((err) =>
+        logger.error(
           "CorporateAnalyst",
-          `${symbol} 트래킹 등록 후 심층 리포트 생성 실패: ${result.error}`,
-        );
-      }
-    })
-    .catch((err) =>
-      logger.error(
-        "CorporateAnalyst",
-        `${symbol} 트래킹 등록 후 예상치 못한 에러: ${String(err)}`,
-      ),
-    );
+          `${symbol} 트래킹 등록 후 예상치 못한 에러: ${String(err)}`,
+        ),
+      );
+  }
 
   return JSON.stringify({
     success: true,
