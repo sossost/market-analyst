@@ -472,12 +472,12 @@ export interface WeeklySourceCounts {
  * thesisAligned는 buildWeeklyReportedSymbols와 동일 기준(4/4 게이트 충족)으로 카운트.
  */
 export function getWeeklySourceCounts(data: WeeklyReportData): WeeklySourceCounts {
-  let thesisAlignedCount = 0;
+  const thesisAlignedSymbols = new Set<string>();
   if (data.thesisAlignedCandidates != null) {
     for (const chain of data.thesisAlignedCandidates.chains) {
       for (const c of chain.candidates) {
         if (c.gatePassCount === c.gateTotalCount) {
-          thesisAlignedCount++;
+          thesisAlignedSymbols.add(c.symbol);
         }
       }
     }
@@ -487,7 +487,7 @@ export function getWeeklySourceCounts(data: WeeklyReportData): WeeklySourceCount
     gate5: data.gate5Candidates.length,
     breakout: (data.confirmedBreakouts ?? []).length,
     vcp: (data.vcpCandidates ?? []).length,
-    thesisAligned: thesisAlignedCount,
+    thesisAligned: thesisAlignedSymbols.size,
     watchlist: data.watchlist.items.length,
     pending4of5: data.watchlistChanges.pending4of5.length,
   };
