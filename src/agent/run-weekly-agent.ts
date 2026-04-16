@@ -456,6 +456,47 @@ export function buildWeeklyReportedSymbols(
   });
 }
 
+// ─── reportedSymbols 소스 진단 ────────────────────────────────────────────
+
+export interface WeeklySourceCounts {
+  gate5: number;
+  breakout: number;
+  vcp: number;
+  thesisAligned: number;
+  watchlist: number;
+  pending4of5: number;
+}
+
+/**
+ * 주간 리포트 데이터에서 소스별 종목 건수를 집계한다.
+ * thesisAligned는 buildWeeklyReportedSymbols와 동일 기준(4/4 게이트 충족)으로 카운트.
+ */
+export function getWeeklySourceCounts(data: WeeklyReportData): WeeklySourceCounts {
+  let thesisAlignedCount = 0;
+  if (data.thesisAlignedCandidates != null) {
+    for (const chain of data.thesisAlignedCandidates.chains) {
+      for (const c of chain.candidates) {
+        if (c.gatePassCount === c.gateTotalCount) {
+          thesisAlignedCount++;
+        }
+      }
+    }
+  }
+
+  return {
+    gate5: data.gate5Candidates.length,
+    breakout: (data.confirmedBreakouts ?? []).length,
+    vcp: (data.vcpCandidates ?? []).length,
+    thesisAligned: thesisAlignedCount,
+    watchlist: data.watchlist.items.length,
+    pending4of5: data.watchlistChanges.pending4of5.length,
+  };
+}
+
+export function formatSourceCounts(counts: WeeklySourceCounts): string {
+  return `Gate5 ${counts.gate5}, 돌파 ${counts.breakout}, VCP ${counts.vcp}, 서사수혜 ${counts.thesisAligned}, 관심종목 ${counts.watchlist}, 예비 ${counts.pending4of5}`;
+}
+
 // ─── 메인 ───────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -572,6 +613,32 @@ async function main() {
 
   // DB 저장
   const reportedSymbols = buildWeeklyReportedSymbols(data, targetDate);
+
+  // 소스별 건수 진단 로그
+  const sourceCounts = getWeeklySourceCounts(data);
+  logger.info(
+    "ReportedSymbols",
+    `${reportedSymbols.length}건 수집 | ${formatSourceCounts(sourceCounts)}`,
+  );
+
+  if (reportedSymbols.length === 0) {
+    logger.warn(
+      "ReportedSymbols",
+      `모든 소스 0건 — 빈 배열 저장. 소스: ${formatSourceCounts(sourceCounts)}`,
+    );
+    try {
+      await sendDiscordMessage(
+        `⚠️ 주간 리포트 reported_symbols 0건\n소스별: ${formatSourceCounts(sourceCounts)}\n빈 배열로 저장됩니다. 데이터 수집 단계를 확인하세요.`,
+        "DISCORD_WEEKLY_WEBHOOK_URL",
+      );
+    } catch (err) {
+      logger.warn(
+        "Discord",
+        `빈 소스 경고 알림 실패: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   const snapshot = data.marketBreadth.latestSnapshot;
   const dist = snapshot.phaseDistribution;
   try {

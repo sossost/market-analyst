@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildWeeklyReportedSymbols } from "@/agent/run-weekly-agent";
+import {
+  buildWeeklyReportedSymbols,
+  getWeeklySourceCounts,
+  formatSourceCounts,
+} from "@/agent/run-weekly-agent";
 import type { WeeklyReportData } from "@/tools/schemas/weeklyReportSchema";
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -547,5 +551,154 @@ describe("buildWeeklyReportedSymbols", () => {
     expect(result[0].industry).toBe("");
     expect(result[0].phase).toBe(0);
     expect(result[0].rsScore).toBe(0);
+  });
+});
+
+// ─── getWeeklySourceCounts ────────────────────────────────────────────────
+
+describe("getWeeklySourceCounts", () => {
+  it("모든 소스가 비어있으면 전부 0", () => {
+    const counts = getWeeklySourceCounts(makeData());
+
+    expect(counts).toEqual({
+      gate5: 0,
+      breakout: 0,
+      vcp: 0,
+      thesisAligned: 0,
+      watchlist: 0,
+      pending4of5: 0,
+    });
+  });
+
+  it("각 소스별 건수를 정확히 집계한다", () => {
+    const data = makeData({
+      gate5Candidates: [
+        {
+          symbol: "NVDA", phase: 2, prevPhase: 1, isNewPhase2: true, rsScore: 92,
+          ma150Slope: 0.01, pctFromHigh52w: -5, pctFromLow52w: 80, isExtremePctFromLow: false,
+          conditionsMet: [], volRatio: 1.5, volumeConfirmed: true, breakoutSignal: "none",
+          sector: "Technology", industry: "Semiconductors", sepaGrade: "S",
+        },
+        {
+          symbol: "AMD", phase: 2, prevPhase: 1, isNewPhase2: true, rsScore: 85,
+          ma150Slope: 0.01, pctFromHigh52w: -8, pctFromLow52w: 70, isExtremePctFromLow: false,
+          conditionsMet: [], volRatio: 1.3, volumeConfirmed: true, breakoutSignal: "none",
+          sector: "Technology", industry: "Semiconductors", sepaGrade: "A",
+        },
+      ],
+      confirmedBreakouts: [
+        {
+          symbol: "AAPL", breakoutPercent: 3.2, volumeRatio: 2.1, isPerfectRetest: false,
+          ma20DistancePercent: 1.5, sector: "Technology", industry: "Consumer Electronics",
+          phase: 2, rsScore: 85,
+        },
+      ],
+      vcpCandidates: [
+        {
+          symbol: "MSFT", bbWidthCurrent: 0.05, bbWidthAvg60d: 0.08, atr14Percent: 1.2,
+          bodyRatio: 0.6, ma20Ma50DistancePercent: 0.3, sector: "Technology",
+          industry: "Software", phase: 2, rsScore: 78,
+        },
+      ],
+      watchlist: {
+        summary: { totalActive: 1, phaseChanges: [], avgPnlPercent: 5 },
+        items: [
+          {
+            symbol: "GOOGL", entryDate: "2026-03-01", trackingEndDate: null, daysTracked: 40,
+            entryPhase: 2, currentPhase: 2, entryRsScore: 75, currentRsScore: 80,
+            entrySector: "Communication Services", entryIndustry: "Internet",
+            entrySepaGrade: "A", priceAtEntry: 150, currentPrice: 160, pnlPercent: 6.7,
+            maxPnlPercent: 8.0, sectorRelativePerf: 2.0, phaseTrajectory: [],
+            entryReason: "AI 검색", hasThesisBasis: true, phase2Since: "2026-03-01",
+            phase2SinceDays: 40, phase2Segment: "확립",
+          },
+        ],
+      },
+      watchlistChanges: {
+        registered: [],
+        exited: [],
+        pending4of5: [{ symbol: "META", action: "register", reason: "4/5 통과" }],
+      },
+    });
+
+    const counts = getWeeklySourceCounts(data);
+
+    expect(counts.gate5).toBe(2);
+    expect(counts.breakout).toBe(1);
+    expect(counts.vcp).toBe(1);
+    expect(counts.thesisAligned).toBe(0); // thesisAlignedCandidates is null
+    expect(counts.watchlist).toBe(1);
+    expect(counts.pending4of5).toBe(1);
+  });
+
+  it("thesisAligned는 4/4 게이트 충족 종목만 카운트한다", () => {
+    const data = makeData({
+      thesisAlignedCandidates: {
+        chains: [
+          {
+            chainId: 1,
+            megatrend: "AI",
+            bottleneck: "GPU shortage",
+            chainStatus: "ACTIVE",
+            alphaCompatible: true,
+            daysSinceIdentified: 30,
+            candidates: [
+              {
+                symbol: "AMD", chainId: 1, megatrend: "AI", bottleneck: "GPU shortage",
+                chainStatus: "ACTIVE", phase: 2, rsScore: 88, pctFromHigh52w: -10,
+                sepaGrade: "S", sector: "Technology", industry: "Semiconductors",
+                marketCap: 200000, gatePassCount: 4, gateTotalCount: 4, source: "llm",
+              },
+              {
+                symbol: "INTC", chainId: 1, megatrend: "AI", bottleneck: "GPU shortage",
+                chainStatus: "ACTIVE", phase: 3, rsScore: 30, pctFromHigh52w: -40,
+                sepaGrade: "C", sector: "Technology", industry: "Semiconductors",
+                marketCap: 100000, gatePassCount: 1, gateTotalCount: 4, source: "sector",
+              },
+            ],
+          },
+        ],
+        totalCandidates: 2,
+        phase2Count: 1,
+      },
+    });
+
+    const counts = getWeeklySourceCounts(data);
+
+    expect(counts.thesisAligned).toBe(1); // AMD만 4/4
+  });
+
+  it("nullable 소스가 null이면 0으로 집계한다", () => {
+    const data = makeData({
+      confirmedBreakouts: null,
+      vcpCandidates: null,
+      thesisAlignedCandidates: null,
+    });
+
+    const counts = getWeeklySourceCounts(data);
+
+    expect(counts.breakout).toBe(0);
+    expect(counts.vcp).toBe(0);
+    expect(counts.thesisAligned).toBe(0);
+  });
+});
+
+// ─── formatSourceCounts ───────────────────────────────────────────────────
+
+describe("formatSourceCounts", () => {
+  it("소스별 건수를 한 줄 문자열로 포맷한다", () => {
+    const result = formatSourceCounts({
+      gate5: 3, breakout: 1, vcp: 2, thesisAligned: 1, watchlist: 5, pending4of5: 0,
+    });
+
+    expect(result).toBe("Gate5 3, 돌파 1, VCP 2, 서사수혜 1, 관심종목 5, 예비 0");
+  });
+
+  it("모든 소스가 0이면 전부 0으로 표시한다", () => {
+    const result = formatSourceCounts({
+      gate5: 0, breakout: 0, vcp: 0, thesisAligned: 0, watchlist: 0, pending4of5: 0,
+    });
+
+    expect(result).toBe("Gate5 0, 돌파 0, VCP 0, 서사수혜 0, 관심종목 0, 예비 0");
   });
 });
