@@ -24,6 +24,7 @@ import type {
   MarketBreadthData,
   IndustryItem,
 } from "@/tools/schemas/weeklyReportSchema";
+import type { ReportedStock } from "@/types";
 import { fillInsightDefaults } from "@/tools/schemas/weeklyReportSchema";
 import { buildWeeklyHtml } from "@/lib/weekly-html-builder";
 
@@ -369,6 +370,88 @@ async function publishWeeklyReport(
   await sendDiscordMessage(discordText, "DISCORD_WEEKLY_WEBHOOK_URL");
 }
 
+// ─── reportedSymbols 수집 ──────────────────────────────────────────────────
+
+/**
+ * 주간 리포트 데이터에서 분석된 종목을 수집하여 ReportedStock[] 형태로 반환한다.
+ * 일간 리포트(run-daily-agent.ts)의 reportedSymbols 구조와 동일.
+ */
+export function buildWeeklyReportedSymbols(
+  data: WeeklyReportData,
+  targetDate: string,
+): ReportedStock[] {
+  // thesis_aligned 후보: SEPA S/A (4/4 게이트 충족) 종목만 — 일간 리포트와 동일 기준
+  const thesisAlignedSymbols = new Map<string, { phase: number; rsScore: number; sector: string; industry: string }>();
+  if (data.thesisAlignedCandidates != null) {
+    for (const chain of data.thesisAlignedCandidates.chains) {
+      for (const c of chain.candidates) {
+        if (c.gatePassCount !== c.gateTotalCount) {
+          continue;
+        }
+        if (!thesisAlignedSymbols.has(c.symbol)) {
+          thesisAlignedSymbols.set(c.symbol, {
+            phase: c.phase ?? 0,
+            rsScore: c.rsScore ?? 0,
+            sector: c.sector ?? "",
+            industry: c.industry ?? "",
+          });
+        }
+      }
+    }
+  }
+
+  // 각 소스에서 심볼을 수집하고 중복 제거 (우선순위: gate5 > breakout > vcp > thesisAligned > watchlist > pending4of5)
+  const symbolSet = new Set<string>();
+
+  const gate5Symbols = data.gate5Candidates.map((s) => s.symbol);
+  const breakoutSymbols = (data.confirmedBreakouts ?? []).map((s) => s.symbol);
+  const vcpSymbols = (data.vcpCandidates ?? []).map((s) => s.symbol);
+  const watchlistSymbols = data.watchlist.items.map((w) => w.symbol);
+  const pending4of5Symbols = data.watchlistChanges.pending4of5.map((w) => w.symbol);
+
+  for (const s of [...gate5Symbols, ...breakoutSymbols, ...vcpSymbols, ...thesisAlignedSymbols.keys(), ...watchlistSymbols, ...pending4of5Symbols]) {
+    symbolSet.add(s);
+  }
+
+  // pending4of5는 gate5Candidates의 부분집합이므로 gate5에서 메타데이터를 크로스 조인
+  const gate5Map = new Map(data.gate5Candidates.map((s) => [s.symbol, s]));
+
+  return Array.from(symbolSet).map((symbol) => {
+    const gate5 = gate5Map.get(symbol) ?? null;
+    const breakout = (data.confirmedBreakouts ?? []).find((s) => s.symbol === symbol);
+    const vcp = (data.vcpCandidates ?? []).find((s) => s.symbol === symbol);
+    const ta = thesisAlignedSymbols.get(symbol);
+    const watchItem = data.watchlist.items.find((w) => w.symbol === symbol);
+    const pending = data.watchlistChanges.pending4of5.find((w) => w.symbol === symbol);
+
+    const phase = gate5?.phase ?? breakout?.phase ?? vcp?.phase ?? ta?.phase ?? watchItem?.currentPhase ?? watchItem?.entryPhase ?? 0;
+    const rsScore = gate5?.rsScore ?? breakout?.rsScore ?? vcp?.rsScore ?? ta?.rsScore ?? watchItem?.currentRsScore ?? watchItem?.entryRsScore ?? 0;
+    const sector = gate5?.sector ?? breakout?.sector ?? vcp?.sector ?? ta?.sector ?? watchItem?.entrySector ?? "";
+    const industry = gate5?.industry ?? breakout?.industry ?? vcp?.industry ?? ta?.industry ?? watchItem?.entryIndustry ?? "";
+
+    // reason: 가장 의미 있는 소스 우선
+    const reason =
+      gate5 != null && pending == null ? "5중게이트"
+      : breakout != null ? "돌파확인"
+      : vcp != null ? "VCP"
+      : ta != null ? "서사수혜"
+      : watchItem != null ? "관심종목"
+      : pending != null ? "예비4of5"
+      : "기타";
+
+    return {
+      symbol,
+      phase,
+      prevPhase: gate5?.prevPhase ?? null,
+      rsScore,
+      sector,
+      industry,
+      reason,
+      firstReportedDate: targetDate,
+    };
+  });
+}
+
 // ─── 메인 ───────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -484,12 +567,19 @@ async function main() {
   await publishWeeklyReport(html, insight, targetDate);
 
   // DB 저장
+  const reportedSymbols = buildWeeklyReportedSymbols(data, targetDate);
+  const snapshot = data.marketBreadth.latestSnapshot;
+  const dist = snapshot.phaseDistribution;
   try {
     await saveReportLog({
       date: targetDate,
       type: "weekly",
-      reportedSymbols: [],
-      marketSummary: { phase2Ratio: 0, leadingSectors: [], totalAnalyzed: 0 },
+      reportedSymbols,
+      marketSummary: {
+        phase2Ratio: snapshot.phase2Ratio,
+        leadingSectors: data.sectorRanking.slice(0, 3).map((s) => s.sector),
+        totalAnalyzed: dist.phase1 + dist.phase2 + dist.phase3 + dist.phase4,
+      },
       fullContent: null,
       metadata: {
         model: "claude-sonnet-4-6 (CLI)",
