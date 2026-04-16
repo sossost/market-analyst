@@ -9,12 +9,11 @@ export type DebateRole = AgentPersona | ModeratorRole;
 export type ThesisStatus = "ACTIVE" | "CONFIRMED" | "INVALIDATED" | "EXPIRED";
 export type Confidence = "low" | "medium" | "high";
 export type ConsensusLevel = "4/4" | "3/4" | "2/4" | "1/4";
-export type TimeframeDays = 30 | 60 | 90;
+export type TimeframeDays = 45 | 60 | 90;
 export type LearningCategory = "confirmed" | "caution";
 export type ThesisCategory =
   | "structural_narrative"
-  | "sector_rotation"
-  | "short_term_outlook";
+  | "sector_rotation";
 
 /**
  * Persona definition loaded from .claude/agents/*.md

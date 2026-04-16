@@ -840,7 +840,7 @@ async function main() {
   }
 
   // 6.6. 토론 데이터 완전성 검증 (저장 후)
-  // structural_narrative 카테고리만 체크 — sector_rotation/short_term_outlook은 빈 배열이 정상 설계
+  // structural_narrative 카테고리만 체크 — sector_rotation은 빈 배열이 정상 설계
   const structuralTheses = result.round3.theses.filter(
     (t) => t.category === "structural_narrative",
   );

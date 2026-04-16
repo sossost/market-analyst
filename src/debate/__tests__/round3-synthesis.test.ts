@@ -212,16 +212,16 @@ describe("buildSynthesisPrompt", () => {
     expect(fundIdx).toBeLessThan(earlyIdx);
   });
 
-  it("short_term_outlook 범위 제한 규칙이 프롬프트에 포함된다", () => {
+  it("short_term_outlook 카테고리가 프롬프트에서 제거되었다 (#845)", () => {
     const result = buildSynthesisPrompt(round1, round2, question, undefined, undefined);
 
-    // 범위 제한 섹션 존재
-    expect(result).toContain("short_term_outlook 범위 제한");
-    // 금지 패턴 예시
-    expect(result).toContain("30일 내 VIX 20 하회");
-    expect(result).toContain("공포탐욕지수 25 이상 회복");
-    // 허용 패턴 예시
-    expect(result).toContain("어떤 조건이 충족되면");
+    // short_term_outlook 관련 섹션이 제거됨
+    expect(result).not.toContain("short_term_outlook 범위 제한");
+    expect(result).toContain("short_term_outlook은 폐지");
+    // structural_narrative와 sector_rotation만 남음
+    expect(result).toContain("structural_narrative");
+    expect(result).toContain("sector_rotation");
+    // 허용 패턴은 유지
     expect(result).toContain("조건부 형식");
   });
 
@@ -434,11 +434,11 @@ describe("formatExistingThesesForSynthesis", () => {
     expect(result).toContain("[ROTATION]");
   });
 
-  it("short_term_outlook 카테고리는 SHORT로 표시한다", () => {
-    const rows = [makeThesisRow({ category: "short_term_outlook" })] as any;
+  it("알 수 없는 카테고리는 ROTATION으로 폴백한다", () => {
+    const rows = [makeThesisRow({ category: "unknown_category" })] as any;
     const result = formatExistingThesesForSynthesis(rows);
 
-    expect(result).toContain("[SHORT]");
+    expect(result).toContain("[ROTATION]");
   });
 });
 

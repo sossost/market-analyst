@@ -66,7 +66,7 @@ describe("extractThesesFromText", () => {
   {
     "agentPersona": "geopolitics",
     "thesis": "Semiconductor export controls expand",
-    "timeframeDays": 30,
+    "timeframeDays": 90,
     "verificationMetric": "New export control regulations",
     "targetCondition": "New controls announced",
     "confidence": "high",
@@ -141,7 +141,7 @@ describe("extractThesesFromText", () => {
   {
     "agentPersona": "macro",
     "thesis": "Valid thesis",
-    "timeframeDays": 30,
+    "timeframeDays": 60,
     "verificationMetric": "CPI",
     "targetCondition": "CPI < 3%",
     "confidence": "medium",
@@ -250,8 +250,8 @@ describe("extractThesesFromText", () => {
       const base = {
         agentPersona: "geopolitics",
         thesis: "반도체 수출 규제 확대",
-        category: "short_term_outlook",
-        timeframeDays: 30,
+        category: "sector_rotation",
+        timeframeDays: 45,
         verificationMetric: "Export control regulations",
         targetCondition: "New controls announced",
         confidence: "medium",
@@ -302,8 +302,8 @@ describe("extractThesesFromText", () => {
       const base = {
         agentPersona: "sentiment",
         thesis: "소매 투자자 리스크 온 전환",
-        category: "short_term_outlook",
-        timeframeDays: 30,
+        category: "sector_rotation",
+        timeframeDays: 45,
         verificationMetric: "AAII bull/bear ratio",
         targetCondition: "Bull ratio > 50%",
         confidence: "low",

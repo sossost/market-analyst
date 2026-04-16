@@ -20,6 +20,8 @@ const mockOrderBy = vi.fn();
 // Mock thesisConstants — shared constant for stale thesis expiration
 vi.mock("@/debate/thesisConstants.js", () => ({
   THESIS_EXPIRE_PROGRESS: 0.5,
+  STRUCTURAL_NARRATIVE_MIN_DAYS: 60,
+  SECTOR_ROTATION_MIN_DAYS: 45,
 }));
 
 // Mock narrativeChainService — error-isolated, no-op in thesis tests
@@ -199,12 +201,12 @@ describe("thesisStore", () => {
       ]);
     });
 
-    it("defaults category to short_term_outlook when not provided", async () => {
+    it("defaults category to sector_rotation when not provided", async () => {
       const theses: Thesis[] = [
         {
           agentPersona: "tech",
           thesis: "AI capex surge",
-          timeframeDays: 30,
+          timeframeDays: 60,
           verificationMetric: "Capex",
           targetCondition: "> 20%",
           confidence: "medium",
@@ -218,7 +220,7 @@ describe("thesisStore", () => {
 
       expect(mockValues).toHaveBeenCalledWith([
         expect.objectContaining({
-          category: "short_term_outlook",
+          category: "sector_rotation",
         }),
       ]);
     });
@@ -291,7 +293,7 @@ describe("thesisStore", () => {
 
       const result = formatThesesForPrompt(rows as any);
 
-      expect(result).toContain("[SHORT][HIGH/3/4]");
+      expect(result).toContain("[ROTATION][HIGH/3/4]");
       expect(result).toContain("매크로 이코노미스트");
       expect(result).toContain("금리 인하 가속화");
       expect(result).toContain("30일");
@@ -349,8 +351,7 @@ describe("thesisStore", () => {
 
       expect(formatThesesForPrompt([makeRowWithCategory("structural_narrative")] as any)).toContain("[STRUCTURAL]");
       expect(formatThesesForPrompt([makeRowWithCategory("sector_rotation")] as any)).toContain("[ROTATION]");
-      expect(formatThesesForPrompt([makeRowWithCategory("short_term_outlook")] as any)).toContain("[SHORT]");
-      expect(formatThesesForPrompt([makeRowWithCategory(null)] as any)).toContain("[SHORT]");
+      expect(formatThesesForPrompt([makeRowWithCategory(null)] as any)).toContain("[ROTATION]");
     });
 
     it("maps confidence levels correctly", () => {
@@ -372,9 +373,9 @@ describe("thesisStore", () => {
         createdAt: new Date(),
       });
 
-      expect(formatThesesForPrompt([makeRow("high")] as any)).toContain("[SHORT][HIGH/4/4]");
-      expect(formatThesesForPrompt([makeRow("medium")] as any)).toContain("[SHORT][MED/4/4]");
-      expect(formatThesesForPrompt([makeRow("low")] as any)).toContain("[SHORT][LOW/4/4]");
+      expect(formatThesesForPrompt([makeRow("high")] as any)).toContain("[ROTATION][HIGH/4/4]");
+      expect(formatThesesForPrompt([makeRow("medium")] as any)).toContain("[ROTATION][MED/4/4]");
+      expect(formatThesesForPrompt([makeRow("low")] as any)).toContain("[ROTATION][LOW/4/4]");
     });
   });
 
@@ -465,19 +466,18 @@ describe("thesisStore", () => {
         { category: "structural_narrative", status: "ACTIVE", count: 3 },
         { category: "structural_narrative", status: "CONFIRMED", count: 1 },
         { category: "sector_rotation", status: "ACTIVE", count: 2 },
-        { category: "short_term_outlook", status: "EXPIRED", count: 5 },
+        { category: "sector_rotation", status: "EXPIRED", count: 5 },
       ]);
 
       const stats = await getThesisStatsByCategory();
 
       expect(stats).toEqual({
         structural_narrative: { ACTIVE: 3, CONFIRMED: 1 },
-        sector_rotation: { ACTIVE: 2 },
-        short_term_outlook: { EXPIRED: 5 },
+        sector_rotation: { ACTIVE: 2, EXPIRED: 5 },
       });
     });
 
-    it("defaults null category to short_term_outlook", async () => {
+    it("defaults null category to sector_rotation", async () => {
       mockGroupBy.mockResolvedValueOnce([
         { category: null, status: "ACTIVE", count: 4 },
       ]);
@@ -485,7 +485,7 @@ describe("thesisStore", () => {
       const stats = await getThesisStatsByCategory();
 
       expect(stats).toEqual({
-        short_term_outlook: { ACTIVE: 4 },
+        sector_rotation: { ACTIVE: 4 },
       });
     });
 
@@ -510,7 +510,7 @@ describe("thesisStore", () => {
           targetCondition: "Rate cut >= 25bp",
           confidence: "medium",
           consensusLevel: "3/4",
-          category: "short_term_outlook",
+          category: "sector_rotation",
         },
       ];
       mockReturning.mockResolvedValueOnce([{ id: 1 }]);
@@ -545,12 +545,12 @@ describe("thesisStore", () => {
         {
           agentPersona: "geopolitics",
           thesis: "반도체 수출 규제 확대",
-          timeframeDays: 30,
+          timeframeDays: 45,
           verificationMetric: "Export control regulations",
           targetCondition: "New controls announced",
           confidence: "medium",
           consensusLevel: "2/4",
-          category: "short_term_outlook",
+          category: "sector_rotation",
         },
       ];
       mockReturning.mockResolvedValueOnce([{ id: 3 }]);
@@ -565,12 +565,12 @@ describe("thesisStore", () => {
         {
           agentPersona: "sentiment",
           thesis: "소매 투자자 리스크 온",
-          timeframeDays: 30,
+          timeframeDays: 45,
           verificationMetric: "AAII bull ratio",
           targetCondition: "Bull ratio > 50%",
           confidence: "low",
           consensusLevel: "1/4",
-          category: "short_term_outlook",
+          category: "sector_rotation",
         },
       ];
       mockReturning.mockResolvedValueOnce([{ id: 4 }]);
@@ -634,12 +634,12 @@ describe("thesisStore", () => {
         {
           agentPersona: "macro",
           thesis: "달러 강세 전환",
-          timeframeDays: 30,
+          timeframeDays: 45,
           verificationMetric: "DXY",
           targetCondition: "DXY > 105",
           confidence: "high",
           consensusLevel: "4/4",
-          category: "short_term_outlook",
+          category: "sector_rotation",
           // dissentReason 없음
         },
       ];
@@ -683,7 +683,7 @@ describe("thesisStore", () => {
         {
           agentPersona: "tech",
           thesis: "Technology 섹터 RS 상승",
-          timeframeDays: 30,
+          timeframeDays: 45,
           verificationMetric: "Technology RS",
           targetCondition: "Technology RS > 65",
           confidence: "medium",
@@ -771,7 +771,7 @@ describe("thesisStore", () => {
         {
           agentPersona: "tech",
           thesis: "Technology RS 반등",
-          timeframeDays: 30,
+          timeframeDays: 45,
           verificationMetric: "Technology RS",
           targetCondition: "Technology RS > 60",
           confidence: "medium",

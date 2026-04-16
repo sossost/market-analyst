@@ -6,6 +6,7 @@ import type { FundamentalScore } from "@/types/fundamental";
 import type { MarketRegimeType } from "@/db/schema/analyst";
 import { verifyConsensusLevels } from "./consensusVerifier.js";
 import { detectContradictions } from "./contradictionDetector.js";
+import { STRUCTURAL_NARRATIVE_MIN_DAYS, SECTOR_ROTATION_MIN_DAYS } from "./thesisConstants.js";
 
 const MODERATOR_MAX_TOKENS = 8192;
 
@@ -353,33 +354,25 @@ ${round2Section}
 - confidence "high"는 3/4 이상 합의 + 명확한 데이터 근거가 있을 때만
 - ETF가 월간 20% 이상 등락하는 예측은 극단적 상황 아니면 지양
 
-**카테고리 분류 기준:**
-- \`structural_narrative\`: 수요-공급-병목 서사 기반 전망. 기본 timeframe 60~90일.
-- \`sector_rotation\`: 섹터 로테이션 전망. 기본 timeframe 30~60일.
-- \`short_term_outlook\`: 단기 시장/지수 전망. 기본 timeframe 30일.
+**카테고리 분류 기준 (2개만 사용 — short_term_outlook은 폐지됨):**
+- \`structural_narrative\`: 수요-공급-병목 서사 기반 전망. timeframe 60~90일. 구조적 변화의 중장기 방향성.
+- \`sector_rotation\`: 섹터 로테이션 전망. timeframe 45~90일. 자금 흐름과 섹터 순환 중기 방향성.
+- **short_term_outlook 카테고리는 사용하지 마세요.** 30일 이하 단기 예측은 시스템에서 차단됩니다.
 
-**short_term_outlook 범위 제한 (중요 — 적중률 41.7%, 역신호 수준):**
-- 이 카테고리는 시장 심리/변동성의 **타이밍 예측**에서 체계적으로 실패합니다 (14건 INVALIDATED vs 10건 CONFIRMED).
-- **시스템 강제 규칙**: 이 카테고리의 confidence는 자동으로 \`low\`로 다운그레이드됩니다. 세션당 최대 1건만 저장됩니다.
-- 아래 규칙을 반드시 준수하세요:
+**thesis 허용 패턴:**
+- 구조적 전환 방향성: "risk-off에서 risk-on으로의 전환 초기 신호 감지"
+- 조건부 형식: "VIX 30 기준, 25 이하로 안정되면 기술주 반등 가능" (시점이 아닌 조건)
+- 레짐 전환 감지: "EARLY_BEAR에서 EARLY_BULL 전환 조건 형성 중"
+- tech 구조적 전환: "AI capex 사이클 하드웨어→소프트웨어 전환 가속", "반도체 재고 사이클 저점 통과 신호"
 
-- **금지 패턴 (thesis로 추출하지 마세요):**
-  - 특정 기한 내 수치 도달 예측: "30일 내 VIX 20 하회", "2주 내 공포탐욕지수 25 회복"
-  - 심리/변동성 지표의 절대 수준 예측: "VIX 20 이하 진입", "공포탐욕지수 25 이상 회복"
-  - 단기 가격 반등/하락 타이밍 예측: "상승 전환 비율 35% 돌파", "3주 내 반등 시작"
-  - **구체적 가격 목표/% 수익률 예측** (특히 tech 에이전트): "SOXX $185 → $208", "Broadcom $250 목표가", "ETF X가 60일 내 15-20% 상승", "ARKQ $52.8 → $62", "90일 내 20% 상승"
-  - 핵심: **"언제까지 X가 Y에 도달"** 및 **"$N 목표가"**, **"N% 상승/하락"** 형식은 전부 금지
-
-- **허용 패턴 (이런 형식만 thesis로 추출하세요):**
-  - 구조적 전환 방향성: "risk-off에서 risk-on으로의 전환 초기 신호 감지"
-  - 조건부 형식: "VIX 30 기준, 25 이하로 안정되면 기술주 반등 가능" (시점이 아닌 조건)
-  - 레짐 전환 감지: "EARLY_BEAR에서 EARLY_BULL 전환 조건 형성 중"
-  - **tech 에이전트 구조적 전환 신호**: "AI capex 사이클 하드웨어→소프트웨어 전환 가속", "반도체 재고 사이클 저점 통과 신호", "SaaS 멀티플 재평가 시작", "밸류체인 병목 해소로 인한 마진 확대 국면 진입"
-  - 핵심: **"어떤 조건이 충족되면"** 또는 **"구조적 전환이 진행 중"** 형식으로 작성
+**thesis 금지 패턴:**
+- 특정 기한 내 수치 도달 예측: "30일 내 VIX 20 하회"
+- 구체적 가격 목표/% 수익률 예측: "SOXX $185 → $208", "60일 내 15-20% 상승"
+- 심리/변동성 타이밍 예측: "3주 내 반등 시작"
 
 **에이전트별 카테고리 제한:**
-- **sentiment** 에이전트의 thesis는 \`structural_narrative\` 또는 \`sector_rotation\`만 허용됩니다. sentiment의 방향성 예측(지수 목표치, VIX 하락 예측 등)은 thesis로 추출하지 마세요. sentiment의 분석은 포지셔닝 과밀/자금 흐름 구조 관점에서만 thesis화하세요.
-- 위 제한을 위반한 thesis는 시스템에서 자동 재분류됩니다.
+- 모든 에이전트는 \`structural_narrative\` 또는 \`sector_rotation\`만 사용합니다.
+- **sentiment** 에이전트의 분석은 포지셔닝 과밀/자금 흐름 구조 관점에서만 thesis화하세요. 방향성 예측(지수 목표치, VIX 하락 예측 등)은 thesis로 추출하지 마세요.
 
 **정량 조건 작성 규칙 (중요 — 자동 검증의 핵심):**
 - targetCondition과 invalidationCondition은 **반드시 수치 비교 형식**으로 작성하세요
@@ -409,8 +402,8 @@ ${round2Section}
   {
     "agentPersona": "macro|tech|geopolitics|sentiment",
     "thesis": "현재 기준값 포함한 구체적 예측 문장",
-    "category": "structural_narrative|sector_rotation|short_term_outlook",
-    "timeframeDays": 30|60|90,
+    "category": "structural_narrative|sector_rotation",
+    "timeframeDays": 45|60|90,
     "verificationMetric": "검증에 사용할 지표 (티커 또는 지수명)",
     "targetCondition": "S&P 500 > 5800",
     "invalidationCondition": "S&P 500 < 5500",
@@ -494,18 +487,17 @@ macro-economist의 round1 분석을 최우선으로 참조.
 const VALID_PERSONAS = new Set<string>(["macro", "tech", "geopolitics", "sentiment"]);
 const VALID_CONFIDENCE = new Set<string>(["low", "medium", "high"]);
 const VALID_CONSENSUS = new Set<string>(["1/4", "2/4", "3/4", "4/4"]);
-const VALID_TIMEFRAMES = new Set<number>([30, 60, 90]);
+const VALID_TIMEFRAMES = new Set<number>([45, 60, 90]);
 const VALID_CATEGORIES = new Set<string>([
   "structural_narrative",
   "sector_rotation",
-  "short_term_outlook",
 ]);
 
 /**
  * 페르소나별 허용 카테고리 맵.
  * 맵에 없는 페르소나는 모든 카테고리 허용.
- * short_term_outlook 적중률 39% (EXPIRED 포함 시 28%) — 전 에이전트 방향성 예측 차단.
- * #561: sentiment 차단, #563: macro/geopolitics 확대.
+ * #845: short_term_outlook 완전 제거. 모든 에이전트가 structural_narrative + sector_rotation만 사용.
+ * 이 맵은 defense-in-depth로 유지 — 향후 카테고리 추가 시 페르소나별 제한 가능.
  */
 const ALLOWED_CATEGORIES_PER_PERSONA: Partial<Record<AgentPersona, Set<ThesisCategory>>> = {
   sentiment: new Set<ThesisCategory>(["structural_narrative", "sector_rotation"]),
@@ -514,7 +506,6 @@ const ALLOWED_CATEGORIES_PER_PERSONA: Partial<Record<AgentPersona, Set<ThesisCat
 };
 
 const CATEGORY_FALLBACK: Record<ThesisCategory, ThesisCategory> = {
-  short_term_outlook: "sector_rotation",
   sector_rotation: "sector_rotation",
   structural_narrative: "structural_narrative",
 };
@@ -601,64 +592,10 @@ const CONFIDENCE_DOWNGRADE_PERSONAS = new Set<AgentPersona>(["sentiment"]);
  */
 const CONFIDENCE_DOWNGRADE_EXEMPT_CATEGORIES = new Set<ThesisCategory>(["structural_narrative"]);
 
-/**
- * confidence 자동 하향 대상 카테고리.
- * 적중률 50% 미만 카테고리를 등록한다.
- * #627: short_term_outlook 적중률 41.7% — 전 에이전트 단기 전망 역신호.
- * 해당 카테고리 thesis는 confidence를 강제 low로 다운그레이드.
- *
- * 참고: sentiment/macro/geopolitics는 ALLOWED_CATEGORIES_PER_PERSONA에 의해
- * short_term_outlook이 sector_rotation으로 먼저 재분류되므로 이 가드레일은
- * 실질적으로 tech 에이전트에만 적용된다. sentiment는 별도로
- * CONFIDENCE_DOWNGRADE_PERSONAS에 의해 confidence가 low로 하향된다.
- */
-const CONFIDENCE_DOWNGRADE_CATEGORIES = new Set<ThesisCategory>(["short_term_outlook"]);
+// #845: CONFIDENCE_DOWNGRADE_CATEGORIES 제거 — short_term_outlook 카테고리 완전 제거됨.
 
-/**
- * tech 에이전트의 short_term_outlook thesis에 가격 목표 패턴이 포함되어 있는지 검사한다.
- * "$N", "$N → $N", "N% 상승/하락", "목표가/목표 가격" 등 구체적 가격 예측 패턴을 검출.
- * 순수 함수 — 테스트 용이.
- * #645: tech의 short_term_outlook EXPIRED 8/10건 — 가격 목표 thesis 남발 패턴 차단.
- */
-const TECH_PRICE_TARGET_PATTERNS: RegExp[] = [
-  // $N 목표가 / $N → $N 패턴 (예: "$250 목표가", "SOXX $185 → $208")
-  /\$\d+[\d,.]*\s*(?:→|->|목표|도달|돌파)/,
-  /\$\d+[\d,.]*\s*.*?\s*\$\d+[\d,.]*/,
-  // N% 상승/하락 패턴 (예: "20% 상승", "15-20% 상승", "20-30% 조정")
-  /\d+[-~]\d+%\s*(?:상승|하락|조정|반등|급등|급락|수익률)/,
-  /\d+%\s*(?:상승|하락|조정|반등|급등|급락|수익률)/,
-  // 목표가/목표 가격 직접 언급
-  /목표\s*(?:가|가격|수준|레벨)/,
-  // "N일/주/개월 내 N% 상승/하락" 패턴
-  /\d+\s*(?:일|주|개월|day|week|month)\s*(?:내|이내|안에).*?\d+%/i,
-  // ETF/종목 + 가격 도달 패턴 (예: "ARKQ $52.8 → $62", "BRK.B $400")
-  /\b[A-Z]{2,5}(?:\.[A-Z]+)?\s+\$\d+/,
-  // 신고점/신저점 + 목표 결합
-  /(?:신고점|신저점|고점|저점)\s*(?:돌파|갱신|도달|목표)/,
-];
-
-export function containsPriceTarget(thesis: string): boolean {
-  return TECH_PRICE_TARGET_PATTERNS.some((pattern) => pattern.test(thesis));
-}
-
-/**
- * tech 에이전트의 short_term_outlook 가격 목표 thesis를 필터링(드롭)한다.
- * tech + short_term_outlook 이외의 thesis는 통과.
- * #645: 프롬프트 제약이 무시된 전적 — 코드 레벨 가드레일.
- */
-function filterTechPriceTargets(theses: Thesis[]): Thesis[] {
-  return theses.filter((t) => {
-    if (t.agentPersona !== "tech" || t.category !== "short_term_outlook") return true;
-    if (containsPriceTarget(t.thesis)) {
-      logger.info(
-        "Round3",
-        `tech의 가격 목표 thesis 드롭: "${t.thesis.slice(0, 60)}..." (#645 가드레일)`,
-      );
-      return false;
-    }
-    return true;
-  });
-}
+// #845: containsPriceTarget / filterTechPriceTargets 제거 — short_term_outlook 카테고리 완전 제거됨.
+// tech의 가격 목표 thesis 필터는 short_term_outlook 전용이었으므로 더 이상 불필요.
 
 /**
  * sentiment 에이전트의 thesis에 수치 예측 패턴이 포함되어 있는지 검사한다.
@@ -715,30 +652,7 @@ export function containsMeanReversionPattern(thesis: string): boolean {
   return SENTIMENT_MEAN_REVERSION_PATTERNS.some((pattern) => pattern.test(thesis));
 }
 
-/**
- * short_term_outlook 카테고리 thesis를 1회 추출당 최대 1건으로 제한한다.
- * 2건 이상이면 첫 번째만 유지, 나머지 드롭 + 로그.
- * #627: 적중률 41.7% — 발행량 자체를 억제하여 역신호 노출 최소화.
- * 참고: extractThesesFromText / extractDebateOutput은 debate당 1회 호출되므로
- * 추출당 1건 = 사실상 debate당 1건.
- */
-const MAX_SHORT_TERM_OUTLOOK_PER_EXTRACTION = 1;
-
-export function filterShortTermOutlookCap(theses: Thesis[]): Thesis[] {
-  let count = 0;
-  return theses.filter((t) => {
-    if (t.category !== "short_term_outlook") return true;
-    count++;
-    if (count > MAX_SHORT_TERM_OUTLOOK_PER_EXTRACTION) {
-      logger.info(
-        "Round3",
-        `short_term_outlook thesis 초과 드롭 (${count}/${MAX_SHORT_TERM_OUTLOOK_PER_EXTRACTION}건 제한): "${t.thesis.slice(0, 60)}..." (#627 가드레일)`,
-      );
-      return false;
-    }
-    return true;
-  });
-}
+// #845: filterShortTermOutlookCap 제거 — short_term_outlook 카테고리 완전 제거됨.
 
 /**
  * sentiment 에이전트의 수치 예측 thesis를 필터링(드롭)한다.
@@ -768,7 +682,7 @@ function normalizeThesisFields(
 ): Record<string, unknown> {
   let category: ThesisCategory =
     obj.category == null || !VALID_CATEGORIES.has(obj.category as string)
-      ? ("short_term_outlook" satisfies ThesisCategory)
+      ? ("sector_rotation" satisfies ThesisCategory)
       : (obj.category as ThesisCategory);
 
   // 페르소나별 허용 카테고리 강제 적용
@@ -821,17 +735,19 @@ function normalizeThesisFields(
     confidence = "medium";
   }
 
-  // 저적중 카테고리 confidence 자동 하향 (#627)
-  if (
-    CONFIDENCE_DOWNGRADE_CATEGORIES.has(category) &&
-    VALID_CONFIDENCE.has(confidence) &&
-    confidence !== "low"
-  ) {
+  // #845: 카테고리별 confidence 하향 제거 — short_term_outlook 카테고리 완전 제거됨.
+
+  // #845: 카테고리별 최소 timeframe 적용
+  let timeframeDays = obj.timeframeDays as number;
+  const minDays = category === "structural_narrative"
+    ? STRUCTURAL_NARRATIVE_MIN_DAYS
+    : SECTOR_ROTATION_MIN_DAYS;
+  if (VALID_TIMEFRAMES.has(timeframeDays) && timeframeDays < minDays) {
     logger.info(
       "Round3",
-      `${category} 카테고리 thesis confidence 하향: ${confidence} → low (카테고리 적중률 보정 #627)`,
+      `${category} thesis timeframe 상향: ${timeframeDays}일 → ${minDays}일 (최소 하한 적용 #845)`,
     );
-    confidence = "low";
+    timeframeDays = minDays;
   }
 
   const narrativeChain = normalizeNarrativeChain(obj.narrativeChain);
@@ -840,6 +756,7 @@ function normalizeThesisFields(
     ...obj,
     category,
     confidence,
+    timeframeDays,
     nextBottleneck: obj.nextBottleneck ?? null,
     dissentReason: obj.dissentReason ?? null,
     beneficiarySectors: Array.isArray(obj.beneficiarySectors) ? obj.beneficiarySectors : [],
@@ -923,11 +840,10 @@ export function extractThesesFromText(text: string): ExtractionResult {
 /**
  * 공통 thesis 필터 파이프라인.
  * extractThesesFromText / extractDebateOutput 양쪽에서 동일한 필터를 적용한다.
+ * #845: filterTechPriceTargets, filterShortTermOutlookCap 제거 (short_term_outlook 완전 제거).
  */
 function applyThesisFilters(theses: Thesis[]): Thesis[] {
-  const filtered = filterNumericPredictions(theses);
-  const priceTargetFiltered = filterTechPriceTargets(filtered);
-  return filterShortTermOutlookCap(priceTargetFiltered);
+  return filterNumericPredictions(theses);
 }
 
 /**
