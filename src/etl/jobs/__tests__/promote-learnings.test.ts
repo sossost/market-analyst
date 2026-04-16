@@ -857,7 +857,7 @@ describe("buildPromotionCandidates — 카테고리 폴백", () => {
     const confirmed = [
       makeThesis({ id: 1, agentPersona: "macro", verificationMetric: "Gold", category: "structural_narrative" }),
       makeThesis({ id: 2, agentPersona: "macro", verificationMetric: "DXY", category: "structural_narrative" }),
-      makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "VIX", category: "short_term_outlook" }),
+      makeThesis({ id: 3, agentPersona: "macro", verificationMetric: "VIX", category: "sector_rotation" }),
     ];
 
     const candidates = buildPromotionCandidates(
@@ -868,7 +868,7 @@ describe("buildPromotionCandidates — 카테고리 폴백", () => {
     );
 
     // structural_narrative: 2건 → 카테고리 폴백 승격
-    // short_term_outlook: 1건 → 미달
+    // sector_rotation: 1건 → 미달
     expect(candidates).toHaveLength(1);
     expect(candidates[0].metric).toBe("cat:structural_narrative");
   });

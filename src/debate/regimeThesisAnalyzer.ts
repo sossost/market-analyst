@@ -24,7 +24,7 @@ export interface RegimeHitRate {
 export interface RegimeBias {
   regime: MarketRegimeType;
   total: number;
-  /** structural_narrative / sector_rotation / short_term_outlook 비율 */
+  /** structural_narrative / sector_rotation 비율 */
   categoryBreakdown: Record<string, number>;
   /** persona별 thesis 수 */
   personaBreakdown: Record<string, number>;

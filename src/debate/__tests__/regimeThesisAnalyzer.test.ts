@@ -136,7 +136,7 @@ describe("calcRegimeBiases", () => {
     mockGroupBy.mockResolvedValueOnce([
       { regime: "MID_BULL", category: "structural_narrative", persona: "macro", count: 3 },
       { regime: "MID_BULL", category: "sector_rotation", persona: "tech", count: 2 },
-      { regime: "EARLY_BEAR", category: "short_term_outlook", persona: "sentiment", count: 4 },
+      { regime: "EARLY_BEAR", category: "sector_rotation", persona: "sentiment", count: 4 },
     ]);
 
     const result = await calcRegimeBiases();

@@ -96,7 +96,7 @@ function makeThesis(overrides: Partial<Thesis> = {}): Thesis {
   return {
     agentPersona: "macro",
     thesis: "Test thesis",
-    timeframeDays: 30,
+    timeframeDays: 45,
     verificationMetric: "metric",
     targetCondition: "condition",
     confidence: "medium",

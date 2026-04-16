@@ -60,7 +60,7 @@ export async function saveTheses(
       confidence: t.confidence,
       consensusLevel: t.consensusLevel,
       consensusScore: parseConsensusScore(t.consensusLevel),
-      category: t.category ?? "short_term_outlook",
+      category: t.category ?? "sector_rotation",
       nextBottleneck: t.nextBottleneck ?? null,
       dissentReason: t.dissentReason ?? null,
       minorityView: t.minorityView ?? null,
@@ -500,7 +500,7 @@ export async function getThesisStatsByCategory(): Promise<
   const result: Partial<Record<ThesisCategory, Record<string, number>>> = {};
 
   for (const r of rows) {
-    const cat = (r.category ?? "short_term_outlook") as ThesisCategory;
+    const cat = (r.category ?? "sector_rotation") as ThesisCategory;
     if (result[cat] == null) {
       result[cat] = {};
     }
@@ -547,7 +547,7 @@ export async function getThesisHitRateByCategory(): Promise<CategoryHitRateWithS
   const map = new Map<string, CategoryHitRateWithStatusQuo>();
 
   for (const r of rows) {
-    const cat = (r.category ?? "short_term_outlook") as ThesisCategory;
+    const cat = (r.category ?? "sector_rotation") as ThesisCategory;
 
     if (!map.has(cat)) {
       map.set(cat, {
@@ -704,7 +704,6 @@ const PERSONA_LABEL: Record<string, string> = {
 const CATEGORY_LABEL: Record<ThesisCategory, string> = {
   structural_narrative: "STRUCTURAL",
   sector_rotation: "ROTATION",
-  short_term_outlook: "SHORT",
 };
 
 /**
@@ -721,7 +720,7 @@ export function formatThesesForPrompt(
   for (const t of rows) {
     const persona = PERSONA_LABEL[t.agentPersona] ?? t.agentPersona;
     const conf = t.confidence === "high" ? "HIGH" : t.confidence === "medium" ? "MED" : "LOW";
-    const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "SHORT";
+    const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "ROTATION";
     lines.push(
       `- [${catLabel}][${conf}/${t.consensusLevel}] ${persona}: ${t.thesis} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`,
     );
@@ -812,7 +811,7 @@ export function formatExistingThesesForSynthesis(
   for (const [persona, personaTheses] of byPersona) {
     const label = PERSONA_LABEL[persona] ?? persona;
     const lines = personaTheses.map((t) => {
-      const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "SHORT";
+      const catLabel = CATEGORY_LABEL[t.category as ThesisCategory] ?? "ROTATION";
       const status = t.status === "ACTIVE" ? "ACTIVE" : "CONFIRMED";
       return `  - [${catLabel}][${status}] ${t.thesis.replace(/\n/g, " ")} (${t.timeframeDays}일, 검증: ${t.verificationMetric} ${t.targetCondition})`;
     });

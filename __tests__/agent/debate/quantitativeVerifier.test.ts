@@ -33,7 +33,7 @@ function createThesis(
   return {
     agentPersona: "tech",
     thesis: "테스트 전망",
-    timeframeDays: 30,
+    timeframeDays: 45,
     verificationMetric: "S&P 500",
     targetCondition: "S&P 500 > 5800",
     confidence: "high",

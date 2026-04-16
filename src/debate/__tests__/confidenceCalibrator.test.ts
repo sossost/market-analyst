@@ -676,7 +676,6 @@ describe("formatCategoryHitRateContext", () => {
     const hitRates: CategoryHitRate[] = [
       { category: "structural_narrative", confirmed: 6, invalidated: 1, expired: 0, hitRate: 0.857 },
       { category: "sector_rotation", confirmed: 3, invalidated: 2, expired: 0, hitRate: 0.6 },
-      { category: "short_term_outlook", confirmed: 8, invalidated: 9, expired: 0, hitRate: 0.471 },
     ];
 
     const output = formatCategoryHitRateContext(hitRates);
@@ -684,23 +683,22 @@ describe("formatCategoryHitRateContext", () => {
     expect(output).toContain("카테고리별 Thesis 적중률");
     expect(output).toContain("구조적 서사");
     expect(output).toContain("섹터 로테이션");
-    expect(output).toContain("단기 전망");
     expect(output).toContain("만료");
     expect(output).toContain("85.7%"); // structural_narrative
-    expect(output).toContain("47.1%"); // short_term_outlook
+    expect(output).toContain("60.0%"); // sector_rotation
   });
 
   it("적중률 55% 미만 카테고리에 저적중 경고를 포함한다", () => {
     const hitRates: CategoryHitRate[] = [
       { category: "structural_narrative", confirmed: 6, invalidated: 1, expired: 0, hitRate: 0.857 },
-      { category: "short_term_outlook", confirmed: 8, invalidated: 9, expired: 0, hitRate: 0.471 },
+      { category: "sector_rotation", confirmed: 3, invalidated: 9, expired: 0, hitRate: 0.25 },
     ];
 
     const output = formatCategoryHitRateContext(hitRates);
 
     expect(output).toContain("⚠️ 저신뢰");
     expect(output).toContain("저적중 카테고리 경고");
-    expect(output).toContain("단기 전망");
+    expect(output).toContain("섹터 로테이션");
     expect(output).toContain("조건부(if-then) 형식");
     expect(output).toContain("confidence를 한 단계 낮춰");
   });
@@ -708,8 +706,7 @@ describe("formatCategoryHitRateContext", () => {
   it("모든 카테고리가 55% 이상이면 경고 없음", () => {
     const hitRates: CategoryHitRate[] = [
       { category: "structural_narrative", confirmed: 6, invalidated: 1, expired: 0, hitRate: 0.857 },
-      { category: "sector_rotation", confirmed: 4, invalidated: 2, expired: 0, hitRate: 0.667 },
-      { category: "short_term_outlook", confirmed: 7, invalidated: 5, expired: 0, hitRate: 0.583 },
+      { category: "sector_rotation", confirmed: 7, invalidated: 5, expired: 0, hitRate: 0.583 },
     ];
 
     const output = formatCategoryHitRateContext(hitRates);
@@ -729,20 +726,20 @@ describe("formatCategoryHitRateContext", () => {
 
   it("적중률 내림차순으로 정렬한다", () => {
     const hitRates: CategoryHitRate[] = [
-      { category: "short_term_outlook", confirmed: 5, invalidated: 5, expired: 0, hitRate: 0.5 },
+      { category: "sector_rotation", confirmed: 5, invalidated: 5, expired: 0, hitRate: 0.5 },
       { category: "structural_narrative", confirmed: 8, invalidated: 2, expired: 0, hitRate: 0.8 },
     ];
 
     const output = formatCategoryHitRateContext(hitRates);
 
     const structIdx = output.indexOf("구조적 서사");
-    const shortIdx = output.indexOf("단기 전망");
-    expect(structIdx).toBeLessThan(shortIdx);
+    const rotationIdx = output.indexOf("섹터 로테이션");
+    expect(structIdx).toBeLessThan(rotationIdx);
   });
 
   it("EXPIRED를 만료 컬럼에 표시한다", () => {
     const hitRates: CategoryHitRate[] = [
-      { category: "short_term_outlook", confirmed: 9, invalidated: 14, expired: 9, hitRate: 0.281 },
+      { category: "sector_rotation", confirmed: 9, invalidated: 14, expired: 9, hitRate: 0.281 },
     ];
 
     const output = formatCategoryHitRateContext(hitRates);
@@ -762,7 +759,7 @@ describe("formatPersonaCategoryHitRates", () => {
 
   it("3건 미만 항목은 필터링한다", () => {
     const rates: PersonaCategoryHitRate[] = [
-      { persona: "sentiment", category: "short_term_outlook", confirmed: 1, invalidated: 1, expired: 0, hitRate: 0.5 },
+      { persona: "sentiment", category: "sector_rotation", confirmed: 1, invalidated: 1, expired: 0, hitRate: 0.5 },
     ];
 
     expect(formatPersonaCategoryHitRates(rates)).toBe("");
@@ -770,23 +767,23 @@ describe("formatPersonaCategoryHitRates", () => {
 
   it("카테고리별 적중률 테이블을 생성한다", () => {
     const rates: PersonaCategoryHitRate[] = [
-      { persona: "sentiment", category: "short_term_outlook", confirmed: 3, invalidated: 5, expired: 0, hitRate: 0.375 },
+      { persona: "sentiment", category: "sector_rotation", confirmed: 3, invalidated: 5, expired: 0, hitRate: 0.375 },
       { persona: "sentiment", category: "structural_narrative", confirmed: 4, invalidated: 1, expired: 0, hitRate: 0.8 },
     ];
 
     const output = formatPersonaCategoryHitRates(rates);
 
     expect(output).toContain("카테고리별 적중률");
-    expect(output).toContain("단기 전망");
+    expect(output).toContain("섹터 로테이션");
     expect(output).toContain("구조적 서사");
     expect(output).toContain("만료");
-    expect(output).toContain("37.5%"); // short_term_outlook
+    expect(output).toContain("37.5%"); // sector_rotation
     expect(output).toContain("80.0%"); // structural_narrative
   });
 
   it("55% 미만 카테고리에 경고를 포함한다", () => {
     const rates: PersonaCategoryHitRate[] = [
-      { persona: "geopolitics", category: "short_term_outlook", confirmed: 3, invalidated: 4, expired: 0, hitRate: 0.429 },
+      { persona: "geopolitics", category: "sector_rotation", confirmed: 3, invalidated: 4, expired: 0, hitRate: 0.429 },
     ];
 
     const output = formatPersonaCategoryHitRates(rates);
@@ -808,7 +805,7 @@ describe("formatPersonaCategoryHitRates", () => {
 
   it("EXPIRED 포함 시 3건 이상이면 유효 데이터로 처리한다", () => {
     const rates: PersonaCategoryHitRate[] = [
-      { persona: "macro", category: "short_term_outlook", confirmed: 1, invalidated: 0, expired: 2, hitRate: 0.333 },
+      { persona: "macro", category: "sector_rotation", confirmed: 1, invalidated: 0, expired: 2, hitRate: 0.333 },
     ];
 
     const output = formatPersonaCategoryHitRates(rates);
@@ -893,7 +890,7 @@ describe("formatModeratorCrossCalibrationContext", () => {
 
   it("EXPIRED를 만료 컬럼에 표시한다", () => {
     const entries: CrossCalibrationEntry[] = [
-      { persona: "geopolitics", category: "short_term_outlook", confirmed: 3, invalidated: 4, expired: 2, hitRate: 0.333 },
+      { persona: "geopolitics", category: "sector_rotation", confirmed: 3, invalidated: 4, expired: 2, hitRate: 0.333 },
     ];
 
     const output = formatModeratorCrossCalibrationContext(entries);

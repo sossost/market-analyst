@@ -609,7 +609,6 @@ export interface CategoryHitRate {
 const CATEGORY_LABEL_KR: Record<ThesisCategory, string> = {
   structural_narrative: "구조적 서사",
   sector_rotation: "섹터 로테이션",
-  short_term_outlook: "단기 전망",
 };
 
 const CATEGORY_LOW_HIT_RATE_THRESHOLD = 0.55;
