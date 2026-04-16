@@ -55,6 +55,7 @@ interface TrackedStockPerfRow {
   return_7d: string | null;
   return_30d: string | null;
   return_90d: string | null;
+  phase2_since: string | null;
 }
 
 // ─── Tool Definition ─────────────────────────────────────────────────────────
@@ -160,7 +161,8 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
                   entry_price::text, current_price::text,
                   pnl_percent::text, max_pnl_percent::text,
                   days_tracked, exit_date, exit_reason,
-                  return_7d::text, return_30d::text, return_90d::text
+                  return_7d::text, return_30d::text, return_90d::text,
+                  phase2_since
            FROM tracked_stocks
            ${baseWhere !== "" ? baseWhere + " AND" : "WHERE"} status = 'ACTIVE'
            ORDER BY entry_date DESC
@@ -181,7 +183,8 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
                   entry_price::text, current_price::text,
                   pnl_percent::text, max_pnl_percent::text,
                   days_tracked, exit_date, exit_reason,
-                  return_7d::text, return_30d::text, return_90d::text
+                  return_7d::text, return_30d::text, return_90d::text,
+                  phase2_since
            FROM tracked_stocks
            ${nonActiveWhere.clause}
            ORDER BY exit_date DESC NULLS LAST
@@ -206,6 +209,13 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
   const bySource = buildBySourceStats(allRecs);
   const byTier = buildByTierStats(allRecs);
 
+  // 포착 선행성 통계
+  const detectionLag = buildDetectionLagStats(allRecs);
+  const detectionLagBySource = buildDetectionLagBySource(allRecs);
+
+  // exit_reason별 성과 분리
+  const exitReasonPerf = buildExitReasonPerfStats(allRecs);
+
   const active =
     statusFilter === "EXPIRED" || statusFilter === "EXITED"
       ? []
@@ -216,7 +226,7 @@ async function executeAll(input: Record<string, unknown>): Promise<string> {
       ? []
       : closedRecs.map(formatClosedRow);
 
-  return JSON.stringify({ summary, bySource, byTier, active, recentClosed });
+  return JSON.stringify({ summary, bySource, byTier, detectionLag, detectionLagBySource, exitReasonPerf, active, recentClosed });
 }
 
 // ─── 이번 주 조회 ─────────────────────────────────────────────────────────────
@@ -253,7 +263,8 @@ async function executeThisWeek(input: Record<string, unknown>): Promise<string> 
                   entry_price::text, current_price::text,
                   pnl_percent::text, max_pnl_percent::text,
                   days_tracked, exit_date, exit_reason,
-                  return_7d::text, return_30d::text, return_90d::text
+                  return_7d::text, return_30d::text, return_90d::text,
+                  phase2_since
            FROM tracked_stocks
            WHERE entry_date >= $1 ${optionalFilter}
            ORDER BY entry_date DESC`,
@@ -267,7 +278,8 @@ async function executeThisWeek(input: Record<string, unknown>): Promise<string> 
                   entry_price::text, current_price::text,
                   pnl_percent::text, max_pnl_percent::text,
                   days_tracked, exit_date, exit_reason,
-                  return_7d::text, return_30d::text, return_90d::text
+                  return_7d::text, return_30d::text, return_90d::text,
+                  phase2_since
            FROM tracked_stocks
            WHERE exit_date >= $1
              AND status <> 'ACTIVE'
@@ -283,7 +295,8 @@ async function executeThisWeek(input: Record<string, unknown>): Promise<string> 
                   entry_price::text, current_price::text,
                   pnl_percent::text, max_pnl_percent::text,
                   days_tracked, exit_date, exit_reason,
-                  return_7d::text, return_30d::text, return_90d::text
+                  return_7d::text, return_30d::text, return_90d::text,
+                  phase2_since
            FROM tracked_stocks
            WHERE status = 'ACTIVE'
              AND current_phase IS NOT NULL
@@ -318,6 +331,12 @@ async function executeThisWeek(input: Record<string, unknown>): Promise<string> 
 
   const weeklySourceStats = buildBySourceStats(newThisWeek);
 
+  // 이번 주 신규 진입 종목의 포착 선행성
+  const weeklyDetectionLag = buildDetectionLagStats(newThisWeek);
+
+  // exit_reason별 성과 분리
+  const weeklyExitReasonPerf = buildExitReasonPerfStats(closedThisWeek);
+
   return JSON.stringify({
     period: "this_week",
     weekStart,
@@ -332,6 +351,8 @@ async function executeThisWeek(input: Record<string, unknown>): Promise<string> 
       exitReasons: exitReasonGroups,
     },
     bySource: weeklySourceStats,
+    detectionLag: weeklyDetectionLag,
+    exitReasonPerf: weeklyExitReasonPerf,
     phaseExits: phaseExits.map((r) => ({
       symbol: r.symbol,
       source: r.source,
@@ -493,6 +514,136 @@ function buildByTierStats(rows: TrackedStockPerfRow[]) {
       ];
     }),
   );
+}
+
+// ─── Detection Lag 계산 ──────────────────────────────────────────────────────
+
+/**
+ * entry_date - phase2_since 일수를 계산한다.
+ * phase2_since가 null이면 null을 반환한다.
+ */
+function calcDetectionLag(row: TrackedStockPerfRow): number | null {
+  if (row.phase2_since == null) {
+    return null;
+  }
+  const entry = new Date(row.entry_date).getTime();
+  const p2 = new Date(row.phase2_since).getTime();
+  const MS_PER_DAY = 86_400_000;
+  return Math.round((entry - p2) / MS_PER_DAY);
+}
+
+type DetectionLagBucket = "early" | "normal" | "late";
+
+function classifyLag(lag: number): DetectionLagBucket {
+  if (lag <= 3) return "early";
+  if (lag <= 7) return "normal";
+  return "late";
+}
+
+interface DetectionLagStats {
+  sampleSize: number;
+  avgLag: number;
+  medianLag: number;
+  distribution: Record<DetectionLagBucket, number>;
+}
+
+function buildDetectionLagStats(rows: TrackedStockPerfRow[]): DetectionLagStats | null {
+  const lags = rows
+    .map(calcDetectionLag)
+    .filter((v): v is number => v != null);
+
+  if (lags.length === 0) {
+    return null;
+  }
+
+  const sorted = [...lags].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+
+  const avg = lags.reduce((s, v) => s + v, 0) / lags.length;
+
+  const distribution: Record<DetectionLagBucket, number> = {
+    early: 0,
+    normal: 0,
+    late: 0,
+  };
+  for (const lag of lags) {
+    distribution[classifyLag(lag)]++;
+  }
+
+  return {
+    sampleSize: lags.length,
+    avgLag: Math.round(avg * 10) / 10,
+    medianLag: Math.round(median * 10) / 10,
+    distribution,
+  };
+}
+
+function buildDetectionLagBySource(
+  rows: TrackedStockPerfRow[],
+): Record<string, DetectionLagStats | null> {
+  const sources = ["etl_auto", "agent", "thesis_aligned"] as const;
+  return Object.fromEntries(
+    sources.map((src) => [
+      src,
+      buildDetectionLagStats(rows.filter((r) => r.source === src)),
+    ]),
+  );
+}
+
+// ─── Exit Reason 성과 분리 ───────────────────────────────────────────────────
+
+interface ExitReasonPerfStats {
+  count: number;
+  avgPnl: number;
+  winRate: number;
+}
+
+function buildExitReasonPerfStats(
+  rows: TrackedStockPerfRow[],
+): Record<string, ExitReasonPerfStats> {
+  const groups: Record<string, TrackedStockPerfRow[]> = {};
+  for (const row of rows) {
+    if (row.status === "ACTIVE") continue;
+    const key = normalizeExitReason(row.exit_reason);
+    if (groups[key] == null) groups[key] = [];
+    groups[key].push(row);
+  }
+
+  return Object.fromEntries(
+    Object.entries(groups).map(([key, grp]) => {
+      const withPnl = grp.filter((r) => r.pnl_percent != null);
+      const winners = withPnl.filter((r) => toNum(r.pnl_percent) > 0);
+      const avg =
+        withPnl.length > 0
+          ? withPnl.reduce((s, r) => s + toNum(r.pnl_percent), 0) / withPnl.length
+          : 0;
+      return [
+        key,
+        {
+          count: grp.length,
+          avgPnl: Math.round(avg * 100) / 100,
+          winRate:
+            withPnl.length > 0
+              ? Math.round((winners.length / withPnl.length) * 100)
+              : 0,
+        },
+      ];
+    }),
+  );
+}
+
+/**
+ * exit_reason 문자열을 정규화한다.
+ * "phase_exit: 2 → 1" 같은 상세 이유를 "phase_exit"으로 통합.
+ */
+function normalizeExitReason(reason: string | null): string {
+  if (reason == null) return "unknown";
+  if (reason.startsWith("phase_exit")) return "phase_exit";
+  return reason;
 }
 
 function groupByExitReason(rows: TrackedStockPerfRow[]): Record<string, number> {

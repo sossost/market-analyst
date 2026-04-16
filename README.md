@@ -68,6 +68,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 7. 에이전트 리포트
    → 일간: 시장 온도 + 시장 환경 멀티게이트(S&P 500 MA·신고가>신저가·A/D) + Thesis-Aligned Candidates(ACTIVE thesis 수혜주 기술적 상태 자동 조인 — Phase/RS/SEPA 게이트 충족 현황) + 토론 핵심 발견 + 관심종목 현황 브리핑 + Phase 2 구간 분류(초입/진행/확립) (조건부 발송)
    → 주간: 지표 4×2 그리드(10Y·DXY·공포탐욕 통합) + 시장 브레드스(Phase 분포·5일 추이·LLM 해석) + 섹터 로테이션 + 업종 RS Top 10 + tracked_stocks 궤적 + Phase 2 구간 분류 + 다음 주 관전 포인트 (HTML 리포트 + Discord 요약)
+   → **포착 선행성 KPI**: detection_lag(entry_date - phase2_since) 소스별 통계 + 구간 분포(초입/초기/후행) — 2번 KPI 정량 측정 (#844)
    → S등급(Top 3): 개별 종목 심층 리포트 발행
 
 8. 전략 참모 (매일 04:00)

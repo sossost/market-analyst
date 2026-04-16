@@ -12,6 +12,8 @@ import {
   queryWeeklyQaThesisWeekly,
   queryWeeklyQaThesisOverall,
   queryWeeklyQaRecommendations,
+  queryWeeklyQaDetectionLag,
+  queryWeeklyQaExitReasonPerf,
   queryWeeklyQaLearnings,
   queryWeeklyQaRecentReports,
   queryWeeklyQaVerificationMethods,
@@ -20,6 +22,8 @@ import {
   type WeeklyQaThesisWeeklyRow,
   type WeeklyQaThesisOverallRow,
   type WeeklyQaTrackedStockRow,
+  type WeeklyQaDetectionLagRow,
+  type WeeklyQaExitReasonPerfRow,
   type WeeklyQaLearningRow,
   type WeeklyQaReportLogRow,
   type WeeklyQaVerificationMethodRow,
@@ -38,6 +42,8 @@ interface CollectedData {
   thesisWeekly: WeeklyQaThesisWeeklyRow[] | null;
   thesisOverall: WeeklyQaThesisOverallRow[] | null;
   trackedStocks: WeeklyQaTrackedStockRow[] | null;
+  detectionLag: WeeklyQaDetectionLagRow[] | null;
+  exitReasonPerf: WeeklyQaExitReasonPerfRow[] | null;
   learnings: WeeklyQaLearningRow[] | null;
   recentReports: WeeklyQaReportLogRow[] | null;
   verificationMethods: WeeklyQaVerificationMethodRow[] | null;
@@ -58,18 +64,20 @@ async function queryOrNullFn<T>(
 }
 
 async function collectData(): Promise<CollectedData> {
-  const [thesisWeekly, thesisOverall, trackedStocks, learnings, recentReports, verificationMethods, biasMetrics] =
+  const [thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics] =
     await Promise.all([
       queryOrNullFn("thesis_weekly", () => queryWeeklyQaThesisWeekly(pool)),
       queryOrNullFn("thesis_overall", () => queryWeeklyQaThesisOverall(pool)),
       queryOrNullFn("tracked_stocks", () => queryWeeklyQaRecommendations(pool)),
+      queryOrNullFn("detection_lag", () => queryWeeklyQaDetectionLag(pool)),
+      queryOrNullFn("exit_reason_perf", () => queryWeeklyQaExitReasonPerf(pool)),
       queryOrNullFn("learnings", () => queryWeeklyQaLearnings(pool)),
       queryOrNullFn("recent_reports", () => queryWeeklyQaRecentReports(pool)),
       queryOrNullFn("verification_methods", () => queryWeeklyQaVerificationMethods(pool)),
       queryOrNullFn("bias_metrics", () => queryWeeklyQaBiasMetrics(pool)),
     ]);
 
-  return { thesisWeekly, thesisOverall, trackedStocks, learnings, recentReports, verificationMethods, biasMetrics };
+  return { thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics };
 }
 
 // --- 프롬프트 구성 ---
@@ -93,6 +101,8 @@ function buildUserPrompt(data: CollectedData, today: string): string {
     formatDataSection("1. Thesis 성과 (최근 7일)", data.thesisWeekly),
     formatDataSection("2. Thesis 전체 적중률 (애널리스트별)", data.thesisOverall),
     formatDataSection("3. 추적 종목 성과 (tracked_stocks)", data.trackedStocks),
+    formatDataSection("3-1. 포착 선행성 (detection_lag = entry_date - phase2_since, 소스별)", data.detectionLag),
+    formatDataSection("3-2. 종료 사유별 성과 (exit_reason별 건수/평균수익률/승률)", data.exitReasonPerf),
     formatDataSection("4. 학습 원칙 현황", data.learnings),
     formatDataSection("5. 최근 리포트 로그", data.recentReports),
     formatDataSection("6. 검증 방식별 통계 (정량/LLM)", data.verificationMethods),
@@ -123,7 +133,8 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 | 항목 | 배점 | 기준 |
 |------|------|------|
 | 애널리스트 적중률 | 2점 | 전체 confirmed/(confirmed+invalidated) ≥ 50%: 2점, ≥ 30%: 1점, < 30%: 0점 |
-| 추적 종목 성과 | 2점 | 종료 추적 종목 승률 ≥ 60%: 2점, ≥ 40%: 1점, < 40%: 0점 |
+| 추적 종목 성과 | 1점 | 종료 추적 종목 승률 ≥ 60%: 1점, ≥ 40%: 0.5점, < 40%: 0점 |
+| 포착 선행성 | 1점 | 평균 detection_lag ≤ 3일(초입): 1점, ≤ 7일(초기): 0.5점, > 7일: 0점. phase2_since NULL인 종목은 제외. 샘플 5건 미만이면 "데이터 부족" |
 | 데이터 파이프라인 | 2점 | 7일 중 리포트 발행일 ≥ 5일: 2점, ≥ 3일: 1점, < 3일: 0점 |
 | 골 달성도 (초입 포착) | 2점 | Phase 1 후기 또는 RS 30~60 종목이 추천에 포함: 2점, 언급만: 1점, 없음: 0점 |
 | 편향 모니터링 | 2점 | bull-bias 미감지 + 정량 검증 비율 ≥ 50%: 2점, 하나만 충족: 1점, 둘 다 미충족: 0점 |
@@ -155,6 +166,10 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 - ACTIVE: N건, 평균 수익률 X%
 - 종료(EXPIRED/EXITED): N건, 승률 X%
 - 소스별(etl_auto/agent/thesis_aligned) 분포 포함
+- **포착 선행성**: 평균 detection_lag X일 (소스별: etl_auto X일, agent X일, thesis_aligned X일)
+  - 분포: 초입(0~3일) N건, 초기(4~7일) N건, 후행(8일+) N건
+  - 샘플 수 N건 (phase2_since NULL 제외)
+- **종료 사유별 성과**: phase_exit 승률 X% vs tracking_window_expired 승률 X%
 - 추세: [개선/악화/유지]
 
 ## 3. 시스템 건강도

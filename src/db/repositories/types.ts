@@ -864,6 +864,23 @@ export interface WeeklyQaTrackedStockRow {
   avg_return: number | null;
 }
 
+export interface WeeklyQaDetectionLagRow {
+  source: string;
+  cnt: number;
+  avg_lag: number | null;
+  median_lag: number | null;
+  early_cnt: number;
+  normal_cnt: number;
+  late_cnt: number;
+}
+
+export interface WeeklyQaExitReasonPerfRow {
+  exit_reason_group: string;
+  cnt: number;
+  avg_return: number | null;
+  win_rate: number | null;
+}
+
 export interface WeeklyQaLearningRow {
   category: string;
   cnt: number;

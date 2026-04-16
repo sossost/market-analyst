@@ -85,6 +85,7 @@
 | Phase 2 구간 분류 | `phase2_since` 경과일 → 초입(1~5일)/진행(6~20일)/확립(21일+) 구간 분류. 일간/주간 리포트 HTML 배지 + LLM 프롬프트 컨텍스트 (#781) |
 | Bear 게이트 업종 RS 대안 경로 | 경로 1(방어섹터) RS 조건을 `(섹터RS OR 업종RS) 상위 N%`로 확장. 섹터 전체가 약해도 강한 업종(Banks Regional 등) 내 종목 포착 (#785) |
 | 리포트 반영 | 주간 에이전트에 tracked_stocks 성과 주입 |
+| 포착 선행성 KPI (#844) | `detection_lag = entry_date - phase2_since` 소스별 통계 + 구간 분포(early/normal/late). readTrackedStocksPerformance + 주간 QA에 통합. exit_reason별 성과 분리 집계 |
 
 ### Layer 4: 멀티 모델 애널리스트 토론 시스템 (F6) — Done
 멀티 모델 다양성으로 확증편향을 구조적으로 완화하는 토론 시스템.
@@ -551,7 +552,7 @@ Phase 1은 "LLM이 추천한 종목의 수익률"을 직접 판정했다. Phase 
 | 초입 포착 도구 전환율 | Phase1 후기 41.9%, RS상승 20.3% | 교집합 50%+ | 검증 스크립트 | 즉시 |
 | Thesis 적중률 | 4/4 (표본 부족) | 50%+ | CONFIRMED / (CONFIRMED + INVALIDATED) | thesis 20건+ 검증 완료 후 (~4주) |
 | 활성 학습 수 | 0건 | 10개+ | `agent_learnings` 테이블 | thesis 적중 패턴 3회+ 반복 시 (~2개월) |
-| 포착 선행성 (2번 KPI) | 미측정 | 컨센서스 대비 1주+ 선행 | 관심종목 등록일 vs 실제 상승 시작일 | 관심종목 10건+ 결과 확정 후 (~2개월) |
+| 포착 선행성 (2번 KPI) | detection_lag 측정 가능 (#844) | 평균 detection_lag ≤ 3일 | `entry_date - phase2_since` 소스별 + 주간 QA | 즉시 (phase2_since 데이터 있는 종목) |
 | 서사-기술적 교집합 적중률 | 미측정 | 기술적 단독 대비 +10%p | 교집합 vs 비교집합 전환율 | structural_narrative thesis 10건+ 검증 후 (~6주) |
 | 위양성 비율 | 미측정 | 50% 이하 | Phase 2 신호 후 회귀 비율 | failure_patterns 활성 패턴 3건+ 후 (~3주) |
 | 합의도-적중률 상관 | 미측정 | 데이터 확인 | consensus_score별 적중률 | 합의도 기록 thesis 30건+ 후 (~6주) |
