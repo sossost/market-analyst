@@ -31,6 +31,11 @@ grep -ri "키워드" docs/features/
 ### 2. 골 정렬 판단
 **프로젝트 골**: Phase 2(상승 초입) 주도섹터/주도주를 남들보다 먼저 포착하여 알파를 형성
 
+**컴포넌트 세부 골**: `wiki/concepts/component-goals.md` 참조 (etl_auto/agent/thesis_aligned/narrative_chains/tracked_stocks/thesis-debate/일간리포트/주간리포트/기업분석리포트 9개 세부 골)
+
+미션이 특정 컴포넌트에 영향을 미치면, 해당 컴포넌트의 세부 골과 설계 원칙도 확인한다.
+세부 골과 충돌하는 방향(예: etl_auto에 소비자 노출 로직 추가, thesis_aligned에 진입 게이트 중복 추가)은 MISALIGNED로 판정한다.
+
 - ALIGNED: 직접 기여 → 진행
 - SUPPORT: 간접 기여 (인프라/품질) → 진행하되 우선순위 확인
 - NEUTRAL: 무관 → CEO에게 경고 후 판단 요청

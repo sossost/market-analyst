@@ -213,6 +213,25 @@ Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
 
 ---
 
+## Component Sub-Goals
+
+메인 골("Phase 2 초입 포착")은 정의됐지만, 각 컴포넌트의 세부 골이 부재하면 설계 오류와 방향 상실이 반복된다.
+아래는 2026-04-16 세션에서 확정한 9개 컴포넌트 세부 골. 상세 논의: `wiki/concepts/component-goals.md`.
+
+| # | 컴포넌트 | 세부 골 | 비고 |
+|---|---------|---------|------|
+| 1 | **etl_auto** | Phase 2 정량 광망. 소비자 노출은 tier 필터링으로 분리. | 기준 완화 금지, 시장 환경에 따라 0건 정상 |
+| 2 | **agent** | featured 격상 판단 전담 (신규 진입 아님) | etl_auto 결과에서 서사·SEPA 기반 승격 |
+| 3 | **thesis_aligned** | narrative chain → Phase 2 게이트 + 자동 등록 | Phase 2 진입 시 자동 tracked_stocks 등록 |
+| 4 | **narrative_chains** | Phase 무관 수혜주 등록 + 주기적 동기화 | #842 beneficiary_tickers 자동 동기화 |
+| 5 | **tracked_stocks 트래킹** | detection_lag + 성과 검증 + 학습 루프 | #844 포착 선행성 KPI 측정 |
+| 6 | **thesis/debate** | structural_narrative + sector_rotation 중심 중장기 인사이트 | #845 short_term_outlook 제거 |
+| 7 | **일간 리포트** | 컨디션 체크 + 변화 감지 (관심종목 섹션 없음) | 시장 온도 파악 전용 |
+| 8 | **주간 리포트** | 한 주 종합 + 주봉 기준 선별 종목 Top 5~7 + 다음 주 관전 포인트 | #846 선별 기준 강화 |
+| 9 | **기업 분석 리포트** | featured tier 한정 심층 분석 | #847 standard 제외 |
+
+---
+
 ## Key Decisions
 
 | 결정 | 선택 | 이유 |
