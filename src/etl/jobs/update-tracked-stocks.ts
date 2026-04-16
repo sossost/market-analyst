@@ -2,10 +2,10 @@
  * update-tracked-stocks.ts — ACTIVE tracked_stocks 일간 갱신 ETL.
  *
  * 기존 update-recommendation-status + update-watchlist-tracking을 통합한다.
- * trailing stop / hard stop / phase exit 로직 없음.
- * 90일 만료 처리 + 7d/30d/90d 듀레이션 수익률 스냅샷.
+ * Phase exit 자동 청산 + 90일 만료 처리 + 7d/30d/90d 듀레이션 수익률 스냅샷.
  *
  * Issue #773 — tracked_stocks 통합 ETL Phase 2
+ * Issue #833 — Phase Exit 자동화 (Phase 2 → Phase 1/4 전환 시 자동 EXITED)
  */
 
 import "dotenv/config";
@@ -14,11 +14,13 @@ import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
+import { isPhase2Reverted } from "@/etl/utils/phase";
 import { logger } from "@/lib/logger";
 import {
   findActiveTrackedStocks,
   updateTracking,
   expireTrackedStock,
+  exitTrackedStock,
   type TrackedStockRow,
 } from "@/db/repositories/trackedStocksRepository.js";
 import {
@@ -98,6 +100,23 @@ export function calculateDaysTracked(
   const current = new Date(`${currentDate}T00:00:00Z`);
   const diffMs = current.getTime() - entry.getTime();
   return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+/**
+ * Phase Exit 조건을 판정한다.
+ *
+ * Phase 2 진입 종목이 Phase 1(축적 회귀) 또는 Phase 4(하락)로
+ * 전환되면 이탈로 판단한다.
+ * Phase 3(분배)은 Phase 2의 자연 진행이므로 이탈이 아니다.
+ */
+export function isPhaseExitTriggered(
+  entryPhase: number,
+  currentPhase: number | null,
+): boolean {
+  if (entryPhase === 2) {
+    return isPhase2Reverted(currentPhase);
+  }
+  return false;
 }
 
 /**
@@ -210,6 +229,7 @@ async function fetchSectorRelativePerf(
 
 type ProcessResult =
   | { action: "expired"; symbol: string }
+  | { action: "exited"; symbol: string; reason: string }
   | { action: "updated"; symbol: string }
   | { action: "skipped"; symbol: string; reason: string };
 
@@ -237,6 +257,16 @@ async function processTrackedStock(
   if (currentPrice == null) {
     logger.info(TAG, `${item.symbol}: 종가 없음 — 스킵`);
     return { action: "skipped", symbol: item.symbol, reason: "no_price" };
+  }
+
+  // Phase Exit 검사 (Phase 2 진입 → Phase 1/4 전환 시 자동 청산)
+  if (phaseData?.phase != null && isPhaseExitTriggered(item.entry_phase, phaseData.phase)) {
+    const exitReason = `phase_exit: ${item.entry_phase} → ${phaseData.phase}`;
+    await retryDatabaseOperation(() =>
+      exitTrackedStock(item.id, date, exitReason, currentPrice),
+    );
+    logger.info(TAG, `${item.symbol}: Phase ${item.entry_phase} → ${phaseData.phase} 이탈 → EXITED`);
+    return { action: "exited", symbol: item.symbol, reason: exitReason };
   }
 
   // 수익률 계산
@@ -345,6 +375,7 @@ async function main() {
 
   let updatedCount = 0;
   let expiredCount = 0;
+  let exitedCount = 0;
   let skippedCount = 0;
 
   for (const item of activeItems) {
@@ -352,6 +383,7 @@ async function main() {
       const result = await processTrackedStock(item, targetDate);
       if (result.action === "updated") updatedCount++;
       else if (result.action === "expired") expiredCount++;
+      else if (result.action === "exited") exitedCount++;
       else skippedCount++;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -362,7 +394,7 @@ async function main() {
 
   logger.info(
     TAG,
-    `완료 — 갱신: ${updatedCount}, 만료: ${expiredCount}, 스킵: ${skippedCount}`,
+    `완료 — 갱신: ${updatedCount}, 만료: ${expiredCount}, 이탈: ${exitedCount}, 스킵: ${skippedCount}`,
   );
 
   await pool.end();

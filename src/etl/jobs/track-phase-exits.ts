@@ -5,6 +5,7 @@ import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
+import { isPhase2Reverted } from "@/etl/utils/phase";
 import { collectFailureConditions } from "@/lib/marketConditionCollector";
 import { eq, sql, isNull, and } from "drizzle-orm";
 import { logger } from "@/lib/logger";
@@ -53,15 +54,8 @@ export function calculateDaysBetween(
   return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
 }
 
-/**
- * Phase 2 회귀 여부를 판단한다.
- * Phase 1 또는 Phase 4로 전환된 경우 회귀로 판단.
- * Phase 3은 Phase 2의 자연 진행(분배)이므로 회귀가 아님.
- */
-export function isPhase2Reverted(currentPhase: number | null): boolean {
-  if (currentPhase == null) return false;
-  return currentPhase === 1 || currentPhase === 4;
-}
+// isPhase2Reverted는 @/etl/utils/phase에서 re-export
+export { isPhase2Reverted } from "@/etl/utils/phase";
 
 // ─── Main ───────────────────────────────────────────────────────────
 

@@ -1,10 +1,11 @@
 /**
  * update-tracked-stocks 단위 테스트.
  *
- * 순수 함수(수익률 계산, 만료 판정, 듀레이션 스냅샷 등)를 격리 테스트한다.
+ * 순수 함수(수익률 계산, 만료 판정, Phase Exit 판정, 듀레이션 스냅샷 등)를 격리 테스트한다.
  * DB/pool은 mock 처리한다.
  *
  * Issue #773 — tracked_stocks 통합 ETL Phase 2
+ * Issue #833 — Phase Exit 자동화
  */
 
 import { describe, it, expect } from "vitest";
@@ -13,6 +14,7 @@ import {
   calculatePnlPercent,
   calculateMaxPnlPercent,
   isExpired,
+  isPhaseExitTriggered,
   calculateDaysTracked,
   buildUpdatedTrajectory,
   calculateDurationReturn,
@@ -102,6 +104,42 @@ describe("isExpired", () => {
 
   it("tracking_end_date가 null이면 false를 반환한다", () => {
     expect(isExpired("2026-04-20", null)).toBe(false);
+  });
+});
+
+// =============================================================================
+// isPhaseExitTriggered — Phase Exit 판정
+// =============================================================================
+
+describe("isPhaseExitTriggered", () => {
+  it("Phase 2 진입 → Phase 1 전환이면 true를 반환한다", () => {
+    expect(isPhaseExitTriggered(2, 1)).toBe(true);
+  });
+
+  it("Phase 2 진입 → Phase 4 전환이면 true를 반환한다", () => {
+    expect(isPhaseExitTriggered(2, 4)).toBe(true);
+  });
+
+  it("Phase 2 진입 → Phase 2 유지이면 false를 반환한다", () => {
+    expect(isPhaseExitTriggered(2, 2)).toBe(false);
+  });
+
+  it("Phase 2 진입 → Phase 3 전환이면 false를 반환한다 (자연 진행)", () => {
+    expect(isPhaseExitTriggered(2, 3)).toBe(false);
+  });
+
+  it("Phase 1 진입이면 어떤 전환이든 false를 반환한다", () => {
+    expect(isPhaseExitTriggered(1, 2)).toBe(false);
+    expect(isPhaseExitTriggered(1, 4)).toBe(false);
+  });
+
+  it("Phase 3 진입이면 false를 반환한다", () => {
+    expect(isPhaseExitTriggered(3, 1)).toBe(false);
+    expect(isPhaseExitTriggered(3, 4)).toBe(false);
+  });
+
+  it("currentPhase가 null이면 false를 반환한다", () => {
+    expect(isPhaseExitTriggered(2, null)).toBe(false);
   });
 });
 
