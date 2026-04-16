@@ -505,11 +505,6 @@ const ALLOWED_CATEGORIES_PER_PERSONA: Partial<Record<AgentPersona, Set<ThesisCat
   geopolitics: new Set<ThesisCategory>(["structural_narrative", "sector_rotation"]),
 };
 
-const CATEGORY_FALLBACK: Record<ThesisCategory, ThesisCategory> = {
-  sector_rotation: "sector_rotation",
-  structural_narrative: "structural_narrative",
-};
-
 /**
  * narrativeChain 필드를 정규화.
  * 4개 문자열 필드가 모두 존재하면 반환, 그 외 null.
@@ -690,7 +685,7 @@ function normalizeThesisFields(
   if (persona != null) {
     const allowed = ALLOWED_CATEGORIES_PER_PERSONA[persona];
     if (allowed != null && !allowed.has(category)) {
-      const fallback = CATEGORY_FALLBACK[category];
+      const fallback = allowed.values().next().value as ThesisCategory;
       logger.info(
         "Round3",
         `${persona}의 thesis 카테고리 재분류: ${category} → ${fallback} (허용: ${[...allowed].join(", ")})`,
