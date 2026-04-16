@@ -5,7 +5,7 @@
  * 1. LLM 지목: narrative_chains.beneficiary_tickers에 직접 기록된 종목
  * 2. 업종 자동 탐색: beneficiary_sectors에 해당하는 업종에서 Phase 2 + RS >= 60 종목
  *
- * 게이트 간이 판정: Phase 2 + RS >= 60 + SEPA S/A + thesis 연결(항상 1) = 최대 4/5
+ * 게이트 간이 판정: Phase 2 + RS 60–95 + SEPA S/A + thesis 연결(항상 1) = 최대 4/5
  * (업종 RS 게이트는 미포함 — 향후 추가 가능)
  */
 
@@ -17,6 +17,7 @@ import {
 } from "@/db/schema/analyst";
 import { symbols, symbolIndustryOverrides } from "@/db/schema/market";
 import { inArray, eq, and, sql } from "drizzle-orm";
+import { MAX_RS_SCORE } from "@/tools/validation.js";
 import { logger } from "@/lib/logger";
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
@@ -90,8 +91,8 @@ export function countGatePasses(
   // Gate 1: Phase 2
   if (phase === PHASE_2) count += 1;
 
-  // Gate 2: RS >= 60
-  if (rsScore != null && rsScore >= RS_THRESHOLD) count += 1;
+  // Gate 2: RS 60–95 범위 (하한 + 상한)
+  if (rsScore != null && rsScore >= RS_THRESHOLD && rsScore <= MAX_RS_SCORE) count += 1;
 
   // Gate 3: SEPA S 또는 A
   if (sepaGrade != null && SEPA_TOP_GRADES.includes(sepaGrade)) count += 1;

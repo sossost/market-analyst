@@ -48,6 +48,24 @@ describe("countGatePasses", () => {
     expect(countGatePasses(2, 80, "F")).toBe(3);
   });
 
+  // ─── RS 과열 상한 (MAX_RS_SCORE = 95) ────────────────────────────────────────
+
+  it("RS 95이면 4/4 (상한 경계, 통과)", () => {
+    expect(countGatePasses(2, 95, "S")).toBe(4);
+  });
+
+  it("RS 96이면 3/4 (과열 — RS 게이트 미충족)", () => {
+    expect(countGatePasses(2, 96, "S")).toBe(3);
+  });
+
+  it("RS 100이면 3/4 (과열 — RS 게이트 미충족)", () => {
+    expect(countGatePasses(2, 100, "S")).toBe(3);
+  });
+
+  it("RS 97 + Phase 3이면 2/4 (과열 + Phase 미충족)", () => {
+    expect(countGatePasses(3, 97, "A")).toBe(2);
+  });
+
   // ─── 엣지: null RS ──────────────────────────────────────────────────────────
 
   it("RS null이면 RS 게이트 미충족 → 3/4 (Phase 2 + SEPA A + thesis)", () => {

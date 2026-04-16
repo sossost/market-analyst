@@ -18,6 +18,7 @@ import {
   buildThesisAlignedCandidates,
   PHASE_2,
 } from "@/lib/thesisAlignedCandidates.js";
+import { evaluateOverheatedRsGate } from "@/tools/recommendationGates.js";
 import {
   certifyThesisAlignedCandidates,
 } from "@/lib/certifyThesisAligned.js";
@@ -160,6 +161,14 @@ async function main() {
 
       // narrativeChain의 chainId를 entry_thesis_id로 사용 (linked_thesis_ids 브릿지)
       const entryThesisId = chain.chainId;
+
+      // RS 과열 게이트 — RS > 95 종목은 Phase 2 말기로 판단하여 차단 (#832)
+      const overheatedRsGate = evaluateOverheatedRsGate(candidate.rsScore);
+      if (!overheatedRsGate.passed) {
+        logger.info(TAG, `${candidate.symbol}: ${overheatedRsGate.reason}, 스킵`);
+        skippedCount++;
+        continue;
+      }
 
       // 종가 없으면 스킵 (entry_price NOT NULL 제약)
       const entryPrice = priceMap.get(candidate.symbol) ?? null;
