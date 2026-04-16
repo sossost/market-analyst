@@ -1094,35 +1094,49 @@ export function renderIndustryTop10Table(industries: IndustryItem[]): string {
  * 0건이면 빈 상태 메시지를 표시한다.
  */
 export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
-  const { summary, items } = watchlist;
+  const { items } = watchlist;
 
-  if (items.length === 0) {
+  // S/A 등급만 노출 — B/C/F/null은 DB에 보존하되 리포트에서 제외
+  const SA_GRADES = new Set(["S", "A"]);
+  const filteredItems = items.filter(
+    (item) => item.entrySepaGrade != null && SA_GRADES.has(item.entrySepaGrade),
+  );
+
+  if (filteredItems.length === 0) {
     return '<div class="empty-state">현재 ACTIVE 관심종목 없음</div>';
   }
 
+  // 필터링된 항목 기준으로 요약 재계산
+  const filteredSymbols = new Set(filteredItems.map((i) => i.symbol));
+  const filteredPhaseChanges = watchlist.summary.phaseChanges.filter(
+    (pc) => filteredSymbols.has(pc.symbol),
+  );
+  const filteredAvgPnl =
+    filteredItems.reduce((sum, i) => sum + (i.pnlPercent ?? 0), 0) / filteredItems.length;
+
   const avgPnlStr =
-    summary.avgPnlPercent >= 0
-      ? `+${summary.avgPnlPercent.toFixed(1)}%`
-      : `${summary.avgPnlPercent.toFixed(1)}%`;
-  const avgPnlCls = colorClass(summary.avgPnlPercent);
+    filteredAvgPnl >= 0
+      ? `+${filteredAvgPnl.toFixed(1)}%`
+      : `${filteredAvgPnl.toFixed(1)}%`;
+  const avgPnlCls = colorClass(filteredAvgPnl);
 
   const summaryHtml = `
     <div class="stat-row">
       <div class="stat-chip">
-        <span class="stat-label">ACTIVE 종목 수</span>
-        <span class="stat-value">${escapeHtml(String(summary.totalActive))}</span>
+        <span class="stat-label">ACTIVE 종목 수 (S/A)</span>
+        <span class="stat-value">${escapeHtml(String(filteredItems.length))}</span>
       </div>
       <div class="stat-chip">
-        <span class="stat-label">평균 P&amp;L</span>
+        <span class="stat-label">평균 P&amp;L (S/A)</span>
         <span class="stat-value ${escapeHtml(avgPnlCls)}">${escapeHtml(avgPnlStr)}</span>
       </div>
       <div class="stat-chip">
         <span class="stat-label">Phase 변화 종목</span>
-        <span class="stat-value">${escapeHtml(String(summary.phaseChanges.length))}건</span>
+        <span class="stat-value">${escapeHtml(String(filteredPhaseChanges.length))}건</span>
       </div>
     </div>`;
 
-  const itemRows = items
+  const itemRows = filteredItems
     .map((item) => {
       const phaseCls = phaseBadgeClass(item.currentPhase ?? item.entryPhase);
       const pnlStr =

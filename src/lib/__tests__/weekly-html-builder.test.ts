@@ -891,17 +891,91 @@ describe("renderWatchlistSection", () => {
     expect(dotCount).toBe(7);
   });
 
-  it("평균 P&L이 summary 칩에 표시된다", () => {
+  it("평균 P&L이 필터링된 S/A 항목 기준으로 재계산된다", () => {
+    const baseItem = createMockWatchlistStatusData().items[0]; // grade "A", pnl 6.25
+    const sItem = { ...baseItem, symbol: "AAPL", entrySepaGrade: "S" as const, pnlPercent: 10.0 };
     const watchlist = createMockWatchlistStatusData({
-      summary: { totalActive: 3, phaseChanges: [], avgPnlPercent: 12.3 },
-      items: [
-        createMockWatchlistStatusData().items[0],
-      ],
+      summary: { totalActive: 3, phaseChanges: [], avgPnlPercent: 99.9 },
+      items: [baseItem, sItem],
     });
 
     const result = renderWatchlistSection(watchlist);
 
-    expect(result).toContain("+12.3%");
+    // (6.25 + 10.0) / 2 = 8.125 → "+8.1%"
+    expect(result).toContain("+8.1%");
+    // 원본 summary 값(99.9%)이 아닌 재계산 값이어야 한다
+    expect(result).not.toContain("99.9%");
+  });
+
+  it("B/C/F 등급 종목은 렌더링에서 제외된다", () => {
+    const baseItem = createMockWatchlistStatusData().items[0]; // grade "A"
+    const bItem = { ...baseItem, symbol: "INTC", entrySepaGrade: "B" as const };
+    const cItem = { ...baseItem, symbol: "AMD", entrySepaGrade: "C" as const };
+    const fItem = { ...baseItem, symbol: "TSLA", entrySepaGrade: "F" as const };
+    const watchlist = createMockWatchlistStatusData({
+      items: [baseItem, bItem, cItem, fItem],
+    });
+
+    const result = renderWatchlistSection(watchlist);
+
+    expect(result).toContain("NVDA"); // A 등급 — 포함
+    expect(result).not.toContain("INTC"); // B 등급 — 제외
+    expect(result).not.toContain("AMD"); // C 등급 — 제외
+    expect(result).not.toContain("TSLA"); // F 등급 — 제외
+  });
+
+  it("entrySepaGrade가 null인 종목은 렌더링에서 제외된다", () => {
+    const baseItem = createMockWatchlistStatusData().items[0]; // grade "A"
+    const nullItem = { ...baseItem, symbol: "UNKNOWN", entrySepaGrade: null };
+    const watchlist = createMockWatchlistStatusData({
+      items: [baseItem, nullItem],
+    });
+
+    const result = renderWatchlistSection(watchlist);
+
+    expect(result).toContain("NVDA");
+    expect(result).not.toContain("UNKNOWN");
+  });
+
+  it("S 등급 종목이 렌더링에 포함된다", () => {
+    const baseItem = createMockWatchlistStatusData().items[0];
+    const sItem = { ...baseItem, symbol: "MSFT", entrySepaGrade: "S" as const };
+    const watchlist = createMockWatchlistStatusData({
+      items: [sItem],
+    });
+
+    const result = renderWatchlistSection(watchlist);
+
+    expect(result).toContain("MSFT");
+    expect(result).toContain("<table>");
+  });
+
+  it("S/A 종목이 0건이면 빈 상태 메시지를 반환한다", () => {
+    const baseItem = createMockWatchlistStatusData().items[0];
+    const bItem = { ...baseItem, symbol: "INTC", entrySepaGrade: "B" as const };
+    const watchlist = createMockWatchlistStatusData({
+      items: [bItem],
+    });
+
+    const result = renderWatchlistSection(watchlist);
+
+    expect(result).toContain("현재 ACTIVE 관심종목 없음");
+    expect(result).not.toContain("<table>");
+  });
+
+  it("ACTIVE 종목 수가 필터링된 S/A 항목 수로 표시된다", () => {
+    const baseItem = createMockWatchlistStatusData().items[0]; // grade "A"
+    const sItem = { ...baseItem, symbol: "AAPL", entrySepaGrade: "S" as const };
+    const bItem = { ...baseItem, symbol: "INTC", entrySepaGrade: "B" as const };
+    const watchlist = createMockWatchlistStatusData({
+      summary: { totalActive: 3, phaseChanges: [], avgPnlPercent: 0 },
+      items: [baseItem, sItem, bItem],
+    });
+
+    const result = renderWatchlistSection(watchlist);
+
+    // S/A만 2건 → "2"가 종목 수 칩에 표시
+    expect(result).toMatch(/ACTIVE 종목 수 \(S\/A\).*?<span class="stat-value">2<\/span>/s);
   });
 });
 
