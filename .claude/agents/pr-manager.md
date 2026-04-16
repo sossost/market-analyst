@@ -57,7 +57,19 @@ git log main..HEAD --oneline
 
 **프로젝트 골**: Phase 2(상승 초입) 주도섹터/주도주를 남들보다 먼저 포착하여 알파를 형성
 
-- 골 정렬: ALIGNED / SUPPORT / NEUTRAL / MISALIGNED
+**컴포넌트 세부 골**: 변경 파일이 특정 컴포넌트에 속하면 `wiki/concepts/component-goals.md`에서 해당 컴포넌트의 세부 골을 확인한다.
+컴포넌트 매핑:
+- `etl/jobs/scan-recommendation-candidates.ts` → etl_auto
+- `etl/jobs/scan-thesis-aligned-candidates.ts` → thesis_aligned
+- `etl/jobs/update-tracked-stocks.ts` → tracked_stocks 트래킹
+- `debate/` → thesis/debate
+- `agent/prompts/weekly.ts`, `run-weekly-agent.ts` → 주간 리포트
+- `agent/run-daily-agent.ts`, `lib/daily-html-builder.ts` → 일간 리포트
+- `corporate-analyst/` → 기업 분석 리포트
+- `debate/narrativeChainService.ts`, `debate/round3-synthesis.ts` → narrative_chains
+세부 골과 충돌하는 변경(예: etl_auto에 소비자 노출 로직, thesis_aligned에 중복 진입 게이트)은 MISALIGNED로 판정한다.
+
+- 골 정렬: ALIGNED / SUPPORT / NEUTRAL / MISALIGNED (컴포넌트 세부 골 포함)
 - 무기 품질: OK / WARNING / BLOCK
 - 무효 판정: CLEAR / FLAGGED (LLM 백테스트, 같은 LLM 생성+검증 루프 체크)
 - 종합: PROCEED / REVIEW / BLOCK
