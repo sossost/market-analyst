@@ -14,6 +14,7 @@ import { assertValidEnvironment } from "@/etl/utils/validation";
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
 import { retryDatabaseOperation } from "@/etl/utils/retry";
 import { toNum } from "@/etl/utils/common";
+import { isPhase2Reverted } from "@/etl/utils/phase";
 import { logger } from "@/lib/logger";
 import {
   findActiveTrackedStocks,
@@ -107,16 +108,13 @@ export function calculateDaysTracked(
  * Phase 2 진입 종목이 Phase 1(축적 회귀) 또는 Phase 4(하락)로
  * 전환되면 이탈로 판단한다.
  * Phase 3(분배)은 Phase 2의 자연 진행이므로 이탈이 아니다.
- *
- * track-phase-exits.ts의 isPhase2Reverted와 동일 기준.
  */
 export function isPhaseExitTriggered(
   entryPhase: number,
   currentPhase: number | null,
 ): boolean {
-  if (currentPhase == null) return false;
   if (entryPhase === 2) {
-    return currentPhase === 1 || currentPhase === 4;
+    return isPhase2Reverted(currentPhase);
   }
   return false;
 }
