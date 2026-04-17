@@ -169,6 +169,14 @@ export interface WatchlistItem {
   phase2SinceDays: number | null;
   /** Phase 2 구간 분류. 초입(1~5일)/진행(6~20일)/확립(21일+). null = 해당 없음 */
   phase2Segment: Phase2Segment | null;
+  /** entry_date - phase2_since 일수. phase2_since 없으면 null */
+  detectionLag?: number | null;
+  /** phase_trajectory 최근 14일 중 뒤에서부터 연속 Phase 2 일수 */
+  recentPhase2Streak?: number;
+  /** 종목 티어 (standard/featured) */
+  tier?: string;
+  /** 종목 소스 (etl_auto/agent/thesis_aligned) */
+  source?: string;
 }
 
 interface WatchlistPhaseChange {

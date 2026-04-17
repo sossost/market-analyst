@@ -16,6 +16,7 @@ import { getConfirmedBreakouts } from "@/tools/getConfirmedBreakouts";
 import { getSectorLagPatterns } from "@/tools/getSectorLagPatterns";
 import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
 import { certifyThesisAlignedCandidates } from "@/lib/certifyThesisAligned";
+import { selectWeeklyWatchlist, WEEKLY_WATCHLIST_MAX } from "@/lib/watchlistSelection";
 
 // Schema + Builder
 import type {
@@ -230,18 +231,29 @@ ${data.sectorRanking.map((s) => `${s.rsRank}. ${s.sector}: RS ${s.avgRs.toFixed(
 ## 업종 RS Top 10
 ${data.industryTop10.slice(0, 10).map((i, idx) => `${idx + 1}. ${i.industry} (${i.sector}): RS ${i.avgRs.toFixed(1)} 주간변화 ${i.changeWeek != null ? (i.changeWeek >= 0 ? "+" : "") + i.changeWeek.toFixed(1) : "—"}`).join("\n")}
 
-## 관심종목 (S/A 등급)
+## 관심종목 — 이번 주 주목 (선별 기준: featured > Phase2 연속 > 포착 선행성)
 ${(() => {
-  const saItems = data.watchlist.items.filter(
-    (w) => w.entrySepaGrade === "S" || w.entrySepaGrade === "A",
-  );
-  return `ACTIVE: ${saItems.length}개\n${saItems.map((w) => {
+  const scored = selectWeeklyWatchlist(data.watchlist.items);
+  const topItems = scored.slice(0, WEEKLY_WATCHLIST_MAX);
+  const remainCount = scored.length - topItems.length;
+
+  const formatItem = (w: typeof topItems[0]) => {
     const p2Label = w.phase2Segment != null && w.phase2SinceDays != null
       ? ` [P2 ${w.phase2Segment} ${w.phase2SinceDays}일]` : "";
-    return `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%${p2Label}`;
-  }).join("\n") || "없음"}`;
+    const streak = w.recentPhase2Streak ?? 0;
+    const lagStr = w.detectionLag != null ? `lag=${w.detectionLag}일` : "";
+    const tierTag = w.tier === "featured" ? " ★featured" : "";
+    return `${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%${p2Label}, P2연속 ${streak}일${lagStr ? `, ${lagStr}` : ""}${tierTag}`;
+  };
+
+  const header = `ACTIVE S/A: ${scored.length}개 (상위 ${topItems.length}개 표시${remainCount > 0 ? `, ${remainCount}개 생략` : ""})`;
+  const lines = topItems.map(formatItem).join("\n") || "없음";
+  return `${header}\n${lines}`;
 })()}
+※ 선별 기준: featured 티어 우선 → Phase 2 14일 연속 → detection_lag(포착 선행성) 짧은 순
 ※ P2 구간: 초입(1~5일)=최고 주목, 진행(6~20일)=추세 확인, 확립(21일+)=이미 진행 중
+※ 주봉 관점: Phase 2 연속일이 길수록 주봉 관점에서도 안정적. P2연속 14일+=주봉 3주 이상 유지.
+※ 지시: 위 종목 중 이번 주 특히 주목할 Top 5~7을 선별하여 watchlistNarrative에 서술하라. 나머지는 간략 언급 또는 생략.
 
 ## 예비 관심종목 (4/5 통과, thesis 미충족)
 ${data.watchlistChanges.pending4of5.map((p) => `${p.symbol}: ${p.reason}`).join("\n") || "없음"}

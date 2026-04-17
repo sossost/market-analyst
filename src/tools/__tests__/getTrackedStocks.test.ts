@@ -314,6 +314,92 @@ describe("getTrackedStocks.execute — avgPnlPercent 계산", () => {
   });
 });
 
+// ─── detectionLag 테스트 ─────────────────────────────────────────────────────
+
+describe("getTrackedStocks.execute — detectionLag", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("phase2_since가 있으면 entry_date와의 차이를 일수로 반환", async () => {
+    mockFindAll.mockResolvedValue([
+      makeActiveRow({ entry_date: "2026-01-10", phase2_since: "2026-01-07" }),
+    ]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].detectionLag).toBe(3);
+  });
+
+  it("phase2_since가 null이면 detectionLag도 null", async () => {
+    mockFindAll.mockResolvedValue([
+      makeActiveRow({ phase2_since: null }),
+    ]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].detectionLag).toBeNull();
+  });
+
+  it("phase2_since가 entry_date와 같으면 0", async () => {
+    mockFindAll.mockResolvedValue([
+      makeActiveRow({ entry_date: "2026-01-10", phase2_since: "2026-01-10" }),
+    ]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].detectionLag).toBe(0);
+  });
+});
+
+// ─── recentPhase2Streak 테스트 ──────────────────────────────────────────────
+
+describe("getTrackedStocks.execute — recentPhase2Streak", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("최근 14일 전부 Phase 2면 streak=14", async () => {
+    const trajectory = Array.from({ length: 14 }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, "0")}`,
+      phase: 2,
+      rsScore: 70,
+    }));
+    mockFindAll.mockResolvedValue([makeActiveRow({ phase_trajectory: trajectory })]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].recentPhase2Streak).toBe(14);
+  });
+
+  it("마지막이 Phase 3이면 streak=0", async () => {
+    const trajectory = [
+      { date: "2026-01-01", phase: 2, rsScore: 70 },
+      { date: "2026-01-02", phase: 2, rsScore: 71 },
+      { date: "2026-01-03", phase: 3, rsScore: 72 },
+    ];
+    mockFindAll.mockResolvedValue([makeActiveRow({ phase_trajectory: trajectory })]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].recentPhase2Streak).toBe(0);
+  });
+
+  it("중간에 Phase 3이 있으면 끊긴 이후만 카운트", async () => {
+    const trajectory = [
+      { date: "2026-01-01", phase: 2, rsScore: 70 },
+      { date: "2026-01-02", phase: 3, rsScore: 71 },
+      { date: "2026-01-03", phase: 2, rsScore: 72 },
+      { date: "2026-01-04", phase: 2, rsScore: 73 },
+    ];
+    mockFindAll.mockResolvedValue([makeActiveRow({ phase_trajectory: trajectory })]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].recentPhase2Streak).toBe(2);
+  });
+
+  it("trajectory가 비어있으면 streak=0", async () => {
+    mockFindAll.mockResolvedValue([makeActiveRow({ phase_trajectory: [] })]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].recentPhase2Streak).toBe(0);
+  });
+
+  it("trajectory가 null이면 streak=0", async () => {
+    mockFindAll.mockResolvedValue([makeActiveRow({ phase_trajectory: null })]);
+    const result = JSON.parse(await getTrackedStocks.execute({}));
+    expect(result.items[0].recentPhase2Streak).toBe(0);
+  });
+});
+
 // ─── tool definition 테스트 ───────────────────────────────────────────────────
 
 describe("getTrackedStocks.definition", () => {

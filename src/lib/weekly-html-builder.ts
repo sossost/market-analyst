@@ -27,6 +27,7 @@ import type {
   ThesisAlignedData,
   ThesisAlignedChainGroup,
 } from "@/lib/thesisAlignedCandidates.js";
+import { selectWeeklyWatchlist, WEEKLY_SPOTLIGHT_COUNT } from "@/lib/watchlistSelection.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
 
@@ -292,6 +293,20 @@ const WEEKLY_REPORT_CSS = `
   .p2-초입 { background: #ddf4ff; color: #0969da; }
   .p2-진행 { background: #f0e6ff; color: #8250df; }
   .p2-확립 { background: #eef1f4; color: var(--text-muted); }
+
+  /* Spotlight Badge */
+  .spotlight-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: #fff8c5;
+    color: #9a6700;
+    vertical-align: middle;
+    margin-right: 3px;
+  }
+  .spotlight-row { background: #fffdf0; }
 
   /* Phase Distribution Bar */
   .phase-bar {
@@ -1091,28 +1106,26 @@ export function renderIndustryTop10Table(industries: IndustryItem[]): string {
 
 /**
  * ACTIVE 관심종목 궤적 섹션을 렌더링한다.
+ * 선별 점수 기반 정렬 + 상위 종목에 "주목" 뱃지 표시.
  * 0건이면 빈 상태 메시지를 표시한다.
  */
 export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
   const { items } = watchlist;
 
-  // S/A 등급만 노출 — B/C/F/null은 DB에 보존하되 리포트에서 제외
-  const SA_GRADES = new Set(["S", "A"]);
-  const filteredItems = items.filter(
-    (item) => item.entrySepaGrade != null && SA_GRADES.has(item.entrySepaGrade),
-  );
+  // S/A 등급 필터 + 선별 점수 정렬
+  const scoredItems = selectWeeklyWatchlist(items);
 
-  if (filteredItems.length === 0) {
+  if (scoredItems.length === 0) {
     return '<div class="empty-state">현재 ACTIVE 관심종목 없음</div>';
   }
 
   // 필터링된 항목 기준으로 요약 재계산
-  const filteredSymbols = new Set(filteredItems.map((i) => i.symbol));
+  const filteredSymbols = new Set(scoredItems.map((i) => i.symbol));
   const filteredPhaseChanges = watchlist.summary.phaseChanges.filter(
     (pc) => filteredSymbols.has(pc.symbol),
   );
   const filteredAvgPnl =
-    filteredItems.reduce((sum, i) => sum + (i.pnlPercent ?? 0), 0) / filteredItems.length;
+    scoredItems.reduce((sum, i) => sum + (i.pnlPercent ?? 0), 0) / scoredItems.length;
 
   const avgPnlStr =
     filteredAvgPnl >= 0
@@ -1120,11 +1133,17 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
       : `${filteredAvgPnl.toFixed(1)}%`;
   const avgPnlCls = colorClass(filteredAvgPnl);
 
+  const spotlightCount = Math.min(WEEKLY_SPOTLIGHT_COUNT, scoredItems.length);
+
   const summaryHtml = `
     <div class="stat-row">
       <div class="stat-chip">
         <span class="stat-label">ACTIVE 종목 수 (S/A)</span>
-        <span class="stat-value">${escapeHtml(String(filteredItems.length))}</span>
+        <span class="stat-value">${escapeHtml(String(scoredItems.length))}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">이번 주 주목</span>
+        <span class="stat-value">${escapeHtml(String(spotlightCount))}종목</span>
       </div>
       <div class="stat-chip">
         <span class="stat-label">평균 P&amp;L (S/A)</span>
@@ -1136,8 +1155,9 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
       </div>
     </div>`;
 
-  const itemRows = filteredItems
-    .map((item) => {
+  const itemRows = scoredItems
+    .map((item, idx) => {
+      const isSpotlight = idx < WEEKLY_SPOTLIGHT_COUNT;
       const phaseCls = phaseBadgeClass(item.currentPhase ?? item.entryPhase);
       const pnlStr =
         item.pnlPercent != null
@@ -1169,9 +1189,15 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
         ? `<span class="p2-segment p2-${escapeHtml(item.phase2Segment)}">${escapeHtml(item.phase2Segment)} ${escapeHtml(String(item.phase2SinceDays))}일</span>`
         : "—";
 
+      const spotlightBadge = isSpotlight
+        ? '<span class="spotlight-badge">주목</span> '
+        : "";
+
+      const rowClass = isSpotlight ? ' class="spotlight-row"' : "";
+
       return `
-        <tr>
-          <td><strong>${escapeHtml(item.symbol)}</strong></td>
+        <tr${rowClass}>
+          <td>${spotlightBadge}<strong>${escapeHtml(item.symbol)}</strong></td>
           <td>${escapeHtml(item.entrySector ?? "—")}</td>
           <td>${escapeHtml(item.entryDate)}</td>
           <td>${escapeHtml(String(item.daysTracked))}일</td>

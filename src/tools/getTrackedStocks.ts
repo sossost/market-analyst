@@ -56,6 +56,38 @@ interface TrackedStockStatusItem {
   phase2Since: string | null;
   phase2SinceDays: number | null;
   phase2Segment: Phase2Segment | null;
+  detectionLag: number | null;
+  recentPhase2Streak: number;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * phase_trajectory 전체에서 뒤에서부터 연속 Phase 2인 일수를 계산한다.
+ * 예: [2,2,3,2,2,2] → 3 (마지막 3일 연속)
+ */
+export function calcRecentPhase2Streak(trajectory: TrajectoryPoint[]): number {
+  let streak = 0;
+  for (let i = trajectory.length - 1; i >= 0; i--) {
+    if (trajectory[i].phase === 2) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+/**
+ * entry_date와 phase2_since로 detection_lag(일수)를 계산한다.
+ * phase2_since가 null이면 null 반환.
+ */
+export function calcDetectionLag(entryDate: string, phase2Since: string | null): number | null {
+  if (phase2Since == null) return null;
+  const entry = new Date(entryDate);
+  const p2Start = new Date(phase2Since);
+  const diffMs = entry.getTime() - p2Start.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
 }
 
 const VALID_SOURCES = new Set<string>(["etl_auto", "agent", "thesis_aligned"]);
@@ -186,6 +218,8 @@ export const getTrackedStocks: AgentTool = {
         phase2Since: row.phase2_since,
         phase2SinceDays: phase2Info?.days ?? null,
         phase2Segment: phase2Info?.segment ?? null,
+        detectionLag: calcDetectionLag(row.entry_date, row.phase2_since),
+        recentPhase2Streak: calcRecentPhase2Streak(fullTrajectory),
       };
     });
 
