@@ -36,7 +36,7 @@ describe("findGroupAvgs", () => {
     const sql = mockQuery.mock.calls[0][0] as string;
     expect(sql).toContain("IS DISTINCT FROM");
     expect(sql).toContain(SHELL_COMPANIES_INDUSTRY);
-    expect(sql).toContain("s.industry IS DISTINCT FROM");
+    expect(sql).toContain("COALESCE(sio.industry, s.industry) IS DISTINCT FROM");
   });
 
   it("industry 모드에서 COALESCE 기반 Shell Companies 제외 필터가 포함된다", async () => {

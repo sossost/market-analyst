@@ -21,8 +21,8 @@ const ALLOWED_GROUP_COLS = {
     col: "s.sector",
     table: "sector_rs_daily",
     colName: "sector",
-    joinClause: "",
-    notShellFilter: `s.industry IS DISTINCT FROM '${SHELL_COMPANIES_INDUSTRY}'`,
+    joinClause: "LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol",
+    notShellFilter: `COALESCE(sio.industry, s.industry) IS DISTINCT FROM '${SHELL_COMPANIES_INDUSTRY}'`,
   },
   industry: {
     col: "COALESCE(sio.industry, s.industry)",
