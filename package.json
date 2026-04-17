@@ -27,6 +27,7 @@
     "etl:update-recommendations": "tsx src/etl/jobs/update-recommendation-status.ts",
     "etl:update-watchlist": "tsx src/etl/jobs/update-watchlist-tracking.ts",
     "etl:verify-theses": "tsx src/etl/jobs/verify-theses.ts",
+    "etl:sync-narrative-beneficiaries": "tsx src/etl/jobs/sync-narrative-beneficiaries.ts",
     "signal:record": "tsx src/etl/jobs/record-new-signals.ts",
     "signal:update": "tsx src/etl/jobs/update-signal-returns.ts",
     "signal:track-exits": "tsx src/etl/jobs/track-phase-exits.ts",

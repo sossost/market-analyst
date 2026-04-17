@@ -131,6 +131,7 @@ yarn etl:earning-calendar   # 실적 발표 일정 수집 (-7일 ~ +30일)
 yarn etl:earnings-surprises-fmp  # EPS 서프라이즈 수집 (최근 4분기)
 yarn etl:validate           # 데이터 검증
 yarn etl:update-tracked-stocks  # tracked_stocks Phase 궤적 + 수익률 스냅샷 업데이트
+yarn etl:sync-narrative-beneficiaries  # narrative_chains 수혜주 Phase 1/4 정리 + 빈 chain 자동 후보
 yarn etl:scan-thesis-aligned    # narrative_chains 수혜주 → tracked_stocks 자동 등록
 yarn etl:verify-theses      # thesis 시장 데이터 검증
 yarn etl:failure-patterns   # Phase 2 실패 패턴 수집
@@ -377,6 +378,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **Bear 게이트 업종 RS 대안 경로** — 경로 1(방어섹터) 섹터 RS 조건에 업종 RS OR 분기 추가. 섹터 전체가 약해도 강한 업종 내 종목 포착 가능 (#785)
 - [x] **시스템 자가 감시** — 주간 자동 감사(데이터 무결성·코드-DB 정합성·파이프라인 연결성·테스트/빌드) + 전략 리뷰 프롬프트 현행화 (#807)
 - [x] **주간 관심종목 선별 + 주봉 관점** — featured→P2 streak→detection_lag 기준 선별 정렬 + Top 5~7 주목 뱃지 + 주봉 관점 프롬프트 (#846)
+- [x] **수혜주 자동 동기화** — narrative_chains beneficiary_tickers Phase 1/4 자동 제거 + 빈 chain sectors 기반 Phase 2 + RS >= 60 후보 자동 추가 (#842)
 
 ### Next (진행 예정)
 

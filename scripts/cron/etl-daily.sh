@@ -92,6 +92,7 @@ run_step "Collect Failure Patterns" "src/etl/jobs/collect-failure-patterns.ts"
 # scan-thesis-aligned-candidates: thesis 수혜주 Phase 2 진입 시 자동 등록
 run_step "Update Tracked Stocks" "src/etl/jobs/update-tracked-stocks.ts"
 run_step "Scan Recommendation Candidates" "src/etl/jobs/scan-recommendation-candidates.ts"
+run_step_optional "Sync Narrative Beneficiaries" "src/etl/jobs/sync-narrative-beneficiaries.ts"
 run_step_optional "Scan Thesis Aligned Candidates" "src/etl/jobs/scan-thesis-aligned-candidates.ts"
 
 # Phase 3.9 (종목 촉매 데이터 — stock_phases 완료 후 실행하여 오늘의 Phase 2 기준 일치)
