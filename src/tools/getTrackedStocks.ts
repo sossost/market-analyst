@@ -63,14 +63,13 @@ interface TrackedStockStatusItem {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * phase_trajectory 최근 14일에서 뒤에서부터 연속 Phase 2인 일수를 계산한다.
+ * phase_trajectory 전체에서 뒤에서부터 연속 Phase 2인 일수를 계산한다.
  * 예: [2,2,3,2,2,2] → 3 (마지막 3일 연속)
  */
 export function calcRecentPhase2Streak(trajectory: TrajectoryPoint[]): number {
-  const recent14 = trajectory.slice(-14);
   let streak = 0;
-  for (let i = recent14.length - 1; i >= 0; i--) {
-    if (recent14[i].phase === 2) {
+  for (let i = trajectory.length - 1; i >= 0; i--) {
+    if (trajectory[i].phase === 2) {
       streak++;
     } else {
       break;

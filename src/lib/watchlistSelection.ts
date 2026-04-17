@@ -61,7 +61,12 @@ export function selectWeeklyWatchlist(items: WatchlistItem[]): ScoredWatchlistIt
     selectionScore: calcSelectionScore(w),
   }));
 
-  scored.sort((a, b) => b.selectionScore - a.selectionScore);
+  scored.sort((a, b) => {
+    if (b.selectionScore !== a.selectionScore) {
+      return b.selectionScore - a.selectionScore;
+    }
+    return (b.pnlPercent ?? 0) - (a.pnlPercent ?? 0);
+  });
 
   return scored;
 }
