@@ -41,7 +41,7 @@ export function calcSelectionScore(item: WatchlistItem): number {
   }
 
   const lag = item.detectionLag;
-  if (lag != null && lag <= 5) {
+  if (lag != null && lag >= 0 && lag <= 5) {
     score += 20;
   }
 

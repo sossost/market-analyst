@@ -82,6 +82,11 @@ describe("calcSelectionScore", () => {
     expect(calcSelectionScore(item)).toBe(0);
   });
 
+  it("detectionLag 음수(데이터 이상)면 lag 점수 0", () => {
+    const item = makeWatchlistItem({ detectionLag: -5 });
+    expect(calcSelectionScore(item)).toBe(0);
+  });
+
   it("모든 조건 충족 시 합산: featured(100) + streak14(50) + lag3(20) = 170", () => {
     const item = makeWatchlistItem({
       tier: "featured",
