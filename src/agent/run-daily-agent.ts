@@ -11,9 +11,7 @@ import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
 import { getUnusualStocks } from "@/tools/getUnusualStocks";
 import { getRisingRS } from "@/tools/getRisingRS";
-import { getTrackedStocks } from "@/tools/getTrackedStocks";
 import { getMarketPosition } from "@/tools/getMarketPosition";
-import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
 
 // 업종 RS — 일간은 절대 RS 상위 + 섹터캡 (주간의 변화량 정렬과 분리)
 import { findTopIndustriesGlobal } from "@/db/repositories/index";
@@ -103,9 +101,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     industryRaw,
     unusualRaw,
     risingRsRaw,
-    trackedStocksRaw,
     marketPositionRaw,
-    thesisAlignedRaw,
   ] = await Promise.all([
     getIndexReturns.execute({ mode: "daily", date: targetDate }).catch((err: unknown) => {
       logger.warn("Tool", `getIndexReturns 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -134,16 +130,8 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       logger.warn("Tool", `getRisingRS 실패: ${err instanceof Error ? err.message : String(err)}`);
       return JSON.stringify({ stocks: [] });
     }),
-    getTrackedStocks.execute({ include_trajectory: false }).catch((err: unknown) => {
-      logger.warn("Tool", `getTrackedStocks 실패: ${err instanceof Error ? err.message : String(err)}`);
-      return JSON.stringify({ summary: { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }, items: [] });
-    }),
     getMarketPosition(targetDate).catch((err: unknown) => {
       logger.warn("Tool", `getMarketPosition 실패: ${err instanceof Error ? err.message : String(err)}`);
-      return null;
-    }),
-    buildThesisAlignedCandidates(targetDate).catch((err: unknown) => {
-      logger.warn("ThesisAligned", `수집 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }),
   ]);
@@ -154,7 +142,6 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
   const industryData = parse(industryRaw);
   const unusualData = parse(unusualRaw);
   const risingRsData = parse(risingRsRaw);
-  const trackedStocksData = parse(trackedStocksRaw);
 
   const MIN_VOL_RATIO = 1.0;
   const rawUnusualStocks = (Array.isArray(unusualData.stocks) ? unusualData.stocks : []) as DailyReportData["unusualStocks"];
@@ -193,12 +180,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     ) as DailyReportData["industryTop10"],
     unusualStocks: filteredUnusualStocks,
     risingRS: (Array.isArray(risingRsData.stocks) ? risingRsData.stocks : []) as DailyReportData["risingRS"],
-    watchlist: {
-      summary: (trackedStocksData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
-      items: Array.isArray(trackedStocksData.items) ? trackedStocksData.items as DailyReportData["watchlist"]["items"] : [],
-    },
     marketPosition: marketPositionRaw,
-    thesisAlignedCandidates: thesisAlignedRaw,
   };
 
   const gateLabel =
@@ -206,56 +188,12 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
       ? `게이트: ${data.marketPosition.passCount}/${data.marketPosition.totalCount}`
       : "게이트: 수집 실패";
 
-  const taLabel = thesisAlignedRaw != null
-    ? `서사수혜: 체인 ${thesisAlignedRaw.chains.length}, 후보 ${thesisAlignedRaw.totalCandidates}`
-    : "서사수혜: 수집 실패";
-
   logger.info(
     "Data",
-    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | 추적종목 ${data.watchlist.summary.totalActive} | ${gateLabel} | ${taLabel}`,
+    `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${data.industryTop10.length} | 특이종목 ${data.unusualStocks.length}건 (원본 ${rawUnusualStocks.length}건, volRatio<1.0 또는 splitSuspect 제외) | RS상승 ${data.risingRS.length} | ${gateLabel}`,
   );
 
   return data;
-}
-
-// ─── 관심종목 이벤트 요약 (LLM 프롬프트용) ─────────────────────────────────────
-
-const EXPIRY_WARNING_DAYS = 80;
-const NEW_ENTRY_MAX_DAYS = 1;
-
-/**
- * ACTIVE 관심종목에서 오늘의 이벤트(신규 진입/Phase 전이/만료 임박)만 추출하여
- * LLM 프롬프트에 주입할 텍스트로 변환한다. 전체 목록은 주입하지 않는다.
- */
-export function buildTrackedStocksEventSummary(
-  items: DailyReportData["watchlist"]["items"],
-): string {
-  const lines: string[] = [];
-
-  for (const w of items) {
-    if (w.daysTracked <= NEW_ENTRY_MAX_DAYS) {
-      const p2Label = w.phase2Segment != null && w.phase2SinceDays != null
-        ? ` [P2 ${w.phase2Segment} ${w.phase2SinceDays}일]` : "";
-      lines.push(`[신규] ${w.symbol}: Phase ${w.currentPhase ?? w.entryPhase}, RS ${w.currentRsScore ?? w.entryRsScore ?? "—"}, ${w.entrySector ?? "—"}${p2Label}`);
-      continue;
-    }
-
-    const lastTwo = w.phaseTrajectory.slice(-2);
-    if (lastTwo.length === 2 && lastTwo[0].phase !== lastTwo[1].phase) {
-      lines.push(`[전이] ${w.symbol}: Phase ${lastTwo[0].phase}→${lastTwo[1].phase}, RS ${w.currentRsScore ?? "—"}, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%`);
-      continue;
-    }
-
-    if (w.daysTracked >= EXPIRY_WARNING_DAYS) {
-      lines.push(`[만료임박] ${w.symbol}: ${w.daysTracked}일 추적, P&L ${w.pnlPercent?.toFixed(1) ?? "—"}%`);
-    }
-  }
-
-  if (lines.length === 0) {
-    return "오늘 변화 없음";
-  }
-
-  return lines.join("\n");
 }
 
 // ─── LLM 인사이트 생성 ────────────────────────────────────────────────────────
@@ -321,9 +259,6 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
     .map((s) => `${s.symbol} [P${s.phase}] RS ${s.rsScore} (+${s.rsChange?.toFixed(0) ?? "?"}) ${s.sector ?? "—"} / ${s.industry ?? "—"}`)
     .join("\n");
 
-  const trackedStocksLine = `ACTIVE: ${data.watchlist.summary.totalActive}개, 평균 P&L: ${data.watchlist.summary.avgPnlPercent.toFixed(1)}%`;
-  const trackedStocksEventLines = buildTrackedStocksEventSummary(data.watchlist.items);
-
   const dataSummary = `아래는 오늘 수집된 시장 데이터입니다. 이 데이터를 기반으로 해석을 JSON으로 작성하세요.
 
 ## 지수 수익률
@@ -345,10 +280,6 @@ ${unusualLines || "없음"}
 ## RS 상승 초기 종목 (${data.risingRS.length}건)
 ${risingRsSectorDist}
 ${risingRsLines || "없음"}
-
-## 추적 종목 (tracked_stocks)
-${trackedStocksLine}
-${trackedStocksEventLines}
 
 ---
 
@@ -577,45 +508,20 @@ async function main() {
   // 7. DB 저장
   logger.step("[7/8] Saving to DB...");
   const executionTime = Date.now() - startTime;
-  // thesis_aligned 후보의 고유 심볼 수집 (체인 간 중복 제거)
-  // SEPA S/A(4/4 게이트 충족) 종목만 저장 — 렌더링과 동일 기준 적용
-  const thesisAlignedSymbols = new Map<string, { phase: number; rsScore: number; sector: string; industry: string }>();
-  if (data.thesisAlignedCandidates != null) {
-    for (const chain of data.thesisAlignedCandidates.chains) {
-      for (const c of chain.candidates) {
-        if (c.gatePassCount !== c.gateTotalCount) {
-          continue;
-        }
-        if (!thesisAlignedSymbols.has(c.symbol)) {
-          thesisAlignedSymbols.set(c.symbol, {
-            phase: c.phase ?? 0,
-            rsScore: c.rsScore ?? 0,
-            sector: c.sector ?? "",
-            industry: c.industry ?? "",
-          });
-        }
-      }
-    }
-  }
-
   const reportedSymbols = Array.from(new Set([
     ...data.unusualStocks.map((s) => s.symbol),
     ...data.risingRS.map((s) => s.symbol),
-    ...data.watchlist.items.map((w) => w.symbol), // tracked_stocks
-    ...thesisAlignedSymbols.keys(),
   ])).map((symbol) => {
     const unusual = data.unusualStocks.find((s) => s.symbol === symbol);
     const rising = data.risingRS.find((s) => s.symbol === symbol);
-    const watchItem = data.watchlist.items.find((w) => w.symbol === symbol);
-    const taCandidate = thesisAlignedSymbols.get(symbol);
     return {
       symbol,
-      phase: unusual?.phase ?? rising?.phase ?? watchItem?.currentPhase ?? watchItem?.entryPhase ?? taCandidate?.phase ?? 0,
+      phase: unusual?.phase ?? rising?.phase ?? 0,
       prevPhase: unusual?.prevPhase ?? null,
-      rsScore: unusual?.rsScore ?? rising?.rsScore ?? watchItem?.currentRsScore ?? taCandidate?.rsScore ?? 0,
-      sector: unusual?.sector ?? rising?.sector ?? watchItem?.entrySector ?? taCandidate?.sector ?? "",
-      industry: unusual?.industry ?? rising?.industry ?? watchItem?.entryIndustry ?? taCandidate?.industry ?? "",
-      reason: unusual != null ? "특이종목" : rising != null ? "RS상승초기" : watchItem != null ? "관심종목" : "서사수혜",
+      rsScore: unusual?.rsScore ?? rising?.rsScore ?? 0,
+      sector: unusual?.sector ?? rising?.sector ?? "",
+      industry: unusual?.industry ?? rising?.industry ?? "",
+      reason: unusual != null ? "특이종목" : "RS상승초기",
       firstReportedDate: targetDate,
     };
   });
@@ -637,7 +543,7 @@ async function main() {
       metadata: {
         model: "claude-sonnet-4-6 (CLI)",
         tokensUsed,
-        toolCalls: 7,
+        toolCalls: 5,
         executionTime,
       },
     });
