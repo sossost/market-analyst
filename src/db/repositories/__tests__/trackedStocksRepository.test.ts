@@ -299,6 +299,40 @@ describe("insertTrackedStock", () => {
     expect(params[9]).toBe(7); // entryThesisId
     expect(result).toBe(10);
   });
+
+  it("INSERT SQL에 current_phase, current_price, current_rs_score 컬럼이 포함된다", async () => {
+    await insertTrackedStock(makeInsertInput());
+
+    const sql = getLastCallSql();
+    expect(sql).toContain("current_phase");
+    expect(sql).toContain("current_price");
+    expect(sql).toContain("current_rs_score");
+  });
+
+  it("currentPhase, currentPrice, currentRsScore를 전달하면 파라미터에 포함된다", async () => {
+    const input = makeInsertInput({
+      currentPhase: 2,
+      currentPrice: 850.5,
+      currentRsScore: 88,
+    });
+    await insertTrackedStock(input);
+
+    const params = getLastCallParams();
+    // current_* 필드는 $17, $18, $19 (마지막 3개 파라미터)
+    expect(params[16]).toBe(2);     // currentPhase
+    expect(params[17]).toBe(850.5); // currentPrice
+    expect(params[18]).toBe(88);    // currentRsScore
+  });
+
+  it("currentPhase 등 미지정 시 null로 전달된다 (하위 호환)", async () => {
+    const input = makeInsertInput(); // current_* 미설정
+    await insertTrackedStock(input);
+
+    const params = getLastCallParams();
+    expect(params[16]).toBeNull(); // currentPhase
+    expect(params[17]).toBeNull(); // currentPrice
+    expect(params[18]).toBeNull(); // currentRsScore
+  });
 });
 
 // ─── updateTracking ───────────────────────────────────────────────────────────
