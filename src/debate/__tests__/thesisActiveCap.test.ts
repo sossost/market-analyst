@@ -130,15 +130,15 @@ beforeEach(() => {
 // ─── 테스트 ─────────────────────────────────────────────────────────────────────
 
 describe("enforceActiveThesisCap", () => {
-  it("MAX_ACTIVE_THESES_PER_AGENT는 10이다", () => {
-    expect(MAX_ACTIVE_THESES_PER_AGENT).toBe(10);
+  it("MAX_ACTIVE_THESES_PER_AGENT는 7이다", () => {
+    expect(MAX_ACTIVE_THESES_PER_AGENT).toBe(7);
   });
 
   it("전체 에이전트가 상한 이하이면 만료 없이 0을 반환한다", async () => {
     setupDbChain({
       groupByResult: [
-        { agentPersona: "tech", count: 8 },
-        { agentPersona: "macro", count: 5 },
+        { agentPersona: "tech", count: 5 },
+        { agentPersona: "macro", count: 4 },
         { agentPersona: "sentiment", count: 3 },
       ],
     });
@@ -149,10 +149,10 @@ describe("enforceActiveThesisCap", () => {
     expect(db.update).not.toHaveBeenCalled();
   });
 
-  it("정확히 상한(10건)이면 만료 없이 0을 반환한다", async () => {
+  it("정확히 상한(7건)이면 만료 없이 0을 반환한다", async () => {
     setupDbChain({
       groupByResult: [
-        { agentPersona: "tech", count: 10 },
+        { agentPersona: "tech", count: 7 },
       ],
     });
 
@@ -165,7 +165,7 @@ describe("enforceActiveThesisCap", () => {
   it("상한 초과 에이전트의 가장 오래된 thesis를 EXPIRED 처리한다", async () => {
     const { mockUpdateSet } = setupDbChain({
       groupByResult: [
-        { agentPersona: "tech", count: 13 },
+        { agentPersona: "tech", count: 10 },
       ],
       oldestIds: [1, 2, 3],
       expiredIds: [1, 2, 3],
@@ -192,31 +192,31 @@ describe("enforceActiveThesisCap", () => {
       if (selectCallCount === 1) {
         // groupBy 카운트
         const mockGroupBy = vi.fn().mockResolvedValue([
-          { agentPersona: "tech", count: 16 },
+          { agentPersona: "tech", count: 12 },
           { agentPersona: "macro", count: 5 },
-          { agentPersona: "sentiment", count: 10 },
+          { agentPersona: "sentiment", count: 3 },
         ]);
         const mockWhere = vi.fn().mockReturnValue({ groupBy: mockGroupBy });
         const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
         return { from: mockFrom };
       }
       // tech만 초과 → oldest 조회 1회
-      const mockLimit = vi.fn().mockResolvedValue([{ id: 10 }, { id: 11 }, { id: 12 }, { id: 13 }, { id: 14 }, { id: 15 }]);
+      const mockLimit = vi.fn().mockResolvedValue([{ id: 10 }, { id: 11 }, { id: 12 }, { id: 13 }, { id: 14 }]);
       const mockOrderBy = vi.fn().mockReturnValue({ limit: mockLimit });
       const mockWhere = vi.fn().mockReturnValue({ orderBy: mockOrderBy });
       const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
       return { from: mockFrom };
     });
 
-    const mockReturning = vi.fn().mockResolvedValue([{ id: 10 }, { id: 11 }, { id: 12 }, { id: 13 }, { id: 14 }, { id: 15 }]);
+    const mockReturning = vi.fn().mockResolvedValue([{ id: 10 }, { id: 11 }, { id: 12 }, { id: 13 }, { id: 14 }]);
     const mockUpdateWhere = vi.fn().mockReturnValue({ returning: mockReturning });
     const mockUpdateSet = vi.fn().mockReturnValue({ where: mockUpdateWhere });
     (db.update as ReturnType<typeof vi.fn>).mockReturnValue({ set: mockUpdateSet });
 
     const result = await enforceActiveThesisCap("2026-03-31");
 
-    // tech만 6건 초과 → 6건 만료
-    expect(result).toBe(6);
+    // tech만 5건 초과 → 5건 만료
+    expect(result).toBe(5);
     // update는 tech에 대해서만 1회 호출 (macro/sentiment는 상한 이하)
     expect(db.update).toHaveBeenCalledTimes(1);
   });

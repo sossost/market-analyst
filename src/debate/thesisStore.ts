@@ -13,8 +13,12 @@ import { detectStatusQuo } from "./statusQuoDetector.js";
 /**
  * 에이전트당 ACTIVE thesis 상한.
  * 초과 시 가장 오래된 thesis를 EXPIRED 처리하여 학습 루프 적체를 방지한다.
+ *
+ * 10 → 7 하향 (#834): tech/geopolitics 에이전트의 ACTIVE 적체(10건) 해소.
+ * sentiment(3건), macro(6건)에는 영향 없음. structural_narrative thesis의
+ * 정량 판정 불가로 인한 적체를 cap 수준에서 방지.
  */
-export const MAX_ACTIVE_THESES_PER_AGENT = 10;
+export const MAX_ACTIVE_THESES_PER_AGENT = 7;
 
 function parseConsensusScore(level: ConsensusLevel): number {
   const score = parseInt(level.split("/")[0], 10);
