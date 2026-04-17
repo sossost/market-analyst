@@ -1,5 +1,5 @@
 import { pool } from "@/db/client";
-import { MIN_MARKET_CAP } from "@/lib/constants";
+import { MIN_MARKET_CAP, SHELL_COMPANIES_INDUSTRY } from "@/lib/constants";
 import type { Pool } from "pg";
 import type {
   StockPhaseRow,
@@ -65,7 +65,7 @@ const SIO_JOIN_SYM = "LEFT JOIN symbol_industry_overrides sio ON sym.symbol = si
 const IND_COL = "COALESCE(sio.industry, s.industry)";
 const IND_COL_SYM = "COALESCE(sio.industry, sym.industry)";
 /** Shell Companies 제외 필터 — IS DISTINCT FROM으로 industry=NULL인 종목도 포함 */
-const NOT_SHELL = `${IND_COL} IS DISTINCT FROM 'Shell Companies'`;
+const NOT_SHELL = `${IND_COL} IS DISTINCT FROM '${SHELL_COMPANIES_INDUSTRY}'`;
 
 /**
  * Phase 2 초입 종목 리스트를 조회한다.

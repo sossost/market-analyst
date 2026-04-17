@@ -133,6 +133,20 @@ export function checkCodeDbConsistency(): AuditFinding[] {
     });
   }
 
+  // 2-1b. groupRsRepository에도 Shell Companies 필터가 쿼리에서 사용되는지
+  const groupRsShellFilter = fileContains(
+    path.join(PROJECT_ROOT, "src/db/repositories/groupRsRepository.ts"),
+    "IS DISTINCT FROM",
+  );
+  if (!groupRsShellFilter) {
+    findings.push({
+      category: "code-db-consistency",
+      severity: "CRITICAL",
+      title: "groupRsRepository에 Shell Companies 필터 누락",
+      detail: "Shell Companies 필터가 없으면 SPAC 종목이 섹터/업종 RS 계산에 포함되어 RS 수치가 왜곡된다.",
+    });
+  }
+
   // 2-2. 전략 리뷰 프롬프트가 deprecated 테이블 참조하는지
   const promptContent = safeReadFile(
     path.join(PROJECT_ROOT, "scripts/strategic-review-prompt.md"),
