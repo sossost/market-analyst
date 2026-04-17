@@ -9,9 +9,10 @@ import {
 import { retryApiCall, DEFAULT_RETRY_OPTIONS } from "@/etl/utils/retry";
 import { fetchJson, isValidTicker } from "@/etl/utils/common";
 import { logger } from "@/lib/logger";
+import { SHELL_COMPANIES_INDUSTRY } from "@/lib/constants";
 
 const TAG = "LOAD_US_SYMBOLS";
-const EXCLUDED_INDUSTRIES = ["Shell Companies"];
+const EXCLUDED_INDUSTRIES = [SHELL_COMPANIES_INDUSTRY];
 
 const API = process.env.DATA_API! + "/stable";
 const KEY = process.env.FMP_API_KEY!;

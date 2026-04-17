@@ -1,4 +1,5 @@
 import { pool } from "@/db/client";
+import { SHELL_COMPANIES_INDUSTRY } from "@/lib/constants";
 import type { GroupBy } from "@/types";
 import type {
   GroupAvgRow,
@@ -16,14 +17,21 @@ import type {
  */
 
 const ALLOWED_GROUP_COLS = {
-  sector: { col: "s.sector", table: "sector_rs_daily", colName: "sector", joinClause: "" },
+  sector: {
+    col: "s.sector",
+    table: "sector_rs_daily",
+    colName: "sector",
+    joinClause: "",
+    notShellFilter: `s.industry IS DISTINCT FROM '${SHELL_COMPANIES_INDUSTRY}'`,
+  },
   industry: {
     col: "COALESCE(sio.industry, s.industry)",
     table: "industry_rs_daily",
     colName: "industry",
     joinClause: "LEFT JOIN symbol_industry_overrides sio ON s.symbol = sio.symbol",
+    notShellFilter: `COALESCE(sio.industry, s.industry) IS DISTINCT FROM '${SHELL_COMPANIES_INDUSTRY}'`,
   },
-} as const satisfies Record<GroupBy, { col: string; table: string; colName: string; joinClause: string }>;
+} as const satisfies Record<GroupBy, { col: string; table: string; colName: string; joinClause: string; notShellFilter: string }>;
 
 /**
  * 그룹별 RS 평균 + 종목 수를 조회한다 (Step 1).
@@ -33,7 +41,7 @@ export async function findGroupAvgs(
   targetDate: string,
   minStockCount: number,
 ): Promise<GroupAvgRow[]> {
-  const { col: groupCol, joinClause } = ALLOWED_GROUP_COLS[groupBy];
+  const { col: groupCol, joinClause, notShellFilter } = ALLOWED_GROUP_COLS[groupBy];
 
   const { rows } = await pool.query<GroupAvgRow>(
     `SELECT
@@ -46,6 +54,7 @@ export async function findGroupAvgs(
      JOIN daily_prices dp ON s.symbol = dp.symbol AND dp.date = $1
      WHERE s.is_actively_trading = true
        AND s.is_etf = false
+       AND ${notShellFilter}
        AND ${groupCol} IS NOT NULL
        AND ${groupCol} != ''
      GROUP BY ${groupCol}${groupBy === "industry" ? ", s.sector" : ""}
@@ -87,7 +96,7 @@ export async function findGroupBreadth(
   targetDate: string,
   groupNames: string[],
 ): Promise<GroupBreadthRow[]> {
-  const { col: groupCol, joinClause } = ALLOWED_GROUP_COLS[groupBy];
+  const { col: groupCol, joinClause, notShellFilter } = ALLOWED_GROUP_COLS[groupBy];
 
   const { rows } = await pool.query<GroupBreadthRow>(
     `SELECT
@@ -114,6 +123,7 @@ export async function findGroupBreadth(
      LEFT JOIN stock_phases sp ON s.symbol = sp.symbol AND sp.date = $1
      WHERE s.is_actively_trading = true
        AND s.is_etf = false
+       AND ${notShellFilter}
        AND ${groupCol} = ANY($2)
      GROUP BY ${groupCol}`,
     [targetDate, groupNames],
@@ -163,7 +173,7 @@ export async function findGroupFundamentals(
   groupBy: GroupBy,
   groupNames: string[],
 ): Promise<GroupFundamentalRow[]> {
-  const { col: groupCol, joinClause } = ALLOWED_GROUP_COLS[groupBy];
+  const { col: groupCol, joinClause, notShellFilter } = ALLOWED_GROUP_COLS[groupBy];
 
   const { rows } = await pool.query<GroupFundamentalRow>(
     `WITH latest_q AS (
@@ -176,6 +186,7 @@ export async function findGroupFundamentals(
       WHERE ${groupCol} = ANY($1)
         AND s.is_actively_trading = true
         AND s.is_etf = false
+        AND ${notShellFilter}
     )
     SELECT
       q1.group_name,
