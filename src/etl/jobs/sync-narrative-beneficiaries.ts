@@ -234,77 +234,74 @@ export async function syncNarrativeBeneficiaries(
   // 3. 체인별 동기화
   for (const chain of chains) {
     const hasSectors = chain.beneficiarySectors.length > 0;
+    const originalTickers = chain.beneficiaryTickers;
 
     // 3a. 기존 tickers Phase 1/4 제거
-    let remainingTickers: string[];
+    let finalTickers: string[];
+    let removedCount = 0;
+    let addedCount = 0;
 
-    if (chain.beneficiaryTickers.length > 0) {
+    if (originalTickers.length > 0) {
       const { kept, removed } = filterDegradedTickers(
-        chain.beneficiaryTickers,
+        originalTickers,
         phaseMap,
       );
-      remainingTickers = kept;
+      finalTickers = kept;
+      removedCount = removed.length;
 
       if (removed.length > 0) {
         logger.info(
           TAG,
           `Chain #${chain.id} (${chain.bottleneck}): Phase 1/4 제거 — ${removed.join(", ")}`,
         );
-
-        await retryDatabaseOperation(() =>
-          db
-            .update(narrativeChains)
-            .set({ beneficiaryTickers: kept })
-            .where(eq(narrativeChains.id, chain.id)),
-        );
-
-        result.tickersRemoved += removed.length;
-        result.chainsUpdated += 1;
       }
     } else {
-      remainingTickers = [];
+      finalTickers = [];
     }
 
-    // 제거 후에도 ticker가 남아있으면 → 다음 chain으로
-    if (remainingTickers.length > 0) continue;
+    // 3b. ticker가 비어있고 sectors 존재 → Phase 2 + RS >= 60 자동 후보 추가
+    if (finalTickers.length === 0) {
+      if (!hasSectors) {
+        logger.warn(
+          TAG,
+          `Chain #${chain.id} (${chain.bottleneck}): beneficiary_tickers/sectors 모두 비어있음 — 자동 추가 불가`,
+        );
+      } else {
+        const candidates = await retryDatabaseOperation(() =>
+          discoverSectorCandidates(chain.beneficiarySectors, targetDate),
+        );
 
-    // 3b. 빈 chain + sectors 존재 → Phase 2 + RS >= 60 자동 후보 추가
-    if (!hasSectors) {
-      logger.warn(
-        TAG,
-        `Chain #${chain.id} (${chain.bottleneck}): beneficiary_tickers/sectors 모두 비어있음 — 자동 추가 불가`,
+        if (candidates.length === 0) {
+          logger.info(
+            TAG,
+            `Chain #${chain.id} (${chain.bottleneck}): 업종 기반 Phase 2 + RS >= 60 후보 없음`,
+          );
+        } else {
+          const autoTickers = selectAutoDiscoveryCandidates(candidates);
+          finalTickers = autoTickers;
+          addedCount = autoTickers.length;
+
+          logger.info(
+            TAG,
+            `Chain #${chain.id} (${chain.bottleneck}): 업종 기반 자동 추가 — ${autoTickers.join(", ")}`,
+          );
+        }
+      }
+    }
+
+    // 3c. 변경 사항이 있을 때만 단일 DB 업데이트
+    if (removedCount > 0 || addedCount > 0) {
+      await retryDatabaseOperation(() =>
+        db
+          .update(narrativeChains)
+          .set({ beneficiaryTickers: finalTickers })
+          .where(eq(narrativeChains.id, chain.id)),
       );
-      continue;
+      result.chainsUpdated += 1;
     }
 
-    const candidates = await retryDatabaseOperation(() =>
-      discoverSectorCandidates(chain.beneficiarySectors, targetDate),
-    );
-
-    if (candidates.length === 0) {
-      logger.info(
-        TAG,
-        `Chain #${chain.id} (${chain.bottleneck}): 업종 기반 Phase 2 + RS >= 60 후보 없음`,
-      );
-      continue;
-    }
-
-    const autoTickers = selectAutoDiscoveryCandidates(candidates);
-
-    logger.info(
-      TAG,
-      `Chain #${chain.id} (${chain.bottleneck}): 업종 기반 자동 추가 — ${autoTickers.join(", ")}`,
-    );
-
-    await retryDatabaseOperation(() =>
-      db
-        .update(narrativeChains)
-        .set({ beneficiaryTickers: autoTickers })
-        .where(eq(narrativeChains.id, chain.id)),
-    );
-
-    result.tickersAdded += autoTickers.length;
-    result.chainsUpdated += 1;
+    result.tickersRemoved += removedCount;
+    result.tickersAdded += addedCount;
   }
 
   return result;
