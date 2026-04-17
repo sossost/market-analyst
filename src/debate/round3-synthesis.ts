@@ -8,7 +8,7 @@ import { verifyConsensusLevels } from "./consensusVerifier.js";
 import { detectContradictions } from "./contradictionDetector.js";
 import { STRUCTURAL_NARRATIVE_MIN_DAYS, SECTOR_ROTATION_MIN_DAYS } from "./thesisConstants.js";
 
-const MODERATOR_MAX_TOKENS = 8192;
+const MODERATOR_MAX_TOKENS = 16384;
 
 interface Round3Input {
   provider: LLMProvider;
