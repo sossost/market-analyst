@@ -206,7 +206,9 @@ async function main() {
   const statusQuoCount = confirmedTheses.filter((t) => t.isStatusQuo === true).length;
   const confirmedForLearning = confirmedTheses.filter((t) => t.isStatusQuo !== true);
   const invalidatedForLearning = invalidatedTheses.filter((t) => t.isStatusQuo !== true);
-  const expiredForLearning = expiredTheses.filter((t) => t.isStatusQuo !== true);
+  const expiredForLearning = expiredTheses.filter(
+    (t) => t.isStatusQuo !== true && t.closeReason !== "cap_exceeded",
+  );
 
   // 데이터 품질 경고: 오늘자 confirmed thesis에 is_status_quo=null이면 snapshot 미전달 가능성
   const currentRunNulls = confirmedTheses.filter(

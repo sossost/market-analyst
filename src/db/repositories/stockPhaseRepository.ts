@@ -1080,6 +1080,7 @@ export async function queryWeeklyQaThesisOverall(pool: Pool): Promise<WeeklyQaTh
        COUNT(*) FILTER (WHERE status = 'ACTIVE')::int as active,
        COUNT(*)::int as total
      FROM theses
+     WHERE (is_status_quo IS NOT TRUE)
      GROUP BY agent_persona
      ORDER BY agent_persona`,
   );

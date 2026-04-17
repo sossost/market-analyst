@@ -28,6 +28,8 @@ import {
   type WeeklyQaBiasMetricsRow,
 } from "@/db/repositories/index.js";
 
+import { getThesisHitRateByCategory, type CategoryHitRateWithStatusQuo } from "@/debate/thesisStore";
+import { CLAUDE_SONNET } from "@/lib/models.js";
 
 const MAX_TOKENS = 4096;
 const SCORE_THRESHOLD_FOR_ISSUE = 6;
@@ -44,6 +46,7 @@ interface CollectedData {
   recentReports: WeeklyQaReportLogRow[] | null;
   verificationMethods: WeeklyQaVerificationMethodRow[] | null;
   biasMetrics: WeeklyQaBiasMetricsRow[] | null;
+  categoryHitRate: CategoryHitRateWithStatusQuo[] | null;
 }
 
 async function queryOrNullFn<T>(
@@ -60,7 +63,7 @@ async function queryOrNullFn<T>(
 }
 
 async function collectData(): Promise<CollectedData> {
-  const [thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics] =
+  const [thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics, categoryHitRate] =
     await Promise.all([
       queryOrNullFn("thesis_weekly", () => queryWeeklyQaThesisWeekly(pool)),
       queryOrNullFn("thesis_overall", () => queryWeeklyQaThesisOverall(pool)),
@@ -71,9 +74,10 @@ async function collectData(): Promise<CollectedData> {
       queryOrNullFn("recent_reports", () => queryWeeklyQaRecentReports(pool)),
       queryOrNullFn("verification_methods", () => queryWeeklyQaVerificationMethods(pool)),
       queryOrNullFn("bias_metrics", () => queryWeeklyQaBiasMetrics(pool)),
+      queryOrNullFn("category_hit_rate", () => getThesisHitRateByCategory()),
     ]);
 
-  return { thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics };
+  return { thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics, categoryHitRate };
 }
 
 // --- 프롬프트 구성 ---
@@ -103,6 +107,7 @@ function buildUserPrompt(data: CollectedData, today: string): string {
     formatDataSection("5. 최근 리포트 로그", data.recentReports),
     formatDataSection("6. 검증 방식별 통계 (정량/LLM)", data.verificationMethods),
     formatDataSection("7. 학습 검증 경로 분포 (정량/LLM/혼합)", data.biasMetrics),
+    formatDataSection("8. 카테고리별 순수 적중률 (status_quo 제외)", data.categoryHitRate),
   ];
   return sections.join("\n");
 }
