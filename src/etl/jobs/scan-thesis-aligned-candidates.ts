@@ -189,6 +189,9 @@ async function main() {
           phase2Since: phase2SinceMap.get(candidate.symbol) ?? null,
           marketRegime: null,
           trackingEndDate,
+          currentPhase: candidate.phase ?? PHASE_2,
+          currentPrice: entryPrice,
+          currentRsScore: candidate.rsScore,
         }),
       );
 

@@ -81,6 +81,9 @@ export interface InsertTrackedStockInput {
   phase2Since: string | null;
   marketRegime: string | null;
   trackingEndDate: string;
+  currentPhase?: number | null;
+  currentPrice?: number | null;
+  currentRsScore?: number | null;
 }
 
 // ─── UPDATE 타입 ──────────────────────────────────────────────────────────────
@@ -273,9 +276,10 @@ export async function insertTrackedStock(
        entry_sector, entry_industry, entry_reason,
        phase2_since,
        status, market_regime, tracking_end_date,
-       days_tracked
+       days_tracked,
+       current_phase, current_price, current_rs_score
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'ACTIVE', $15, $16, 0)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'ACTIVE', $15, $16, 0, $17, $18, $19)
      ON CONFLICT (symbol, entry_date) DO NOTHING
      RETURNING id`,
     [
@@ -295,6 +299,9 @@ export async function insertTrackedStock(
       data.phase2Since,
       data.marketRegime,
       data.trackingEndDate,
+      data.currentPhase ?? null,
+      data.currentPrice ?? null,
+      data.currentRsScore ?? null,
     ],
   );
 

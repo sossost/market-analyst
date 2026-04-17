@@ -255,7 +255,7 @@ async function processTrackedStock(
   );
 
   if (currentPrice == null) {
-    logger.info(TAG, `${item.symbol}: 종가 없음 — 스킵`);
+    logger.warn(TAG, `${item.symbol}: 종가 없음 — 스킵 (daily_prices 데이터 확인 필요)`);
     return { action: "skipped", symbol: item.symbol, reason: "no_price" };
   }
 
