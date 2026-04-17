@@ -20,7 +20,7 @@ import {
 } from "@/db/repositories/trackedStocksRepository.js";
 import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
 import { logger } from "@/lib/logger";
-import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
+import { fireCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -323,21 +323,7 @@ async function executeRegister(
 
   // 종목 심층 리포트 생성 — featured tier만 (fire-and-forget) (#847)
   if (tier === "featured") {
-    runCorporateAnalyst(symbol, date, pool)
-      .then((result) => {
-        if (result.success === false) {
-          logger.warn(
-            "CorporateAnalyst",
-            `${symbol} 트래킹 등록 후 심층 리포트 생성 실패: ${result.error}`,
-          );
-        }
-      })
-      .catch((err) =>
-        logger.error(
-          "CorporateAnalyst",
-          `${symbol} 트래킹 등록 후 예상치 못한 에러: ${String(err)}`,
-        ),
-      );
+    fireCorporateAnalyst(symbol, date, pool, "CorporateAnalyst");
   }
 
   return JSON.stringify({

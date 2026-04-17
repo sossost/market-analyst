@@ -19,7 +19,7 @@ import { logger } from "@/lib/logger";
 import { loadConfirmedRegime, loadPendingRegimes } from "@/debate/regimeStore";
 import { evaluateBearException } from "@/tools/bearExceptionGate.js";
 import { evaluateLateBullGate } from "@/tools/lateBullGate.js";
-import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
+import { fireCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 import {
   BEAR_REGIMES,
   COOLDOWN_CALENDAR_DAYS,
@@ -485,15 +485,7 @@ async function main() {
     // 기업 분석 리포트 — featured tier 종목만 생성 (#847)
     if (tier === "featured") {
       corporateAnalystPromises.push(
-        runCorporateAnalyst(symbol, targetDate, pool)
-          .then((result) => {
-            if (!result.success) {
-              logger.warn(TAG, `${symbol} 리포트 생성 실패: ${result.error}`);
-            }
-          })
-          .catch((err) =>
-            logger.error(TAG, `${symbol} CorporateAnalyst 에러: ${String(err)}`),
-          ),
+        fireCorporateAnalyst(symbol, targetDate, pool, TAG),
       );
     }
   }

@@ -27,7 +27,7 @@ import {
 } from "@/db/repositories/trackedStocksRepository.js";
 import { findLatestClose } from "@/db/repositories/priceRepository.js";
 import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
-import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
+import { fireCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 import { toNum } from "@/etl/utils/common";
 
 const TAG = "SCAN_THESIS_ALIGNED_CANDIDATES";
@@ -205,15 +205,7 @@ async function main() {
         // 기업 분석 리포트 — featured tier 종목만 생성 (#847)
         if (tier === "featured") {
           corporateAnalystPromises.push(
-            runCorporateAnalyst(candidate.symbol, targetDate, pool)
-              .then((result) => {
-                if (!result.success) {
-                  logger.warn(TAG, `${candidate.symbol} 리포트 생성 실패: ${result.error}`);
-                }
-              })
-              .catch((err) =>
-                logger.error(TAG, `${candidate.symbol} CorporateAnalyst 에러: ${String(err)}`),
-              ),
+            fireCorporateAnalyst(candidate.symbol, targetDate, pool, TAG),
           );
         }
       }

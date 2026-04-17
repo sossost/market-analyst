@@ -81,3 +81,24 @@ export async function runCorporateAnalyst(
     return { success: false, symbol, error: errorMessage };
   }
 }
+
+/**
+ * runCorporateAnalyst를 fire-and-forget 패턴으로 실행하고 결과/에러를 로깅한다.
+ * 반환되는 Promise는 항상 resolve된다 (에러도 catch 후 로깅만).
+ */
+export function fireCorporateAnalyst(
+  symbol: string,
+  date: string,
+  pool: Pool,
+  tag: string,
+): Promise<void> {
+  return runCorporateAnalyst(symbol, date, pool)
+    .then((result) => {
+      if (!result.success) {
+        logger.warn(tag, `${symbol} 리포트 생성 실패: ${result.error}`);
+      }
+    })
+    .catch((err) =>
+      logger.error(tag, `${symbol} CorporateAnalyst 에러: ${String(err)}`),
+    );
+}

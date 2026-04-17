@@ -45,7 +45,7 @@ vi.mock("@/tools/lateBullGate.js", () => ({
   evaluateLateBullGate: vi.fn(),
 }));
 vi.mock("@/corporate-analyst/runCorporateAnalyst.js", () => ({
-  runCorporateAnalyst: vi.fn().mockResolvedValue({ success: true, symbol: "AAPL" }),
+  fireCorporateAnalyst: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ─── import (mock 이후) ────────────────────────────────────────────────────────
