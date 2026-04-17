@@ -31,7 +31,7 @@ vi.mock("@/db/repositories/stockPhaseRepository.js", () => ({
 }));
 
 vi.mock("@/corporate-analyst/runCorporateAnalyst.js", () => ({
-  runCorporateAnalyst: vi.fn().mockResolvedValue({ success: true }),
+  fireCorporateAnalyst: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -58,6 +58,9 @@ const mockFindActive = findActiveTrackedStocksBySymbols as ReturnType<typeof vi.
 const mockExit = exitTrackedStock as ReturnType<typeof vi.fn>;
 const mockInsert = insertTrackedStock as ReturnType<typeof vi.fn>;
 const mockFindPhase2Since = findPhase2SinceDates as ReturnType<typeof vi.fn>;
+
+import { fireCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
+const mockFireCorporateAnalyst = fireCorporateAnalyst as ReturnType<typeof vi.fn>;
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -205,6 +208,37 @@ describe("saveTrackedStock.execute — register", () => {
     expect(mockInsert).toHaveBeenCalledWith(
       expect.objectContaining({ phase2Since: null }),
     );
+  });
+});
+
+// ─── 기업 분석 리포트 tier 게이트 테스트 (#847) ──────────────────────────────
+
+describe("saveTrackedStock.execute — corporateAnalyst tier gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindActive.mockResolvedValue([]);
+    mockInsert.mockResolvedValue(1);
+    mockFindPhase2Since.mockResolvedValue([]);
+  });
+
+  it("featured tier 등록 시 fireCorporateAnalyst를 호출한다", async () => {
+    const input = makeValidRegisterInput({ tier: "featured" });
+    await saveTrackedStock.execute(input);
+    expect(mockFireCorporateAnalyst).toHaveBeenCalledTimes(1);
+    expect(mockFireCorporateAnalyst).toHaveBeenCalledWith("AAPL", "2026-03-22", expect.anything(), "CorporateAnalyst");
+  });
+
+  it("standard tier 등록 시 fireCorporateAnalyst를 호출하지 않는다", async () => {
+    const input = makeValidRegisterInput({ tier: "standard" });
+    await saveTrackedStock.execute(input);
+    expect(mockFireCorporateAnalyst).not.toHaveBeenCalled();
+  });
+
+  it("tier 미지정(기본값 standard) 시 fireCorporateAnalyst를 호출하지 않는다", async () => {
+    const input = { ...makeValidRegisterInput() };
+    delete (input.register as Record<string, unknown>).tier;
+    await saveTrackedStock.execute(input);
+    expect(mockFireCorporateAnalyst).not.toHaveBeenCalled();
   });
 });
 
