@@ -23,7 +23,6 @@ import { applyIndustrySectorCap } from "../src/lib/industryFilter.js";
 import { toNum } from "../src/etl/utils/common.js";
 import { clampPercent } from "../src/tools/validation.js";
 import { getRisingRS } from "../src/tools/getRisingRS.js";
-import { getWatchlistStatus } from "../src/tools/getWatchlistStatus.js";
 
 // Schema + Builder
 import type {
@@ -74,8 +73,6 @@ function buildDummyInsight(): DailyReportInsight {
       "프리뷰 더미 — 특이종목 서사 없음.",
     risingRSNarrative:
       "프리뷰 더미 — RS 상승 초기 종목 서사 없음.",
-    watchlistNarrative:
-      "프리뷰 더미 — 관심종목 서사 없음.",
     todayInsight: "프리뷰 더미 — 오늘의 인사이트 없음.",
     discordMessage: "[프리뷰] 더미 Discord 메시지",
   });
@@ -106,7 +103,6 @@ async function main() {
     industryRaw,
     unusualRaw,
     risingRsRaw,
-    watchlistRaw,
   ] = await Promise.all([
     getIndexReturns.execute({ mode: "daily", date: targetDate }).catch((err: unknown) => {
       console.warn(`  getIndexReturns 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -134,10 +130,6 @@ async function main() {
       console.warn(`  getRisingRS 실패: ${err instanceof Error ? err.message : String(err)}`);
       return JSON.stringify({ stocks: [] });
     }),
-    getWatchlistStatus.execute({ include_trajectory: false, date: targetDate }).catch((err: unknown) => {
-      console.warn(`  getWatchlistStatus 실패: ${err instanceof Error ? err.message : String(err)}`);
-      return JSON.stringify({ summary: { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }, items: [] });
-    }),
   ]);
 
   const indexData = parse(indexRaw);
@@ -146,7 +138,6 @@ async function main() {
   const industryData = parse(industryRaw);
   const unusualData = parse(unusualRaw);
   const risingRsData = parse(risingRsRaw);
-  const watchlistData = parse(watchlistRaw);
 
   // 3. DailyReportData 조립
   const data: DailyReportData = {
@@ -183,19 +174,14 @@ async function main() {
     unusualStocks: (Array.isArray(unusualData.stocks) ? unusualData.stocks : [] as DailyReportData["unusualStocks"])
       .filter((s: DailyReportData["unusualStocks"][number]) => s.volRatio >= 1.0 && !s.splitSuspect),
     risingRS: (Array.isArray(risingRsData.stocks) ? risingRsData.stocks : []) as DailyReportData["risingRS"],
-    watchlist: {
-      summary: (watchlistData.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as DailyReportData["watchlist"]["summary"],
-      items: Array.isArray(watchlistData.items)
-        ? watchlistData.items as DailyReportData["watchlist"]["items"]
-        : [],
-    },
+    marketPosition: null,
   };
 
   console.log(
     `  지수: ${data.indexReturns.length} | 섹터: ${data.sectorRanking.length} | 업종: ${data.industryTop10.length}`,
   );
   console.log(
-    `  특이종목: ${data.unusualStocks.length} | RS상승: ${data.risingRS.length} | 관심종목: ${data.watchlist.summary.totalActive}`,
+    `  특이종목: ${data.unusualStocks.length} | RS상승: ${data.risingRS.length}`,
   );
 
   // 4. 더미 인사이트 생성 (LLM 호출 없음)

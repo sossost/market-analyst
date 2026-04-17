@@ -8,8 +8,6 @@
  *     도구 반환값(_note 필드)에도 동일 경고가 포함되어 있음.
  */
 
-import type { ThesisAlignedData } from "@/lib/thesisAlignedCandidates.js";
-import type { Phase2Segment } from "@/lib/phase2Segment.js";
 
 // ─── 공통 서브타입 ────────────────────────────────────────────────────────────
 
@@ -196,63 +194,6 @@ export interface DailyRisingRSStock {
   marketCap: number | null;
 }
 
-interface DailyWatchlistPhaseChange {
-  symbol: string;
-  entryPhase: number;
-  currentPhase: number | null;
-  daysTracked: number;
-}
-
-interface DailyWatchlistSummary {
-  totalActive: number;
-  phaseChanges: DailyWatchlistPhaseChange[];
-  avgPnlPercent: number;
-}
-
-interface DailyWatchlistTrajectoryPoint {
-  date: string;
-  phase: number;
-  rsScore: number | null;
-}
-
-interface DailyWatchlistItem {
-  symbol: string;
-  entryDate: string;
-  trackingEndDate: string | null;
-  daysTracked: number;
-  entryPhase: number;
-  currentPhase: number | null;
-  entryRsScore: number | null;
-  currentRsScore: number | null;
-  entrySector: string | null;
-  entryIndustry: string | null;
-  entrySepaGrade: string | null;
-  priceAtEntry: number | null;
-  currentPrice: number | null;
-  pnlPercent: number | null;
-  maxPnlPercent: number | null;
-  sectorRelativePerf: number | null;
-  /** 일간 리포트: 최근 7일 궤적만 포함 (include_trajectory: false) */
-  phaseTrajectory: DailyWatchlistTrajectoryPoint[];
-  entryReason: string | null;
-  hasThesisBasis: boolean;
-  /** Phase 2 연속 진입 시작일 (YYYY-MM-DD). Phase 2 아니면 null */
-  phase2Since: string | null;
-  /** Phase 2 경과일. null = Phase 2 아니거나 데이터 없음 */
-  phase2SinceDays: number | null;
-  /** Phase 2 구간 분류. 초입(1~5일)/진행(6~20일)/확립(21일+). null = 해당 없음 */
-  phase2Segment: Phase2Segment | null;
-}
-
-/**
- * get_watchlist_status(include_trajectory: false) 반환값.
- * 일간 리포트: 최근 7일 궤적만 포함.
- */
-export interface DailyWatchlistData {
-  summary: DailyWatchlistSummary;
-  items: DailyWatchlistItem[];
-}
-
 // ─── 시장 환경 멀티게이트 ────────────────────────────────────────────────────
 
 /**
@@ -298,12 +239,8 @@ export interface DailyReportData {
   unusualStocks: DailyUnusualStock[];
   /** get_rising_rs 반환값 */
   risingRS: DailyRisingRSStock[];
-  /** get_watchlist_status(include_trajectory: false) 반환값 */
-  watchlist: DailyWatchlistData;
   /** getMarketPosition 반환값. 수집 실패 시 null */
   marketPosition: MarketPositionData | null;
-  /** buildThesisAlignedCandidates 반환값. 수집 실패 시 null */
-  thesisAlignedCandidates: ThesisAlignedData | null;
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────
@@ -350,8 +287,6 @@ export interface DailyReportInsight {
   unusualStocksNarrative: NarrativeBlock;
   /** RS 상승 초기 종목군의 공통 업종/테마 관찰. headline: 업종/테마 방향. detail: 1~2문장 근거. */
   risingRSNarrative: NarrativeBlock;
-  /** ACTIVE 관심종목 서사 유효성. headline: 이벤트 의미. detail: 1~2문장 배경. */
-  watchlistNarrative: NarrativeBlock;
   /** 토론 인사이트가 있는 경우 2~3문장 핵심만. 없으면 "해당 없음". */
   todayInsight: string;
   /** 브레드스 추세 + 맥락 한줄 해석. headline: 브레드스 판단. detail: 1~2문장 근거. */
@@ -404,7 +339,6 @@ export function fillInsightDefaults(
     marketTemperatureRationale: parseRationale(raw["marketTemperatureRationale"]),
     unusualStocksNarrative: parseNarrative(raw["unusualStocksNarrative"]),
     risingRSNarrative: parseNarrative(raw["risingRSNarrative"]),
-    watchlistNarrative: parseNarrative(raw["watchlistNarrative"]),
     todayInsight:
       typeof raw["todayInsight"] === "string"
         ? raw["todayInsight"]

@@ -20,16 +20,11 @@ import type {
   DailyIndustryItem,
   DailyUnusualStock,
   DailyRisingRSStock,
-  DailyWatchlistData,
   DailyReportData,
   DailyReportInsight,
   MarketPositionData,
   NarrativeBlock,
 } from "@/tools/schemas/dailyReportSchema.js";
-import type {
-  ThesisAlignedData,
-  ThesisAlignedChainGroup,
-} from "@/lib/thesisAlignedCandidates.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
 
@@ -496,29 +491,6 @@ const DAILY_REPORT_CSS = `
   .cond-tag.phase2-drop { background: #fff3cd; color: var(--orange); }
   .cond-tag.split-suspect { background: #fff8c5; color: var(--yellow); }
 
-  /* Watchlist Trajectory */
-  .trajectory-dots {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-  }
-
-  .traj-dot {
-    display: inline-block;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    font-size: 0.7rem;
-    font-weight: 700;
-    line-height: 22px;
-    text-align: center;
-    color: #fff;
-  }
-  .traj-dot.p1 { background: #8c959f; }
-  .traj-dot.p2 { background: var(--phase2); }
-  .traj-dot.p3 { background: #c49b1a; }
-  .traj-dot.p4 { background: #cf222e; }
-
   /* Insight Section */
   .insight-card {
     background: var(--surface);
@@ -630,18 +602,6 @@ const DAILY_REPORT_CSS = `
 /** 특이종목 섹션 최대 표시 건수. 노이즈 제한용. */
 const MAX_UNUSUAL_STOCKS = 8;
 
-/**
- * 관심종목 만료 임박 경고 기준일.
- * 90일 윈도우에서 이 일 수 이상 추적된 종목은 만료 임박으로 표시.
- */
-const EXPIRY_WARNING_DAYS = 80;
-
-/**
- * 신규 진입으로 간주하는 최대 추적일 수.
- * daysTracked <= NEW_ENTRY_MAX_DAYS 이면 신규 진입 이벤트.
- */
-const NEW_ENTRY_MAX_DAYS = 1;
-
 // ─── 유틸리티 ─────────────────────────────────────────────────────────────────
 
 function formatPercent(value: number, decimals = 2): string {
@@ -693,14 +653,6 @@ function marketCapLabel(cap: number | null): string {
   if (cap >= LARGE_CAP_THRESHOLD) return "Large";
   if (cap >= MID_CAP_THRESHOLD) return "Mid";
   return "Small";
-}
-
-function formatMarketCap(cap: number | null): string {
-  if (cap == null) return "—";
-  if (cap >= 1_000_000_000_000) return `$${(cap / 1_000_000_000_000).toFixed(1)}T`;
-  if (cap >= 1_000_000_000) return `$${(cap / 1_000_000_000).toFixed(1)}B`;
-  if (cap >= 1_000_000) return `$${(cap / 1_000_000).toFixed(0)}M`;
-  return `$${cap.toLocaleString()}`;
 }
 
 /**
@@ -1323,430 +1275,10 @@ export function renderRisingRSSection(
   return `${sparseNoticeHtml}${table}${narrativeHtml}`;
 }
 
-// ─── 관심종목 이벤트 타입 ─────────────────────────────────────────────────────
-
-type WatchlistEventType = "new_entry" | "phase_change" | "expiring_soon";
-
-interface WatchlistEvent {
-  type: WatchlistEventType;
-  item: DailyWatchlistData["items"][number];
-  /** phase_change 이벤트 전용: 직전 Phase (phaseTrajectory[-2].phase) */
-  prevPhase?: number;
-  /** phase_change 이벤트 전용: 현재 Phase (phaseTrajectory[-1].phase) */
-  nextPhase?: number;
-}
-
-// ─── 관심종목 이벤트 감지 헬퍼 ───────────────────────────────────────────────
-
-/**
- * phaseTrajectory 마지막 2개 포인트를 비교하여 오늘 Phase 전이가 있으면
- * 이전 Phase와 현재 Phase를 반환한다. 없으면 null.
- */
-function detectTodayPhaseChange(
-  item: DailyWatchlistData["items"][number],
-): { prevPhase: number; nextPhase: number } | null {
-  const lastTwo = item.phaseTrajectory.slice(-2);
-  if (lastTwo.length !== 2) return null;
-  if (lastTwo[0].phase === lastTwo[1].phase) return null;
-  return { prevPhase: lastTwo[0].phase, nextPhase: lastTwo[1].phase };
-}
-
-/**
- * items 배열에서 오늘의 이벤트(신규 진입 / Phase 전이 / 만료 임박)를 감지한다.
- * summary.phaseChanges(누적 값)는 사용하지 않는다.
- */
-function detectWatchlistEvents(
-  items: DailyWatchlistData["items"],
-): WatchlistEvent[] {
-  const events: WatchlistEvent[] = [];
-
-  for (const item of items) {
-    if (item.daysTracked <= NEW_ENTRY_MAX_DAYS) {
-      events.push({ type: "new_entry", item });
-      continue;
-    }
-
-    const phaseChange = detectTodayPhaseChange(item);
-    if (phaseChange != null) {
-      events.push({
-        type: "phase_change",
-        item,
-        prevPhase: phaseChange.prevPhase,
-        nextPhase: phaseChange.nextPhase,
-      });
-      continue;
-    }
-
-    if (item.daysTracked >= EXPIRY_WARNING_DAYS) {
-      events.push({ type: "expiring_soon", item });
-    }
-  }
-
-  return events;
-}
-
-// ─── 관심종목 이벤트 테이블 렌더러 ───────────────────────────────────────────
-
-function renderNewEntryRows(
-  events: WatchlistEvent[],
-): string {
-  const newEntries = events.filter((e) => e.type === "new_entry");
-  if (newEntries.length === 0) return "";
-
-  const rows = newEntries
-    .map(({ item }) => {
-      const phaseCls = phaseBadgeClass(item.currentPhase ?? item.entryPhase);
-      const rsStr =
-        item.currentRsScore != null
-          ? `RS ${item.currentRsScore.toFixed(0)}`
-          : item.entryRsScore != null
-            ? `RS ${item.entryRsScore.toFixed(0)}`
-            : "—";
-      const p2SegmentBadge =
-        item.phase2Segment != null && item.phase2SinceDays != null
-          ? `<span class="p2-segment p2-${escapeHtml(item.phase2Segment)}">${escapeHtml(item.phase2Segment)} ${escapeHtml(String(item.phase2SinceDays))}일</span>`
-          : "—";
-
-      return `
-        <tr>
-          <td><strong>${escapeHtml(item.symbol)}</strong></td>
-          <td>${escapeHtml(item.entrySector ?? "—")}</td>
-          <td><span class="phase-badge ${escapeHtml(phaseCls)}">Phase ${escapeHtml(String(item.currentPhase ?? item.entryPhase))}</span></td>
-          <td>${escapeHtml(rsStr)}</td>
-          <td>${p2SegmentBadge}</td>
-        </tr>`;
-    })
-    .join("");
-
-  return `
-    <h3 style="font-size:0.85rem;color:var(--up);margin:16px 0 8px;">신규 진입 (${escapeHtml(String(newEntries.length))})</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>종목</th>
-          <th>섹터</th>
-          <th>Phase</th>
-          <th>RS</th>
-          <th>P2 구간</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-function renderPhaseChangeRows(
-  events: WatchlistEvent[],
-): string {
-  const phaseChanges = events.filter((e) => e.type === "phase_change");
-  if (phaseChanges.length === 0) return "";
-
-  const rows = phaseChanges
-    .map(({ item, prevPhase, nextPhase }) => {
-      const prev = prevPhase ?? item.entryPhase;
-      const next = nextPhase ?? (item.currentPhase ?? item.entryPhase);
-      // Weinstein Phase 순환: 1(바닥)→2(상승)→3(천장)→4(하락)→1
-      // 긍정: 1→2(상승진입), 4→1(바닥탈출), 3→2(상승복귀)
-      // 경고: 2→3(분배시작), 3→4(하락진입), 2→1(추세이탈)
-      const POSITIVE_TRANSITIONS = new Set(["1→2", "4→1", "3→2"]);
-      const isPositiveTransition = POSITIVE_TRANSITIONS.has(`${prev}→${next}`);
-      const transitionCls = isPositiveTransition ? "up" : "down";
-      const transitionArrow = isPositiveTransition ? "▲" : "▼";
-      const prevCls = phaseBadgeClass(prev);
-      const nextCls = phaseBadgeClass(next);
-      const pnlStr =
-        item.pnlPercent != null
-          ? item.pnlPercent >= 0
-            ? `+${item.pnlPercent.toFixed(1)}%`
-            : `${item.pnlPercent.toFixed(1)}%`
-          : "—";
-      const pnlCls =
-        item.pnlPercent != null ? colorClass(item.pnlPercent) : "neutral-color";
-      const rsStr =
-        item.currentRsScore != null
-          ? `RS ${item.currentRsScore.toFixed(0)}`
-          : "—";
-
-      return `
-        <tr>
-          <td><strong>${escapeHtml(item.symbol)}</strong></td>
-          <td>
-            <span class="phase-badge ${escapeHtml(prevCls)}">Phase ${escapeHtml(String(prev))}</span>
-            <span class="${escapeHtml(transitionCls)}" style="margin:0 4px;font-weight:700;">${transitionArrow}</span>
-            <span class="phase-badge ${escapeHtml(nextCls)}">Phase ${escapeHtml(String(next))}</span>
-          </td>
-          <td>${escapeHtml(String(item.daysTracked))}일</td>
-          <td class="${escapeHtml(pnlCls)}">${escapeHtml(pnlStr)}</td>
-          <td>${escapeHtml(rsStr)}</td>
-        </tr>`;
-    })
-    .join("");
-
-  return `
-    <h3 style="font-size:0.85rem;color:var(--text-muted);margin:16px 0 8px;">Phase 전이 (${escapeHtml(String(phaseChanges.length))})</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>종목</th>
-          <th>전이</th>
-          <th>추적일</th>
-          <th>P&amp;L</th>
-          <th>RS</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-function renderExpiringRows(
-  events: WatchlistEvent[],
-): string {
-  const expiring = events.filter((e) => e.type === "expiring_soon");
-  if (expiring.length === 0) return "";
-
-  const rows = expiring
-    .map(({ item }) => {
-      const pnlStr =
-        item.pnlPercent != null
-          ? item.pnlPercent >= 0
-            ? `+${item.pnlPercent.toFixed(1)}%`
-            : `${item.pnlPercent.toFixed(1)}%`
-          : "—";
-      const pnlCls =
-        item.pnlPercent != null ? colorClass(item.pnlPercent) : "neutral-color";
-
-      return `
-        <tr>
-          <td><strong>${escapeHtml(item.symbol)}</strong></td>
-          <td>${escapeHtml(String(item.daysTracked))}일</td>
-          <td class="${escapeHtml(pnlCls)}">${escapeHtml(pnlStr)}</td>
-        </tr>`;
-    })
-    .join("");
-
-  return `
-    <h3 style="font-size:0.85rem;color:var(--yellow);margin:16px 0 8px;">만료 임박 (${escapeHtml(String(expiring.length))})</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>종목</th>
-          <th>추적일</th>
-          <th>P&amp;L</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-// ─── 관심종목 섹션 메인 렌더러 ───────────────────────────────────────────────
-
-/**
- * ACTIVE 관심종목의 오늘 이벤트(신규 진입 / Phase 전이 / 만료 임박)만 표시한다.
- * 변화 없는 날은 "오늘 변화 없음" 메시지를 출력하고 narrative를 숨긴다.
- */
-export function renderWatchlistSection(
-  data: DailyWatchlistData,
-  narrative: NarrativeBlock,
-): string {
-  if (data.items.length === 0) {
-    return `<div class="empty-state">현재 ACTIVE 관심종목 없음</div>`;
-  }
-
-  const { summary, items } = data;
-  const events = detectWatchlistEvents(items);
-  const eventCount = events.length;
-
-  const avgPnlStr =
-    summary.avgPnlPercent >= 0
-      ? `+${summary.avgPnlPercent.toFixed(1)}%`
-      : `${summary.avgPnlPercent.toFixed(1)}%`;
-  const avgPnlCls = colorClass(summary.avgPnlPercent);
-
-  const summaryHtml = `
-    <div class="stat-row">
-      <div class="stat-chip">
-        <span class="stat-label">ACTIVE 종목 수</span>
-        <span class="stat-value">${escapeHtml(String(summary.totalActive))}</span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">평균 P&amp;L</span>
-        <span class="stat-value ${escapeHtml(avgPnlCls)}">${escapeHtml(avgPnlStr)}</span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">오늘 이벤트</span>
-        <span class="stat-value">${escapeHtml(String(eventCount))}건</span>
-      </div>
-    </div>`;
-
-  if (eventCount === 0) {
-    return `${summaryHtml}<p class="muted" style="color:var(--text-muted);font-size:0.9rem;padding:12px 0;">오늘 변화 없음 — ACTIVE ${escapeHtml(String(summary.totalActive))}개 추적 중</p>`;
-  }
-
-  const eventsHtml =
-    renderNewEntryRows(events) +
-    renderPhaseChangeRows(events) +
-    renderExpiringRows(events);
-
-  const narrativeHtml = renderNarrativeBlock(narrative);
-
-  return `${summaryHtml}${eventsHtml}${narrativeHtml}`;
-}
-
 /**
  * 시장 온도 + 토론 인사이트 섹션을 렌더링한다.
  * 배지 + 판단 근거 텍스트만. 정량 기준 없는 3분할 바는 제거.
  */
-// ─── Thesis-Aligned Candidates 섹션 ─────────────────────────────────
-
-const PHASE_2_VALUE = 2;
-const RS_HIGHLIGHT_THRESHOLD = 60;
-
-/**
- * 단일 체인 그룹의 후보 테이블을 렌더링한다.
- */
-function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
-  const statusCls = group.chainStatus === "ACTIVE" ? "up" : "neutral-color";
-
-  if (group.candidates.length === 0) {
-    return "";
-  }
-
-  const headerHtml = `
-    <h3>
-      ${escapeHtml(group.megatrend)}
-      <span class="phase-badge p2"><span class="${escapeHtml(statusCls)}">${escapeHtml(group.chainStatus)}</span></span>
-      <span class="stat-inline-label">${escapeHtml(String(group.daysSinceIdentified))}일 경과</span>
-    </h3>
-    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">${escapeHtml(group.bottleneck)}</p>`;
-
-  const rows = group.candidates
-    .map((c) => {
-      const phaseCls = c.phase != null ? phaseBadgeClass(c.phase) : "p1";
-      const phaseStr = c.phase != null ? `Phase ${escapeHtml(String(c.phase))}` : "\u2014";
-      const rsStr = c.rsScore != null ? escapeHtml(String(c.rsScore)) : "\u2014";
-      const sepaStr = c.sepaGrade != null
-        ? c.sepaGrade === "S"
-          ? `<span class="phase-badge" style="background:#ffe0d0;color:#bc4c00;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
-          : c.sepaGrade === "A"
-            ? `<span class="phase-badge" style="background:#ddf4ff;color:#0969da;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
-            : c.sepaGrade === "B"
-              ? `<span class="phase-badge" style="background:#e6f6e6;color:#1a7f37;">${escapeHtml(c.sepaGrade)}</span>`
-              : escapeHtml(c.sepaGrade)
-        : "\u2014";
-      const industryStr = c.industry != null ? escapeHtml(c.industry) : "\u2014";
-      const capStr = formatMarketCap(c.marketCap);
-      const gateStr = `${escapeHtml(String(c.gatePassCount))}/${escapeHtml(String(c.gateTotalCount))}`;
-      const aiTag = c.source === "llm"
-        ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);vertical-align:middle;">AI</span>`
-        : "";
-      const certTag = c.certified === true
-        ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#ddf6dd;color:#1a7f37;vertical-align:middle;">인증</span>`
-        : "";
-      return `
-        <tr>
-          <td><strong>${escapeHtml(c.symbol)}</strong>${aiTag}${certTag}</td>
-          <td class="tc"><span class="phase-badge ${escapeHtml(phaseCls)}">${phaseStr}</span></td>
-          <td class="tc">${rsStr}</td>
-          <td class="tc">${sepaStr}</td>
-          <td class="tc">${escapeHtml(capStr)}</td>
-          <td>${industryStr}</td>
-          <td class="tc">${gateStr}</td>
-        </tr>`;
-    })
-    .join("");
-
-  return `${headerHtml}
-    <table style="table-layout:fixed;">
-      <colgroup>
-        <col style="width:12%">
-        <col style="width:12%">
-        <col style="width:8%">
-        <col style="width:8%">
-        <col style="width:12%">
-        <col style="width:38%">
-        <col style="width:10%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>종목</th>
-          <th class="tc">Phase</th>
-          <th class="tc">RS</th>
-          <th class="tc">SEPA</th>
-          <th class="tc">시총</th>
-          <th>업종</th>
-          <th class="tc">게이트</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-/**
- * Thesis-Aligned Candidates 섹션을 렌더링한다.
- * SEPA S/A 포함 4/4 게이트를 모두 충족한 종목(gatePassCount === gateTotalCount)만 표시한다.
- * 필터 후 표시할 종목이 없으면 빈 문자열을 반환하여 섹션 자체를 미출력한다.
- *
- * 참고: buildThesisAlignedCandidates()는 수정하지 않음 — 주간 리포트에서도 동일 함수를 사용하며,
- * 필터링은 렌더링/저장 단계에서만 적용한다.
- */
-export function renderThesisAlignedSection(
-  data: ThesisAlignedData | null | undefined,
-): string {
-  if (data == null || data.chains.length === 0) {
-    return "";
-  }
-
-  // SEPA S/A(4/4 게이트 충족) 종목만 필터링한 체인 그룹 구성
-  const filteredGroups = data.chains.map((group) => ({
-    ...group,
-    candidates: group.candidates.filter(
-      (c) => c.gatePassCount === c.gateTotalCount,
-    ),
-  }));
-
-  const filteredCandidateCount = filteredGroups.reduce(
-    (sum, group) => sum + group.candidates.length,
-    0,
-  );
-
-  // 필터 후 표시할 종목이 하나도 없으면 섹션 미출력
-  if (filteredCandidateCount === 0) {
-    return "";
-  }
-
-  const filteredPhase2Count = filteredGroups.reduce(
-    (sum, group) =>
-      sum + group.candidates.filter((c) => c.phase === 2).length,
-    0,
-  );
-
-  const filteredChainCount = filteredGroups.filter(
-    (group) => group.candidates.length > 0,
-  ).length;
-
-  const summaryHtml = `
-    <div class="stat-row">
-      <div class="stat-chip">
-        <span class="stat-label">활성 체인</span>
-        <span class="stat-value">${escapeHtml(String(filteredChainCount))}</span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">수혜 후보</span>
-        <span class="stat-value">${escapeHtml(String(filteredCandidateCount))}</span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">Phase 2</span>
-        <span class="stat-value ${filteredPhase2Count > 0 ? "up" : "neutral-color"}">${escapeHtml(String(filteredPhase2Count))}</span>
-      </div>
-    </div>`;
-
-  const chainsHtml = filteredGroups
-    .map((group) => renderChainGroupCard(group))
-    .join("");
-
-  const noteHtml = `<p style="font-size:0.75rem;color:var(--text-muted);margin:12px 0 0;">SEPA S/A 포함 4/4 게이트 충족 종목만 표시 · 업종 탐색은 체인당 RS 상위 10개</p>`;
-
-  return `${summaryHtml}${chainsHtml}${noteHtml}`;
-}
 
 // ─── 시장 온도 섹션 ─────────────────────────────────────────────────────────
 
@@ -1809,11 +1341,6 @@ export function buildDailyHtml(
     data.risingRS,
     insight.risingRSNarrative,
   );
-  const watchlistHtml = renderWatchlistSection(
-    data.watchlist,
-    insight.watchlistNarrative,
-  );
-  const thesisAlignedHtml = renderThesisAlignedSection(data.thesisAlignedCandidates);
   const insightHtml = renderInsightSection(insight);
 
   return `<!DOCTYPE html>
@@ -1876,19 +1403,6 @@ export function buildDailyHtml(
         <h2>RS 상승 초기 종목</h2>
         ${risingRSHtml}
       </section>` : ""}
-
-      <!-- 섹션 8: 서사 수혜주 (데이터 없으면 섹션 미출력) -->
-      ${thesisAlignedHtml !== "" ? `
-      <section>
-        <h2>서사 수혜주</h2>
-        ${thesisAlignedHtml}
-      </section>` : ""}
-
-      <!-- 섹션 9: 관심종목 현황 -->
-      <section>
-        <h2>관심종목 현황</h2>
-        ${watchlistHtml}
-      </section>
     </div>
 
     <footer class="report-footer">

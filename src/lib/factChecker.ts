@@ -314,7 +314,6 @@ export interface ContentQAInsight {
   breadthNarrative: NarrativeBlock;
   unusualStocksNarrative: NarrativeBlock;
   risingRSNarrative: NarrativeBlock;
-  watchlistNarrative: NarrativeBlock;
 }
 
 export interface ContentQABreadthData {
@@ -326,7 +325,6 @@ export interface ContentQABreadthData {
 export interface ContentQADataCounts {
   unusualStocksCount: number;
   risingRSCount: number;
-  watchlistActiveCount: number;
 }
 
 export interface ContentQAInput {
@@ -361,7 +359,7 @@ const NEGATIVE_KEYWORDS = [
  * - breadthNarrative: 항상 존재해야 함
  * - unusualStocksNarrative: unusualStocks > 0일 때만
  * - risingRSNarrative: risingRS > 0일 때만
- * - watchlistNarrative: watchlist.totalActive > 0일 때만
+ * (관심종목 섹션은 일간에서 제거됨 — #837)
  */
 export function checkNarrativePresence(
   insight: ContentQAInsight,
@@ -373,7 +371,6 @@ export function checkNarrativePresence(
     { field: "breadthNarrative", narrative: insight.breadthNarrative, condition: true },
     { field: "unusualStocksNarrative", narrative: insight.unusualStocksNarrative, condition: dataCounts.unusualStocksCount > 0 },
     { field: "risingRSNarrative", narrative: insight.risingRSNarrative, condition: dataCounts.risingRSCount > 0 },
-    { field: "watchlistNarrative", narrative: insight.watchlistNarrative, condition: dataCounts.watchlistActiveCount > 0 },
   ];
 
   for (const check of checks) {
