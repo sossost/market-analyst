@@ -445,7 +445,7 @@ ${round2Section}
 - beneficiaryTickers: 현재 병목 수혜 섹터의 대표 종목 (2~5개). 예: ["CIEN", "LITE", "AAOI"]
 - nextBeneficiarySectors: N+1 병목이 해소될 때 수혜 섹터 (nextBottleneck과 연동). 예: ["Utilities", "Power Infrastructure"]
 - nextBeneficiaryTickers: N+1 수혜 섹터의 대표 종목 (2~5개). 예: ["AES", "NEE", "VST"]
-- 섹션 4의 주도섹터/주도주 분석에서 이미 언급된 종목이 아닌, **아직 Phase 2 미진입이지만 서사적으로 주시할 종목** 우선.
+- 섹션 4의 주도섹터/주도주 분석에서 이미 언급된 종목이 아닌, **서사적으로 수혜가 명확한 종목이면 현재 Phase 무관하게 포함**.
 - 근거 없는 추측 금지. 공급 체인 논리로 연결 가능한 종목만 기입.
 
 **dissentReason 작성 규칙:**
