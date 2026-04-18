@@ -5,17 +5,13 @@ import type { Pool } from "pg";
 // mock
 // ---------------------------------------------------------------------------
 
-const { CLAUDE_SONNET } = vi.hoisted(() => ({
-  CLAUDE_SONNET: "claude-sonnet-4-20250514",
-}));
-
 vi.mock("../loadAnalysisInputs.js", () => ({
   loadAnalysisInputs: vi.fn(),
 }));
 
 vi.mock("../corporateAnalyst.js", () => ({
   generateAnalysisReport: vi.fn(),
-  CORPORATE_ANALYST_MODEL: CLAUDE_SONNET,
+  CORPORATE_ANALYST_PROVIDER_ID: "claude-cli",
 }));
 
 vi.mock("@/lib/logger.js", () => ({
@@ -152,7 +148,7 @@ describe("runCorporateAnalyst", () => {
       expect(params[11]).toBeNull(); // price_target_upside (priceTargetResult=null)
       expect(params[12]).toBeNull(); // price_target_data (priceTargetResult=null)
       expect(params[13]).toBe(MOCK_REPORT.priceTargetAnalysis); // price_target_analysis
-      expect(params[14]).toBe("claude-sonnet-4-20250514");      // model_used
+      expect(params[14]).toBe("claude-cli");      // model_used
       expect(params[15]).toBe(2_000);  // tokensInput
       expect(params[16]).toBe(800);    // tokensOutput
     });

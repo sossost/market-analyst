@@ -7,7 +7,7 @@
  */
 import type { Pool } from "pg";
 import { loadAnalysisInputs } from "./loadAnalysisInputs.js";
-import { generateAnalysisReport, CORPORATE_ANALYST_MODEL } from "./corporateAnalyst.js";
+import { generateAnalysisReport, CORPORATE_ANALYST_PROVIDER_ID } from "./corporateAnalyst.js";
 import { logger } from "@/lib/logger.js";
 import { upsertStockAnalysisReport } from "@/db/repositories/index.js";
 
@@ -59,7 +59,7 @@ export async function runCorporateAnalyst(
         priceTargetUpside: priceTargetResult?.finalUpside ?? null,
         priceTargetData: priceTargetResult != null ? JSON.stringify(priceTargetResult) : null,
         priceTargetAnalysis: report.priceTargetAnalysis ?? null,
-        modelUsed: CORPORATE_ANALYST_MODEL,
+        modelUsed: CORPORATE_ANALYST_PROVIDER_ID,
         tokensInput,
         tokensOutput,
       },

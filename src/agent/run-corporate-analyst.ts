@@ -58,7 +58,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
 
 // ------- 환경변수 검증 -------
 function validateEnvironment(): void {
-  const required = ["DATABASE_URL", "ANTHROPIC_API_KEY"];
+  const required = ["DATABASE_URL"];
   const missing = required.filter(
     (key) => process.env[key] == null || process.env[key] === "",
   );
