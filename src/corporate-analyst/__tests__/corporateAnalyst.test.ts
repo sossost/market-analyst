@@ -1,27 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CLAUDE_SONNET } from "@/lib/models.js";
+import type { LLMCallResult } from "@/debate/llm/types.js";
 
 // ---------------------------------------------------------------------------
 // vi.hoisted: mock 콜백 내부에서 참조 가능한 변수
 // ---------------------------------------------------------------------------
 
-const { mockCreate } = vi.hoisted(() => ({ mockCreate: vi.fn() }));
+const { mockCall, mockDispose } = vi.hoisted(() => ({
+  mockCall: vi.fn(),
+  mockDispose: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
-// Anthropic SDK mock
+// ClaudeCliProvider mock
 // ---------------------------------------------------------------------------
 
-vi.mock("@anthropic-ai/sdk", () => {
-  return {
-    default: function MockAnthropic() {
-      return { messages: { create: mockCreate } };
-    },
-  };
-});
-
-// callWithRetry mock — 실제 retry 없이 fn()을 바로 실행
-vi.mock("../../debate/llm/retry.js", () => ({
-  callWithRetry: vi.fn((fn: () => unknown) => fn()),
+vi.mock("../../debate/llm/claudeCliProvider.js", () => ({
+  ClaudeCliProvider: vi.fn().mockImplementation(() => ({
+    call: mockCall,
+    dispose: mockDispose,
+  })),
 }));
 
 vi.mock("@/lib/logger.js", () => ({
@@ -34,7 +31,6 @@ vi.mock("@/lib/logger.js", () => ({
 
 import { generateAnalysisReport } from "../corporateAnalyst.js";
 import type { AnalysisInputs } from "../loadAnalysisInputs.js";
-import type Anthropic from "@anthropic-ai/sdk";
 
 // ---------------------------------------------------------------------------
 // 픽스처
@@ -113,22 +109,11 @@ const VALID_REPORT_JSON = JSON.stringify({
   riskFactors: "## 리스크\n- 밸류에이션 과열 주의",
 });
 
-function makeSuccessResponse(content: string): Anthropic.Message {
+function makeSuccessResult(content: string): LLMCallResult {
   return {
-    id: "msg_test",
-    type: "message",
-    role: "assistant",
-    content: [{ type: "text", text: content }],
-    model: CLAUDE_SONNET,
-    stop_reason: "end_turn",
-    stop_sequence: null,
-    usage: {
-      input_tokens: 1_000,
-      output_tokens: 500,
-      cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0,
-    },
-  } as unknown as Anthropic.Message;
+    content,
+    tokensUsed: { input: 1_000, output: 500 },
+  };
 }
 
 beforeEach(() => {
@@ -142,7 +127,7 @@ beforeEach(() => {
 describe("generateAnalysisReport", () => {
   describe("정상 케이스: LLM이 유효한 JSON을 반환할 때", () => {
     it("7개 섹션 리포트와 토큰 사용량을 반환한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const { report, tokensInput, tokensOutput } = await generateAnalysisReport(
         "NVDA",
@@ -163,7 +148,7 @@ describe("generateAnalysisReport", () => {
 
     it("코드 펜스로 감싼 JSON도 파싱한다", async () => {
       const wrappedJson = `\`\`\`json\n${VALID_REPORT_JSON}\n\`\`\``;
-      mockCreate.mockResolvedValue(makeSuccessResponse(wrappedJson));
+      mockCall.mockResolvedValue(makeSuccessResult(wrappedJson));
 
       const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
 
@@ -171,7 +156,7 @@ describe("generateAnalysisReport", () => {
     });
 
     it("companyName이 null이어도 정상 동작한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       await expect(
         generateAnalysisReport("NVDA", null, MINIMAL_INPUTS),
@@ -181,8 +166,8 @@ describe("generateAnalysisReport", () => {
 
   describe("에러 케이스: LLM 응답 파싱 실패", () => {
     it("JSON이 아닌 응답이면 에러를 throw한다", async () => {
-      mockCreate.mockResolvedValue(
-        makeSuccessResponse("죄송합니다. 분석이 불가능합니다."),
+      mockCall.mockResolvedValue(
+        makeSuccessResult("죄송합니다. 분석이 불가능합니다."),
       );
 
       await expect(
@@ -196,7 +181,7 @@ describe("generateAnalysisReport", () => {
         technicalAnalysis: "분석",
         // 나머지 5개 필드 누락
       });
-      mockCreate.mockResolvedValue(makeSuccessResponse(incompleteJson));
+      mockCall.mockResolvedValue(makeSuccessResult(incompleteJson));
 
       await expect(
         generateAnalysisReport("NVDA", null, MINIMAL_INPUTS),
@@ -204,7 +189,7 @@ describe("generateAnalysisReport", () => {
     });
 
     it("빈 응답이면 에러를 throw한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(""));
+      mockCall.mockResolvedValue(makeSuccessResult(""));
 
       await expect(
         generateAnalysisReport("NVDA", null, MINIMAL_INPUTS),
@@ -214,7 +199,7 @@ describe("generateAnalysisReport", () => {
 
   describe("데이터 없는 섹션 처리", () => {
     it("financials가 빈 배열이어도 LLM에 전달하고 정상 반환한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithNoFinancials: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -228,18 +213,36 @@ describe("generateAnalysisReport", () => {
       expect(report.fundamentalTrend).toBeTruthy();
     });
 
-    it("LLM 호출 시 단 1번만 messages.create를 호출한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+    it("LLM 호출 시 단 1번만 ClaudeCliProvider.call을 호출한다", async () => {
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
 
-      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(mockCall).toHaveBeenCalledTimes(1);
+    });
+
+    it("호출 완료 후 provider.dispose()를 호출하여 리소스를 정리한다", async () => {
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
+
+      await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
+
+      expect(mockDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("LLM 호출 실패 시에도 provider.dispose()를 호출한다", async () => {
+      mockCall.mockRejectedValue(new Error("CLI timeout"));
+
+      await expect(
+        generateAnalysisReport("NVDA", null, MINIMAL_INPUTS),
+      ).rejects.toThrow("CLI timeout");
+
+      expect(mockDispose).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("Phase B 프롬프트 섹션 포함 여부", () => {
     it("companyProfile이 있으면 <company_profile> 태그를 프롬프트에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithProfile: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -257,24 +260,24 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithProfile);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("<company_profile>");
       expect(userContent).toContain("Jensen Huang");
     });
 
     it("companyProfile이 null이면 <company_profile> 태그를 프롬프트에 포함하지 않는다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).not.toContain("<company_profile>");
     });
 
     it("earningsTranscript가 있으면 <earnings_call> 태그를 프롬프트에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithTranscript: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -288,14 +291,14 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithTranscript);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("<earnings_call>");
       expect(userContent).toContain("Revenue grew 78%");
     });
 
     it("earningsTranscript의 transcript가 null이면 <earnings_call> 태그를 포함하지 않는다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithNullTranscript: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -304,13 +307,13 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithNullTranscript);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).not.toContain("<earnings_call>");
     });
 
     it("peerGroup이 있으면 <peer_valuation> 태그를 프롬프트에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithPeers: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -321,14 +324,14 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithPeers);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("<peer_valuation>");
       expect(userContent).toContain("AMD");
     });
 
     it("priceTargetConsensus가 있으면 <price_targets> 태그를 프롬프트에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithPriceTarget: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -337,14 +340,14 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithPriceTarget);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("<price_targets>");
       expect(userContent).toContain("200");
     });
 
     it("currentPrice가 있고 peerGroup이 있으면 <price_target_model> 태그를 프롬프트에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithPriceModel: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -367,18 +370,18 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithPriceModel);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("<price_target_model>");
     });
 
     it("currentPrice가 null이면 <price_target_model> 태그를 프롬프트에 포함하지 않는다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).not.toContain("<price_target_model>");
     });
 
@@ -393,7 +396,7 @@ describe("generateAnalysisReport", () => {
         riskFactors: "리스크",
         earningsCallHighlights: "경영진이 가이던스를 상향했다.",
       });
-      mockCreate.mockResolvedValue(makeSuccessResponse(reportWithEarnings));
+      mockCall.mockResolvedValue(makeSuccessResult(reportWithEarnings));
 
       const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
 
@@ -401,7 +404,7 @@ describe("generateAnalysisReport", () => {
     });
 
     it("earningsCallHighlights 필드가 없어도 유효한 리포트로 파싱한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
 
@@ -419,7 +422,7 @@ describe("generateAnalysisReport", () => {
         riskFactors: "리스크",
         priceTargetAnalysis: "P/E 멀티플 기반 목표가 $250, 상승여력 42%.",
       });
-      mockCreate.mockResolvedValue(makeSuccessResponse(reportWithPriceTarget));
+      mockCall.mockResolvedValue(makeSuccessResult(reportWithPriceTarget));
 
       const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
 
@@ -427,7 +430,7 @@ describe("generateAnalysisReport", () => {
     });
 
     it("priceTargetAnalysis 필드가 없어도 유효한 리포트로 파싱한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const { report } = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
 
@@ -445,7 +448,7 @@ describe("generateAnalysisReport", () => {
         riskFactors: "리스크",
         priceTargetAnalysis: 12345,  // 숫자 — 유효하지 않음
       });
-      mockCreate.mockResolvedValue(makeSuccessResponse(reportWithInvalidPriceTarget));
+      mockCall.mockResolvedValue(makeSuccessResult(reportWithInvalidPriceTarget));
 
       await expect(
         generateAnalysisReport("NVDA", null, MINIMAL_INPUTS),
@@ -453,7 +456,7 @@ describe("generateAnalysisReport", () => {
     });
 
     it("generateAnalysisReport가 priceTargetResult를 반환 객체에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const result = await generateAnalysisReport("NVDA", null, MINIMAL_INPUTS);
 
@@ -462,7 +465,7 @@ describe("generateAnalysisReport", () => {
     });
 
     it("recentNews가 있으면 <recent_news> 태그를 프롬프트에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithNews: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -474,8 +477,8 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithNews);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("<recent_news>");
       expect(userContent).toContain("NVIDIA Posts Record Revenue");
       expect(userContent).toContain("Reuters");
@@ -483,17 +486,17 @@ describe("generateAnalysisReport", () => {
     });
 
     it("recentNews가 null이면 <recent_news> 태그를 프롬프트에 포함하지 않는다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).not.toContain("<recent_news>");
     });
 
     it("upcomingEarnings가 있으면 <upcoming_earnings> 태그를 프롬프트에 포함한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithEarnings: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -504,8 +507,8 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithEarnings);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("<upcoming_earnings>");
       expect(userContent).toContain("2026-04-15");
       expect(userContent).toContain("AMC");
@@ -513,17 +516,17 @@ describe("generateAnalysisReport", () => {
     });
 
     it("upcomingEarnings가 null이면 <upcoming_earnings> 태그를 프롬프트에 포함하지 않는다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       await generateAnalysisReport("NVDA", "NVIDIA", MINIMAL_INPUTS);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).not.toContain("<upcoming_earnings>");
     });
 
     it("upcomingEarnings의 epsEstimated, revenueEstimated가 null이면 N/A로 표시한다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithNullEarnings: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -534,8 +537,8 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithNullEarnings);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
       expect(userContent).toContain("EPS est: N/A");
       expect(userContent).toContain("Rev est: N/A");
       expect(userContent).toContain("시간 미확인");
@@ -544,7 +547,7 @@ describe("generateAnalysisReport", () => {
 
   describe("XML 이스케이프", () => {
     it("recentNews title에 XML 특수문자가 있어도 프롬프트 구조가 깨지지 않는다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithXmlNews: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -559,8 +562,8 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithXmlNews);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
 
       // 이스케이프된 형태로 삽입되어야 한다
       expect(userContent).toContain("&lt;$10B&gt;");
@@ -579,7 +582,7 @@ describe("generateAnalysisReport", () => {
     });
 
     it("upcomingEarnings time에 XML 특수문자가 있어도 프롬프트 구조가 깨지지 않는다", async () => {
-      mockCreate.mockResolvedValue(makeSuccessResponse(VALID_REPORT_JSON));
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
       const inputsWithXmlEarnings: AnalysisInputs = {
         ...MINIMAL_INPUTS,
@@ -590,8 +593,8 @@ describe("generateAnalysisReport", () => {
 
       await generateAnalysisReport("NVDA", "NVIDIA", inputsWithXmlEarnings);
 
-      const callArgs = mockCreate.mock.calls[0][0];
-      const userContent = callArgs.messages[0].content as string;
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
 
       // 이스케이프된 형태로 삽입되어야 한다
       expect(userContent).toContain("&lt;/upcoming_earnings&gt;injected");

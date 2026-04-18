@@ -5,15 +5,13 @@
  * 종목 심층 분석 리포트를 생성한다.
  * reviewAgent.ts의 단일 LLM 호출 패턴을 따른다.
  */
-import { getAnthropicClient } from "@/lib/anthropic-client";
-import { callWithRetry } from "@/debate/llm/retry.js";
+import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider.js";
 import { logger } from "@/lib/logger.js";
 import type { AnalysisInputs } from "./loadAnalysisInputs.js";
 import { computePriceTarget, type PriceTargetResult, type CompanyMetrics, type PeerMultiples } from "./pricingModel.js";
-import { CLAUDE_SONNET } from "@/lib/models.js";
 
-export const CORPORATE_ANALYST_MODEL = CLAUDE_SONNET;
-const MAX_TOKENS = 4_096;
+/** DB model_used 컬럼에 기록할 식별자. CLI 경유이므로 실제 모델은 CLI 기본값에 의존한다. */
+export const CORPORATE_ANALYST_PROVIDER_ID = "claude-cli";
 
 const SYSTEM_PROMPT = `당신은 15년 경력의 미국 주식 전문 기업 애널리스트입니다. 제공된 데이터만을 기반으로 Seeking Alpha 수준의 종목 분석 리포트를 작성합니다. 데이터에 없는 내용은 절대 작성하지 않습니다. 추측이나 가정을 하지 않습니다.
 
@@ -465,48 +463,45 @@ export async function generateAnalysisReport(
 
   logger.info("CorporateAnalyst", `${symbol} 리포트 생성 시작`);
 
-  const response = await callWithRetry(
-    () =>
-      getAnthropicClient().messages.create({
-        model: CORPORATE_ANALYST_MODEL,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-    "CorporateAnalyst",
-  );
-
-  const tokensInput = response.usage.input_tokens;
-  const tokensOutput = response.usage.output_tokens;
-
-  const textBlock = response.content.find((b) => b.type === "text");
-  const raw = textBlock?.type === "text" ? textBlock.text : "";
-
-  const jsonText = extractJson(raw);
-
-  let parsed: unknown;
+  const provider = new ClaudeCliProvider();
   try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    logger.error(
+    const result = await provider.call({
+      systemPrompt: SYSTEM_PROMPT,
+      userMessage: userPrompt,
+    });
+
+    const tokensInput = result.tokensUsed.input;
+    const tokensOutput = result.tokensUsed.output;
+    const raw = result.content;
+
+    const jsonText = extractJson(raw);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      logger.error(
+        "CorporateAnalyst",
+        `${symbol} JSON 파싱 실패. 원문 앞 200자: ${raw.slice(0, 200)}`,
+      );
+      throw new Error(`CorporateAnalyst: JSON 파싱 실패 (${symbol})`);
+    }
+
+    if (!isValidReport(parsed)) {
+      logger.error(
+        "CorporateAnalyst",
+        `${symbol} 리포트 필드 누락. 파싱 결과: ${JSON.stringify(parsed).slice(0, 200)}`,
+      );
+      throw new Error(`CorporateAnalyst: 리포트 필드 누락 (${symbol})`);
+    }
+
+    logger.info(
       "CorporateAnalyst",
-      `${symbol} JSON 파싱 실패. 원문 앞 200자: ${raw.slice(0, 200)}`,
+      `${symbol} 리포트 생성 완료 (input: ${tokensInput}, output: ${tokensOutput})`,
     );
-    throw new Error(`CorporateAnalyst: JSON 파싱 실패 (${symbol})`);
+
+    return { report: parsed, tokensInput, tokensOutput, priceTargetResult };
+  } finally {
+    provider.dispose();
   }
-
-  if (!isValidReport(parsed)) {
-    logger.error(
-      "CorporateAnalyst",
-      `${symbol} 리포트 필드 누락. 파싱 결과: ${JSON.stringify(parsed).slice(0, 200)}`,
-    );
-    throw new Error(`CorporateAnalyst: 리포트 필드 누락 (${symbol})`);
-  }
-
-  logger.info(
-    "CorporateAnalyst",
-    `${symbol} 리포트 생성 완료 (input: ${tokensInput}, output: ${tokensOutput})`,
-  );
-
-  return { report: parsed, tokensInput, tokensOutput, priceTargetResult };
 }
