@@ -5,6 +5,7 @@ import {
   computeBreadthScoreV2,
   computeBreadthScoreEma,
   computeDivergenceSignal,
+  computePctAboveMa50,
 } from "../build-market-breadth.js";
 
 // DB 의존성 mock (buildMarketBreadth import 시 pool/db 초기화 방지)
@@ -399,5 +400,36 @@ describe("computeBreadthScoreEma", () => {
     const ema = computeBreadthScoreEma(100, 0);
     // 0.2 × 100 + 0.8 × 0 = 20
     expect(ema).toBe(20);
+  });
+});
+
+// ────────────────────────────────────────────
+// computePctAboveMa50
+// ────────────────────────────────────────────
+describe("computePctAboveMa50", () => {
+  it("total이 0이면 null을 반환한다", () => {
+    expect(computePctAboveMa50(0, 0)).toBeNull();
+  });
+
+  it("전체 종목이 MA50 위에 있으면 100을 반환한다", () => {
+    expect(computePctAboveMa50(500, 500)).toBe(100);
+  });
+
+  it("전체 종목이 MA50 아래에 있으면 0을 반환한다", () => {
+    expect(computePctAboveMa50(0, 500)).toBe(0);
+  });
+
+  it("일부 종목이 MA50 위에 있으면 비율을 정확히 계산한다", () => {
+    // 200/500 = 40%
+    expect(computePctAboveMa50(200, 500)).toBe(40);
+  });
+
+  it("소수점 2자리로 반올림한다", () => {
+    // 1/3 = 33.333...% → 33.33
+    expect(computePctAboveMa50(1, 3)).toBe(33.33);
+  });
+
+  it("above가 1이고 total이 1이면 100을 반환한다", () => {
+    expect(computePctAboveMa50(1, 1)).toBe(100);
   });
 });

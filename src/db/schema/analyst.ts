@@ -1350,6 +1350,7 @@ export const marketBreadthDaily = pgTable("market_breadth_daily", {
   fearGreedRating:     varchar("fear_greed_rating", { length: 30 }),
   breadthScore:        numeric("breadth_score", { precision: 5, scale: 2 }),
   breadthScoreEma:     numeric("breadth_score_ema", { precision: 5, scale: 2 }),
+  pctAboveMa50:        numeric("pct_above_ma50", { precision: 5, scale: 2 }),
   divergenceSignal:    varchar("divergence_signal", { length: 20 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

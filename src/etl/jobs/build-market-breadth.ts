@@ -35,6 +35,10 @@ interface Phase1To2Count5dResult {
   count: number;
 }
 
+interface PctAboveMa50Result {
+  pctAboveMa50: number | null;
+}
+
 interface PrevPhase2RatioResult {
   phase2Ratio: number | null;
 }
@@ -510,6 +514,47 @@ async function fetchPhaseDistribution(
   };
 }
 
+/**
+ * ma50 대비 종가가 위에 있는 종목 비율(%)을 계산한다.
+ * total이 0이면 null 반환. 결과는 소수점 2자리 반올림.
+ */
+export function computePctAboveMa50(above: number, total: number): number | null {
+  if (total === 0) return null;
+  return Number(((above / total) * 100).toFixed(2));
+}
+
+/**
+ * daily_prices.close > daily_ma.ma50 인 종목 비율(%)을 계산한다.
+ * ma50이 NULL인 종목(상장 50일 미만)은 분모에서 제외한다.
+ * symbols 필터는 fetchPhaseDistribution과 동일: is_actively_trading, !is_etf, !is_fund.
+ */
+async function fetchPctAboveMa50(date: string): Promise<PctAboveMa50Result> {
+  const { rows } = await pool.query<{
+    total: string;
+    above: string;
+  }>(
+    `SELECT
+       COUNT(*)::text AS total,
+       COUNT(*) FILTER (WHERE dp.close::numeric > dm.ma50::numeric)::text AS above
+     FROM daily_prices dp
+     JOIN daily_ma dm ON dp.symbol = dm.symbol AND dp.date = dm.date
+     JOIN symbols s ON dp.symbol = s.symbol
+     WHERE dp.date = $1
+       AND dm.ma50 IS NOT NULL
+       AND s.is_actively_trading = true
+       AND s.is_etf = false
+       AND s.is_fund = false`,
+    [date],
+  );
+
+  const row = rows[0];
+  if (row == null) return { pctAboveMa50: null };
+
+  const total = toNum(row.total);
+  const above = toNum(row.above);
+  return { pctAboveMa50: computePctAboveMa50(above, total) };
+}
+
 async function fetchPrevPhase2Ratio(date: string): Promise<PrevPhase2RatioResult> {
   const { rows } = await pool.query<{ phase2_ratio: string | null }>(
     `SELECT phase2_ratio::text
@@ -732,6 +777,11 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
   // 7. Fear & Greed (CNN 비공식 API — 실패 시 null, DB 기록 유지용)
   const fearGreedData = await fetchFearGreed();
 
+  // 7-1. % above MA50 (중기 브레드스 지표)
+  const pctAboveMa50Data = await retryDatabaseOperation(() =>
+    fetchPctAboveMa50(targetDate),
+  ).catch(() => ({ pctAboveMa50: null }));
+
   // 8. BreadthScore v2 입력 계산
   // 오늘 당일 값은 이미 집계된 변수를 사용, 직전 4일은 DB 조회
   const prev5Days = await retryDatabaseOperation(() => fetchPrev5Days(targetDate));
@@ -816,6 +866,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     vixHigh: vixData.high != null ? String(vixData.high) : null,
     fearGreedScore: fearGreedData.score,
     fearGreedRating: fearGreedData.rating,
+    pctAboveMa50: pctAboveMa50Data.pctAboveMa50 != null ? String(pctAboveMa50Data.pctAboveMa50) : null,
     breadthScore: String(breadthScore),
     breadthScoreEma: String(breadthScoreEma),
     divergenceSignal: divergenceSignal,
@@ -850,6 +901,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
           vixHigh: sql`EXCLUDED.vix_high`,
           fearGreedScore: sql`EXCLUDED.fear_greed_score`,
           fearGreedRating: sql`EXCLUDED.fear_greed_rating`,
+          pctAboveMa50: sql`EXCLUDED.pct_above_ma50`,
           breadthScore: sql`EXCLUDED.breadth_score`,
           breadthScoreEma: sql`EXCLUDED.breadth_score_ema`,
           divergenceSignal: sql`EXCLUDED.divergence_signal`,
@@ -859,7 +911,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
 
   logger.info(
     TAG,
-    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% vixClose=${vixData.close ?? "null"} vixHigh=${vixData.high ?? "null"} fg=${fearGreedData.score ?? "null"} breadthScore=${breadthScore} breadthScoreEma=${breadthScoreEma}`,
+    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% pctAboveMa50=${pctAboveMa50Data.pctAboveMa50 ?? "null"}% vixClose=${vixData.close ?? "null"} vixHigh=${vixData.high ?? "null"} fg=${fearGreedData.score ?? "null"} breadthScore=${breadthScore} breadthScoreEma=${breadthScoreEma}`,
   );
 }
 
