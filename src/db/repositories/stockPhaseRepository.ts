@@ -1218,3 +1218,59 @@ export async function upsertWeeklyQaReport(
     [qaDate, score, fullReport, ceoSummary, needsDecision, tokensInput, tokensOutput],
   );
 }
+
+// ─── 포트폴리오 편입 자격 검증 ───────────────────────────────────────────────
+
+export interface PortfolioEligibleRow {
+  symbol: string;
+  phase: number;
+  rs_score: number;
+  sepa_grade: string | null;
+  sector: string | null;
+  industry: string | null;
+}
+
+/**
+ * 포트폴리오 편입 자격이 있는 종목인지 확인한다.
+ * gate5Candidates(LIMIT 200) 종속 없이 명시적 조건으로 검증:
+ *   1. Phase 2
+ *   2. RS >= 60
+ *   3. SEPA S 또는 A
+ *   4. US 종목, Shell Companies 제외, 시가총액 >= MIN_MARKET_CAP
+ */
+export async function findPortfolioEligibleStock(
+  symbol: string,
+  date: string,
+): Promise<PortfolioEligibleRow | null> {
+  const { rows } = await pool.query<PortfolioEligibleRow>(
+    `WITH latest_score AS (
+       SELECT grade
+       FROM fundamental_scores
+       WHERE symbol = $1 AND scored_date <= $2
+       ORDER BY scored_date DESC
+       LIMIT 1
+     )
+     SELECT
+       sp.symbol,
+       sp.phase,
+       sp.rs_score,
+       ls.grade AS sepa_grade,
+       s.sector,
+       ${IND_COL} AS industry
+     FROM stock_phases sp
+     JOIN symbols s ON sp.symbol = s.symbol
+     ${SIO_JOIN}
+     LEFT JOIN latest_score ls ON true
+     WHERE sp.symbol = $1
+       AND sp.date = $2
+       AND sp.phase = 2
+       AND sp.rs_score >= 60
+       AND ls.grade IN ('S', 'A')
+       AND s.country = 'US'
+       AND s.market_cap::numeric >= $3
+       AND ${NOT_SHELL}`,
+    [symbol, date, MIN_MARKET_CAP],
+  );
+
+  return rows[0] ?? null;
+}
