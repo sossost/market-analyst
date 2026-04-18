@@ -13,6 +13,7 @@ import { findReviewablePrs } from './findReviewablePrs.js'
 import { runStrategicReviewer, runCodeReviewer } from './runReviewer.js'
 import { postReviewComment } from './postReviewComment.js'
 import { parseStrategicVerdict, applyHoldGate } from './holdGate.js'
+import { checkAllPrCiStatuses } from './checkCiStatus.js'
 import { findMappingByPrNumber } from '../issue-processor/prThreadStore.js'
 import { sendThreadMessage } from '../issue-processor/discordClient.js'
 
@@ -119,8 +120,15 @@ export async function main(): Promise<void> {
     await reviewPrs()
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
-    logger.error(TAG, `✗ 오류: ${errorMessage}`)
-    process.exit(1)
+    logger.error(TAG, `✗ 리뷰 오류: ${errorMessage}`)
+  }
+
+  // CI 상태 확인 — 리뷰와 독립적으로 실행 (리뷰 실패가 CI 체크를 막지 않음)
+  try {
+    await checkAllPrCiStatuses()
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `✗ CI 체크 오류: ${errorMessage}`)
   }
 
   logger.info(TAG, '=== 자동 PR 리뷰 시스템 완료 ===')

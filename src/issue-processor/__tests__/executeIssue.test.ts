@@ -6,7 +6,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { extractBranchType, buildClaudePrompt } from '../executeIssue.js'
+import {
+  extractBranchType,
+  buildClaudePrompt,
+  isCiFailureIssue,
+  parseCiFailureBranch,
+  parseCiFailurePrNumber,
+  buildCiFixPrompt,
+} from '../executeIssue.js'
 
 // ---------------------------------------------------------------------------
 // 모킹
@@ -296,5 +303,210 @@ describe('executeIssue — Discord 스레드 생성', () => {
     // Discord 실패해도 PR 처리는 성공
     expect(result.success).toBe(true)
     expect(result.prUrl).toContain('/pull/55')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CI 실패 이슈 감지 테스트
+// ---------------------------------------------------------------------------
+
+describe('isCiFailureIssue', () => {
+  it('정확한 CI 실패 이슈 타이틀 패턴을 감지한다', () => {
+    expect(isCiFailureIssue('fix: CI 실패 — feat: 새 기능 (#42)')).toBe(true)
+  })
+
+  it('PR 번호가 다른 패턴도 감지한다', () => {
+    expect(isCiFailureIssue('fix: CI 실패 — chore: 업데이트 (#999)')).toBe(true)
+  })
+
+  it('일반 이슈 타이틀은 false를 반환한다', () => {
+    expect(isCiFailureIssue('fix: 버그 수정')).toBe(false)
+    expect(isCiFailureIssue('feat: 새 기능 추가')).toBe(false)
+  })
+
+  it('CI 실패 문자열이 포함되어도 패턴이 맞지 않으면 false를 반환한다', () => {
+    // PR 번호 없음
+    expect(isCiFailureIssue('fix: CI 실패 — 뭔가')).toBe(false)
+    // fix: 접두사 없음
+    expect(isCiFailureIssue('CI 실패 — feat: 기능 (#1)')).toBe(false)
+  })
+
+  it('빈 문자열은 false를 반환한다', () => {
+    expect(isCiFailureIssue('')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseCiFailureBranch
+// ---------------------------------------------------------------------------
+
+describe('parseCiFailureBranch', () => {
+  it('이슈 본문에서 브랜치명을 추출한다', () => {
+    const body = '**PR**: https://example.com\n**브랜치**: `feat/issue-100`\n\n### 실패 Job'
+    expect(parseCiFailureBranch(body)).toBe('feat/issue-100')
+  })
+
+  it('브랜치명이 없으면 null을 반환한다', () => {
+    expect(parseCiFailureBranch('일반 이슈 본문')).toBeNull()
+  })
+
+  it('빈 본문이면 null을 반환한다', () => {
+    expect(parseCiFailureBranch('')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseCiFailurePrNumber
+// ---------------------------------------------------------------------------
+
+describe('parseCiFailurePrNumber', () => {
+  it('이슈 본문에서 PR 번호를 추출한다', () => {
+    const body = 'PR #42의 CI가 실패했습니다.\n\n**PR**: https://example.com'
+    expect(parseCiFailurePrNumber(body)).toBe(42)
+  })
+
+  it('PR 번호가 없으면 null을 반환한다', () => {
+    expect(parseCiFailurePrNumber('일반 본문')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildCiFixPrompt
+// ---------------------------------------------------------------------------
+
+describe('buildCiFixPrompt', () => {
+  const issue = {
+    number: 200,
+    title: 'fix: CI 실패 — feat: 새 기능 (#42)',
+    body: '## CI 실패\n\nPR #42의 CI가 실패했습니다.\n**브랜치**: `feat/issue-42`\n\n에러 로그...',
+    labels: ['bug', 'P1: high'],
+    author: 'sossost',
+  }
+  const branchName = 'feat/issue-42'
+
+  it('기존 브랜치 checkout 지시를 포함한다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    expect(prompt).toContain(`git checkout -B ${branchName} origin/${branchName}`)
+  })
+
+  it('새 브랜치 생성 금지 지시를 포함한다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    expect(prompt).toContain('새 브랜치를 생성하지 마라')
+  })
+
+  it('새 PR 생성 금지 지시를 포함한다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    expect(prompt).toContain('새 PR을 생성하지 마라')
+  })
+
+  it('main 복귀 지시를 포함한다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    expect(prompt).toContain('git checkout main')
+  })
+
+  it('이슈 본문을 untrusted-issue 블록에 격리한다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    const blockStart = prompt.indexOf('<untrusted-issue>')
+    const blockEnd = prompt.indexOf('</untrusted-issue>')
+    expect(blockStart).toBeGreaterThan(-1)
+    expect(blockEnd).toBeGreaterThan(blockStart)
+  })
+
+  it('이슈 번호를 커밋 메시지에 포함한다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    expect(prompt).toContain(`Refs #${issue.number}`)
+  })
+
+  it('기획서 작성 지시를 포함하지 않는다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    expect(prompt).not.toContain('기획서')
+  })
+
+  it('git push 지시에 브랜치명을 포함한다', () => {
+    const prompt = buildCiFixPrompt(issue, branchName)
+    expect(prompt).toContain(`git push origin ${branchName}`)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// executeCiFailureIssue
+// ---------------------------------------------------------------------------
+
+describe('executeCiFailureIssue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('브랜치명 파싱 실패 시 auto:blocked 라벨을 추가하고 에러를 반환한다', async () => {
+    const { addComment, addLabel } = await import('../githubClient.js')
+    const { executeCiFailureIssue } = await import('../executeIssue.js')
+
+    const result = await executeCiFailureIssue({
+      number: 200,
+      title: 'fix: CI 실패 — feat: 새 기능 (#42)',
+      body: '브랜치 정보 없는 본문',
+      labels: [],
+      author: 'sossost',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Branch name not found')
+    expect(addLabel).toHaveBeenCalledWith(200, 'auto:blocked')
+    expect(addComment).toHaveBeenCalledOnce()
+  })
+
+  it('CLI 성공 시 auto:done 라벨과 완료 코멘트를 추가한다', async () => {
+    const { execFile } = await import('node:child_process')
+    const { addLabel, removeLabel, addComment } = await import('../githubClient.js')
+
+    vi.mocked(execFile).mockImplementation((_cmd, _args, _options, callback) => {
+      const cb = callback as (err: null, stdout: string, stderr: string) => void
+      cb(null, 'CI 수정 완료', '')
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
+    })
+
+    const { executeCiFailureIssue } = await import('../executeIssue.js')
+    const result = await executeCiFailureIssue({
+      number: 200,
+      title: 'fix: CI 실패 — feat: 새 기능 (#42)',
+      body: '## CI 실패\n\nPR #42의 CI가 실패했습니다.\n\n**브랜치**: `feat/issue-42`',
+      labels: [],
+      author: 'sossost',
+    })
+
+    expect(result.success).toBe(true)
+    expect(addLabel).toHaveBeenCalledWith(200, 'auto:in-progress')
+    expect(removeLabel).toHaveBeenCalledWith(200, 'auto:in-progress')
+    expect(addLabel).toHaveBeenCalledWith(200, 'auto:done')
+    expect(addComment).toHaveBeenCalledOnce()
+    const commentBody = vi.mocked(addComment).mock.calls[0][1]
+    expect(commentBody).toContain('feat/issue-42')
+    expect(commentBody).toContain('PR #42')
+  })
+
+  it('CLI 실패 시 에러 코멘트를 남긴다', async () => {
+    const { execFile } = await import('node:child_process')
+    const { addComment } = await import('../githubClient.js')
+
+    vi.mocked(execFile).mockImplementation((_cmd, _args, _options, callback) => {
+      const cb = callback as (err: Error, stdout: string, stderr: string) => void
+      const error = new Error('CLI 실패') as NodeJS.ErrnoException
+      cb(error, '', 'stderr output')
+      return { stdin: { end: vi.fn() } } as unknown as ReturnType<typeof execFile>
+    })
+
+    const { executeCiFailureIssue } = await import('../executeIssue.js')
+    const result = await executeCiFailureIssue({
+      number: 200,
+      title: 'fix: CI 실패 — feat: 새 기능 (#42)',
+      body: '**브랜치**: `feat/issue-42`\n\nPR #42의 CI가 실패했습니다.',
+      labels: [],
+      author: 'sossost',
+    })
+
+    expect(result.success).toBe(false)
+    expect(addComment).toHaveBeenCalledOnce()
+    const commentBody = vi.mocked(addComment).mock.calls[0][1]
+    expect(commentBody).toContain('실패')
   })
 })

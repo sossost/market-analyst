@@ -8,6 +8,8 @@ vi.mock('@/issue-processor/githubClient', () => ({
 
 vi.mock('@/issue-processor/executeIssue', () => ({
   executeIssue: vi.fn(),
+  isCiFailureIssue: vi.fn().mockReturnValue(false),
+  executeCiFailureIssue: vi.fn(),
 }))
 
 import { fetchUnprocessedIssues, fetchTriageComment } from '@/issue-processor/githubClient'
