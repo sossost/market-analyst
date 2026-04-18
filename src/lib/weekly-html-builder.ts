@@ -27,6 +27,7 @@ import type {
   ThesisAlignedData,
   ThesisAlignedChainGroup,
 } from "@/lib/thesisAlignedCandidates.js";
+import type { PortfolioPositionWithCurrentData } from "@/db/repositories/portfolioPositionsRepository.js";
 import { selectWeeklyWatchlist, WEEKLY_SPOTLIGHT_COUNT } from "@/lib/watchlistSelection.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
@@ -1095,13 +1096,22 @@ export function renderIndustryTop10Table(industries: IndustryItem[]): string {
 /**
  * ACTIVE 관심종목 궤적 섹션을 렌더링한다.
  * 선별 점수 기반 정렬 + 상위 종목에 "주목" 뱃지 표시.
+ * portfolio_positions ACTIVE 심볼은 제외한다 (섹션 5에서 별도 렌더링).
  * 0건이면 빈 상태 메시지를 표시한다.
+ *
+ * @param activePortfolioSymbols - 섹션 5에서 렌더링할 포트폴리오 편입 심볼 목록
  */
-export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
+export function renderWatchlistSection(
+  watchlist: WatchlistStatusData,
+  activePortfolioSymbols: string[] = [],
+): string {
   const { items } = watchlist;
 
-  // S/A 등급 필터 + 선별 점수 정렬
-  const scoredItems = selectWeeklyWatchlist(items);
+  // 포트폴리오 편입 종목 제외 후 S/A 등급 필터 + 선별 점수 정렬
+  const portfolioExcluded = items.filter(
+    (item) => !activePortfolioSymbols.includes(item.symbol),
+  );
+  const scoredItems = selectWeeklyWatchlist(portfolioExcluded);
 
   if (scoredItems.length === 0) {
     return '<div class="empty-state">현재 ACTIVE 관심종목 없음</div>';
@@ -1222,92 +1232,38 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
 }
 
 /**
- * 관심종목 등록/해제/예비 3단 구조를 렌더링한다.
- * - registered: 5/5 게이트 충족 + 등록 확정
- * - pending4of5: 기술적 4개 게이트 충족, thesis 미충족 예비
- * - exited: 이번 주 해제 확정
+ * 포트폴리오 편입/탈락 변동을 렌더링한다.
+ * - registered: 이번 주 포트폴리오 편입 확정
+ * - exited: 이번 주 포트폴리오 탈락 확정
  */
 export function renderWatchlistChanges(
   changes: WeeklyReportData["watchlistChanges"],
-  candidates: Phase2Stock[] = [],
-  industries: IndustryItem[] = [],
 ): string {
-  const { registered, pending4of5, exited } = changes;
+  const { registered, exited } = changes;
 
-  // 종목 데이터 룩업맵
-  const stockMap = new Map(candidates.map((s) => [s.symbol, s]));
-  const industryRsMap = new Map<string, { avgRs: number; changeWeek: number | null }>();
-  for (const ind of industries) {
-    industryRsMap.set(ind.industry, { avgRs: ind.avgRs, changeWeek: ind.changeWeek });
-  }
-
-  const hasAny = registered.length > 0 || exited.length > 0 || pending4of5.length > 0;
+  const hasAny = registered.length > 0 || exited.length > 0;
 
   if (!hasAny) {
-    return `<div class="empty-state">이번 주 신규 등록/해제 없음</div>`;
+    return `<div class="empty-state">이번 주 포트폴리오 변동 없음</div>`;
   }
 
   const registeredHtml = registered.length > 0
     ? `
-      <h3>신규 등록 (${escapeHtml(String(registered.length))}종목)</h3>
+      <h3>신규 편입 (${escapeHtml(String(registered.length))}종목)</h3>
       <div class="gate5-grid">
         ${registered.map((c) => renderWatchlistChangeCard(c, "registered")).join("")}
       </div>`
-    : `<h3>신규 등록</h3><div class="empty-state">이번 주 신규 등록 없음</div>`;
-
-  const pending4of5Html = pending4of5.length > 0
-    ? `
-      <h3>예비 관심종목 (${escapeHtml(String(pending4of5.length))}종목 — 4/5, thesis 미충족)</h3>
-      <table>
-        <thead><tr><th>종목</th><th>업종</th><th>고점대비</th><th>저점대비</th><th>Phase 2</th><th>RS &gt; 60</th><th>SEPA S/A</th><th>업종RS(주간▲)</th><th>thesis</th><th>통과</th></tr></thead>
-        <tbody>
-          ${pending4of5.map((c) => {
-            const stock = stockMap.get(c.symbol);
-            const industry = stock?.industry ?? "—";
-            const rs = stock?.rsScore != null ? String(stock.rsScore) : "—";
-            const highStr = stock?.pctFromHigh52w != null
-              ? `<span class="${colorClass(stock.pctFromHigh52w)}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
-              : "—";
-            const sepa = stock?.sepaGrade ?? "—";
-            const lowStr = stock?.pctFromLow52w != null
-              ? `<span class="up">+${stock.pctFromLow52w.toFixed(0)}%</span>`
-              : "—";
-            const indData = stock?.industry != null ? industryRsMap.get(stock.industry) : null;
-            let indRsStr = "—";
-            if (indData != null) {
-              const cw = indData.changeWeek;
-              const cwStr = cw != null
-                ? `<span class="${colorClass(cw)}">(${cw >= 0 ? "+" : ""}${Math.abs(cw) < 0.05 ? cw.toFixed(2) : cw.toFixed(1)})</span>`
-                : "";
-              indRsStr = `${indData.avgRs.toFixed(0)} ${cwStr}`;
-            }
-            const phase = stock?.phase != null ? `P${stock.phase}` : "—";
-            return `<tr>
-              <td><strong>${escapeHtml(c.symbol)}</strong></td>
-              <td>${escapeHtml(industry)}</td>
-              <td class="tc">${highStr}</td>
-              <td class="tc">${lowStr}</td>
-              <td class="tc">${escapeHtml(phase)}</td>
-              <td class="tc">${escapeHtml(rs)}</td>
-              <td class="tc">${escapeHtml(sepa)}</td>
-              <td class="tc">${indRsStr}</td>
-              <td class="tc"><span class="gate-check pending">?</span></td>
-              <td class="tc">4/5</td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-      </table>`
-    : "";
+    : `<h3>신규 편입</h3><div class="empty-state">이번 주 신규 편입 없음</div>`;
 
   const exitedHtml = exited.length > 0
     ? `
-      <h3>해제 (${escapeHtml(String(exited.length))}종목)</h3>
+      <h3>탈락 (${escapeHtml(String(exited.length))}종목)</h3>
       <div class="gate5-grid">
         ${exited.map((c) => renderWatchlistChangeCard(c, "exited")).join("")}
       </div>`
     : "";
 
-  return `${registeredHtml}${pending4of5Html}${exitedHtml}`;
+  return `${registeredHtml}${exitedHtml}`;
 }
 
 type WatchlistCardVariant = "registered" | "pending" | "exited";
@@ -1334,6 +1290,72 @@ function renderWatchlistChangeCard(
       </div>
       ${change.reason !== "" ? `<div class="gate5-stats">${escapeHtml(change.reason)}</div>` : ""}
     </div>`;
+}
+
+/**
+ * 현재 포트폴리오 포지션 테이블을 렌더링한다.
+ * 수익률 컬러: 양수=빨강(#e63312), 음수=파랑(#2563eb) — 한국식 규칙.
+ * Phase 컬러: 2=강세(빨강), 3=위험(파랑).
+ */
+export function renderPortfolioSection(
+  positions: PortfolioPositionWithCurrentData[],
+): string {
+  if (positions.length === 0) {
+    return `<div class="empty-state">현재 편입 종목 없음</div>`;
+  }
+
+  const rows = positions
+    .map((pos) => {
+      const entryPriceStr = pos.entryPrice != null
+        ? `$${Number(pos.entryPrice).toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+        : "—";
+
+      const currentPriceStr = pos.currentPrice != null
+        ? `$${pos.currentPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+        : "—";
+
+      const pnlStr = pos.pnlPercent != null
+        ? `${pos.pnlPercent >= 0 ? "+" : ""}${pos.pnlPercent.toFixed(1)}%`
+        : "—";
+
+      // 한국식 컬러 규칙: 양수=빨강(up), 음수=파랑(down)
+      const pnlCls = pos.pnlPercent != null ? colorClass(pos.pnlPercent) : "neutral-color";
+
+      const phaseCls = pos.currentPhase != null ? phaseBadgeClass(pos.currentPhase) : "p1";
+      const phaseStr = pos.currentPhase != null ? `Phase ${pos.currentPhase}` : "—";
+
+      const rsStr = pos.currentRsScore != null ? String(pos.currentRsScore) : "—";
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(pos.symbol)}</strong></td>
+          <td>${escapeHtml(pos.sector ?? "—")}</td>
+          <td>${escapeHtml(pos.entryDate)}</td>
+          <td>${escapeHtml(entryPriceStr)}</td>
+          <td>${escapeHtml(currentPriceStr)}</td>
+          <td class="${escapeHtml(pnlCls)}">${escapeHtml(pnlStr)}</td>
+          <td><span class="phase-badge ${escapeHtml(phaseCls)}">${escapeHtml(phaseStr)}</span></td>
+          <td>${escapeHtml(rsStr)}</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th>섹터</th>
+          <th>편입일</th>
+          <th>편입가</th>
+          <th>현재가</th>
+          <th>수익률</th>
+          <th>Phase</th>
+          <th>RS</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────
@@ -1467,11 +1489,13 @@ function renderThesisAlignedSection(
  * @param data - 도구 반환값에서 직접 추출한 구조화 데이터
  * @param insight - LLM이 작성한 해석 텍스트
  * @param date - 리포트 기준일 (YYYY-MM-DD)
+ * @param portfolioPositions - ACTIVE 포트폴리오 포지션 (현재가·수익률 포함). 섹션 5 렌더링용.
  */
 export function buildWeeklyHtml(
   data: WeeklyReportData,
   insight: WeeklyReportInsight,
   date: string,
+  portfolioPositions: PortfolioPositionWithCurrentData[] = [],
 ): string {
   const temperatureCls = escapeHtml(insight.marketTemperature);
   const temperatureLabel = escapeHtml(insight.marketTemperatureLabel);
@@ -1493,8 +1517,9 @@ export function buildWeeklyHtml(
   const phase2TrendHtml = renderPhase2TrendTable(data.marketBreadth, insight.breadthNarrative);
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
-  const watchlistHtml = renderWatchlistSection(data.watchlist);
-  const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges, data.gate5Candidates, data.industryTop10);
+  const watchlistHtml = renderWatchlistSection(data.watchlist, data.activePortfolioSymbols);
+  const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges);
+  const portfolioTableHtml = renderPortfolioSection(portfolioPositions);
 
   // 해석 블록: LLM 텍스트 → marked HTML
   const sectorRotationHtml = mdToHtml(insight.sectorRotationNarrative);
@@ -1580,11 +1605,13 @@ export function buildWeeklyHtml(
         ${data.watchlist.items.length > 0 ? `<div class="content-block">${watchlistNarrativeHtml}</div>` : ""}
       </section>
 
-      <!-- 섹션 5: 5중 게이트 평가 + 등록/해제 -->
+      <!-- 섹션 5: 포트폴리오 편입/탈락 + 현재 포트폴리오 -->
       <section>
-        <h2>🆕 5중 게이트 평가 · 관심종목 등록/해제</h2>
+        <h2>🆕 포트폴리오 편입/탈락</h2>
         ${watchlistChangesHtml}
         <div class="content-block">${gate5SummaryHtml}</div>
+        <h2>📋 현재 포트폴리오</h2>
+        ${portfolioTableHtml}
       </section>
 
       <!-- 섹션 6: 다음 주 관전 포인트 -->

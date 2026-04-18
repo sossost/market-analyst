@@ -113,8 +113,8 @@ export class WeeklyDataCollector {
       watchlistChanges: (data.watchlistChanges as WeeklyReportData["watchlistChanges"] | undefined) ?? {
         registered: [],
         exited: [],
-        pending4of5: [],
       },
+      activePortfolioSymbols: (data.activePortfolioSymbols as string[] | undefined) ?? [],
       thesisAlignedCandidates: (data.thesisAlignedCandidates as WeeklyReportData["thesisAlignedCandidates"] | undefined) ?? null,
       vcpCandidates: (data.vcpCandidates as WeeklyReportData["vcpCandidates"] | undefined) ?? null,
       confirmedBreakouts: (data.confirmedBreakouts as WeeklyReportData["confirmedBreakouts"] | undefined) ?? null,
@@ -314,7 +314,7 @@ export class WeeklyDataCollector {
         : "";
 
     if (this._data.watchlistChanges == null) {
-      this._data.watchlistChanges = { registered: [], exited: [], pending4of5: [] };
+      this._data.watchlistChanges = { registered: [], exited: [] };
     }
 
     const changes = this._data.watchlistChanges as WeeklyReportData["watchlistChanges"];
@@ -333,14 +333,8 @@ export class WeeklyDataCollector {
         exited: [...changes.exited, change],
       };
       logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 해제 확정`);
-    } else if (validAction === "register" && isThesisOnlyBlock) {
-      this._data.watchlistChanges = {
-        ...changes,
-        pending4of5: [...changes.pending4of5, change],
-      };
-      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 예비 (4/5 — thesis 미충족)`);
     } else {
-      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 미분류 (action=${validAction}, success=${String(isSuccess)}, blocked=${String(isBlocked)})`);
+      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 미분류 (action=${validAction}, success=${String(isSuccess)}, blocked=${String(isBlocked)}, thesisOnly=${String(isThesisOnlyBlock)})`);
     }
   }
 }

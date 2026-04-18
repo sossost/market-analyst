@@ -5,8 +5,9 @@
  */
 
 import { db } from "@/db/client";
-import { portfolioPositions } from "@/db/schema/analyst";
-import { and, desc, eq } from "drizzle-orm";
+import { portfolioPositions, stockPhases } from "@/db/schema/analyst";
+import { dailyPrices } from "@/db/schema/market";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 
 // ─── 타입 정의 ────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,17 @@ export interface UpdatePortfolioExitInput {
   exitReason?: string;
 }
 
+/**
+ * ACTIVE 포지션에 현재 시장 데이터(종가, Phase, RS)를 결합한 뷰.
+ * 섹션 5 포트폴리오 테이블 렌더링에 사용한다.
+ */
+export interface PortfolioPositionWithCurrentData extends PortfolioPositionRow {
+  currentPrice: number | null;
+  currentPhase: number | null;
+  currentRsScore: number | null;
+  pnlPercent: number | null;
+}
+
 // ─── 에러 클래스 ─────────────────────────────────────────────────────────────
 
 export class PortfolioPositionNotFoundError extends Error {
@@ -45,16 +57,47 @@ export class PortfolioPositionNotFoundError extends Error {
   }
 }
 
+// ─── 내부 헬퍼 ───────────────────────────────────────────────────────────────
+
+/**
+ * 지정 symbol의 date 이전(또는 당일) 가장 최근 종가를 조회한다.
+ * 데이터 없거나 비정상 값이면 null을 반환한다.
+ */
+async function fetchLatestPrice(
+  symbol: string,
+  date: string,
+): Promise<number | null> {
+  const rows = await db
+    .select({ close: dailyPrices.close })
+    .from(dailyPrices)
+    .where(and(eq(dailyPrices.symbol, symbol), lte(dailyPrices.date, date)))
+    .orderBy(desc(dailyPrices.date))
+    .limit(1);
+
+  const row = rows[0];
+  if (row == null) return null;
+
+  const val = Number(row.close);
+  return Number.isFinite(val) ? val : null;
+}
+
 // ─── 삽입 함수 ────────────────────────────────────────────────────────────────
 
 /**
  * 포트폴리오 포지션을 신규 등록한다.
  * UNIQUE(symbol, entry_date) 충돌 시 아무 작업도 하지 않는다.
  * 삽입된 경우 id를 반환하고, 충돌(중복)이면 null을 반환한다.
+ *
+ * entryPrice가 없으면 daily_prices에서 최신 종가를 자동 조회한다.
+ * 종가 조회 실패 시 null로 INSERT를 계속 진행한다.
  */
 export async function insertPortfolioPosition(
   input: InsertPortfolioPositionInput,
 ): Promise<number | null> {
+  const resolvedEntryPrice = input.entryPrice != null
+    ? input.entryPrice
+    : await fetchLatestPrice(input.symbol, input.entryDate);
+
   const inserted = await db
     .insert(portfolioPositions)
     .values({
@@ -62,7 +105,7 @@ export async function insertPortfolioPosition(
       sector: input.sector ?? null,
       industry: input.industry ?? null,
       entryDate: input.entryDate,
-      entryPrice: input.entryPrice != null ? String(input.entryPrice) : null,
+      entryPrice: resolvedEntryPrice != null ? String(resolvedEntryPrice) : null,
       entryPhase: input.entryPhase ?? null,
       entryRsScore:
         input.entryRsScore != null ? String(input.entryRsScore) : null,
@@ -163,4 +206,84 @@ export async function getAllPortfolioPositions(
     .from(portfolioPositions)
     .orderBy(desc(portfolioPositions.entryDate))
     .limit(limit);
+}
+
+/**
+ * ACTIVE 포지션에 현재 시장 데이터를 결합하여 반환한다.
+ * daily_prices (최신 종가) + stock_phases (Phase, RS) LEFT JOIN.
+ * pnlPercent = (currentPrice - entryPrice) / entryPrice * 100
+ *
+ * @param date - 기준일 (YYYY-MM-DD). 해당 날짜 이하 최신 데이터를 조회한다.
+ */
+export async function getActivePortfolioPositionsWithCurrentData(
+  date: string,
+): Promise<PortfolioPositionWithCurrentData[]> {
+  const positions = await getActivePortfolioPositions();
+
+  if (positions.length === 0) return [];
+
+  const symbols = positions.map((p) => p.symbol);
+
+  // 1. daily_prices 배치 조회 — 각 symbol의 date 이하 최신 종가
+  const allPriceRows = await db
+    .select({ symbol: dailyPrices.symbol, close: dailyPrices.close, date: dailyPrices.date })
+    .from(dailyPrices)
+    .where(and(inArray(dailyPrices.symbol, symbols), lte(dailyPrices.date, date)))
+    .orderBy(desc(dailyPrices.date));
+
+  const latestPriceMap = new Map<string, number | null>();
+  for (const row of allPriceRows) {
+    if (!latestPriceMap.has(row.symbol)) {
+      const val = Number(row.close);
+      latestPriceMap.set(row.symbol, Number.isFinite(val) ? val : null);
+    }
+  }
+
+  // 2. stock_phases 배치 조회 — 각 symbol의 date 이하 최신 Phase/RS
+  const allPhaseRows = await db
+    .select({
+      symbol: stockPhases.symbol,
+      phase: stockPhases.phase,
+      rsScore: stockPhases.rsScore,
+      date: stockPhases.date,
+    })
+    .from(stockPhases)
+    .where(and(inArray(stockPhases.symbol, symbols), lte(stockPhases.date, date)))
+    .orderBy(desc(stockPhases.date));
+
+  const latestPhaseMap = new Map<string, { phase: number | null; rsScore: number | null }>();
+  for (const row of allPhaseRows) {
+    if (!latestPhaseMap.has(row.symbol)) {
+      latestPhaseMap.set(row.symbol, {
+        phase: row.phase ?? null,
+        rsScore: row.rsScore != null ? Number(row.rsScore) : null,
+      });
+    }
+  }
+
+  // 3. 조인 — 위치 데이터에 시장 데이터를 결합
+  return positions.map((pos) => {
+    const currentPrice = latestPriceMap.get(pos.symbol) ?? null;
+    const phaseData = latestPhaseMap.get(pos.symbol);
+
+    const entryPriceNum = pos.entryPrice != null
+      ? (() => {
+          const val = Number(pos.entryPrice);
+          return Number.isFinite(val) && val !== 0 ? val : null;
+        })()
+      : null;
+
+    const pnlPercent =
+      currentPrice != null && entryPriceNum != null
+        ? ((currentPrice - entryPriceNum) / entryPriceNum) * 100
+        : null;
+
+    return {
+      ...pos,
+      currentPrice,
+      currentPhase: phaseData?.phase ?? null,
+      currentRsScore: phaseData?.rsScore ?? null,
+      pnlPercent,
+    } satisfies PortfolioPositionWithCurrentData;
+  });
 }
