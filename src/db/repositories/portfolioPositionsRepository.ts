@@ -4,31 +4,16 @@
  * 재시도 로직은 호출부가 담당한다.
  */
 
-import { pool } from "@/db/client";
+import { db } from "@/db/client";
+import { portfolioPositions } from "@/db/schema/analyst";
+import { and, desc, eq } from "drizzle-orm";
 
 // ─── 타입 정의 ────────────────────────────────────────────────────────────────
 
 export type PortfolioStatus = "ACTIVE" | "EXITED";
 export type PortfolioTier = "standard" | "featured";
 
-export interface PortfolioPositionRow {
-  id: number;
-  symbol: string;
-  sector: string | null;
-  industry: string | null;
-  entry_date: string;
-  entry_price: string | null;
-  entry_phase: number | null;
-  entry_rs_score: string | null;
-  entry_sepa_grade: string | null;
-  thesis_id: number | null;
-  exit_date: string | null;
-  exit_price: string | null;
-  exit_reason: string | null;
-  status: PortfolioStatus;
-  tier: PortfolioTier;
-  created_at: string;
-}
+export type PortfolioPositionRow = typeof portfolioPositions.$inferSelect;
 
 export interface InsertPortfolioPositionInput {
   symbol: string;
@@ -49,17 +34,16 @@ export interface UpdatePortfolioExitInput {
   exitReason?: string;
 }
 
-// ─── 공통 SELECT 컬럼 ─────────────────────────────────────────────────────────
+// ─── 에러 클래스 ─────────────────────────────────────────────────────────────
 
-const SELECT_COLUMNS = `
-  id, symbol, sector, industry,
-  entry_date::text, entry_price::text,
-  entry_phase, entry_rs_score::text, entry_sepa_grade,
-  thesis_id,
-  exit_date::text, exit_price::text, exit_reason,
-  status, tier,
-  created_at::text
-`;
+export class PortfolioPositionNotFoundError extends Error {
+  constructor(symbol: string, entryDate: string) {
+    super(
+      `ACTIVE portfolio position not found: symbol=${symbol}, entryDate=${entryDate}`,
+    );
+    this.name = "PortfolioPositionNotFoundError";
+  }
+}
 
 // ─── 삽입 함수 ────────────────────────────────────────────────────────────────
 
@@ -71,31 +55,26 @@ const SELECT_COLUMNS = `
 export async function insertPortfolioPosition(
   input: InsertPortfolioPositionInput,
 ): Promise<number | null> {
-  const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO portfolio_positions (
-       symbol, sector, industry,
-       entry_date, entry_price,
-       entry_phase, entry_rs_score, entry_sepa_grade,
-       thesis_id, tier, status
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACTIVE')
-     ON CONFLICT (symbol, entry_date) DO NOTHING
-     RETURNING id`,
-    [
-      input.symbol,
-      input.sector ?? null,
-      input.industry ?? null,
-      input.entryDate,
-      input.entryPrice ?? null,
-      input.entryPhase ?? null,
-      input.entryRsScore ?? null,
-      input.entrySepaGrade ?? null,
-      input.thesisId ?? null,
-      input.tier ?? "standard",
-    ],
-  );
+  const inserted = await db
+    .insert(portfolioPositions)
+    .values({
+      symbol: input.symbol,
+      sector: input.sector ?? null,
+      industry: input.industry ?? null,
+      entryDate: input.entryDate,
+      entryPrice: input.entryPrice != null ? String(input.entryPrice) : null,
+      entryPhase: input.entryPhase ?? null,
+      entryRsScore:
+        input.entryRsScore != null ? String(input.entryRsScore) : null,
+      entrySepaGrade: input.entrySepaGrade ?? null,
+      thesisId: input.thesisId ?? null,
+      tier: input.tier ?? "standard",
+      status: "ACTIVE",
+    })
+    .onConflictDoNothing()
+    .returning({ id: portfolioPositions.id });
 
-  return rows[0]?.id ?? null;
+  return inserted[0]?.id ?? null;
 }
 
 // ─── 조회 함수 ────────────────────────────────────────────────────────────────
@@ -104,15 +83,14 @@ export async function insertPortfolioPosition(
  * ACTIVE 상태인 포트폴리오 포지션 전체를 조회한다.
  * entry_date DESC 정렬.
  */
-export async function getActivePortfolioPositions(): Promise<PortfolioPositionRow[]> {
-  const { rows } = await pool.query<PortfolioPositionRow>(
-    `SELECT ${SELECT_COLUMNS}
-     FROM portfolio_positions
-     WHERE status = 'ACTIVE'
-     ORDER BY entry_date DESC`,
-  );
-
-  return rows;
+export async function getActivePortfolioPositions(): Promise<
+  PortfolioPositionRow[]
+> {
+  return db
+    .select()
+    .from(portfolioPositions)
+    .where(eq(portfolioPositions.status, "ACTIVE"))
+    .orderBy(desc(portfolioPositions.entryDate));
 }
 
 /**
@@ -122,42 +100,55 @@ export async function getActivePortfolioPositions(): Promise<PortfolioPositionRo
 export async function getPortfolioPositionBySymbol(
   symbol: string,
 ): Promise<PortfolioPositionRow | null> {
-  const { rows } = await pool.query<PortfolioPositionRow>(
-    `SELECT ${SELECT_COLUMNS}
-     FROM portfolio_positions
-     WHERE symbol = $1 AND status = 'ACTIVE'
-     ORDER BY entry_date DESC
-     LIMIT 1`,
-    [symbol],
-  );
+  const rows = await db
+    .select()
+    .from(portfolioPositions)
+    .where(
+      and(
+        eq(portfolioPositions.symbol, symbol),
+        eq(portfolioPositions.status, "ACTIVE"),
+      ),
+    )
+    .orderBy(desc(portfolioPositions.entryDate))
+    .limit(1);
 
   return rows[0] ?? null;
 }
 
+// ─── 갱신 함수 ────────────────────────────────────────────────────────────────
+
 /**
  * 포트폴리오 포지션을 EXITED 상태로 전환한다.
  * symbol + entry_date 조합으로 대상 포지션을 특정한다.
+ * ACTIVE 포지션이 존재하지 않으면 PortfolioPositionNotFoundError를 던진다.
  */
 export async function updatePortfolioExit(
   symbol: string,
   entryDate: string,
   exit: UpdatePortfolioExitInput,
-): Promise<void> {
-  await pool.query(
-    `UPDATE portfolio_positions
-     SET status = 'EXITED',
-         exit_date = $1,
-         exit_price = $2,
-         exit_reason = $3
-     WHERE symbol = $4 AND entry_date = $5 AND status = 'ACTIVE'`,
-    [
-      exit.exitDate,
-      exit.exitPrice ?? null,
-      exit.exitReason ?? null,
-      symbol,
-      entryDate,
-    ],
-  );
+): Promise<PortfolioPositionRow> {
+  const updated = await db
+    .update(portfolioPositions)
+    .set({
+      status: "EXITED",
+      exitDate: exit.exitDate,
+      exitPrice: exit.exitPrice != null ? String(exit.exitPrice) : null,
+      exitReason: exit.exitReason ?? null,
+    })
+    .where(
+      and(
+        eq(portfolioPositions.symbol, symbol),
+        eq(portfolioPositions.entryDate, entryDate),
+        eq(portfolioPositions.status, "ACTIVE"),
+      ),
+    )
+    .returning();
+
+  if (updated.length === 0) {
+    throw new PortfolioPositionNotFoundError(symbol, entryDate);
+  }
+
+  return updated[0];
 }
 
 /**
@@ -167,13 +158,9 @@ export async function updatePortfolioExit(
 export async function getAllPortfolioPositions(
   limit: number = 100,
 ): Promise<PortfolioPositionRow[]> {
-  const { rows } = await pool.query<PortfolioPositionRow>(
-    `SELECT ${SELECT_COLUMNS}
-     FROM portfolio_positions
-     ORDER BY entry_date DESC
-     LIMIT $1`,
-    [limit],
-  );
-
-  return rows;
+  return db
+    .select()
+    .from(portfolioPositions)
+    .orderBy(desc(portfolioPositions.entryDate))
+    .limit(limit);
 }
