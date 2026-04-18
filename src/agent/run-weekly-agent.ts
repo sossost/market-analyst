@@ -268,9 +268,8 @@ ${data.activePortfolioSymbols.length === 0
 ## 포트폴리오 심사 기준
 
 **편입 조건 (모두 충족)**:
-1. gate5Candidates 목록에 존재 (etl_auto 전체 게이트 통과 확인)
-2. SEPA S 또는 A 등급 필수
-3. 이번 주 최대 5개 편입
+1. Phase 2 + RS 60 이상 + SEPA S 또는 A 등급 (시스템이 DB에서 직접 검증)
+2. 이번 주 최대 5개 편입
 
 **탈락 조건 (1개라도 해당)**:
 - Phase 3 이상 진입
