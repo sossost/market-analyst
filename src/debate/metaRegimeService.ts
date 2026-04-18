@@ -7,7 +7,7 @@ import {
   type MetaRegimeStatus,
   type NarrativeChainStatus,
 } from "@/db/schema/analyst";
-import { eq, inArray, asc, isNull, and, sql, notInArray } from "drizzle-orm";
+import { eq, inArray, asc, isNull, and, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { sanitizeCell } from "@/lib/markdown";
 import {
@@ -332,26 +332,19 @@ export async function linkChainToRegime(
  * 반환: 링크된 체인 수.
  */
 export async function linkUnlinkedChainsToRegimes(): Promise<number> {
-  // junction table에 등록된 chain ID 집합 조회
-  const linkedRows = await db
-    .select({ chainId: narrativeChainRegimes.chainId })
-    .from(narrativeChainRegimes);
-
-  const linkedChainIds = linkedRows.map((r) => r.chainId);
-
+  // LEFT JOIN으로 단일 쿼리에서 미연결 활성 체인만 필터링
   const unlinkedChains = await db
     .select({
       id: narrativeChains.id,
       megatrend: narrativeChains.megatrend,
     })
     .from(narrativeChains)
+    .leftJoin(narrativeChainRegimes, eq(narrativeChainRegimes.chainId, narrativeChains.id))
     .where(
-      linkedChainIds.length === 0
-        ? inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES)
-        : and(
-            inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
-            notInArray(narrativeChains.id, linkedChainIds),
-          ),
+      and(
+        isNull(narrativeChainRegimes.chainId),
+        inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
+      ),
     );
 
   if (unlinkedChains.length === 0) return 0;
@@ -423,13 +416,7 @@ export async function linkUnlinkedChainsToRegimes(): Promise<number> {
  * 반환: 생성된 국면 수.
  */
 export async function detectAndCreateNewRegimes(): Promise<number> {
-  // junction table에 등록된 chain ID 집합 조회
-  const linkedRows = await db
-    .select({ chainId: narrativeChainRegimes.chainId })
-    .from(narrativeChainRegimes);
-
-  const linkedChainIds = linkedRows.map((r) => r.chainId);
-
+  // LEFT JOIN으로 단일 쿼리에서 미연결 활성 체인만 필터링
   const unlinkedChains = await db
     .select({
       id: narrativeChains.id,
@@ -437,13 +424,12 @@ export async function detectAndCreateNewRegimes(): Promise<number> {
       supplyChain: narrativeChains.supplyChain,
     })
     .from(narrativeChains)
+    .leftJoin(narrativeChainRegimes, eq(narrativeChainRegimes.chainId, narrativeChains.id))
     .where(
-      linkedChainIds.length === 0
-        ? inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES)
-        : and(
-            inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
-            notInArray(narrativeChains.id, linkedChainIds),
-          ),
+      and(
+        isNull(narrativeChainRegimes.chainId),
+        inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
+      ),
     );
 
   if (unlinkedChains.length < 2) return 0;

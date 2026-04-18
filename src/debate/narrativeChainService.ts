@@ -4,7 +4,7 @@ import {
   narrativeChainRegimes,
   type NarrativeChainStatus,
 } from "@/db/schema/analyst";
-import { asc, desc, eq, inArray, isNull, and, sql, notInArray } from "drizzle-orm";
+import { asc, desc, eq, inArray, isNull, and, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { sendDiscordMessage } from "@/lib/discord";
 import type { Thesis } from "@/types/debate";
@@ -437,7 +437,8 @@ export async function recordNarrativeChain(
       // Update existing chain
       const updatedThesisIds = [...new Set([...existing.linkedThesisIds, thesisId])];
 
-      const isResolved = info.status === "RESOLVED" || info.status === "OVERSUPPLY";
+      // RESOLVED/OVERSUPPLY 상태: 체인 생애주기가 종료된 터미널 상태
+      const isTerminalStatus = info.status === "RESOLVED" || info.status === "OVERSUPPLY";
 
       // N+1 수혜 필드 (비어있지 않을 때만 업데이트)
       const nextBeneficiaryUpdate = {
@@ -475,7 +476,7 @@ export async function recordNarrativeChain(
         }
       }
 
-      if (isResolved) {
+      if (isTerminalStatus) {
         const now = new Date();
         const resolutionDays = calculateResolutionDays(
           existing.bottleneckIdentifiedAt,
@@ -651,14 +652,8 @@ export async function getUnlinkedActiveChains(): Promise<Array<{
 }>> {
   const activeStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
 
-  // junction table에 row가 존재하는 체인 ID 집합을 먼저 조회
-  const linkedRows = await db
-    .select({ chainId: narrativeChainRegimes.chainId })
-    .from(narrativeChainRegimes);
-
-  const linkedChainIds = linkedRows.map((r) => r.chainId);
-
-  const baseQuery = db
+  // LEFT JOIN으로 단일 쿼리에서 미연결 체인만 필터링 — 두 번 조회 불필요
+  return db
     .select({
       id: narrativeChains.id,
       megatrend: narrativeChains.megatrend,
@@ -666,18 +661,14 @@ export async function getUnlinkedActiveChains(): Promise<Array<{
       status: narrativeChains.status,
     })
     .from(narrativeChains)
+    .leftJoin(narrativeChainRegimes, eq(narrativeChainRegimes.chainId, narrativeChains.id))
+    .where(
+      and(
+        isNull(narrativeChainRegimes.chainId),
+        inArray(narrativeChains.status, activeStatuses),
+      ),
+    )
     .orderBy(asc(narrativeChains.id));
-
-  if (linkedChainIds.length === 0) {
-    return baseQuery.where(inArray(narrativeChains.status, activeStatuses));
-  }
-
-  return baseQuery.where(
-    and(
-      inArray(narrativeChains.status, activeStatuses),
-      notInArray(narrativeChains.id, linkedChainIds),
-    ),
-  );
 }
 
 /**
