@@ -696,37 +696,28 @@ function renderFearGreedCard(fg: FearGreedData): string {
   // .value — zone 색상: 공포(≤25)=파랑, 탐욕(≥75)=빨강
   const scoreCls = fg.score <= 25 ? "down" : fg.score >= 75 ? "up" : "";
 
-  // .change — 전일 대비 변화량 + direction 색상 (다른 지수 카드와 동일 문법)
-  const prevDiff = fg.previousClose != null ? fg.score - fg.previousClose : null;
-  const changeCls = prevDiff != null ? colorClass(prevDiff) : "neutral-color";
-  const changeLabel = prevDiff != null
-    ? prevDiff === 0
+  // .change — 주간 리포트이므로 1주전 대비 변화량 표시 (전일 대비 아님)
+  const weekDiff = fg.previous1Week != null ? fg.score - fg.previous1Week : null;
+  const changeCls = weekDiff != null ? colorClass(weekDiff) : "neutral-color";
+  const changeLabel = weekDiff != null
+    ? weekDiff === 0
       ? "— 0.0"
-      : `${prevDiff > 0 ? "▲" : "▼"} ${prevDiff > 0 ? "+" : ""}${prevDiff.toFixed(1)}`
+      : `${weekDiff > 0 ? "▲" : "▼"} ${weekDiff > 0 ? "+" : ""}${weekDiff.toFixed(1)}`
     : "—";
 
-  // [sub] — 방향 라벨 + 1주전 비교
+  // [sub] — 방향 라벨만 표시 (주간 변화량은 .change에 이미 노출)
   const directionLabel =
     fg.previous1Week != null
       ? getFearGreedDirectionLabel(fg.score, fg.previous1Week)
       : "";
-  const prev1wSub = (() => {
-    if (fg.previous1Week == null) return "";
-    const diff = fg.score - fg.previous1Week;
-    const sign = diff >= 0 ? "+" : "";
-    return `1주전 ${fg.previous1Week.toFixed(1)} (${sign}${diff.toFixed(1)})`;
-  })();
-  const subParts = [directionLabel, prev1wSub].filter(Boolean);
 
   return `
     <div class="index-card">
       <div class="label">공포탐욕 · ${escapeHtml(fg.rating)}</div>
       <div class="value ${escapeHtml(scoreCls)}">${escapeHtml(String(fg.score))}</div>
       <div class="change ${escapeHtml(changeCls)}">${escapeHtml(changeLabel)}</div>
-      ${subParts.length > 0
-        ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
-            ${subParts.map((s) => escapeHtml(s)).join(" · ")}
-          </div>`
+      ${directionLabel !== ""
+        ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">${escapeHtml(directionLabel)}</div>`
         : ""}
     </div>`;
 }
