@@ -1381,7 +1381,7 @@ function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
         ? `<span style="padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);">서사수혜</span>`
         : "";
       const certTag = c.certified === true
-        ? `<span style="padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#ddf6dd;color:#1a7f37;">AI인증</span>`
+        ? `<span style="padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#ddf6dd;color:var(--phase2);">AI인증</span>`
         : "";
       return `
         <tr>

@@ -85,6 +85,8 @@ async function main() {
   console.log(`  ✓ ${industries.length} industries`);
 
   console.log("[5/6] get_tracked_stocks...");
+  // NOTE: getTrackedStocks는 date 파라미터 미지원 — 항상 현재 ACTIVE 종목 기준.
+  // 과거 targetDate로 실행 시 watchlist 섹션은 실시간 데이터로 표시됨 (프리뷰 한계).
   const watchlistRaw = parse(await getTrackedStocks.execute({ include_trajectory: true }));
   const watchlist = {
     summary: (watchlistRaw.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as WeeklyReportData["watchlist"]["summary"],
