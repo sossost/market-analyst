@@ -51,7 +51,6 @@ interface AgentRegisterInput {
   sector?: string | null;
   industry?: string | null;
   reason: string;
-  price_at_entry?: number | null;
   tier?: string | null;
   sepa_grade?: string | null;
 }
@@ -115,10 +114,6 @@ export const saveTrackedStock: AgentTool = {
             reason: {
               type: "string",
               description: "등록 근거 (필수 — 에이전트의 판단 근거를 자유 텍스트로 기술)",
-            },
-            price_at_entry: {
-              type: "number",
-              description: "진입 시점 종가 (달러, 선택)",
             },
             tier: {
               type: "string",
@@ -239,17 +234,16 @@ async function executeRegister(
   const thesisId = typeof rawInput.thesis_id === "number" ? rawInput.thesis_id : null;
   const sector = typeof rawInput.sector === "string" ? rawInput.sector : null;
   const industry = typeof rawInput.industry === "string" ? rawInput.industry : null;
-  const priceAtEntry = typeof rawInput.price_at_entry === "number" ? rawInput.price_at_entry : null;
-
-  if (priceAtEntry == null || priceAtEntry === 0) {
-    return JSON.stringify({
-      success: false,
-      blocked: true,
-      symbol,
-      message: "등록 거부: 진입 가격(price_at_entry)이 필요합니다.",
-    });
-  }
   const sepaGrade = typeof rawInput.sepa_grade === "string" ? rawInput.sepa_grade.toUpperCase() : null;
+
+  // 진입 가격: daily_prices에서 등록일 기준 최신 종가 자동 조회
+  const priceAtEntry = await fetchLatestCloseForEntry(symbol, date);
+  if (priceAtEntry == null) {
+    logger.warn(
+      "SaveTrackedStock",
+      `${symbol}: 진입 가격 조회 실패 (date: ${date}) — null로 등록 진행`,
+    );
+  }
 
   const rawTier = typeof rawInput.tier === "string" ? rawInput.tier : null;
   const tier: TrackedStockTier =
@@ -487,6 +481,24 @@ async function executeQuery(
 }
 
 // ─── 헬퍼 ─────────────────────────────────────────────────────────────────────
+
+/** 등록 시점의 최신 종가를 조회한다. 없으면 null. */
+async function fetchLatestCloseForEntry(
+  symbol: string,
+  entryDate: string,
+): Promise<number | null> {
+  const { rows } = await pool.query<{ close: string }>(
+    `SELECT close::text
+     FROM daily_prices
+     WHERE symbol = $1 AND date <= $2
+     ORDER BY date DESC
+     LIMIT 1`,
+    [symbol, entryDate],
+  );
+  if (rows.length === 0) return null;
+  const val = Number(rows[0].close);
+  return Number.isFinite(val) ? val : null;
+}
 
 /** exit 시점의 최신 종가를 조회한다. 없으면 null. */
 async function fetchLatestCloseForExit(

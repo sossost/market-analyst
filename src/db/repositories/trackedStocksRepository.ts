@@ -69,7 +69,7 @@ export interface InsertTrackedStockInput {
   source: TrackedStockSource;
   tier: TrackedStockTier;
   entryDate: string;
-  entryPrice: number;
+  entryPrice: number | null;
   entryPhase: number;
   entryPrevPhase: number | null;
   entryRsScore: number | null;
@@ -240,6 +240,12 @@ export async function findActiveTrackedStocksBySource(
 
   return rows;
 }
+
+/**
+ * source별 ACTIVE tracked_stocks를 조회한다 (findActiveTrackedStocksBySource 단축 alias).
+ * run-weekly-agent.ts 포스트-LLM 포트폴리오 처리용.
+ */
+export const findActiveBySource = findActiveTrackedStocksBySource;
 
 /**
  * tier별 ACTIVE tracked_stocks를 조회한다.
