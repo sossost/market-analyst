@@ -113,8 +113,9 @@ export class WeeklyDataCollector {
       watchlistChanges: (data.watchlistChanges as WeeklyReportData["watchlistChanges"] | undefined) ?? {
         registered: [],
         exited: [],
-        pending4of5: [],
       },
+      portfolioRegistrations: [],
+      portfolioExits: [],
       thesisAlignedCandidates: (data.thesisAlignedCandidates as WeeklyReportData["thesisAlignedCandidates"] | undefined) ?? null,
       vcpCandidates: (data.vcpCandidates as WeeklyReportData["vcpCandidates"] | undefined) ?? null,
       confirmedBreakouts: (data.confirmedBreakouts as WeeklyReportData["confirmedBreakouts"] | undefined) ?? null,
@@ -298,14 +299,6 @@ export class WeeklyDataCollector {
     const isSuccess = parsed.success === true;
     const isBlocked = parsed.blocked === true;
 
-    // gateFailures 배열에서 thesis만 실패했는지 확인
-    const gateFailures = parsed.gateFailures;
-    const isThesisOnlyBlock =
-      isBlocked &&
-      isArray(gateFailures) &&
-      gateFailures.length === 1 &&
-      typeof gateFailures[0] === 'string' && gateFailures[0] === "thesis";
-
     const reason =
       typeof parsed.reason === "string"
         ? parsed.reason
@@ -314,7 +307,7 @@ export class WeeklyDataCollector {
         : "";
 
     if (this._data.watchlistChanges == null) {
-      this._data.watchlistChanges = { registered: [], exited: [], pending4of5: [] };
+      this._data.watchlistChanges = { registered: [], exited: [] };
     }
 
     const changes = this._data.watchlistChanges as WeeklyReportData["watchlistChanges"];
@@ -333,12 +326,6 @@ export class WeeklyDataCollector {
         exited: [...changes.exited, change],
       };
       logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 해제 확정`);
-    } else if (validAction === "register" && isThesisOnlyBlock) {
-      this._data.watchlistChanges = {
-        ...changes,
-        pending4of5: [...changes.pending4of5, change],
-      };
-      logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 예비 (4/5 — thesis 미충족)`);
     } else {
       logger.info("WeeklyDataCollector", `watchlistChanges: ${symbol} 미분류 (action=${validAction}, success=${String(isSuccess)}, blocked=${String(isBlocked)})`);
     }

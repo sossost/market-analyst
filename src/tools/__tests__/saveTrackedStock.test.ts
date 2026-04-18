@@ -76,7 +76,6 @@ function makeValidRegisterInput(overrides: Record<string, unknown> = {}) {
       sector: "Technology",
       industry: "Software",
       reason: "AI 수요 확장 → 데이터센터 투자 가속",
-      price_at_entry: 180,
       tier: "standard",
       sepa_grade: "A",
       ...overrides,
@@ -92,6 +91,8 @@ describe("saveTrackedStock.execute — register", () => {
     mockFindActive.mockResolvedValue([]);
     mockInsert.mockResolvedValue(1); // 정상 삽입
     mockFindPhase2Since.mockResolvedValue([]); // 기본: Phase 2 시작일 없음
+    // fetchLatestCloseForEntry 및 fetchLatestCloseForExit에서 pool.query 사용
+    mockPool.query.mockResolvedValue({ rows: [{ close: "180" }] });
   });
 
   it("Phase 2 + 이유 명시 시 등록 성공", async () => {

@@ -6,6 +6,7 @@ import { sendDiscordError, sendDiscordMessage } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 
 // Tools — 데이터 수집용 직접 호출
+import { saveTrackedStock } from "@/tools/saveTrackedStock";
 import { getIndexReturns } from "@/tools/getIndexReturns";
 import { getMarketBreadth } from "@/tools/getMarketBreadth";
 import { getLeadingSectors } from "@/tools/getLeadingSectors";
@@ -17,6 +18,7 @@ import { getSectorLagPatterns } from "@/tools/getSectorLagPatterns";
 import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
 import { certifyThesisAlignedCandidates } from "@/lib/certifyThesisAligned";
 import { selectWeeklyWatchlist, WEEKLY_WATCHLIST_MAX } from "@/lib/watchlistSelection";
+import { findActiveBySource } from "@/db/repositories/trackedStocksRepository.js";
 
 // Schema + Builder
 import type {
@@ -120,25 +122,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   const indices = Array.isArray(indexData.indices) ? indexData.indices : [];
   const allIndustries = Array.isArray(allIndustryData.industries) ? allIndustryData.industries : [];
 
-  // 4/5 예비종목 판정
-  const industryChangeMap = new Map<string, number>();
-  for (const ind of allIndustries as Array<{ industry: string; changeWeek: number | null }>) {
-    if (ind.changeWeek != null) industryChangeMap.set(ind.industry, ind.changeWeek);
-  }
-
   const stocks = Array.isArray(phase2Data.stocks) ? phase2Data.stocks : [];
-  const pending4of5 = (stocks as Array<{ symbol: string; industry: string | null; rsScore: number; sepaGrade: string | null }>)
-    .filter((s) => {
-      if (s.industry == null) return false;
-      if (s.sepaGrade !== "S" && s.sepaGrade !== "A") return false;
-      const change = industryChangeMap.get(s.industry);
-      return change != null && change > 0;
-    })
-    .map((s) => ({
-      symbol: s.symbol,
-      action: "register" as const,
-      reason: `4/5 통과 (thesis 미확인) — RS ${s.rsScore}, ${s.industry}`,
-    }));
 
   const EMPTY_BREADTH: MarketBreadthData = {
     weeklyTrend: [], phase1to2Transitions: 0,
@@ -172,8 +156,9 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
     watchlistChanges: {
       registered: [],
       exited: [],
-      pending4of5,
     },
+    portfolioRegistrations: [],
+    portfolioExits: [],
     thesisAlignedCandidates: thesisAlignedRaw, // 인증 후 덮어씀
     vcpCandidates: vcpRaw != null ? (parse(vcpRaw).candidates as WeeklyReportData["vcpCandidates"]) ?? null : null,
     confirmedBreakouts: breakoutRaw != null ? (parse(breakoutRaw).breakouts as WeeklyReportData["confirmedBreakouts"]) ?? null : null,
@@ -199,15 +184,102 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
     }
   }
 
+  // source='agent' 기존 포트폴리오 조회 — LLM 인사이트 프롬프트에 현황 주입용
+  const currentAgentPortfolio = await findActiveBySource("agent").catch((err: unknown) => {
+    logger.warn("Portfolio", `source=agent 포트폴리오 조회 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  });
+  logger.info("Portfolio", `현재 source=agent ACTIVE 포트폴리오: ${currentAgentPortfolio.length}개`);
+
   const taLabel = thesisAlignedRaw != null
     ? `서사수혜: 체인 ${data.thesisAlignedCandidates?.chains.length ?? 0}, 후보 ${data.thesisAlignedCandidates?.totalCandidates ?? 0}`
     : "서사수혜: 수집 실패";
   const vcpCount = data.vcpCandidates?.length ?? 0;
   const breakoutCount = data.confirmedBreakouts?.length ?? 0;
   const lagCount = data.sectorLagPatterns?.length ?? 0;
-  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | 예비 ${pending4of5.length} | VCP ${vcpCount} | 돌파 ${breakoutCount} | 래그 ${lagCount} | ${taLabel}`);
+  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | VCP ${vcpCount} | 돌파 ${breakoutCount} | 래그 ${lagCount} | ${taLabel}`);
 
   return data;
+}
+
+// ─── 포스트-LLM 포트폴리오 처리 ────────────────────────────────────────────
+
+/**
+ * LLM 인사이트의 portfolioRegistrations/portfolioExits를 순회하며
+ * saveTrackedStock.execute()로 실제 DB 등록/해제를 수행한다.
+ */
+async function applyPortfolioChanges(
+  data: WeeklyReportData,
+  targetDate: string,
+): Promise<void> {
+  const registrations = data.portfolioRegistrations;
+  const exits = data.portfolioExits;
+
+  if (registrations.length === 0 && exits.length === 0) {
+    logger.info("Portfolio", "포트폴리오 변경 없음 — 스킵");
+    return;
+  }
+
+  // 승격 처리
+  for (const reg of registrations) {
+    try {
+      const result = await saveTrackedStock.execute({
+        action: "register",
+        register: {
+          symbol: reg.symbol,
+          date: targetDate,
+          phase: 2,
+          reason: reg.reason,
+          thesis_id: reg.thesisId ?? null,
+        },
+      });
+      const parsed = JSON.parse(result) as Record<string, unknown>;
+      if (parsed.success === true) {
+        logger.info("Portfolio", `${reg.symbol} 포트폴리오 등록 완료`);
+        data.watchlistChanges.registered.push({
+          symbol: reg.symbol,
+          action: "register",
+          reason: reg.reason,
+        });
+      } else {
+        logger.warn("Portfolio", `${reg.symbol} 포트폴리오 등록 실패: ${String(parsed.message ?? parsed.error ?? "")}`);
+      }
+    } catch (err) {
+      logger.error("Portfolio", `${reg.symbol} 등록 중 에러: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // 탈락 처리
+  for (const exit of exits) {
+    try {
+      const result = await saveTrackedStock.execute({
+        action: "exit",
+        exit: {
+          symbol: exit.symbol,
+          exit_date: targetDate,
+          exit_reason: exit.reason,
+        },
+      });
+      const parsed = JSON.parse(result) as Record<string, unknown>;
+      if (parsed.success === true) {
+        logger.info("Portfolio", `${exit.symbol} 포트폴리오 해제 완료`);
+        data.watchlistChanges.exited.push({
+          symbol: exit.symbol,
+          action: "exit",
+          reason: exit.reason,
+        });
+      } else {
+        logger.warn("Portfolio", `${exit.symbol} 포트폴리오 해제 실패: ${String(parsed.message ?? parsed.error ?? "")}`);
+      }
+    } catch (err) {
+      logger.error("Portfolio", `${exit.symbol} 해제 중 에러: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  logger.info(
+    "Portfolio",
+    `포트폴리오 처리 완료: 등록 ${registrations.length}건, 해제 ${exits.length}건`,
+  );
 }
 
 // ─── LLM 인사이트 생성 ─────────────────────────────────────────────────────
@@ -254,9 +326,6 @@ ${(() => {
 ※ P2 구간: 초입(1~5일)=최고 주목, 진행(6~20일)=추세 확인, 확립(21일+)=이미 진행 중
 ※ 주봉 관점: Phase 2 연속일이 길수록 주봉 관점에서도 안정적. P2연속 14일+=주봉 3주 이상 유지.
 ※ 지시: 위 종목 중 이번 주 특히 주목할 Top 5~7을 선별하여 watchlistNarrative에 서술하라. 나머지는 간략 언급 또는 생략.
-
-## 예비 관심종목 (4/5 통과, thesis 미충족)
-${data.watchlistChanges.pending4of5.map((p) => `${p.symbol}: ${p.reason}`).join("\n") || "없음"}
 
 ## VCP 후보 (변동성 수축 패턴)
 ${data.vcpCandidates != null && data.vcpCandidates.length > 0
@@ -416,20 +485,18 @@ export function buildWeeklyReportedSymbols(
     }
   }
 
-  // 각 소스에서 심볼을 수집하고 중복 제거 (우선순위: gate5 > breakout > vcp > thesisAligned > watchlist > pending4of5)
+  // 각 소스에서 심볼을 수집하고 중복 제거 (우선순위: gate5 > breakout > vcp > thesisAligned > watchlist)
   const symbolSet = new Set<string>();
 
   const gate5Symbols = data.gate5Candidates.map((s) => s.symbol);
   const breakoutSymbols = (data.confirmedBreakouts ?? []).map((s) => s.symbol);
   const vcpSymbols = (data.vcpCandidates ?? []).map((s) => s.symbol);
   const watchlistSymbols = data.watchlist.items.map((w) => w.symbol);
-  const pending4of5Symbols = data.watchlistChanges.pending4of5.map((w) => w.symbol);
 
-  for (const s of [...gate5Symbols, ...breakoutSymbols, ...vcpSymbols, ...thesisAlignedSymbols.keys(), ...watchlistSymbols, ...pending4of5Symbols]) {
+  for (const s of [...gate5Symbols, ...breakoutSymbols, ...vcpSymbols, ...thesisAlignedSymbols.keys(), ...watchlistSymbols]) {
     symbolSet.add(s);
   }
 
-  // pending4of5는 gate5Candidates의 부분집합이므로 gate5에서 메타데이터를 크로스 조인
   const gate5Map = new Map(data.gate5Candidates.map((s) => [s.symbol, s]));
 
   return Array.from(symbolSet).map((symbol) => {
@@ -438,7 +505,6 @@ export function buildWeeklyReportedSymbols(
     const vcp = (data.vcpCandidates ?? []).find((s) => s.symbol === symbol);
     const ta = thesisAlignedSymbols.get(symbol);
     const watchItem = data.watchlist.items.find((w) => w.symbol === symbol);
-    const pending = data.watchlistChanges.pending4of5.find((w) => w.symbol === symbol);
 
     const phase = gate5?.phase ?? breakout?.phase ?? vcp?.phase ?? ta?.phase ?? watchItem?.currentPhase ?? watchItem?.entryPhase ?? 0;
     const rsScore = gate5?.rsScore ?? breakout?.rsScore ?? vcp?.rsScore ?? ta?.rsScore ?? watchItem?.currentRsScore ?? watchItem?.entryRsScore ?? 0;
@@ -447,12 +513,11 @@ export function buildWeeklyReportedSymbols(
 
     // reason: 가장 의미 있는 소스 우선
     const reason =
-      gate5 != null && pending == null ? "5중게이트"
+      gate5 != null ? "5중게이트"
       : breakout != null ? "돌파확인"
       : vcp != null ? "VCP"
       : ta != null ? "서사수혜"
       : watchItem != null ? "관심종목"
-      : pending != null ? "예비4of5"
       : "기타";
 
     return {
@@ -476,7 +541,6 @@ export interface WeeklySourceCounts {
   vcp: number;
   thesisAligned: number;
   watchlist: number;
-  pending4of5: number;
 }
 
 /**
@@ -501,12 +565,11 @@ export function getWeeklySourceCounts(data: WeeklyReportData): WeeklySourceCount
     vcp: (data.vcpCandidates ?? []).length,
     thesisAligned: thesisAlignedSymbols.size,
     watchlist: data.watchlist.items.length,
-    pending4of5: data.watchlistChanges.pending4of5.length,
   };
 }
 
 export function formatSourceCounts(counts: WeeklySourceCounts): string {
-  return `Gate5 ${counts.gate5}, 돌파 ${counts.breakout}, VCP ${counts.vcp}, 서사수혜 ${counts.thesisAligned}, 관심종목 ${counts.watchlist}, 예비 ${counts.pending4of5}`;
+  return `Gate5 ${counts.gate5}, 돌파 ${counts.breakout}, VCP ${counts.vcp}, 서사수혜 ${counts.thesisAligned}, 관심종목 ${counts.watchlist}`;
 }
 
 // ─── 메인 ───────────────────────────────────────────────────────────────────
@@ -611,6 +674,17 @@ async function main() {
 
   // 5. LLM 인사이트 생성 (CLI 단발 호출)
   const { insight, tokensUsed, executionTimeMs } = await generateInsight(data, systemPrompt);
+
+  // 5-1. 포스트-LLM 포트폴리오 처리
+  // LLM 응답의 portfolioRegistrations/portfolioExits에서 실제 DB 등록/해제 수행
+  const insightRaw = insight as unknown as Record<string, unknown>;
+  if (Array.isArray(insightRaw["portfolioRegistrations"])) {
+    data.portfolioRegistrations = insightRaw["portfolioRegistrations"] as WeeklyReportData["portfolioRegistrations"];
+  }
+  if (Array.isArray(insightRaw["portfolioExits"])) {
+    data.portfolioExits = insightRaw["portfolioExits"] as WeeklyReportData["portfolioExits"];
+  }
+  await applyPortfolioChanges(data, targetDate);
 
   // 6. HTML 조립 + 발행
   logger.step("[6/7] Building and publishing report...");

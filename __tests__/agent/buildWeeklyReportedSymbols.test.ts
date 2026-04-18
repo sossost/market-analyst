@@ -1,10 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildWeeklyReportedSymbols,
   getWeeklySourceCounts,
   formatSourceCounts,
 } from "@/agent/run-weekly-agent";
 import type { WeeklyReportData } from "@/tools/schemas/weeklyReportSchema";
+
+// run-weekly-agent.ts가 DB 클라이언트를 import-time에 초기화하므로 mock 필요
+vi.mock("@/db/client", () => ({
+  pool: { query: vi.fn(), end: vi.fn() },
+  db: {},
+}));
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
@@ -38,7 +44,9 @@ function makeData(overrides: Partial<WeeklyReportData> = {}): WeeklyReportData {
     industryTop10: [],
     watchlist: { summary: { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }, items: [] },
     gate5Candidates: [],
-    watchlistChanges: { registered: [], exited: [], pending4of5: [] },
+    watchlistChanges: { registered: [], exited: [] },
+    portfolioRegistrations: [],
+    portfolioExits: [],
     thesisAlignedCandidates: null,
     vcpCandidates: null,
     confirmedBreakouts: null,
@@ -241,22 +249,6 @@ describe("buildWeeklyReportedSymbols", () => {
     expect(result).toHaveLength(1);
     expect(result[0].reason).toBe("관심종목");
     expect(result[0].sector).toBe("Communication Services");
-  });
-
-  it("pending4of5에서 종목을 수집한다", () => {
-    const data = makeData({
-      watchlistChanges: {
-        registered: [],
-        exited: [],
-        pending4of5: [{ symbol: "META", action: "register", reason: "4/5 통과 (thesis 미확인)" }],
-      },
-    });
-
-    const result = buildWeeklyReportedSymbols(data, TARGET_DATE);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].symbol).toBe("META");
-    expect(result[0].reason).toBe("예비4of5");
   });
 
   it("중복 종목은 한 번만 포함하고, 우선순위가 높은 소스의 reason을 사용한다", () => {
@@ -467,66 +459,6 @@ describe("buildWeeklyReportedSymbols", () => {
     expect(result[0].rsScore).toBe(75); // entryRsScore fallback
   });
 
-  it("pending4of5 종목이 gate5에도 있으면 메타데이터는 gate5에서 가져오고 reason은 예비4of5", () => {
-    const data = makeData({
-      gate5Candidates: [
-        {
-          symbol: "COIN",
-          phase: 2,
-          prevPhase: 1,
-          isNewPhase2: true,
-          rsScore: 80,
-          ma150Slope: 0.01,
-          pctFromHigh52w: -8,
-          pctFromLow52w: 70,
-          isExtremePctFromLow: false,
-          conditionsMet: [],
-          volRatio: 1.2,
-          volumeConfirmed: true,
-          breakoutSignal: "none",
-          sector: "Financials",
-          industry: "Crypto Exchange",
-          sepaGrade: "A",
-        },
-      ],
-      watchlistChanges: {
-        registered: [],
-        exited: [],
-        pending4of5: [{ symbol: "COIN", action: "register", reason: "4/5 통과 (thesis 미확인)" }],
-      },
-    });
-
-    const result = buildWeeklyReportedSymbols(data, TARGET_DATE);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].symbol).toBe("COIN");
-    expect(result[0].reason).toBe("예비4of5");
-    expect(result[0].phase).toBe(2);
-    expect(result[0].rsScore).toBe(80);
-    expect(result[0].sector).toBe("Financials");
-    expect(result[0].industry).toBe("Crypto Exchange");
-  });
-
-  it("pending4of5 전용 종목(gate5에 없을 때)은 zero-metadata로 기록된다", () => {
-    const data = makeData({
-      watchlistChanges: {
-        registered: [],
-        exited: [],
-        pending4of5: [{ symbol: "ORPHAN", action: "register", reason: "4/5 통과" }],
-      },
-    });
-
-    const result = buildWeeklyReportedSymbols(data, TARGET_DATE);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].symbol).toBe("ORPHAN");
-    expect(result[0].reason).toBe("예비4of5");
-    expect(result[0].phase).toBe(0);
-    expect(result[0].rsScore).toBe(0);
-    expect(result[0].sector).toBe("");
-    expect(result[0].industry).toBe("");
-  });
-
   it("sector/industry가 null인 경우 빈 문자열로 폴백한다", () => {
     const data = makeData({
       vcpCandidates: [
@@ -566,7 +498,6 @@ describe("getWeeklySourceCounts", () => {
       vcp: 0,
       thesisAligned: 0,
       watchlist: 0,
-      pending4of5: 0,
     });
   });
 
@@ -614,11 +545,6 @@ describe("getWeeklySourceCounts", () => {
           },
         ],
       },
-      watchlistChanges: {
-        registered: [],
-        exited: [],
-        pending4of5: [{ symbol: "META", action: "register", reason: "4/5 통과" }],
-      },
     });
 
     const counts = getWeeklySourceCounts(data);
@@ -628,7 +554,6 @@ describe("getWeeklySourceCounts", () => {
     expect(counts.vcp).toBe(1);
     expect(counts.thesisAligned).toBe(0); // thesisAlignedCandidates is null
     expect(counts.watchlist).toBe(1);
-    expect(counts.pending4of5).toBe(1);
   });
 
   it("thesisAligned는 4/4 게이트 충족 종목만 카운트한다", () => {
@@ -688,17 +613,17 @@ describe("getWeeklySourceCounts", () => {
 describe("formatSourceCounts", () => {
   it("소스별 건수를 한 줄 문자열로 포맷한다", () => {
     const result = formatSourceCounts({
-      gate5: 3, breakout: 1, vcp: 2, thesisAligned: 1, watchlist: 5, pending4of5: 0,
+      gate5: 3, breakout: 1, vcp: 2, thesisAligned: 1, watchlist: 5,
     });
 
-    expect(result).toBe("Gate5 3, 돌파 1, VCP 2, 서사수혜 1, 관심종목 5, 예비 0");
+    expect(result).toBe("Gate5 3, 돌파 1, VCP 2, 서사수혜 1, 관심종목 5");
   });
 
   it("모든 소스가 0이면 전부 0으로 표시한다", () => {
     const result = formatSourceCounts({
-      gate5: 0, breakout: 0, vcp: 0, thesisAligned: 0, watchlist: 0, pending4of5: 0,
+      gate5: 0, breakout: 0, vcp: 0, thesisAligned: 0, watchlist: 0,
     });
 
-    expect(result).toBe("Gate5 0, 돌파 0, VCP 0, 서사수혜 0, 관심종목 0, 예비 0");
+    expect(result).toBe("Gate5 0, 돌파 0, VCP 0, 서사수혜 0, 관심종목 0");
   });
 });
