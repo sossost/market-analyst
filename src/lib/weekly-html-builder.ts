@@ -297,14 +297,14 @@ const WEEKLY_REPORT_CSS = `
   /* Spotlight Badge */
   .spotlight-badge {
     display: inline-block;
-    padding: 1px 5px;
+    padding: 1px 6px;
     border-radius: 3px;
     font-size: 0.65rem;
     font-weight: 700;
-    background: #fff8c5;
-    color: #9a6700;
+    background: #e05a00;
+    color: #fff;
     vertical-align: middle;
-    margin-right: 3px;
+    margin-left: 4px;
   }
   .spotlight-row { background: #fffdf0; }
 
@@ -407,19 +407,16 @@ const WEEKLY_REPORT_CSS = `
   .trajectory-dots {
     display: flex;
     gap: 4px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: center;
   }
 
   .traj-dot {
     display: inline-block;
-    width: 22px;
-    height: 22px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    font-size: 0.7rem;
-    font-weight: 700;
-    line-height: 22px;
-    text-align: center;
-    color: #fff;
+    flex-shrink: 0;
   }
   .traj-dot.p1 { background: #8c959f; }
   .traj-dot.p2 { background: var(--phase2); }
@@ -1164,7 +1161,7 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
         .slice(-7)
         .map((t) => {
           const cls = phaseBadgeClass(t.phase);
-          return `<div class="traj-dot ${escapeHtml(cls)}" title="${escapeHtml(t.date)}">${escapeHtml(String(t.phase))}</div>`;
+          return `<div class="traj-dot ${escapeHtml(cls)}" title="Phase ${escapeHtml(String(t.phase))} · ${escapeHtml(t.date)}"></div>`;
         })
         .join("");
 
@@ -1188,7 +1185,7 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
 
       return `
         <tr${rowClass}>
-          <td>${spotlightBadge}<strong>${escapeHtml(item.symbol)}</strong></td>
+          <td><strong>${escapeHtml(item.symbol)}</strong>${spotlightBadge}</td>
           <td>${escapeHtml(item.entrySector ?? "—")}</td>
           <td>${escapeHtml(item.entryDate)}</td>
           <td>${escapeHtml(String(item.daysTracked))}일</td>
@@ -1380,15 +1377,15 @@ function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
       const industryStr = c.industry != null ? escapeHtml(c.industry) : "\u2014";
       const capStr = formatMarketCap(c.marketCap);
       const gateStr = `${escapeHtml(String(c.gatePassCount))}/${escapeHtml(String(c.gateTotalCount))}`;
-      const aiTag = c.source === "llm"
-        ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);vertical-align:middle;">AI</span>`
+      const narrativeTag = c.source === "llm"
+        ? `<span style="padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);">서사수혜</span>`
         : "";
       const certTag = c.certified === true
-        ? ` <span style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#ddf6dd;color:#1a7f37;vertical-align:middle;">인증</span>`
+        ? `<span style="padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#ddf6dd;color:var(--phase2);">AI인증</span>`
         : "";
       return `
         <tr>
-          <td><strong>${escapeHtml(c.symbol)}</strong>${aiTag}${certTag}</td>
+          <td><div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;"><strong>${escapeHtml(c.symbol)}</strong>${narrativeTag}${certTag}</div></td>
           <td class="tc"><span class="phase-badge ${escapeHtml(phaseCls)}">${phaseStr}</span></td>
           <td class="tc">${rsStr}</td>
           <td class="tc">${sepaStr}</td>
@@ -1402,12 +1399,12 @@ function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
   return `${headerHtml}
     <table style="table-layout:fixed;">
       <colgroup>
-        <col style="width:12%">
+        <col style="width:20%">
         <col style="width:12%">
         <col style="width:8%">
         <col style="width:8%">
-        <col style="width:12%">
-        <col style="width:38%">
+        <col style="width:10%">
+        <col style="width:32%">
         <col style="width:10%">
       </colgroup>
       <thead>
