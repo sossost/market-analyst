@@ -232,6 +232,13 @@
       "when": 1776128137007,
       "tag": "0032_third_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1776496037075,
+      "tag": "0033_magical_shiva",
+      "breakpoints": true
     }
   ]
 }

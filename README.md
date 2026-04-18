@@ -380,10 +380,12 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **주간 관심종목 선별 + 주봉 관점** — featured→P2 streak→detection_lag 기준 선별 정렬 + Top 5~7 주목 뱃지 + 주봉 관점 프롬프트 (#846)
 - [x] **수혜주 자동 동기화** — narrative_chains beneficiary_tickers Phase 1/4 자동 제거 + 빈 chain sectors 기반 Phase 2 + RS >= 60 후보 자동 추가 (#842)
 - [x] **CI 실패 자동 감지** — PR reviewer가 CI 실패 감지 → 에러 로그 포함 이슈 자동 생성 → issue processor가 PR 브랜치에 수정 커밋 푸시 (#879)
+- [x] **멀티 모델 토론** — GPT-4o(매크로)/Gemini(테크)/Claude(지정학·심리) 확증편향 구조적 완화 + Claude 자동 폴백
+- [x] **포트폴리오 편입/탈락** — portfolio_positions 테이블 신설 + 주간 에이전트 LLM 판단 기반 승격/탈락 + pending4of5 전면 제거 (#892, #893)
+- [x] **주간 리포트 두 축 분리** — 섹션 4(관심종목 궤적) + 섹션 5(포트폴리오 현황·수익률) 분리 (#893)
 
 ### Next (진행 예정)
 
-- [x] **멀티 모델 토론** — GPT-4o(매크로)/Gemini(테크)/Claude(지정학·심리) 확증편향 구조적 완화 + Claude 자동 폴백
 - [ ] **Phase N-2** 검증 인프라 — 홀드아웃 테스트 + 위양성 비용 리포트 (데이터 축적 대기, 3/22~)
 - [ ] **Phase B** Data Differentiation — 섹터 자금 흐름, 거래량 이상 감지
 - [ ] **Phase C** Output Quality — 리포트 후처리 검증, 시각화
