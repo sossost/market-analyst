@@ -450,12 +450,14 @@ describe("renderIndexTable — Fear & Greed 방향 레이블", () => {
     expect(result).not.toContain("공포 완화");
   });
 
-  it("previous1Week가 있을 때 '1주전' 수치가 표시된다", () => {
+  it("previous1Week가 있을 때 주간 변화량이 .change 행에 표시된다", () => {
     const fg = createMockFearGreed({ score: 45.2, previous1Week: 31.5 });
 
     const result = renderIndexTable([createMockIndexReturn()], fg);
 
-    expect(result).toContain("1주전 31.5");
+    // 주간 변화량(+13.7)이 .change 행에 표시되고, '1주전' 수치 텍스트는 노출하지 않는다
+    expect(result).toContain("+13.7");
+    expect(result).not.toContain("1주전 31.5");
   });
 });
 
