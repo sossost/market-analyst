@@ -1134,6 +1134,170 @@ describe("applyHysteresis", () => {
     expect(db.update).not.toHaveBeenCalled();
   });
 
+  // ─── Race condition 방어 (TOCTOU guard) ─────────────────────────────────────
+
+  it("Race condition: 초기 null → 사이에 다른 agent가 확정 → 쿨다운 재검증으로 차단", async () => {
+    // 시나리오: applyHysteresis 진입 시 confirmed=null이지만,
+    // 확정 직전 재조회 시 다른 agent가 사이에 EARLY_BEAR를 확정한 상태
+    const pendingRow = makeRow({
+      regimeDate: "2026-04-14",
+      regime: "EARLY_BULL",
+      isConfirmed: false,
+      confirmedAt: null,
+    });
+    const raceConfirmed = makeRow({
+      regimeDate: "2026-04-13",
+      regime: "EARLY_BEAR",
+      isConfirmed: true,
+      confirmedAt: "2026-04-13",
+    });
+
+    const selectCallbacks = [
+      [],           // 1st: loadConfirmedRegime → null (초기 상태)
+      [pendingRow], // 2nd: pending 윈도우 → 1건
+      [raceConfirmed], // 3rd: freshConfirmed 재조회 → 사이에 확정됨!
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.update).mockReturnValue(makeUpdateChain() as any);
+
+    const result = await applyHysteresis("2026-04-14");
+
+    // Race condition 방어: 04-13 EARLY_BEAR 확정 후 1일 < 14일 쿨다운 → 차단
+    expect(result?.regime).toBe("EARLY_BEAR");
+    expect(result?.isConfirmed).toBe(true);
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("Race condition: 초기 null → 사이에 동일 레짐 확정 → 쿨다운 미적용 (동일 레짐)", async () => {
+    // 동일 레짐이면 쿨다운 미적용이므로 확정 허용
+    const pendingRow = makeRow({
+      regimeDate: "2026-04-14",
+      regime: "EARLY_BEAR",
+      isConfirmed: false,
+      confirmedAt: null,
+    });
+    const raceConfirmed = makeRow({
+      regimeDate: "2026-04-13",
+      regime: "EARLY_BEAR",
+      isConfirmed: true,
+      confirmedAt: "2026-04-13",
+    });
+
+    const selectCallbacks = [
+      [],           // 1st: loadConfirmedRegime → null
+      [pendingRow], // 2nd: pending 윈도우 → 1건
+      [raceConfirmed], // 3rd: freshConfirmed → 동일 레짐
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.update).mockReturnValue(makeUpdateChain() as any);
+
+    const result = await applyHysteresis("2026-04-14");
+
+    // 동일 레짐 → 쿨다운 미적용 → 확정
+    expect(result?.regime).toBe("EARLY_BEAR");
+    expect(result?.isConfirmed).toBe(true);
+    expect(db.update).toHaveBeenCalled();
+  });
+
+  it("Race condition: 초기 null → 사이에 불허 전환 확정 → 전환 재검증으로 차단", async () => {
+    // 시나리오: pending은 LATE_BULL이지만, 사이에 EARLY_BEAR가 확정됨
+    // EARLY_BEAR → LATE_BULL은 불허 전환
+    const pendingRow = makeRow({
+      regimeDate: "2026-04-14",
+      regime: "LATE_BULL",
+      isConfirmed: false,
+      confirmedAt: null,
+    });
+    const raceConfirmed = makeRow({
+      regimeDate: "2026-03-01",
+      regime: "EARLY_BEAR",
+      isConfirmed: true,
+      confirmedAt: "2026-03-01",
+    });
+
+    const selectCallbacks = [
+      [],           // 1st: loadConfirmedRegime → null
+      [pendingRow], // 2nd: pending 윈도우 → 1건
+      [raceConfirmed], // 3rd: freshConfirmed → EARLY_BEAR (쿨다운 경과지만 불허 전환)
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.update).mockReturnValue(makeUpdateChain() as any);
+
+    const result = await applyHysteresis("2026-04-14");
+
+    // EARLY_BEAR → LATE_BULL 불허 전환 → 차단
+    expect(result?.regime).toBe("EARLY_BEAR");
+    expect(result?.isConfirmed).toBe(true);
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("Race condition: 쿨다운 경과 + 허용 전환 → 확정 허용", async () => {
+    // 사이에 확정된 레짐이 있지만, 쿨다운 경과 + 허용 전환이면 확정 통과
+    const pendingRow = makeRow({
+      regimeDate: "2026-04-14",
+      regime: "EARLY_BULL",
+      isConfirmed: false,
+      confirmedAt: null,
+    });
+    const raceConfirmed = makeRow({
+      regimeDate: "2026-03-25",
+      regime: "EARLY_BEAR",
+      isConfirmed: true,
+      confirmedAt: "2026-03-25",
+    });
+
+    const selectCallbacks = [
+      [],           // 1st: loadConfirmedRegime → null
+      [pendingRow], // 2nd: pending 윈도우 → 1건
+      [raceConfirmed], // 3rd: freshConfirmed → EARLY_BEAR, 20일 전 (>14일)
+    ];
+    let selectCallCount = 0;
+
+    vi.mocked(db.select).mockImplementation(() => {
+      const rows = selectCallbacks[selectCallCount] ?? [];
+      selectCallCount++;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return makeSelectChain(rows) as any;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(db.update).mockReturnValue(makeUpdateChain() as any);
+
+    const result = await applyHysteresis("2026-04-14");
+
+    // 쿨다운 20일 >= 14일, EARLY_BEAR → EARLY_BULL 허용 전환 → 확정
+    expect(result?.regime).toBe("EARLY_BULL");
+    expect(result?.isConfirmed).toBe(true);
+    expect(db.update).toHaveBeenCalled();
+  });
+
   it("이슈 #520 시나리오: 2.5일 주기 medium 진동 → 확정 안 됨", async () => {
     // 실제 이슈 데이터: EARLY_BULL↔EARLY_BEAR 진동, 전부 medium
     // 3/23 EARLY_BULL, 3/26 EARLY_BEAR — 최근 pending이 섞여 있으므로 확정 불가

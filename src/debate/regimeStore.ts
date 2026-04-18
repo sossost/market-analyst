@@ -364,6 +364,24 @@ export async function applyHysteresis(
     !isInCooldown &&
     !isStressBlocked;
 
+  // 판정 근거 로그 — 쿨다운 우회 디버깅용
+  const cooldownDays =
+    confirmedRegime != null
+      ? calendarDaysBetween(
+          confirmedRegime.confirmedAt ?? confirmedRegime.regimeDate,
+          date,
+        )
+      : null;
+  logger.info(
+    "RegimeStore",
+    `Hysteresis 판정: date=${date}, pending=${latestPendingRegime}(${pendingRows.length}건), ` +
+      `confirmed=${confirmedRegime?.regime ?? "null"}(${confirmedRegime?.confirmedAt ?? confirmedRegime?.regimeDate ?? "N/A"}), ` +
+      `immediate=${shouldConfirmImmediately}, cooldown=${isInCooldown}(${cooldownDays ?? "N/A"}d/${MIN_HOLD_CALENDAR_DAYS}d), ` +
+      `transition=${isTransitionAllowed}, stress=${isStressBlocked}, ` +
+      `consecutive=${datesConsecutive}, sameRegime=${allSameRegime}, enough=${hasEnoughPending}(${pendingRows.length}/${requiredDays}), ` +
+      `canConfirm=${canConfirm}`,
+  );
+
   if (!canConfirm) {
     // 연속 판정 불충족, 허용되지 않은 전환, 쿨다운, 또는 스트레스 차단 — 기존 확정 레짐 유지
     const transitionNote =
@@ -386,10 +404,39 @@ export async function applyHysteresis(
   // 최신 pending 레코드를 확정 처리
   const latest = pendingRows[0];
 
-  if (confirmedRegime != null && confirmedRegime.regime !== latest.regime) {
+  // ── TOCTOU 방어: 확정 직전 최신 confirmed를 재조회하여 쿨다운/전환 재검증 ──
+  // 동시 실행된 다른 debate agent가 사이에 레짐을 확정했을 수 있다.
+  // 초기 조회 시점의 confirmedRegime이 null이었어도, 이 시점에서는 존재할 수 있다.
+  const freshConfirmed = await loadConfirmedRegime();
+  if (freshConfirmed != null && freshConfirmed.regime !== latest.regime) {
+    const freshCooldownDays = calendarDaysBetween(
+      freshConfirmed.confirmedAt ?? freshConfirmed.regimeDate,
+      date,
+    );
+    if (freshCooldownDays < MIN_HOLD_CALENDAR_DAYS) {
+      logger.warn(
+        "RegimeStore",
+        `Race condition 방어: 쿨다운 재검증 실패. ` +
+          `최신 confirmed: ${freshConfirmed.regime} (${freshConfirmed.confirmedAt ?? freshConfirmed.regimeDate}), ` +
+          `시도 레짐: ${latest.regime}, 날짜: ${date}, 경과일: ${freshCooldownDays}/${MIN_HOLD_CALENDAR_DAYS}`,
+      );
+      return freshConfirmed;
+    }
+    if (!ALLOWED_TRANSITIONS[freshConfirmed.regime].has(latest.regime)) {
+      logger.warn(
+        "RegimeStore",
+        `Race condition 방어: 전환 재검증 실패. ` +
+          `최신 confirmed: ${freshConfirmed.regime}, 시도 전환: ${latest.regime} — 불허 전이`,
+      );
+      return freshConfirmed;
+    }
+  }
+
+  const effectiveConfirmed = confirmedRegime ?? freshConfirmed;
+  if (effectiveConfirmed != null && effectiveConfirmed.regime !== latest.regime) {
     logger.info(
       "RegimeStore",
-      `레짐 전환 확정: ${confirmedRegime.regime} → ${latest.regime}`,
+      `레짐 전환 확정: ${effectiveConfirmed.regime} → ${latest.regime}`,
     );
   }
 
@@ -440,14 +487,6 @@ export async function loadConfirmedRegime(): Promise<MarketRegimeRow | null> {
 }
 
 /**
- * @deprecated loadConfirmedRegime으로 교체. 하위 호환성을 위해 유지.
- * 확정 레짐만 반환한다는 점에서 의미가 동일.
- */
-export async function loadLatestRegime(): Promise<MarketRegimeRow | null> {
-  return loadConfirmedRegime();
-}
-
-/**
  * Load recent N days of confirmed regimes, ordered newest first.
  * is_confirmed = true인 레코드만 반환 — pending 레코드는 제외.
  */
@@ -489,42 +528,6 @@ export async function loadPendingRegimes(
     .where(eq(marketRegimes.isConfirmed, false))
     .orderBy(desc(marketRegimes.regimeDate))
     .limit(limit) as Promise<MarketRegimeRow[]>;
-}
-
-/**
- * @deprecated saveRegimePending + applyHysteresis로 교체.
- * 하위 호환성을 위해 유지 — 직접 확정 저장 (히스테리시스 없음).
- * 새 코드에서는 사용하지 않는다.
- */
-export async function saveRegime(
-  date: string,
-  input: MarketRegimeInput,
-): Promise<void> {
-  await db
-    .insert(marketRegimes)
-    .values({
-      regimeDate: date,
-      regime: input.regime,
-      rationale: input.rationale,
-      confidence: input.confidence,
-      isConfirmed: true,
-      confirmedAt: date,
-    })
-    .onConflictDoUpdate({
-      target: marketRegimes.regimeDate,
-      set: {
-        regime: sql`excluded.regime`,
-        rationale: sql`excluded.rationale`,
-        confidence: sql`excluded.confidence`,
-        isConfirmed: true,
-        confirmedAt: sql`excluded.confirmed_at`,
-      },
-    });
-
-  logger.info(
-    "RegimeStore",
-    `Regime saved (legacy): ${date} → ${input.regime} (${input.confidence})`,
-  );
 }
 
 const REGIME_LABEL: Record<MarketRegimeType, string> = {
