@@ -9,4 +9,5 @@ export * from "./corporateRepository.js";
 export * from "./trackedStocksRepository.js";
 export * from "./sectorClusterRepository.js";
 export * from "./signalRepository.js";
+export * from "./portfolioPositionsRepository.js";
 export type * from "./types.js";

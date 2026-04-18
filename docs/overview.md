@@ -287,6 +287,7 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── sector_rs_daily        → 섹터별 RS 점수/가속도/브레드스
 ├── industry_rs_daily      → 산업별 RS 점수/가속도/브레드스
 ├── tracked_stocks         → 관심종목 통합 테이블 (source: etl_auto/agent/thesis_aligned, tier: standard/featured, 90일 윈도우, 7d/30d/90d 수익률 스냅샷)
+├── portfolio_positions    → 모델 포트폴리오 편입/청산 이력 (ACTIVE/EXITED 상태, 편입 시점 팩터 스냅샷, thesis FK)
 ├── ~~recommendations~~    → deprecated (tracked_stocks로 통합)
 ├── ~~watchlist_stocks~~   → deprecated (tracked_stocks로 통합)
 ├── theses                 → 토론 thesis (카테고리 분리)
