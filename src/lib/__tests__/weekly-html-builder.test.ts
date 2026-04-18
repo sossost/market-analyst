@@ -193,7 +193,8 @@ function createMockWeeklyReportData(
     industryTop10: [createMockIndustryItem()],
     watchlist: createMockWatchlistStatusData(),
     gate5Candidates: [createMockPhase2Stock()],
-    watchlistChanges: { registered: [], exited: [], pending4of5: [] },
+    watchlistChanges: { registered: [], exited: [] },
+    activePortfolioSymbols: [],
     thesisAlignedCandidates: null,
     vcpCandidates: null,
     confirmedBreakouts: null,
@@ -984,56 +985,40 @@ describe("renderWatchlistSection", () => {
 // ─── renderWatchlistChanges ───────────────────────────────────────────────────
 
 describe("renderWatchlistChanges", () => {
-  it("빈 케이스: 모두 비어 있으면 신규 등록/해제 없음 메시지를 반환한다", () => {
+  it("빈 케이스: 모두 비어 있으면 포트폴리오 변동 없음 메시지를 반환한다", () => {
     const result = renderWatchlistChanges({
       registered: [],
       exited: [],
-      pending4of5: [],
     });
 
-    expect(result).toContain("이번 주 신규 등록/해제 없음");
+    expect(result).toContain("이번 주 포트폴리오 변동 없음");
     expect(result).not.toContain("gate5-card");
   });
 
-  it("등록 1건: 카드가 렌더링되고 5/5 게이트 충족 배지가 표시된다", () => {
+  it("편입 1건: 카드가 렌더링되고 5/5 게이트 충족 배지가 표시된다", () => {
     const result = renderWatchlistChanges({
       registered: [{ symbol: "NVDA", action: "register", reason: "Phase 2 진입 + thesis 연결" }],
       exited: [],
-      pending4of5: [],
     });
 
     expect(result).toContain("NVDA");
-    expect(result).toContain("신규 등록 (1종목)");
+    expect(result).toContain("신규 편입 (1종목)");
     expect(result).toContain("5/5 게이트 충족");
     expect(result).toContain("Phase 2 진입 + thesis 연결");
   });
 
-  it("예비 1건: 4/5 (thesis 미충족) 배지가 표시된다", () => {
+  it("탈락 1건: 탈락 사유가 표시된다", () => {
     const result = renderWatchlistChanges({
       registered: [],
-      exited: [],
-      pending4of5: [{ symbol: "AMD", action: "register", reason: "thesis 미충족 — 예비" }],
-    });
-
-    expect(result).toContain("AMD");
-    expect(result).toContain("예비 관심종목");
-    expect(result).toContain("4/5");
-    expect(result).toContain("thesis 미충족");
-  });
-
-  it("해제 1건: 해제 사유가 표시된다", () => {
-    const result = renderWatchlistChanges({
-      registered: [],
-      exited: [{ symbol: "AAPL", action: "exit", reason: "Phase 3 진입으로 해제" }],
-      pending4of5: [],
+      exited: [{ symbol: "AAPL", action: "exit", reason: "Phase 3 진입으로 탈락" }],
     });
 
     expect(result).toContain("AAPL");
-    expect(result).toContain("해제 (1종목)");
-    expect(result).toContain("Phase 3 진입으로 해제");
+    expect(result).toContain("탈락 (1종목)");
+    expect(result).toContain("Phase 3 진입으로 탈락");
   });
 
-  it("등록 종목이 있으면 symbol과 reason이 렌더링된다", () => {
+  it("편입 종목이 있으면 symbol과 reason이 렌더링된다", () => {
     const result = renderWatchlistChanges({
       registered: [{
         symbol: "TSLA",
@@ -1041,7 +1026,6 @@ describe("renderWatchlistChanges", () => {
         reason: "5중 게이트 통과",
       }],
       exited: [],
-      pending4of5: [],
     });
 
     expect(result).toContain("TSLA");
@@ -1064,7 +1048,7 @@ describe("buildWeeklyHtml", () => {
     expect(result).toContain("섹터 로테이션");
     expect(result).toContain("업종 RS");
     expect(result).toContain("관심종목");
-    expect(result).toContain("5중 게이트 평가");
+    expect(result).toContain("포트폴리오 편입/탈락");
   });
 
   it("온도 배지 bullish: bullish 클래스가 적용된다", () => {
@@ -1106,7 +1090,6 @@ describe("buildWeeklyHtml", () => {
       watchlistChanges: {
         registered: [{ symbol: '<script>alert(1)</script>', action: "register", reason: "test" }],
         exited: [],
-        pending4of5: [],
       },
     });
     const insight = createMockWeeklyReportInsight();

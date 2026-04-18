@@ -1,6 +1,36 @@
 import type { ThesisAlignedData } from "@/lib/thesisAlignedCandidates.js";
 import type { Phase2Segment } from "@/lib/phase2Segment.js";
 
+// ─── 포트폴리오 관련 서브타입 ─────────────────────────────────────────────────
+
+/**
+ * LLM이 포트폴리오 편입을 요청하는 항목.
+ * entry_price는 시스템이 daily_prices에서 자동 조회하므로 포함하지 않는다.
+ */
+export interface PortfolioRegistrationItem {
+  symbol: string;
+  phase: number;
+  rs_score?: number | null;
+  thesis_id?: number | null;
+  sector?: string | null;
+  industry?: string | null;
+  reason: string;
+  tier: "standard" | "featured";
+  sepa_grade?: string | null;
+}
+
+/**
+ * LLM이 포트폴리오 탈락을 요청하는 항목.
+ * entry_date는 현재 포트폴리오 목록의 값을 그대로 사용해야 한다
+ * (symbol + entry_date UNIQUE 조합으로 ACTIVE 포지션을 특정).
+ */
+export interface PortfolioExitItem {
+  symbol: string;
+  /** ACTIVE 포지션 특정에 필요 (symbol + entry_date UNIQUE) */
+  entry_date: string;
+  exit_reason: string;
+}
+
 /**
  * 주간 리포트 스키마 — 데이터 필드 / 해석 필드 분리
  *
@@ -285,12 +315,13 @@ export interface WeeklyReportData {
   watchlist: WatchlistStatusData;
   /** get_phase2_stocks 반환값 */
   gate5Candidates: Phase2Stock[];
-  /** save_watchlist 결과 캡처 — 등록/해제/예비 */
+  /** portfolio_positions 등록/탈락 결과 캡처 */
   watchlistChanges: {
     registered: WatchlistChange[];
     exited: WatchlistChange[];
-    pending4of5: WatchlistChange[];
   };
+  /** portfolio_positions ACTIVE 심볼 목록 — 섹션 4에서 제외 */
+  activePortfolioSymbols: string[];
   /** buildThesisAlignedCandidates 반환값. 수집 실패 시 null */
   thesisAlignedCandidates: ThesisAlignedData | null;
   /** get_vcp_candidates 반환값. 수집 실패 시 null */
@@ -343,6 +374,10 @@ export interface WeeklyReportInsight {
   thesisAlignedNarrative?: string;
   /** Discord 핵심 요약 (3~5줄). 텍스트 전용, 링크 금지 */
   discordMessage: string;
+  /** 포트폴리오 편입 요청 목록 (LLM 판단) */
+  portfolioRegistrations?: PortfolioRegistrationItem[];
+  /** 포트폴리오 탈락 요청 목록 (LLM 판단) */
+  portfolioExits?: PortfolioExitItem[];
 }
 
 // ─── 런타임 유효성 검증 ────────────────────────────────────────────────────────
@@ -405,6 +440,8 @@ export function fillInsightDefaults(
     breadthNarrative: "",
     regimeContext: "",
     discordMessage: "",
+    portfolioRegistrations: [],
+    portfolioExits: [],
   };
 
   const validTemperatures: MarketTemperature[] = ["bullish", "neutral", "bearish"];
@@ -470,5 +507,11 @@ export function fillInsightDefaults(
       typeof raw["discordMessage"] === "string"
         ? raw["discordMessage"]
         : defaults.discordMessage,
+    portfolioRegistrations: Array.isArray(raw["portfolioRegistrations"])
+      ? (raw["portfolioRegistrations"] as PortfolioRegistrationItem[])
+      : defaults.portfolioRegistrations,
+    portfolioExits: Array.isArray(raw["portfolioExits"])
+      ? (raw["portfolioExits"] as PortfolioExitItem[])
+      : defaults.portfolioExits,
   };
 }
