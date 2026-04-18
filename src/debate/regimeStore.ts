@@ -432,7 +432,7 @@ export async function applyHysteresis(
     }
   }
 
-  const effectiveConfirmed = confirmedRegime ?? freshConfirmed;
+  const effectiveConfirmed = freshConfirmed;
   if (effectiveConfirmed != null && effectiveConfirmed.regime !== latest.regime) {
     logger.info(
       "RegimeStore",
