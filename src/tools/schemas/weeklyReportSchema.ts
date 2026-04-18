@@ -222,6 +222,17 @@ export interface WatchlistChange {
   reason: string;
 }
 
+export interface PortfolioRegistration {
+  symbol: string;
+  reason: string;
+  thesisId?: number | null;
+}
+
+export interface PortfolioExit {
+  symbol: string;
+  reason: string;
+}
+
 // ─── Phase 2 조기포착 신호 서브타입 ─────────────────────────────────────────
 
 export interface VcpCandidate {
@@ -285,12 +296,15 @@ export interface WeeklyReportData {
   watchlist: WatchlistStatusData;
   /** get_phase2_stocks 반환값 */
   gate5Candidates: Phase2Stock[];
-  /** save_watchlist 결과 캡처 — 등록/해제/예비 */
+  /** save_watchlist 결과 캡처 — 등록/해제 */
   watchlistChanges: {
     registered: WatchlistChange[];
     exited: WatchlistChange[];
-    pending4of5: WatchlistChange[];
   };
+  /** LLM이 판단한 포트폴리오 승격 종목 (포스트-LLM 실행) */
+  portfolioRegistrations: PortfolioRegistration[];
+  /** LLM이 판단한 포트폴리오 탈락 종목 (포스트-LLM 실행) */
+  portfolioExits: PortfolioExit[];
   /** buildThesisAlignedCandidates 반환값. 수집 실패 시 null */
   thesisAlignedCandidates: ThesisAlignedData | null;
   /** get_vcp_candidates 반환값. 수집 실패 시 null */
