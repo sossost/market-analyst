@@ -154,7 +154,7 @@ export async function hasExistingCiFailureIssue(prNumber: number): Promise<boole
       '--label', 'bug',
       '--search', `"CI 실패" in:title`,
       '--json', 'number,title',
-      '--limit', '10',
+      '--limit', '50',
     ])
     if (raw === '') return false
 

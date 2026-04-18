@@ -11,7 +11,7 @@
  * - 에러 분류 (ENOENT, 타임아웃, exit non-zero)
  */
 
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { logger } from '@/lib/logger'
 import type { BranchType, GitHubIssue } from './types.js'
 import { addComment, addLabel, removeLabel } from './githubClient.js'
@@ -274,6 +274,12 @@ export async function executeIssue(
       `🤖 [자율 이슈 처리 시스템]\n\n자율 처리에 실패했습니다.\n\n**사유**: ${errorMessage.slice(0, 500)}\n\n수동 확인이 필요합니다.`,
     )
     return { success: false, error: errorMessage }
+  } finally {
+    try {
+      execFileSync('git', ['checkout', 'main'], { stdio: 'ignore' })
+    } catch (err) {
+      logger.error(TAG, `main 브랜치 복귀 실패: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 }
 
@@ -339,7 +345,7 @@ ${issue.body || '(본문 없음)'}
 
 ## 실행 순서
 
-1. \`git fetch origin ${branchName} && git checkout ${branchName} && git pull origin ${branchName}\`
+1. \`git fetch origin ${branchName} && git checkout -B ${branchName} origin/${branchName}\`
    - 기존 PR 브랜치를 체크아웃한다. 새 브랜치를 생성하지 마라.
 2. 이슈 본문의 에러 로그를 분석하여 실패 원인을 파악하라.
 3. 실패 원인을 수정하라:
@@ -455,5 +461,11 @@ export async function executeCiFailureIssue(
       `🤖 [자율 이슈 처리 시스템]\n\nCI 실패 수정에 실패했습니다.\n\n**사유**: ${errorMessage.slice(0, 500)}\n\n수동 확인이 필요합니다.`,
     )
     return { success: false, error: errorMessage }
+  } finally {
+    try {
+      execFileSync('git', ['checkout', 'main'], { stdio: 'ignore' })
+    } catch (err) {
+      logger.error(TAG, `main 브랜치 복귀 실패: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 }

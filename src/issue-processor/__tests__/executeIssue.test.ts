@@ -386,8 +386,7 @@ describe('buildCiFixPrompt', () => {
 
   it('기존 브랜치 checkout 지시를 포함한다', () => {
     const prompt = buildCiFixPrompt(issue, branchName)
-    expect(prompt).toContain(`git checkout ${branchName}`)
-    expect(prompt).toContain(`git pull origin ${branchName}`)
+    expect(prompt).toContain(`git checkout -B ${branchName} origin/${branchName}`)
   })
 
   it('새 브랜치 생성 금지 지시를 포함한다', () => {
