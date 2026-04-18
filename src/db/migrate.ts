@@ -45,8 +45,12 @@ async function migrate() {
         await pool.query(statement);
       } catch (err) {
         const pgErr = err as { code?: string; message: string };
-        // Skip "already exists" errors for idempotency
-        if (pgErr.code === "42P07" || pgErr.code === "42710" || pgErr.code === "42701") {
+        // Skip "already exists" / "already applied" errors for idempotency
+        // 42P07: duplicate table, 42710: duplicate object, 42701: duplicate column
+        // 42P16: invalid table definition (e.g. multiple primary keys — PK already exists)
+        // 42704: undefined object (e.g. DROP CONSTRAINT IF EXISTS — constraint already gone)
+        const IDEMPOTENT_CODES = new Set(["42P07", "42710", "42701", "42P16", "42704"]);
+        if (IDEMPOTENT_CODES.has(pgErr.code ?? "")) {
           logger.info(TAG, `Skipped (already exists): ${statement.slice(0, 60)}...`);
           continue;
         }
