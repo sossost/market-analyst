@@ -1407,3 +1407,36 @@ export const newsGapAnalysis = pgTable(
     idxDate: index("idx_news_gap_analysis_date").on(t.date),
   }),
 );
+
+/**
+ * portfolio_positions — 모델 포트폴리오 편입/청산 이력.
+ * 주간 에이전트가 featured 종목을 편입하고, 탈락 시 청산 사유를 기록한다.
+ * (symbol, entry_date) UNIQUE — 같은 종목이 같은 날 두 번 편입될 수 없다.
+ */
+export const portfolioPositions = pgTable(
+  "portfolio_positions",
+  {
+    id:             serial("id").primaryKey(),
+    symbol:         text("symbol").notNull(),
+    sector:         text("sector"),
+    industry:       text("industry"),
+    entryDate:      date("entry_date").notNull(),
+    entryPrice:     numeric("entry_price", { precision: 12, scale: 4 }),
+    entryPhase:     integer("entry_phase"),
+    entryRsScore:   numeric("entry_rs_score", { precision: 6, scale: 2 }),
+    entrySepaGrade: text("entry_sepa_grade"),
+    thesisId:       integer("thesis_id").references(() => theses.id),
+    exitDate:       date("exit_date"),
+    exitPrice:      numeric("exit_price", { precision: 12, scale: 4 }),
+    exitReason:     text("exit_reason"),
+    status:         text("status").notNull().default("ACTIVE"),
+    tier:           text("tier").notNull().default("standard"),
+    createdAt:      timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uq:        unique("uq_portfolio_positions_symbol_entry_date").on(t.symbol, t.entryDate),
+    idxSymbol: index("idx_portfolio_positions_symbol").on(t.symbol),
+    idxStatus: index("idx_portfolio_positions_status").on(t.status),
+    idxEntry:  index("idx_portfolio_positions_entry_date").on(t.entryDate),
+  }),
+);
