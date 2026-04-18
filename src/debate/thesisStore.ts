@@ -586,9 +586,11 @@ export async function getThesisHitRateByCategory(): Promise<CategoryHitRateWithS
     const total = entry.confirmed + entry.invalidated;
     entry.hitRate = total > 0 ? entry.confirmed / total : null;
 
-    const pureTotal = entry.nonStatusQuo.confirmed + entry.nonStatusQuo.invalidated;
+    const pureConfirmed = entry.nonStatusQuo.confirmed + entry.legacy.confirmed;
+    const pureInvalidated = entry.nonStatusQuo.invalidated + entry.legacy.invalidated;
+    const pureTotal = pureConfirmed + pureInvalidated;
     entry.pureHitRate = pureTotal > 0
-      ? entry.nonStatusQuo.confirmed / pureTotal
+      ? pureConfirmed / pureTotal
       : null;
 
     result.push(entry);

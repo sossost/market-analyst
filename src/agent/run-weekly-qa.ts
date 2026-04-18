@@ -28,7 +28,7 @@ import {
   type WeeklyQaBiasMetricsRow,
 } from "@/db/repositories/index.js";
 
-import { getThesisHitRateByCategory, type CategoryHitRateWithStatusQuo } from "@/debate/thesisStore";
+import { getThesisHitRateByCategory, type CategoryHitRateWithStatusQuo } from "@/debate/thesisStore.js";
 import { CLAUDE_SONNET } from "@/lib/models.js";
 
 const MAX_TOKENS = 4096;
