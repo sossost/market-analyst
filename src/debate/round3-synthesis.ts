@@ -434,6 +434,12 @@ ${round2Section}
 - 형식: "공급 체인 노드 + 예상 시점" (예: "HBM 용량 제한 — GPU 병목 해소 후 2~3분기 내")
 - 현재 병목이 ACTIVE 초기 단계라면 null (아직 N+1을 논하기 이른 단계)
 
+**[next_bottleneck 승격 트리거]:**
+- 현재 체인의 status가 RESOLVING 또는 RESOLVED이고 nextBottleneck이 명확히 정의된 경우,
+  해당 nextBottleneck을 다음 체인 후보로 명시적으로 언급하세요.
+- 형식: "다음 병목 후보: {nextBottleneck}" — 섹션 3 또는 4에서 별도 문단으로 표기.
+- 승격 트리거는 현재 체인이 RESOLVING/RESOLVED 상태일 때만 활성화됩니다. ACTIVE 초기에는 언급 금지.
+
 **narrativeChain 작성 규칙:**
 - structural_narrative 카테고리에만 작성. 그 외는 null.
 - megatrend: 거시적 동인 1줄 (예: "AI 인프라 확장")

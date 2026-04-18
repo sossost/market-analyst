@@ -1,16 +1,58 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// DB mock
+// DB mock — junction table 지원 (innerJoin, onConflictDoNothing)
 const mockInsert = vi.fn();
 const mockValues = vi.fn();
 const mockReturning = vi.fn();
+const mockOnConflict = vi.fn();
 const mockSelect = vi.fn();
 const mockFrom = vi.fn();
 const mockWhere = vi.fn();
 const mockOrderBy = vi.fn();
+const mockInnerJoin = vi.fn();
 const mockUpdate = vi.fn();
 const mockSet = vi.fn();
 const mockUpdateWhere = vi.fn();
+
+function makeSelectChain(fromResult?: unknown) {
+  const chain: Record<string, unknown> = {};
+
+  chain.where = (...wArgs: unknown[]) => {
+    const result = mockWhere(...wArgs);
+    if (result != null && typeof (result as { then?: unknown }).then === "function") {
+      const c: Record<string, unknown> = {
+        orderBy: (...oArgs: unknown[]) => {
+          mockOrderBy(...oArgs);
+          return c;
+        },
+        then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+          (result as Promise<unknown>).then(resolve, reject),
+      };
+      return c;
+    }
+    return {
+      orderBy: (...oArgs: unknown[]) => mockOrderBy(...oArgs),
+    };
+  };
+
+  chain.innerJoin = (...jArgs: unknown[]) => {
+    mockInnerJoin(...jArgs);
+    return chain;
+  };
+
+  chain.orderBy = (...oArgs: unknown[]) => {
+    mockOrderBy(...oArgs);
+    return chain;
+  };
+
+  // from()이 바로 await되는 경우 (where 없이): thenable 지원
+  if (fromResult != null && typeof (fromResult as { then?: unknown }).then === "function") {
+    chain.then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+      (fromResult as Promise<unknown>).then(resolve, reject);
+  }
+
+  return chain;
+}
 
 vi.mock("../../src/db/client.js", () => ({
   db: {
@@ -21,6 +63,7 @@ vi.mock("../../src/db/client.js", () => ({
           mockValues(...vArgs);
           return {
             returning: (...rArgs: unknown[]) => mockReturning(...rArgs),
+            onConflictDoNothing: (...cArgs: unknown[]) => mockOnConflict(...cArgs),
           };
         },
       };
@@ -29,26 +72,8 @@ vi.mock("../../src/db/client.js", () => ({
       mockSelect(...args);
       return {
         from: (...fArgs: unknown[]) => {
-          mockFrom(...fArgs);
-          return {
-            where: (...wArgs: unknown[]) => {
-              const result = mockWhere(...wArgs);
-              if (result != null && typeof result.then === "function") {
-                const chainable = {
-                  orderBy: (...oArgs: unknown[]) => {
-                    mockOrderBy(...oArgs);
-                    return chainable;
-                  },
-                  then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
-                    result.then(resolve, reject),
-                };
-                return chainable;
-              }
-              return {
-                orderBy: (...oArgs: unknown[]) => mockOrderBy(...oArgs),
-              };
-            },
-          };
+          const fromResult = mockFrom(...fArgs);
+          return makeSelectChain(fromResult);
         },
       };
     },
@@ -233,10 +258,10 @@ describe("metaRegimeService", () => {
         },
       ]);
 
-      // batch chains for all regimes
+      // batch chains for all regimes (junction table innerJoin)
       mockOrderBy.mockResolvedValueOnce([
         {
-          metaRegimeId: 1,
+          regimeId: 1,
           bottleneck: "GPU 공급 부족",
           supplyChain: "GPU → HBM → 광트랜시버",
           sequenceOrder: 1,
@@ -244,7 +269,7 @@ describe("metaRegimeService", () => {
           status: "RESOLVED",
         },
         {
-          metaRegimeId: 1,
+          regimeId: 1,
           bottleneck: "HBM 병목",
           supplyChain: "HBM → 패키징",
           sequenceOrder: 2,
@@ -372,10 +397,10 @@ describe("metaRegimeService", () => {
           peakAt: null,
         },
       ]);
-      // batch chains for all regimes
+      // batch chains from junction table innerJoin
       mockWhere.mockResolvedValueOnce([
-        { metaRegimeId: 1, status: "RESOLVING" },
-        { metaRegimeId: 1, status: "RESOLVED" },
+        { regimeId: 1, status: "RESOLVING" },
+        { regimeId: 1, status: "RESOLVED" },
       ]);
       // db.update().set().where()
       mockUpdateWhere.mockResolvedValueOnce(undefined);
@@ -403,8 +428,8 @@ describe("metaRegimeService", () => {
       ]);
       // batch chains: one still ACTIVE
       mockWhere.mockResolvedValueOnce([
-        { metaRegimeId: 1, status: "ACTIVE" },
-        { metaRegimeId: 1, status: "RESOLVED" },
+        { regimeId: 1, status: "ACTIVE" },
+        { regimeId: 1, status: "RESOLVED" },
       ]);
 
       const result = await transitionMetaRegimeStatuses();
@@ -427,8 +452,8 @@ describe("metaRegimeService", () => {
       ]);
       // batch chains: all terminal
       mockWhere.mockResolvedValueOnce([
-        { metaRegimeId: 2, status: "RESOLVED" },
-        { metaRegimeId: 2, status: "INVALIDATED" },
+        { regimeId: 2, status: "RESOLVED" },
+        { regimeId: 2, status: "INVALIDATED" },
       ]);
       mockUpdateWhere.mockResolvedValueOnce(undefined);
 
@@ -454,8 +479,8 @@ describe("metaRegimeService", () => {
       ]);
       // batch chains: one ACTIVE (new chain linked)
       mockWhere.mockResolvedValueOnce([
-        { metaRegimeId: 3, status: "ACTIVE" },
-        { metaRegimeId: 3, status: "RESOLVED" },
+        { regimeId: 3, status: "ACTIVE" },
+        { regimeId: 3, status: "RESOLVED" },
       ]);
       mockUpdateWhere.mockResolvedValueOnce(undefined);
 
@@ -468,35 +493,41 @@ describe("metaRegimeService", () => {
     });
   });
 
-  // ─── linkChainToRegime Tests ────────────────────────────────────
+  // ─── linkChainToRegime Tests — junction table INSERT ────────────
 
   describe("linkChainToRegime", () => {
-    it("links chain with auto-incremented sequence order", async () => {
-      // max sequence order query
+    it("junction table에 INSERT로 체인-국면 링크를 생성한다", async () => {
+      // max sequence order query (junction table)
       mockWhere.mockResolvedValueOnce([{ maxOrder: 3 }]);
-      // update chain
-      mockUpdateWhere.mockResolvedValueOnce(undefined);
+      // insert junction row
+      mockOnConflict.mockResolvedValueOnce(undefined);
 
       await linkChainToRegime(10, 1);
 
-      expect(mockSet).toHaveBeenCalledWith(
+      expect(mockInsert).toHaveBeenCalled();
+      expect(mockValues).toHaveBeenCalledWith(
         expect.objectContaining({
-          metaRegimeId: 1,
+          chainId: 10,
+          regimeId: 1,
           sequenceOrder: 4,
           sequenceConfidence: "medium",
         }),
       );
+      expect(mockOnConflict).toHaveBeenCalled();
+      // update가 호출되지 않아야 함 (기존 방식 제거 확인)
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it("starts at order 1 when no existing chains in regime", async () => {
       mockWhere.mockResolvedValueOnce([{ maxOrder: 0 }]);
-      mockUpdateWhere.mockResolvedValueOnce(undefined);
+      mockOnConflict.mockResolvedValueOnce(undefined);
 
       await linkChainToRegime(5, 2, "high");
 
-      expect(mockSet).toHaveBeenCalledWith(
+      expect(mockValues).toHaveBeenCalledWith(
         expect.objectContaining({
-          metaRegimeId: 2,
+          chainId: 5,
+          regimeId: 2,
           sequenceOrder: 1,
           sequenceConfidence: "high",
         }),
@@ -504,11 +535,17 @@ describe("metaRegimeService", () => {
     });
   });
 
-  // ─── linkUnlinkedChainsToRegimes Tests ──────────────────────────
+  // ─── linkUnlinkedChainsToRegimes Tests — junction table 기준 ────
 
   describe("linkUnlinkedChainsToRegimes", () => {
+    beforeEach(() => {
+      mockOnConflict.mockResolvedValue(undefined);
+    });
+
     it("returns 0 when no unlinked chains", async () => {
-      // unlinked chains query
+      // 1) junction table: linked chain IDs (없음) — from()이 thenable로 []를 반환
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains query (없음)
       mockWhere.mockResolvedValueOnce([]);
 
       const result = await linkUnlinkedChainsToRegimes();
@@ -516,11 +553,11 @@ describe("metaRegimeService", () => {
     });
 
     it("returns 0 when no active regimes", async () => {
-      // unlinked chains
-      mockWhere.mockResolvedValueOnce([
-        { id: 10, megatrend: "AI 인프라 확장" },
-      ]);
-      // getActiveMetaRegimes
+      // 1) junction table: linked chain IDs (없음)
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains
+      mockWhere.mockResolvedValueOnce([{ id: 10, megatrend: "AI 인프라 확장" }]);
+      // 3) getActiveMetaRegimes
       mockWhere.mockResolvedValueOnce([]);
 
       const result = await linkUnlinkedChainsToRegimes();
@@ -528,11 +565,11 @@ describe("metaRegimeService", () => {
     });
 
     it("links chain to regime with matching megatrend keywords", async () => {
-      // unlinked chains
-      mockWhere.mockResolvedValueOnce([
-        { id: 10, megatrend: "AI 인프라 확장 GPU 수요" },
-      ]);
-      // getActiveMetaRegimes
+      // 1) junction table: linked chain IDs (없음)
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains
+      mockWhere.mockResolvedValueOnce([{ id: 10, megatrend: "AI 인프라 확장 GPU 수요" }]);
+      // 3) getActiveMetaRegimes
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
@@ -544,25 +581,23 @@ describe("metaRegimeService", () => {
           peakAt: null,
         },
       ]);
-      // batch fetch regime chains (all regimes in one query)
-      mockWhere.mockResolvedValueOnce([
-        { metaRegimeId: 1, megatrend: "AI 인프라 확장 HBM" },
-      ]);
-      // linkChainToRegime: max order
+      // 4) batch fetch regime chains (junction table innerJoin)
+      mockWhere.mockResolvedValueOnce([{ regimeId: 1, megatrend: "AI 인프라 확장 HBM" }]);
+      // 5) linkChainToRegime: max order query
       mockWhere.mockResolvedValueOnce([{ maxOrder: 2 }]);
-      // linkChainToRegime: update
-      mockUpdateWhere.mockResolvedValueOnce(undefined);
+      // 6) insert junction row
+      mockOnConflict.mockResolvedValueOnce(undefined);
 
       const result = await linkUnlinkedChainsToRegimes();
       expect(result).toBe(1);
     });
 
     it("does not link when keyword overlap is insufficient", async () => {
-      // unlinked chains
-      mockWhere.mockResolvedValueOnce([
-        { id: 10, megatrend: "에너지 전환 태양광" },
-      ]);
-      // getActiveMetaRegimes
+      // 1) junction table: linked chain IDs (없음)
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains
+      mockWhere.mockResolvedValueOnce([{ id: 10, megatrend: "에너지 전환 태양광" }]);
+      // 3) getActiveMetaRegimes
       mockWhere.mockResolvedValueOnce([
         {
           id: 1,
@@ -574,20 +609,25 @@ describe("metaRegimeService", () => {
           peakAt: null,
         },
       ]);
-      // batch fetch regime chains
-      mockWhere.mockResolvedValueOnce([
-        { metaRegimeId: 1, megatrend: "AI 인프라 확장 GPU" },
-      ]);
+      // 4) batch fetch regime chains
+      mockWhere.mockResolvedValueOnce([{ regimeId: 1, megatrend: "AI 인프라 확장 GPU" }]);
 
       const result = await linkUnlinkedChainsToRegimes();
       expect(result).toBe(0);
     });
   });
 
-  // ─── detectAndCreateNewRegimes Tests ────────────────────────────
+  // ─── detectAndCreateNewRegimes Tests — junction table 기준 ──────
 
   describe("detectAndCreateNewRegimes", () => {
+    beforeEach(() => {
+      mockOnConflict.mockResolvedValue(undefined);
+    });
+
     it("returns 0 when fewer than 2 unlinked chains", async () => {
+      // 1) junction table: linked chain IDs (없음)
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains: 1개만
       mockWhere.mockResolvedValueOnce([
         { id: 1, megatrend: "AI 인프라 확장", supplyChain: "GPU → HBM" },
       ]);
@@ -597,23 +637,28 @@ describe("metaRegimeService", () => {
     });
 
     it("creates regime when 2+ chains share megatrend keywords", async () => {
-      // unlinked chains
+      // 1) junction table: linked chain IDs (없음)
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains
       mockWhere.mockResolvedValueOnce([
         { id: 10, megatrend: "AI 인프라 확장 GPU", supplyChain: "GPU → HBM → 광트랜시버" },
         { id: 11, megatrend: "AI 인프라 확장 HBM", supplyChain: "HBM → 패키징" },
       ]);
-      // createMetaRegime
+      // 3) createMetaRegime
       mockReturning.mockResolvedValueOnce([{ id: 100 }]);
-      // linkChainToRegime for chain 10: max order
+      // 4) linkChainToRegime for chain 10: max order
       mockWhere.mockResolvedValueOnce([{ maxOrder: 0 }]);
-      mockUpdateWhere.mockResolvedValueOnce(undefined);
-      // linkChainToRegime for chain 11: max order
+      // 5) insert junction (chain 10)
+      mockOnConflict.mockResolvedValueOnce(undefined);
+      // 6) linkChainToRegime for chain 11: max order
       mockWhere.mockResolvedValueOnce([{ maxOrder: 1 }]);
-      mockUpdateWhere.mockResolvedValueOnce(undefined);
+      // 7) insert junction (chain 11)
+      mockOnConflict.mockResolvedValueOnce(undefined);
 
       const result = await detectAndCreateNewRegimes();
 
       expect(result).toBe(1);
+      // createMetaRegime insert values
       expect(mockValues).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "AI 인프라 확장 GPU",
@@ -623,6 +668,9 @@ describe("metaRegimeService", () => {
     });
 
     it("does not create regime when chains have unrelated megatrends", async () => {
+      // 1) junction table: linked chain IDs (없음)
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains
       mockWhere.mockResolvedValueOnce([
         { id: 10, megatrend: "AI 인프라 확장", supplyChain: "GPU → HBM" },
         { id: 11, megatrend: "에너지 전환 태양광", supplyChain: "폴리실리콘 → 웨이퍼" },
@@ -633,15 +681,20 @@ describe("metaRegimeService", () => {
     });
 
     it("detects narrative_shift propagation when no arrow in supply chain", async () => {
+      // 1) junction table: linked chain IDs (없음)
+      mockFrom.mockResolvedValueOnce([]);
+      // 2) unlinked chains
       mockWhere.mockResolvedValueOnce([
         { id: 10, megatrend: "인플레이션 사이클 거시경제 금리", supplyChain: "금리 상승" },
         { id: 11, megatrend: "인플레이션 사이클 거시경제 통화정책", supplyChain: "긴축 정책" },
       ]);
+      // 3) createMetaRegime
       mockReturning.mockResolvedValueOnce([{ id: 101 }]);
+      // 4) linkChainToRegime: max orders
       mockWhere.mockResolvedValueOnce([{ maxOrder: 0 }]);
-      mockUpdateWhere.mockResolvedValueOnce(undefined);
+      mockOnConflict.mockResolvedValueOnce(undefined);
       mockWhere.mockResolvedValueOnce([{ maxOrder: 1 }]);
-      mockUpdateWhere.mockResolvedValueOnce(undefined);
+      mockOnConflict.mockResolvedValueOnce(undefined);
 
       const result = await detectAndCreateNewRegimes();
 
@@ -658,11 +711,49 @@ describe("metaRegimeService", () => {
 
   describe("manageMetaRegimes", () => {
     it("returns zeros when nothing to do", async () => {
-      // transitionMetaRegimeStatuses → getActiveMetaRegimes
+      // 실행 순서 (from() 호출 순서 기준):
+      //
+      // 1. transitionMetaRegimeStatuses → getActiveMetaRegimes:
+      //    db.select().from(metaRegimes).where()
+      //    → mockFrom #1: undefined (chain with .where())
+      //    → mockWhere #1: [] → early return (activeRegimes = [])
+      //
+      // 2. linkUnlinkedChainsToRegimes → junction IDs:
+      //    db.select().from(narrativeChainRegimes)  ← 직접 await (thenable)
+      //    → mockFrom #2: Promise<[]> → linkedRows = []
+      //
+      // 3. linkUnlinkedChainsToRegimes → unlinked chains:
+      //    db.select().from(narrativeChains).where()
+      //    → mockFrom #3: undefined (chain with .where())
+      //    → mockWhere #2: [] → unlinkedChains = [] → early return (0)
+      //
+      // 4. detectAndCreateNewRegimes → junction IDs:
+      //    db.select().from(narrativeChainRegimes)  ← 직접 await (thenable)
+      //    → mockFrom #4: Promise<[]> → linkedRows = []
+      //
+      // 5. detectAndCreateNewRegimes → unlinked chains:
+      //    db.select().from(narrativeChains).where()
+      //    → mockFrom #5: undefined (chain with .where())
+      //    → mockWhere #3: [] → unlinkedChains = [] → early return (0)
+
+      // mockFrom 호출 순서 (총 5회):
+      // #1: getActiveMetaRegimes → from(metaRegimes)       → undefined (has .where())
+      // #2: linkUnlinked junction → from(narrativeChainRegimes) → Promise<[]> (thenable)
+      // #3: linkUnlinked unlinked → from(narrativeChains)  → undefined (has .where())
+      // #4: detectAndCreate junction → from(narrativeChainRegimes) → Promise<[]> (thenable)
+      // #5: detectAndCreate unlinked → from(narrativeChains) → undefined (has .where())
+      mockFrom.mockReturnValueOnce(undefined);          // #1 metaRegimes
+      mockFrom.mockResolvedValueOnce([]);               // #2 junction → []
+      mockFrom.mockReturnValueOnce(undefined);          // #3 narrativeChains
+      mockFrom.mockResolvedValueOnce([]);               // #4 junction → []
+      // #5 defaults to undefined (no more mockReturnValueOnce needed)
+
+      // mockWhere 호출 순서 (총 3회):
+      // #1: getActiveMetaRegimes .where() → []
+      // #2: linkUnlinked unlinked chains .where() → []
+      // #3: detectAndCreate unlinked chains .where() → []
       mockWhere.mockResolvedValueOnce([]);
-      // linkUnlinkedChainsToRegimes → unlinked chains
       mockWhere.mockResolvedValueOnce([]);
-      // detectAndCreateNewRegimes → unlinked chains
       mockWhere.mockResolvedValueOnce([]);
 
       const result = await manageMetaRegimes();
