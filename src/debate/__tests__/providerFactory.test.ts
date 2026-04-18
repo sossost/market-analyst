@@ -7,7 +7,7 @@ import { FallbackProvider } from "../llm/fallbackProvider.js";
 /**
  * createProvider 단위 테스트.
  *
- * Claude 계열: ANTHROPIC_API_KEY 있으면 FallbackProvider(CLI → API), 없으면 ClaudeCliProvider 단독.
+ * Claude 계열: API 키 유무와 무관하게 항상 ClaudeCliProvider 단독 반환.
  * GPT/Gemini 계열: 항상 FallbackProvider(원본 → ClaudeCliProvider 폴백).
  */
 
@@ -30,29 +30,27 @@ describe("createProvider", () => {
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = saved.GOOGLE_GENERATIVE_AI_API_KEY;
   });
 
-  describe("Claude 계열 — API 키 있으면 FallbackProvider(CLI → API)", () => {
-    it("'sonnet' + API 키 → FallbackProvider 반환", () => {
+  describe("Claude 계열 — API 키 유무와 무관하게 ClaudeCliProvider 단독", () => {
+    it("'sonnet' + API 키 있음 → ClaudeCliProvider 반환", () => {
       const provider = createProvider("sonnet");
-      expect(provider).toBeInstanceOf(FallbackProvider);
+      expect(provider).toBeInstanceOf(ClaudeCliProvider);
     });
 
-    it("'claude-sonnet-4-20250514' + API 키 → FallbackProvider 반환", () => {
+    it("'claude-sonnet-4-20250514' + API 키 있음 → ClaudeCliProvider 반환", () => {
       const provider = createProvider("claude-sonnet-4-20250514");
-      expect(provider).toBeInstanceOf(FallbackProvider);
+      expect(provider).toBeInstanceOf(ClaudeCliProvider);
     });
 
-    it("'haiku' + API 키 → FallbackProvider 반환", () => {
+    it("'haiku' + API 키 있음 → ClaudeCliProvider 반환", () => {
       const provider = createProvider("haiku");
-      expect(provider).toBeInstanceOf(FallbackProvider);
+      expect(provider).toBeInstanceOf(ClaudeCliProvider);
     });
 
-    it("'opus' + API 키 → FallbackProvider 반환", () => {
+    it("'opus' + API 키 있음 → ClaudeCliProvider 반환", () => {
       const provider = createProvider("opus");
-      expect(provider).toBeInstanceOf(FallbackProvider);
+      expect(provider).toBeInstanceOf(ClaudeCliProvider);
     });
-  });
 
-  describe("Claude 계열 — API 키 없으면 ClaudeCliProvider 단독", () => {
     it("'sonnet' + API 키 없음 → ClaudeCliProvider 반환", () => {
       delete process.env.ANTHROPIC_API_KEY;
       const provider = createProvider("sonnet");

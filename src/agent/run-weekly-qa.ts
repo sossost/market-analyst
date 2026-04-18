@@ -6,8 +6,6 @@ import { pool } from "@/db/client";
 import { sendDiscordError } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider.js";
-import { AnthropicProvider } from "@/debate/llm/anthropicProvider.js";
-import { FallbackProvider } from "@/debate/llm/fallbackProvider.js";
 import {
   queryWeeklyQaThesisWeekly,
   queryWeeklyQaThesisOverall,
@@ -30,9 +28,7 @@ import {
   type WeeklyQaBiasMetricsRow,
 } from "@/db/repositories/index.js";
 
-import { CLAUDE_SONNET } from "@/lib/models.js";
 
-const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 const SCORE_THRESHOLD_FOR_ISSUE = 6;
 
@@ -366,11 +362,7 @@ async function main() {
 
   // 3. LLM 호출 (CLI → SDK 폴백)
   logger.step("[3/5] LLM 분석 요청...");
-  const cli = new ClaudeCliProvider();
-  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
-  const provider = hasApiKey
-    ? new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI")
-    : cli;
+  const provider = new ClaudeCliProvider();
   const userPrompt = buildUserPrompt(data, today);
 
   const llmResult = await provider.call({
