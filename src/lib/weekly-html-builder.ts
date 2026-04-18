@@ -556,6 +556,57 @@ const WEEKLY_REPORT_CSS = `
     text-align: center;
   }
 
+  /* Symbol cell with chain icon */
+  .symbol-cell { display: flex; align-items: center; gap: 6px; }
+
+  .chain-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: #e8f4fd;
+    font-size: 0.6rem;
+    cursor: default;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .chain-icon::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    transform: none;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 400;
+    line-height: 1.4;
+    padding: 6px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+  }
+  .chain-icon::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 1px);
+    left: 4px;
+    transform: none;
+    border: 5px solid transparent;
+    border-top-color: #1a1a1a;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+  }
+  .chain-icon:hover::after,
+  .chain-icon:hover::before { opacity: 1; }
+
   /* Weekly Trend mini-table */
   .weekly-trend-table {
     width: 100%;
@@ -1104,6 +1155,7 @@ export function renderIndustryTop10Table(industries: IndustryItem[]): string {
 export function renderWatchlistSection(
   watchlist: WatchlistStatusData,
   activePortfolioSymbols: string[] = [],
+  chainMap?: Map<string, string>,
 ): string {
   const { items } = watchlist;
 
@@ -1191,11 +1243,20 @@ export function renderWatchlistSection(
         ? '<span class="spotlight-badge">주목</span> '
         : "";
 
+      const chainTooltip = chainMap?.get(item.symbol);
+      const chainIconHtml = chainTooltip != null
+        ? `<span class="chain-icon" data-tooltip="${escapeHtml(chainTooltip)}">🔗</span>`
+        : "";
+
       const rowClass = isSpotlight ? ' class="spotlight-row"' : "";
 
       return `
         <tr${rowClass}>
-          <td><strong>${escapeHtml(item.symbol)}</strong>${spotlightBadge}</td>
+          <td>
+            <div class="symbol-cell">
+              <strong>${escapeHtml(item.symbol)}</strong>${spotlightBadge}${chainIconHtml}
+            </div>
+          </td>
           <td>${escapeHtml(item.entrySector ?? "—")}</td>
           <td>${escapeHtml(item.entryDate)}</td>
           <td>${escapeHtml(String(item.daysTracked))}일</td>
@@ -1299,6 +1360,7 @@ function renderWatchlistChangeCard(
  */
 export function renderPortfolioSection(
   positions: PortfolioPositionWithCurrentData[],
+  chainMap?: Map<string, string>,
 ): string {
   if (positions.length === 0) {
     return `<div class="empty-state">현재 편입 종목 없음</div>`;
@@ -1326,9 +1388,18 @@ export function renderPortfolioSection(
 
       const rsStr = pos.currentRsScore != null ? String(pos.currentRsScore) : "—";
 
+      const chainTooltip = chainMap?.get(pos.symbol);
+      const chainIconHtml = chainTooltip != null
+        ? `<span class="chain-icon" data-tooltip="${escapeHtml(chainTooltip)}">🔗</span>`
+        : "";
+
       return `
         <tr>
-          <td><strong>${escapeHtml(pos.symbol)}</strong></td>
+          <td>
+            <div class="symbol-cell">
+              <strong>${escapeHtml(pos.symbol)}</strong>${chainIconHtml}
+            </div>
+          </td>
           <td>${escapeHtml(pos.sector ?? "—")}</td>
           <td>${escapeHtml(pos.entryDate)}</td>
           <td>${escapeHtml(entryPriceStr)}</td>
@@ -1512,14 +1583,27 @@ export function buildWeeklyHtml(
   const weekStartLabel = `${weekStartDate.getUTCMonth() + 1}/${weekStartDate.getUTCDate()}`;
   const weekRangeLabel = `${weekStartLabel} ~ ${weekEndLabel}`;
 
+  // thesisAlignedCandidates → symbol별 체인 툴팁 맵 (관심종목/포트폴리오 테이블 아이콘용)
+  const chainMap = new Map<string, string>();
+  if (data.thesisAlignedCandidates != null) {
+    for (const chain of data.thesisAlignedCandidates.chains) {
+      const tooltip = `${chain.megatrend} · ${chain.bottleneck}`;
+      for (const c of chain.candidates) {
+        if (!chainMap.has(c.symbol)) {
+          chainMap.set(c.symbol, tooltip);
+        }
+      }
+    }
+  }
+
   // 데이터 블록 렌더링
   const indexTableHtml = renderIndexTable(data.indexReturns, data.fearGreed);
   const phase2TrendHtml = renderPhase2TrendTable(data.marketBreadth, insight.breadthNarrative);
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
-  const watchlistHtml = renderWatchlistSection(data.watchlist, data.activePortfolioSymbols);
+  const watchlistHtml = renderWatchlistSection(data.watchlist, data.activePortfolioSymbols, chainMap);
   const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges);
-  const portfolioTableHtml = renderPortfolioSection(portfolioPositions);
+  const portfolioTableHtml = renderPortfolioSection(portfolioPositions, chainMap);
 
   // 해석 블록: LLM 텍스트 → marked HTML
   const sectorRotationHtml = mdToHtml(insight.sectorRotationNarrative);
@@ -1533,10 +1617,6 @@ export function buildWeeklyHtml(
   const narrativeEvolutionHtml = mdToHtml(insight.narrativeEvolution);
   const thesisAccuracyHtml = mdToHtml(insight.thesisAccuracy);
   const regimeContextHtml = mdToHtml(insight.regimeContext);
-  const thesisAlignedHtml = renderThesisAlignedSection(
-    data.thesisAlignedCandidates,
-    insight.thesisAlignedNarrative ?? "",
-  );
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -1590,13 +1670,6 @@ export function buildWeeklyHtml(
         <h3>Thesis 적중률 피드백</h3>
         <div class="content-block">${thesisAccuracyHtml}</div>
       </section>
-
-      <!-- 섹션 3.5: 서사 수혜 후보 (데이터 없으면 섹션 미출력) -->
-      ${thesisAlignedHtml !== "" ? `
-      <section>
-        <h2>🔗 서사 수혜 후보</h2>
-        ${thesisAlignedHtml}
-      </section>` : ""}
 
       <!-- 섹션 4: 관심종목 궤적 (ACTIVE) -->
       <section>
