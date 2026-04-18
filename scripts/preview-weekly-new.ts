@@ -9,7 +9,7 @@ import { pool } from "../src/db/client.js";
 import { getIndexReturns } from "../src/tools/getIndexReturns.js";
 import { getMarketBreadth } from "../src/tools/getMarketBreadth.js";
 import { getLeadingSectors } from "../src/tools/getLeadingSectors.js";
-import { getWatchlistStatus } from "../src/tools/getWatchlistStatus.js";
+import { getTrackedStocks } from "../src/tools/getTrackedStocks.js";
 import { getPhase2Stocks } from "../src/tools/getPhase2Stocks.js";
 import { buildWeeklyHtml } from "../src/lib/weekly-html-builder.js";
 import { getLatestPriceDate } from "../src/etl/utils/date-helpers.js";
@@ -84,8 +84,8 @@ async function main() {
   const industries = Array.isArray(industryRaw.industries) ? industryRaw.industries : [];
   console.log(`  ✓ ${industries.length} industries`);
 
-  console.log("[5/6] get_watchlist_status...");
-  const watchlistRaw = parse(await getWatchlistStatus.execute({ include_trajectory: true, date: targetDate }));
+  console.log("[5/6] get_tracked_stocks...");
+  const watchlistRaw = parse(await getTrackedStocks.execute({ include_trajectory: true }));
   const watchlist = {
     summary: (watchlistRaw.summary ?? { totalActive: 0, phaseChanges: [], avgPnlPercent: 0 }) as WeeklyReportData["watchlist"]["summary"],
     items: Array.isArray(watchlistRaw.items) ? watchlistRaw.items : [],
@@ -125,6 +125,28 @@ async function main() {
     }));
   console.log(`  ✓ ${pending4of5.length} pending 4/5`);
 
+  // thesis_aligned 픽스처 (라벨 렌더링 확인용)
+  const mockThesisAligned = {
+    chains: [
+      {
+        chainId: 1,
+        megatrend: "AI 인프라",
+        bottleneck: "AI 인프라 확장",
+        chainStatus: "RESOLVING" as const,
+        alphaCompatible: true,
+        daysSinceIdentified: 11,
+        candidates: [
+          { symbol: "CIEN", chainId: 1, megatrend: "AI 인프라", bottleneck: "AI 인프라 확장", chainStatus: "RESOLVING" as const, phase: 2, rsScore: 98, pctFromHigh52w: -5, sepaGrade: "A", sector: "Technology", industry: "Communication Equipment", marketCap: 41_600_000_000, gatePassCount: 4, gateTotalCount: 4, source: "llm" as const, certified: true },
+          { symbol: "LITE", chainId: 1, megatrend: "AI 인프라", bottleneck: "AI 인프라 확장", chainStatus: "RESOLVING" as const, phase: 2, rsScore: 98, pctFromHigh52w: -8, sepaGrade: "B", sector: "Technology", industry: "Communication Equipment", marketCap: 39_900_000_000, gatePassCount: 3, gateTotalCount: 4, source: "llm" as const, certified: true },
+          { symbol: "AAOI", chainId: 1, megatrend: "AI 인프라", bottleneck: "AI 인프라 확장", chainStatus: "RESOLVING" as const, phase: 2, rsScore: 100, pctFromHigh52w: -3, sepaGrade: "C", sector: "Technology", industry: "Semiconductors", marketCap: 7_200_000_000, gatePassCount: 3, gateTotalCount: 4, source: "llm" as const, certified: false },
+          { symbol: "AXTI", chainId: 1, megatrend: "AI 인프라", bottleneck: "AI 인프라 확장", chainStatus: "RESOLVING" as const, phase: 2, rsScore: 100, pctFromHigh52w: -12, sepaGrade: "C", sector: "Technology", industry: "Semiconductors", marketCap: 1_400_000_000, gatePassCount: 3, gateTotalCount: 4, source: "sector" as const, certified: true },
+        ],
+      },
+    ],
+    totalCandidates: 4,
+    phase2Count: 4,
+  };
+
   // 2. WeeklyReportData 조립
   const reportData: WeeklyReportData = {
     indexReturns: indices as WeeklyReportData["indexReturns"],
@@ -136,6 +158,7 @@ async function main() {
     industryTop10: allIndustries as WeeklyReportData["industryTop10"],
     watchlist,
     gate5Candidates: stocks as WeeklyReportData["gate5Candidates"],
+    thesisAlignedCandidates: mockThesisAligned,
     watchlistChanges: {
       registered: [], // 에이전트 판단 필요 — 프리뷰에서는 비어있음
       exited: [],     // 에이전트 판단 필요
