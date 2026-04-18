@@ -8,24 +8,17 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { logger } from "@/lib/logger";
 import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider.js";
-import { AnthropicProvider } from "@/debate/llm/anthropicProvider.js";
-import { FallbackProvider } from "@/debate/llm/fallbackProvider.js";
 import type { LLMProvider } from "@/debate/llm/types.js";
 import type { FundamentalScore, FundamentalInput, DataQualityVerdict } from "@/types/fundamental";
 import type { StockReportContext } from "./stockReport.js";
 
 const PERSONA_PATH = resolve(import.meta.dirname, "../../.claude/agents/fundamental-analyst.md");
-import { CLAUDE_SONNET } from "@/lib/models.js";
 
-const FALLBACK_MODEL = CLAUDE_SONNET;
 const MAX_TOKENS = 4096;
 const MAX_NARRATIVE_LENGTH = 6000;
 
 function createFundamentalProvider(): LLMProvider {
-  const cli = new ClaudeCliProvider();
-  const hasApiKey = process.env.ANTHROPIC_API_KEY != null && process.env.ANTHROPIC_API_KEY !== "";
-  if (!hasApiKey) return cli;
-  return new FallbackProvider(cli, new AnthropicProvider(FALLBACK_MODEL), "ClaudeCLI");
+  return new ClaudeCliProvider();
 }
 
 interface FundamentalAnalysis {
