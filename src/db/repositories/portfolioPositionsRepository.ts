@@ -149,7 +149,7 @@ export async function updatePortfolioExit(
          exit_date = $1,
          exit_price = $2,
          exit_reason = $3
-     WHERE symbol = $4 AND entry_date = $5`,
+     WHERE symbol = $4 AND entry_date = $5 AND status = 'ACTIVE'`,
     [
       exit.exitDate,
       exit.exitPrice ?? null,
