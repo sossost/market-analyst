@@ -344,7 +344,8 @@ function buildSurpriseLine(actualEps: number | null, estimatedEps: number | null
  * XML 특수문자를 이스케이프한다.
  * 외부 데이터를 XML 태그 내에 삽입할 때 태그 구조가 깨지지 않도록 방지한다.
  */
-function escapeXml(s: string): string {
+function escapeXml(s: string | null | undefined): string {
+  if (s == null) return "";
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
