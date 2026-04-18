@@ -14,7 +14,7 @@ vi.mock("@/db/client", () => ({
 }));
 
 import { pool } from "@/db/client";
-import { findPhase2SinceDates, queryWeeklyQaThesisOverall } from "../stockPhaseRepository.js";
+import { findPhase2SinceDates, queryWeeklyQaThesisOverall, findPortfolioEligibleStock } from "../stockPhaseRepository.js";
 
 const mockQuery = vi.mocked(pool.query);
 
@@ -62,6 +62,54 @@ describe("findPhase2SinceDates", () => {
     expect(result[0].phase2_since).toBe("2026-04-05");
     expect(result[1].symbol).toBe("AAPL");
     expect(result[1].phase2_since).toBe("2026-04-08");
+  });
+});
+
+describe("findPortfolioEligibleStock", () => {
+  it("Phase 2 + RS>=60 + SEPA S/A 조건이 SQL에 포함된다", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+
+    await findPortfolioEligibleStock("NVDA", "2026-04-18");
+
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("stock_phases");
+    expect(sql).toContain("phase = 2");
+    expect(sql).toContain("rs_score >= 60");
+    expect(sql).toContain("grade IN ('S', 'A')");
+    expect(sql).toContain("country = 'US'");
+  });
+
+  it("symbol과 date를 파라미터로 전달한다", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+
+    await findPortfolioEligibleStock("NVDA", "2026-04-18");
+
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params[0]).toBe("NVDA");
+    expect(params[1]).toBe("2026-04-18");
+  });
+
+  it("자격이 있는 종목 데이터를 반환한다", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ symbol: "NVDA", phase: 2, rs_score: 70, sepa_grade: "A", sector: "Technology", industry: "Semiconductors" }],
+      rowCount: 1,
+    } as never);
+
+    const result = await findPortfolioEligibleStock("NVDA", "2026-04-18");
+
+    expect(result).not.toBeNull();
+    expect(result?.symbol).toBe("NVDA");
+    expect(result?.phase).toBe(2);
+    expect(result?.rs_score).toBe(70);
+    expect(result?.sepa_grade).toBe("A");
+  });
+
+  it("자격 미충족 종목은 null을 반환한다 (SEPA 기록 없음 포함)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+
+    const result = await findPortfolioEligibleStock("XYZ", "2026-04-18");
+
+    expect(result).toBeNull();
   });
 });
 

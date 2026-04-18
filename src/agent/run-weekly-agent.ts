@@ -443,7 +443,7 @@ async function evaluatePortfolio(
       industry: item.industry ?? eligible.industry ?? undefined,
       entryDate: targetDate,
       // entryPrice 생략 → Repository 내부에서 daily_prices 자동 조회
-      entryPhase: item.phase,
+      entryPhase: eligible.phase, // DB 검증된 값 우선 (eligible.phase는 항상 2로 보장)
       entryRsScore: item.rs_score ?? eligible.rs_score ?? undefined,
       entrySepaGrade: item.sepa_grade ?? eligible.sepa_grade ?? undefined,
       thesisId: item.thesis_id ?? undefined,
