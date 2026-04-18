@@ -46,7 +46,7 @@ ${ANALYSIS_FRAMEWORK}
 - **마크다운 테이블, 리포트 포맷을 직접 작성하지 마라.** 데이터 테이블은 프로그래밍이 렌더링한다.
 - 모든 분석 완료 후 **capture_weekly_insight를 정확히 1회 호출**하라.
 - 각 해석 필드에 숫자 계산이나 테이블을 쓰지 마라. 텍스트 판단과 서사만 작성하라.
-- capture_weekly_insight 호출 전에 반드시 save_tracked_stock 등 액션 도구를 먼저 완료하라.
+- **save_tracked_stock을 직접 호출하지 마라.** 포트폴리오 승격/탈락은 capture_weekly_insight의 \`portfolioRegistrations\`/\`portfolioExits\` 필드에 기입하면 시스템이 처리한다.
 - save_report_log는 capture_weekly_insight 이후에 호출하라.
 
 ---
@@ -113,56 +113,58 @@ ${ANALYSIS_FRAMEWORK}
 
 ---
 
-## 섹션 4 — 신규 추적 종목 등록/해제
+## 섹션 4 — 포트폴리오 승격/탈락
 
-**목적**: 이번 주 에이전트 판단 기준을 통과한 종목을 추적 종목(tracked_stocks, source='agent')으로 등록하거나, 이탈 기준에 달한 종목을 해제한다.
+**목적**: 이번 주 에이전트 판단 기준을 충족한 종목을 포트폴리오(tracked_stocks, source='agent')에 승격하거나, 이탈 기준에 달한 종목을 탈락시킨다.
 
-### 추적 종목 등록 — 에이전트 소스(agent) 최소 게이트
+> **중요**: 이 섹션에서 save_tracked_stock을 직접 호출하지 마라. 승격/탈락 목록을 분석한 뒤 capture_weekly_insight의 \`portfolioRegistrations\`와 \`portfolioExits\` 필드에 기입하면 시스템이 자동으로 DB에 반영한다.
+
+### 포트폴리오 승격 기준
 
 | 조건 | 기준 |
 |------|------|
-| Phase 2 | Phase 2 이상 (필수 — Phase 1 종목 등록 불가) |
+| Phase 2 | Phase 2 이상 (필수 — Phase 1 종목 승격 불가) |
 | 이유 명시 | 에이전트의 판단 근거를 자유 텍스트로 기술 (필수) |
 
-**추가 검토 권장 기준 (필수는 아님)**:
-- 업종 RS 동반 상승 — 해당 종목의 업종 RS가 이번 주 상승 중이면 우선 등록
-- 개별 RS 60 이상 — RS 강세는 포착 선행성 판단 근거
-- 서사/thesis 연결 — ACTIVE thesis와 연결 시 thesis_id 명시
-- SEPA 등급 — S/A이면 featured 티어로 등록 고려
+**우선순위 높은 승격 후보 (필수는 아님, 추가 검토)**:
+- 업종 RS 동반 상승 — changeWeek > 0인 업종 소속 종목 우선
+- 개별 RS 60 이상 — 포착 선행성 판단 근거
+- 서사/thesis 연결 — ACTIVE thesis와 연결 시 thesisId 명시
+- SEPA S/A 등급 — 펀더멘탈 품질 보증
 
-**"후보 없음" 케이스**: 이번 주 Phase 2 종목 중 에이전트 판단 기준을 충족하는 종목이 없으면 "이번 주 신규 등록 없음 — 이번 주 시장에서 포착할 만한 종목 없음"으로 명시한다. 등록 0개는 정상 운영이다. 억지로 등록하지 않는다.
+**"승격 없음" 케이스**: 이번 주 기준 충족 종목이 없으면 \`portfolioRegistrations\`를 빈 배열로 기입한다. 승격 0개는 정상 운영이다. 억지로 승격하지 않는다.
 
-### 추적 종목 해제 기준
+### 포트폴리오 탈락 기준
 
-- Phase 2 이탈(Phase 3 진입) — 즉시 해제
-- 등록일 기준 90일 초과 — 자동 EXITED 처리 (ETL이 처리하므로 에이전트가 별도 해제 불필요)
-- ACTIVE thesis 소멸 + RS 하락 동반 — 서사 근거 소멸로 해제 검토
+- Phase 2 이탈(Phase 3 진입) — 즉시 탈락
+- 등록일 기준 90일 초과 — 자동 EXITED 처리 (ETL이 처리하므로 별도 탈락 불필요)
+- RS 급락(30 미만) + 서사 소멸 동반 — 서사 근거 소멸로 탈락 검토
 
 ### 워크플로우 (섹션 4)
 
-7. **초입 포착 스크리닝** — 등록 후보 평가용 데이터 수집
+7. **초입 포착 스크리닝** — 승격 후보 평가용 데이터 수집
    a. **Phase 2 종목 조회** (get_phase2_stocks) — RS 60 이상 종목 전체 반환.
       각 종목에 sepaGrade 필드 포함. 아래 기준으로 우선순위 평가:
-      - Phase 2: ✓ (이미 필터링됨, 등록 필수 조건)
-      - RS 60+: ✓ (이미 필터링됨, 등록 권장)
-      - SEPA: sepaGrade가 "S" 또는 "A"이면 featured 티어 우선 고려
-      - 업종RS: get_leading_sectors(mode: "industry") 결과에서 해당 종목의 industry와 일치하는 항목의 changeWeek > 0이면 우선 등록
-   b. **Phase 1 후기 종목** (get_phase1_late_stocks) — Phase 2 진입 직전 종목 (등록 불가, thesis가 강하면 gate5Summary에 "예비 워치리스트"로 언급)
-   c. **RS 상승 초기 종목** (get_rising_rs) — RS 30~60 범위에서 가속 상승 중 (등록 가능성 낮음, 서사 기반 예비 워치리스트로 표기)
+      - Phase 2: ✓ (이미 필터링됨, 승격 필수 조건)
+      - RS 60+: ✓ (이미 필터링됨, 승격 권장)
+      - SEPA: sepaGrade가 "S" 또는 "A"이면 우선 고려
+      - 업종RS: get_leading_sectors(mode: "industry") 결과에서 changeWeek > 0인 업종 소속 종목 우선
+   b. **Phase 1 후기 종목** (get_phase1_late_stocks) — Phase 2 진입 직전 종목 (승격 불가, thesis가 강하면 gate5Summary에 "예비" 언급)
+   c. **RS 상승 초기 종목** (get_rising_rs) — RS 30~60 범위에서 가속 상승 중 (승격 가능성 낮음, 서사 기반 예비로 표기)
    d. **펀더멘탈 가속 종목** (get_fundamental_acceleration) — EPS/매출 YoY 가속 패턴
 
-8. **이력 확인** (read_report_history) — 최근 등록/해제 이력 확인
+8. **이력 확인** (read_report_history) — 최근 승격/탈락 이력 확인
 
-9. **개별 종목 심층 분석** (get_stock_detail) — 등록 후보의 상세 데이터 확인. 가격, 업종, Phase, 업종RS 등 기본 컨텍스트를 반드시 파악하라.
+9. **개별 종목 심층 분석** (get_stock_detail) — 승격 후보의 상세 데이터 확인. 가격, 업종, Phase, 업종RS 등 기본 컨텍스트를 반드시 파악하라.
 
-10. **카탈리스트 검색** (search_catalyst) — 등록 후보 각각에 대해 뉴스/서사 확인
+10. **카탈리스트 검색** (search_catalyst) — 승격 후보 각각에 대해 뉴스/서사 확인
 
-11. **추적 종목 저장** (save_tracked_stock) — Phase 2 + 이유 명시로 등록. thesis_id 있으면 함께 전달.
-    - **Phase 2 + thesis 연결**: action: "register" (thesis_id 포함, tier='featured' 고려)
-    - **Phase 2 + 이유만 있음**: action: "register" (tier='standard')
-    - **Phase 이탈 종목**: action: "exit"
-    - **Phase 2 미충족**: save_tracked_stock 호출하지 않음
-    - 반드시 capture_weekly_insight 이전에 호출
+11. **현재 포트폴리오 점검** — 섹션 3에서 조회한 추적 종목 중 탈락 기준에 해당하는 종목 선별
+
+12. **승격/탈락 목록 확정** — capture_weekly_insight 호출 시 아래 필드에 기입:
+    - \`portfolioRegistrations\`: 이번 주 승격 종목 배열 (symbol, reason, thesisId)
+    - \`portfolioExits\`: 이번 주 탈락 종목 배열 (symbol, reason)
+    - **save_tracked_stock을 직접 호출하지 마라** — 시스템이 자동 처리
 
 ---
 
@@ -194,7 +196,7 @@ ${ANALYSIS_FRAMEWORK}
 - **sectorRotationNarrative**: 섹터 로테이션 해석. 구조적 상승(4주 추세 일치)인지 일회성 반등인지 판단. 2주 연속 상위 유지 섹터 강조. 숫자 테이블 금지.
 - **industryFlowNarrative**: 업종 RS 자금 흐름 해석. Top 10 업종의 공통 테마와 자금 집중 방향. 섹터별 집중도와 시사점.
 - **watchlistNarrative**: 추적 종목(tracked_stocks) 서사 유효성. Phase 궤적이 thesis를 지지하는지, 이탈 우려 종목과 사유, 서사 가속 종목 언급.
-- **gate5Summary**: 추적 종목 등록/해제 판단 결과 서술. 이번 주 등록 근거(Phase 2 충족 여부, RS 강세, thesis 연결 여부). "신규 등록 없음" 케이스에서는 이번 주 시장 상황 설명.
+- **gate5Summary**: 포트폴리오 승격/탈락 판단 결과 서술. 이번 주 승격 근거(Phase 2, RS 강세, thesis 연결 여부)와 탈락 근거. "승격 없음" 케이스에서는 이번 주 시장 상황 설명.
 - **riskFactors**: 다음 주 주의해야 할 매크로/기술적 리스크. VIX 레벨, 지정학 이벤트, Phase 2 비율 추세 반전 가능성.
 - **nextWeekWatchpoints**: 다음 주 확인이 필요한 시그널. Phase 2 임박 종목, RS 가속 업종, 데이터 확인 포인트.
 - **thesisScenarios**: 현재 ACTIVE thesis와 이번 주 데이터 정합성. 진전된 thesis와 여전히 관망 중인 thesis 구분.
@@ -205,12 +207,13 @@ ${ANALYSIS_FRAMEWORK}
 
 ## 규칙
 
-- **에이전트 등록 최소 게이트**: Phase 2 + 이유 명시 — 필수 2개만 충족하면 등록 가능. 단, 포착 품질을 위해 RS, 업종RS, thesis, SEPA를 추가로 검토하라.
-- **후보 없음은 정상**: 이번 주 포착할 만한 Phase 2 종목이 없으면 "이번 주 신규 등록 없음"이 올바른 답. 억지로 등록하지 않는다.
+- **포트폴리오 승격 최소 게이트**: Phase 2 + 이유 명시 — 필수 2개만 충족하면 승격 가능. 단, 포착 품질을 위해 RS, 업종RS, thesis, SEPA를 추가로 검토하라.
+- **승격 없음은 정상**: 이번 주 포착할 만한 Phase 2 종목이 없으면 \`portfolioRegistrations\`를 빈 배열로 기입한다. 억지로 승격하지 않는다.
+- **save_tracked_stock 직접 호출 금지**: 포트폴리오 승격/탈락은 capture_weekly_insight의 JSON 필드로만 제출하라.
 - **phase2Ratio는 이미 퍼센트 단위(0~100)입니다. 절대 ×100 하지 마세요.** 예: 도구가 35.2를 반환하면 "Phase 2: 35.2%"로 기재. 3520%는 이중 변환 버그입니다.
 - **독립적인 도구는 한 번에 여러 개 동시 호출하세요** — 예: get_index_returns + get_market_breadth + get_leading_sectors(weekly) + get_leading_sectors(industry)를 하나의 응답에서 함께 호출
 - 리포트 이력 저장은 반드시 save_report_log로 하세요
-- **추적 종목 저장**: save_tracked_stock — action: "register"로 등록, action: "exit"로 해제
+- **포트폴리오 승격/탈락**: save_tracked_stock을 직접 호출하지 마라. capture_weekly_insight의 \`portfolioRegistrations\`/\`portfolioExits\` 필드에 기입하면 시스템이 자동 처리한다.
 - 추적 종목 현황 조회는 get_tracked_stocks를 사용하세요 (include_trajectory: true)
 - **등급 아이콘(⭐🟢🔵🟡🔴)은 반드시 펀더멘탈 검증 결과에 근거하세요**. 검증 데이터가 없으면 아이콘을 사용하지 마세요
 - **주간 리포트에서 일간 수치(전일 대비 등락률)를 사용하지 마세요** — 반드시 주간 누적/추이 데이터를 사용하세요

@@ -357,6 +357,16 @@ export interface WeeklyReportInsight {
   thesisAlignedNarrative?: string;
   /** Discord 핵심 요약 (3~5줄). 텍스트 전용, 링크 금지 */
   discordMessage: string;
+  /**
+   * 이번 주 포트폴리오(source='agent') 신규 승격 목록.
+   * 포스트-LLM 단계에서 save_tracked_stock을 통해 실제 DB에 등록된다.
+   */
+  portfolioRegistrations?: PortfolioRegistration[];
+  /**
+   * 이번 주 포트폴리오(source='agent') 탈락 목록.
+   * 포스트-LLM 단계에서 save_tracked_stock을 통해 실제 DB에서 해제된다.
+   */
+  portfolioExits?: PortfolioExit[];
 }
 
 // ─── 런타임 유효성 검증 ────────────────────────────────────────────────────────
@@ -484,5 +494,11 @@ export function fillInsightDefaults(
       typeof raw["discordMessage"] === "string"
         ? raw["discordMessage"]
         : defaults.discordMessage,
+    portfolioRegistrations: Array.isArray(raw["portfolioRegistrations"])
+      ? (raw["portfolioRegistrations"] as PortfolioRegistration[])
+      : [],
+    portfolioExits: Array.isArray(raw["portfolioExits"])
+      ? (raw["portfolioExits"] as PortfolioExit[])
+      : [],
   };
 }

@@ -88,7 +88,32 @@ export function createCaptureWeeklyInsightTool(
           },
           discordMessage: {
             type: "string",
-            description: "Discord 핵심 요약 3~5줄. 텍스트만, 링크 금지. 지수 주간 수익률 + Phase 2 비율 변화 + 신규 관심종목 건수 포함.",
+            description: "Discord 핵심 요약 3~5줄. 텍스트만, 링크 금지. 지수 주간 수익률 + Phase 2 비율 변화 + 포트폴리오 승격/탈락 건수 포함.",
+          },
+          portfolioRegistrations: {
+            type: "array",
+            description: "이번 주 포트폴리오 신규 승격 목록. save_tracked_stock을 직접 호출하지 말고 이 필드에 기입하면 시스템이 DB에 등록한다.",
+            items: {
+              type: "object",
+              properties: {
+                symbol: { type: "string", description: "종목 심볼 (예: AAPL)" },
+                reason: { type: "string", description: "승격 근거 (Phase 2, RS, thesis 연결 등)" },
+                thesisId: { type: "number", description: "연결된 thesis ID (없으면 생략)" },
+              },
+              required: ["symbol", "reason"],
+            },
+          },
+          portfolioExits: {
+            type: "array",
+            description: "이번 주 포트폴리오 탈락 목록. save_tracked_stock을 직접 호출하지 말고 이 필드에 기입하면 시스템이 DB에서 해제한다.",
+            items: {
+              type: "object",
+              properties: {
+                symbol: { type: "string", description: "종목 심볼 (예: AAPL)" },
+                reason: { type: "string", description: "탈락 근거 (Phase 이탈, RS 급락, 서사 소멸 등)" },
+              },
+              required: ["symbol", "reason"],
+            },
           },
         },
         required: [
