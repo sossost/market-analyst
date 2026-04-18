@@ -22,6 +22,8 @@ vi.mock('../githubClient.js', () => ({
 
 vi.mock('../executeIssue.js', () => ({
   executeIssue: vi.fn().mockResolvedValue({ success: true, prUrl: 'https://github.com/owner/repo/pull/1' }),
+  isCiFailureIssue: vi.fn().mockReturnValue(false),
+  executeCiFailureIssue: vi.fn().mockResolvedValue({ success: true }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -159,5 +161,41 @@ describe('processIssues — fetchTriageComment 기반 흐름', () => {
 
     const { processIssues } = await import('../index.js')
     await expect(processIssues()).resolves.toBeUndefined()
+  })
+
+  it('CI 실패 이슈는 executeCiFailureIssue로 라우팅된다', async () => {
+    const { fetchUnprocessedIssues, fetchTriageComment } = await import('../githubClient.js')
+    const { executeIssue, isCiFailureIssue, executeCiFailureIssue } = await import('../executeIssue.js')
+
+    const ciIssue = createIssue({
+      number: 200,
+      title: 'fix: CI 실패 — feat: 새 기능 (#42)',
+      body: '**브랜치**: `feat/issue-42`',
+    })
+    vi.mocked(fetchUnprocessedIssues).mockResolvedValue([ciIssue])
+    vi.mocked(isCiFailureIssue).mockReturnValue(true)
+
+    const { processIssues } = await import('../index.js')
+    await processIssues()
+
+    expect(executeCiFailureIssue).toHaveBeenCalledWith(ciIssue)
+    expect(executeIssue).not.toHaveBeenCalled()
+    expect(fetchTriageComment).not.toHaveBeenCalled()
+  })
+
+  it('일반 이슈는 기존 executeIssue로 라우팅된다', async () => {
+    const { fetchUnprocessedIssues, fetchTriageComment } = await import('../githubClient.js')
+    const { executeIssue, isCiFailureIssue, executeCiFailureIssue } = await import('../executeIssue.js')
+
+    const normalIssue = createIssue()
+    vi.mocked(fetchUnprocessedIssues).mockResolvedValue([normalIssue])
+    vi.mocked(isCiFailureIssue).mockReturnValue(false)
+    vi.mocked(fetchTriageComment).mockResolvedValue(undefined)
+
+    const { processIssues } = await import('../index.js')
+    await processIssues()
+
+    expect(executeIssue).toHaveBeenCalledWith(normalIssue, undefined)
+    expect(executeCiFailureIssue).not.toHaveBeenCalled()
   })
 })

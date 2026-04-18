@@ -12,7 +12,7 @@
 import 'dotenv/config'
 
 import { fetchUnprocessedIssues, fetchTriageComment } from './githubClient.js'
-import { executeIssue } from './executeIssue.js'
+import { executeIssue, isCiFailureIssue, executeCiFailureIssue } from './executeIssue.js'
 import { MAX_ISSUES_PER_CYCLE } from './types.js'
 import { logger } from '@/lib/logger'
 
@@ -39,19 +39,29 @@ export async function processIssues(): Promise<void> {
 
   for (const issue of toProcess) {
     try {
-      // Step 2a: 사전 트리아지 분석 조회 (triageBatch가 남긴 코멘트)
-      log(`▶ 트리아지 코멘트 조회: #${issue.number}`)
-      const triageComment = await fetchTriageComment(issue.number)
-      log(`  트리아지 코멘트: ${triageComment != null ? '있음' : '없음 (폴백)'}`)
-
-      // Step 2b: 구현 실행
-      log(`▶ 실행: #${issue.number} "${issue.title}"`)
-      const result = await executeIssue(issue, triageComment)
-
-      if (result.success) {
-        log(`  ✓ PR 생성 완료: ${result.prUrl}`)
+      // CI 실패 이슈는 전용 실행 경로로 라우팅
+      if (isCiFailureIssue(issue.title)) {
+        log(`▶ CI 실패 수정: #${issue.number} "${issue.title}"`)
+        const result = await executeCiFailureIssue(issue)
+        if (result.success) {
+          log(`  ✓ CI 수정 커밋 푸시 완료`)
+        } else {
+          log(`  ✗ CI 수정 실패: ${result.error}`)
+        }
       } else {
-        log(`  ✗ 실행 실패: ${result.error}`)
+        // 일반 이슈: 사전 트리아지 분석 조회 + 구현 실행
+        log(`▶ 트리아지 코멘트 조회: #${issue.number}`)
+        const triageComment = await fetchTriageComment(issue.number)
+        log(`  트리아지 코멘트: ${triageComment != null ? '있음' : '없음 (폴백)'}`)
+
+        log(`▶ 실행: #${issue.number} "${issue.title}"`)
+        const result = await executeIssue(issue, triageComment)
+
+        if (result.success) {
+          log(`  ✓ PR 생성 완료: ${result.prUrl}`)
+        } else {
+          log(`  ✗ 실행 실패: ${result.error}`)
+        }
       }
     } catch (err) {
       const errorMessage =

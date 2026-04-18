@@ -379,6 +379,7 @@ Phase 2 종목에 대한 실적 기반 정량 검증 시스템:
 - [x] **시스템 자가 감시** — 주간 자동 감사(데이터 무결성·코드-DB 정합성·파이프라인 연결성·테스트/빌드) + 전략 리뷰 프롬프트 현행화 (#807)
 - [x] **주간 관심종목 선별 + 주봉 관점** — featured→P2 streak→detection_lag 기준 선별 정렬 + Top 5~7 주목 뱃지 + 주봉 관점 프롬프트 (#846)
 - [x] **수혜주 자동 동기화** — narrative_chains beneficiary_tickers Phase 1/4 자동 제거 + 빈 chain sectors 기반 Phase 2 + RS >= 60 후보 자동 추가 (#842)
+- [x] **CI 실패 자동 감지** — PR reviewer가 CI 실패 감지 → 에러 로그 포함 이슈 자동 생성 → issue processor가 PR 브랜치에 수정 커밋 푸시 (#879)
 
 ### Next (진행 예정)
 
