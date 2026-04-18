@@ -986,25 +986,25 @@ describe("renderWatchlistSection", () => {
 // ─── renderWatchlistChanges ───────────────────────────────────────────────────
 
 describe("renderWatchlistChanges", () => {
-  it("빈 케이스: 모두 비어 있으면 신규 등록/해제 없음 메시지를 반환한다", () => {
+  it("빈 케이스: 모두 비어 있으면 포트폴리오 변경 없음 메시지를 반환한다", () => {
     const result = renderWatchlistChanges({
       registered: [],
       exited: [],
     });
 
-    expect(result).toContain("이번 주 신규 등록/해제 없음");
+    expect(result).toContain("이번 주 포트폴리오 변경 없음");
     expect(result).not.toContain("gate5-card");
   });
 
-  it("등록 1건: 카드가 렌더링되고 5/5 게이트 충족 배지가 표시된다", () => {
+  it("등록 1건: 카드가 렌더링되고 포트폴리오 승격 배지가 표시된다", () => {
     const result = renderWatchlistChanges({
       registered: [{ symbol: "NVDA", action: "register", reason: "Phase 2 진입 + thesis 연결" }],
       exited: [],
     });
 
     expect(result).toContain("NVDA");
-    expect(result).toContain("신규 등록 (1종목)");
-    expect(result).toContain("5/5 게이트 충족");
+    expect(result).toContain("신규 승격 (1종목)");
+    expect(result).toContain("포트폴리오 승격");
     expect(result).toContain("Phase 2 진입 + thesis 연결");
   });
 
@@ -1015,7 +1015,7 @@ describe("renderWatchlistChanges", () => {
     });
 
     expect(result).toContain("AAPL");
-    expect(result).toContain("해제 (1종목)");
+    expect(result).toContain("탈락 (1종목)");
     expect(result).toContain("Phase 3 진입으로 해제");
   });
 
@@ -1024,14 +1024,14 @@ describe("renderWatchlistChanges", () => {
       registered: [{
         symbol: "TSLA",
         action: "register",
-        reason: "5중 게이트 통과",
+        reason: "Phase 2 포착",
       }],
       exited: [],
     });
 
     expect(result).toContain("TSLA");
-    expect(result).toContain("5중 게이트 통과");
-    expect(result).toContain("5/5 게이트 충족");
+    expect(result).toContain("Phase 2 포착");
+    expect(result).toContain("포트폴리오 승격");
   });
 });
 

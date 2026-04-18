@@ -1236,20 +1236,20 @@ export function renderWatchlistChanges(
   const hasAny = registered.length > 0 || exited.length > 0;
 
   if (!hasAny) {
-    return `<div class="empty-state">이번 주 신규 등록/해제 없음</div>`;
+    return `<div class="empty-state">이번 주 포트폴리오 변경 없음</div>`;
   }
 
   const registeredHtml = registered.length > 0
     ? `
-      <h3>신규 등록 (${escapeHtml(String(registered.length))}종목)</h3>
+      <h3>신규 승격 (${escapeHtml(String(registered.length))}종목)</h3>
       <div class="gate5-grid">
         ${registered.map((c) => renderWatchlistChangeCard(c, "registered")).join("")}
       </div>`
-    : `<h3>신규 등록</h3><div class="empty-state">이번 주 신규 등록 없음</div>`;
+    : `<h3>신규 승격</h3><div class="empty-state">이번 주 신규 승격 없음</div>`;
 
   const exitedHtml = exited.length > 0
     ? `
-      <h3>해제 (${escapeHtml(String(exited.length))}종목)</h3>
+      <h3>탈락 (${escapeHtml(String(exited.length))}종목)</h3>
       <div class="gate5-grid">
         ${exited.map((c) => renderWatchlistChangeCard(c, "exited")).join("")}
       </div>`
@@ -1266,12 +1266,12 @@ function renderWatchlistChangeCard(
 ): string {
   const badgeHtml = (() => {
     if (variant === "registered") {
-      return `<span class="gate5-new-badge">5/5 게이트 충족</span>`;
+      return `<span class="gate5-new-badge">포트폴리오 승격</span>`;
     }
     if (variant === "pending") {
-      return `<span class="gate-check pending" style="margin-left:auto;">4/5 (thesis 미충족)</span>`;
+      return `<span class="gate-check pending" style="margin-left:auto;">예비</span>`;
     }
-    return `<span class="gate-check fail" style="margin-left:auto;">해제</span>`;
+    return `<span class="gate-check fail" style="margin-left:auto;">탈락</span>`;
   })();
 
   return `
