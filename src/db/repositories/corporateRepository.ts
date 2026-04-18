@@ -23,7 +23,7 @@ import type {
   CorporatePeerGroupRow,
   CorporatePeerRatiosRow,
   CorporatePriceTargetConsensusRow,
-  CorporateStockPhasesCloseRow,
+  CorporateDailyPriceCloseRow,
   CorporateSectorRsRow,
   CorporateIndustryRsRow,
   CorporateAnalysisReportRow,
@@ -253,14 +253,14 @@ export async function findPriceTargetConsensus(
   return rows;
 }
 
-export async function findCurrentPriceFromStockPhases(
+export async function findCurrentPriceFromDailyPrices(
   symbol: string,
   recommendationDate: string,
   pool: Pool,
-): Promise<CorporateStockPhasesCloseRow[]> {
-  const { rows } = await pool.query<CorporateStockPhasesCloseRow>(
+): Promise<CorporateDailyPriceCloseRow[]> {
+  const { rows } = await pool.query<CorporateDailyPriceCloseRow>(
     `SELECT close
-     FROM stock_phases
+     FROM daily_prices
      WHERE symbol = $1 AND date <= $2
      ORDER BY date DESC
      LIMIT 1`,

@@ -25,7 +25,7 @@ import {
   findEpsSurprises,
   findPeerGroup,
   findPriceTargetConsensus,
-  findCurrentPriceFromStockPhases,
+  findCurrentPriceFromDailyPrices,
   findSectorRsByDate,
   findIndustryRsByDate,
   findPeerRatios,
@@ -336,7 +336,7 @@ interface PriceTargetConsensusRow {
   target_median: string | null;
 }
 
-interface StockPhasesCloseRow {
+interface DailyPriceCloseRow {
   close: string;
 }
 
@@ -468,9 +468,9 @@ export async function loadAnalysisInputs(
       () => findPriceTargetConsensus(symbol, pool),
       "price_target_consensus",
     ),
-    safeQuery<StockPhasesCloseRow>(
-      () => findCurrentPriceFromStockPhases(symbol, recommendationDate, pool),
-      "stock_phases (currentPrice)",
+    safeQuery<DailyPriceCloseRow>(
+      () => findCurrentPriceFromDailyPrices(symbol, recommendationDate, pool),
+      "daily_prices (currentPrice)",
     ),
     safeQuery<StockNewsRow>(
       () => findStockNews(symbol, RECENT_NEWS_LIMIT, pool),
@@ -663,7 +663,7 @@ export async function loadAnalysisInputs(
   // peer_groups: 피어 목록을 얻은 후 각 피어의 quarterly_ratios 조회
   const peerGroup = await loadPeerGroupMultiples(peerGroupRows, pool);
 
-  // currentPrice: stock_phases 최신 close
+  // currentPrice: daily_prices 최신 close
   const currentPrice =
     currentPriceRows != null && currentPriceRows.length > 0
       ? toNumOrNull(currentPriceRows[0].close)

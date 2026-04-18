@@ -644,7 +644,7 @@ export interface CorporatePriceTargetConsensusRow {
   target_median: string | null;
 }
 
-export interface CorporateStockPhasesCloseRow {
+export interface CorporateDailyPriceCloseRow {
   close: string;
 }
 

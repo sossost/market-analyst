@@ -1,12 +1,12 @@
 /**
- * findStockNews, findUpcomingEarnings 단위 테스트.
+ * findStockNews, findUpcomingEarnings, findCurrentPriceFromDailyPrices 단위 테스트.
  *
  * DB에 의존하지 않고 Pool을 mock하여 쿼리 파라미터와 반환값을 검증한다.
  */
 import { describe, it, expect, vi } from "vitest";
 import type { Pool } from "pg";
-import { findStockNews, findUpcomingEarnings, findMarketRegimeByDate } from "../corporateRepository.js";
-import type { CorporateStockNewsRow, CorporateEarningCalendarRow, CorporateMarketRegimeRow } from "../types.js";
+import { findStockNews, findUpcomingEarnings, findMarketRegimeByDate, findCurrentPriceFromDailyPrices } from "../corporateRepository.js";
+import type { CorporateStockNewsRow, CorporateEarningCalendarRow, CorporateMarketRegimeRow, CorporateDailyPriceCloseRow } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Pool mock 헬퍼
@@ -182,6 +182,43 @@ describe("findMarketRegimeByDate", () => {
     const pool = makePool<CorporateMarketRegimeRow>([]);
 
     const result = await findMarketRegimeByDate("2026-01-01", pool);
+
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findCurrentPriceFromDailyPrices
+// ---------------------------------------------------------------------------
+
+describe("findCurrentPriceFromDailyPrices", () => {
+  it("symbol과 recommendationDate를 파라미터로 전달하고 close를 반환한다", async () => {
+    const MOCK_ROWS: CorporateDailyPriceCloseRow[] = [{ close: "142.50" }];
+    const pool = makePool(MOCK_ROWS);
+
+    const result = await findCurrentPriceFromDailyPrices("NVDA", "2026-04-15", pool);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].close).toBe("142.50");
+  });
+
+  it("쿼리가 daily_prices 테이블을 대상으로 한다", async () => {
+    const pool = makePool<CorporateDailyPriceCloseRow>([]);
+
+    await findCurrentPriceFromDailyPrices("AAPL", "2026-04-10", pool);
+
+    const queryMock = pool.query as ReturnType<typeof vi.fn>;
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).toContain("daily_prices");
+    expect(sql).not.toContain("stock_phases");
+    expect(params).toEqual(["AAPL", "2026-04-10"]);
+  });
+
+  it("결과가 없으면 빈 배열을 반환한다", async () => {
+    const pool = makePool<CorporateDailyPriceCloseRow>([]);
+
+    const result = await findCurrentPriceFromDailyPrices("UNKNOWN", "2026-04-15", pool);
 
     expect(result).toHaveLength(0);
   });
