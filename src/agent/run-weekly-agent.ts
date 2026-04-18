@@ -10,6 +10,7 @@ import {
   insertPortfolioPosition,
   updatePortfolioExit,
 } from "@/db/repositories/portfolioPositionsRepository";
+import { findPortfolioEligibleStock } from "@/db/repositories/stockPhaseRepository";
 
 // Tools — 데이터 수집용 직접 호출
 import { getIndexReturns } from "@/tools/getIndexReturns";
@@ -413,46 +414,38 @@ interface PortfolioDelta {
 
 /**
  * LLM 인사이트의 포트폴리오 편입/탈락 판단을 실제 DB에 반영한다.
- * gate5Candidates 재검증 (LLM 오판 방어 2중 게이트) 후 INSERT.
+ * DB 직접 조회로 편입 자격 검증 (Phase 2 + RS>=60 + SEPA S/A).
+ * gate5Candidates LIMIT 200 종속 없이 명시적 조건으로 판단한다.
  * 탈락 처리는 fail-open — 실패 시 로그 후 계속 진행.
- * 파라미터를 직접 변이하지 않고, 변경 사항을 반환값으로 돌려준다.
  */
 async function evaluatePortfolio(
   insight: WeeklyReportInsight,
   targetDate: string,
-  data: WeeklyReportData,
 ): Promise<PortfolioDelta> {
-  const gate5Map = new Map(data.gate5Candidates.map((s) => [s.symbol, s]));
-
   const registered: WatchlistChange[] = [];
   const exited: WatchlistChange[] = [];
 
-  // 1. 승격 처리 — gate5Candidates 재검증 후 INSERT
+  // 1. 승격 처리 — 독립 DB 조회로 편입 자격 검증 (gate5Candidates LIMIT 200 종속 제거)
   for (const item of insight.portfolioRegistrations ?? []) {
-    const gate5 = gate5Map.get(item.symbol);
+    const eligible = await findPortfolioEligibleStock(item.symbol, targetDate);
 
-    if (gate5 == null) {
-      logger.warn("Portfolio", `${item.symbol} gate5에 없음 — 승격 거부`);
-      continue;
-    }
-
-    if (gate5.sepaGrade !== "S" && gate5.sepaGrade !== "A") {
+    if (eligible == null) {
       logger.warn(
         "Portfolio",
-        `${item.symbol} SEPA ${gate5.sepaGrade ?? "없음"} — 승격 거부 (S/A 필요)`,
+        `${item.symbol} 편입 자격 미충족 (Phase 2 + RS>=60 + SEPA S/A 동시 충족 필요) — 승격 거부`,
       );
       continue;
     }
 
     const id = await insertPortfolioPosition({
       symbol: item.symbol,
-      sector: item.sector ?? gate5.sector ?? undefined,
-      industry: item.industry ?? gate5.industry ?? undefined,
+      sector: item.sector ?? eligible.sector ?? undefined,
+      industry: item.industry ?? eligible.industry ?? undefined,
       entryDate: targetDate,
       // entryPrice 생략 → Repository 내부에서 daily_prices 자동 조회
-      entryPhase: item.phase,
-      entryRsScore: item.rs_score ?? gate5.rsScore ?? undefined,
-      entrySepaGrade: item.sepa_grade ?? gate5.sepaGrade ?? undefined,
+      entryPhase: eligible.phase, // DB 검증된 값 우선 (eligible.phase는 항상 2로 보장)
+      entryRsScore: item.rs_score ?? eligible.rs_score ?? undefined,
+      entrySepaGrade: item.sepa_grade ?? eligible.sepa_grade ?? undefined,
       thesisId: item.thesis_id ?? undefined,
       tier: item.tier,
     });
@@ -734,7 +727,7 @@ async function main() {
   const { insight, tokensUsed, executionTimeMs } = await generateInsight(data, systemPrompt);
 
   // 5.5. 포트폴리오 승격/탈락 처리 (LLM 판단 → DB 반영)
-  const portfolioDelta = await evaluatePortfolio(insight, targetDate, data);
+  const portfolioDelta = await evaluatePortfolio(insight, targetDate);
   data = {
     ...data,
     watchlistChanges: {
