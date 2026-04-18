@@ -50,9 +50,9 @@ export function createCaptureWeeklyInsightTool(
             type: "string",
             description: "관심종목 서사 유효성. Phase 궤적이 thesis를 지지하는지, 이탈 우려 종목과 사유.",
           },
-          gate5Summary: {
+          portfolioSummary: {
             type: "string",
-            description: "5중 게이트 평가 결과 서술. 등록/해제 판단 근거. '신규 등록 없음' 케이스에서는 어떤 조건이 병목이었는지 서술.",
+            description: "포트폴리오 승격/탈락 결과 서술. 이번 주 에이전트가 승격/탈락시킨 종목과 판단 근거. 승격/탈락 없으면 시장 상황 요약.",
           },
           riskFactors: {
             type: "string",
@@ -97,7 +97,7 @@ export function createCaptureWeeklyInsightTool(
           "sectorRotationNarrative",
           "industryFlowNarrative",
           "watchlistNarrative",
-          "gate5Summary",
+          "portfolioSummary",
           "riskFactors",
           "nextWeekWatchpoints",
           "thesisScenarios",

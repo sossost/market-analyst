@@ -13,7 +13,7 @@ function createValidRaw(): Record<string, unknown> {
     sectorRotationNarrative: "섹터 로테이션 해석",
     industryFlowNarrative: "업종 자금 흐름 해석",
     watchlistNarrative: "관심종목 서사",
-    gate5Summary: "5중 게이트 요약",
+    portfolioSummary: "5중 게이트 요약",
     riskFactors: "리스크 요인",
     nextWeekWatchpoints: "다음 주 관전 포인트",
     thesisScenarios: "thesis 시나리오",
@@ -69,9 +69,9 @@ describe("validateWeeklyReportInsight", () => {
     expect(validateWeeklyReportInsight(raw)).toBe(false);
   });
 
-  it("gate5Summary 누락 시 false를 반환한다", () => {
+  it("portfolioSummary 누락 시 false를 반환한다", () => {
     const raw = createValidRaw();
-    delete raw["gate5Summary"];
+    delete raw["portfolioSummary"];
 
     expect(validateWeeklyReportInsight(raw)).toBe(false);
   });
@@ -231,13 +231,13 @@ describe("fillInsightDefaults", () => {
     expect(result.industryFlowNarrative).toBe("");
   });
 
-  it("gate5Summary 누락 시 빈 문자열 기본값을 채운다", () => {
+  it("portfolioSummary 누락 시 빈 문자열 기본값을 채운다", () => {
     const raw = createValidRaw();
-    delete raw["gate5Summary"];
+    delete raw["portfolioSummary"];
 
     const result = fillInsightDefaults(raw);
 
-    expect(result.gate5Summary).toBe("");
+    expect(result.portfolioSummary).toBe("");
   });
 
   it("riskFactors 누락 시 빈 문자열 기본값을 채운다", () => {
@@ -302,7 +302,7 @@ describe("fillInsightDefaults", () => {
     expect(result.sectorRotationNarrative).toBe("");
     expect(result.industryFlowNarrative).toBe("");
     expect(result.watchlistNarrative).toBe("");
-    expect(result.gate5Summary).toBe("");
+    expect(result.portfolioSummary).toBe("");
     expect(result.riskFactors).toBe("");
     expect(result.nextWeekWatchpoints).toBe("");
     expect(result.thesisScenarios).toBe("");
@@ -336,7 +336,7 @@ describe("fillInsightDefaults", () => {
     expect(typeof result.sectorRotationNarrative).toBe("string");
     expect(typeof result.industryFlowNarrative).toBe("string");
     expect(typeof result.watchlistNarrative).toBe("string");
-    expect(typeof result.gate5Summary).toBe("string");
+    expect(typeof result.portfolioSummary).toBe("string");
     expect(typeof result.riskFactors).toBe("string");
     expect(typeof result.nextWeekWatchpoints).toBe("string");
     expect(typeof result.thesisScenarios).toBe("string");

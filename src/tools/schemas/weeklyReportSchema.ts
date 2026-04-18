@@ -321,8 +321,8 @@ export interface WeeklyReportInsight {
   industryFlowNarrative: string;
   /** 관심종목 서사 유효성: Phase 궤적이 thesis를 지지하는지 */
   watchlistNarrative: string;
-  /** 5중 게이트 결과 서술: 등록/해제 판단 근거 */
-  gate5Summary: string;
+  /** 포트폴리오 승격/탈락 결과 서술 */
+  portfolioSummary: string;
   /** 리스크 요인: 다음 주 주의해야 할 매크로/기술적 리스크 */
   riskFactors: string;
   /** 다음 주 관전 포인트: 확인이 필요한 시그널과 지표 */
@@ -360,7 +360,7 @@ export function validateWeeklyReportInsight(
     "sectorRotationNarrative",
     "industryFlowNarrative",
     "watchlistNarrative",
-    "gate5Summary",
+    "portfolioSummary",
     "riskFactors",
     "nextWeekWatchpoints",
     "thesisScenarios",
@@ -395,7 +395,7 @@ export function fillInsightDefaults(
     sectorRotationNarrative: "",
     industryFlowNarrative: "",
     watchlistNarrative: "",
-    gate5Summary: "",
+    portfolioSummary: "",
     riskFactors: "",
     nextWeekWatchpoints: "",
     thesisScenarios: "",
@@ -430,10 +430,10 @@ export function fillInsightDefaults(
       typeof raw["watchlistNarrative"] === "string"
         ? raw["watchlistNarrative"]
         : defaults.watchlistNarrative,
-    gate5Summary:
-      typeof raw["gate5Summary"] === "string"
-        ? raw["gate5Summary"]
-        : defaults.gate5Summary,
+    portfolioSummary:
+      typeof raw["portfolioSummary"] === "string"
+        ? raw["portfolioSummary"]
+        : defaults.portfolioSummary,
     riskFactors:
       typeof raw["riskFactors"] === "string"
         ? raw["riskFactors"]

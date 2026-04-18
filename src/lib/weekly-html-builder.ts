@@ -1222,92 +1222,38 @@ export function renderWatchlistSection(watchlist: WatchlistStatusData): string {
 }
 
 /**
- * 관심종목 등록/해제/예비 3단 구조를 렌더링한다.
- * - registered: 5/5 게이트 충족 + 등록 확정
- * - pending4of5: 기술적 4개 게이트 충족, thesis 미충족 예비
- * - exited: 이번 주 해제 확정
+ * 포트폴리오 승격/탈락 섹션을 렌더링한다.
+ * - registered: 포트폴리오 승격 (source='agent'로 등록)
+ * - exited: 포트폴리오 탈락 (Phase 3 진입, RS 급락, 서사 소멸)
  */
 export function renderWatchlistChanges(
   changes: WeeklyReportData["watchlistChanges"],
-  candidates: Phase2Stock[] = [],
-  industries: IndustryItem[] = [],
 ): string {
-  const { registered, pending4of5, exited } = changes;
+  const { registered, exited } = changes;
 
-  // 종목 데이터 룩업맵
-  const stockMap = new Map(candidates.map((s) => [s.symbol, s]));
-  const industryRsMap = new Map<string, { avgRs: number; changeWeek: number | null }>();
-  for (const ind of industries) {
-    industryRsMap.set(ind.industry, { avgRs: ind.avgRs, changeWeek: ind.changeWeek });
-  }
-
-  const hasAny = registered.length > 0 || exited.length > 0 || pending4of5.length > 0;
+  const hasAny = registered.length > 0 || exited.length > 0;
 
   if (!hasAny) {
-    return `<div class="empty-state">이번 주 신규 등록/해제 없음</div>`;
+    return `<div class="empty-state">이번 주 포트폴리오 승격/탈락 없음</div>`;
   }
 
   const registeredHtml = registered.length > 0
     ? `
-      <h3>신규 등록 (${escapeHtml(String(registered.length))}종목)</h3>
+      <h3>승격 (${escapeHtml(String(registered.length))}종목)</h3>
       <div class="gate5-grid">
         ${registered.map((c) => renderWatchlistChangeCard(c, "registered")).join("")}
       </div>`
-    : `<h3>신규 등록</h3><div class="empty-state">이번 주 신규 등록 없음</div>`;
-
-  const pending4of5Html = pending4of5.length > 0
-    ? `
-      <h3>예비 관심종목 (${escapeHtml(String(pending4of5.length))}종목 — 4/5, thesis 미충족)</h3>
-      <table>
-        <thead><tr><th>종목</th><th>업종</th><th>고점대비</th><th>저점대비</th><th>Phase 2</th><th>RS &gt; 60</th><th>SEPA S/A</th><th>업종RS(주간▲)</th><th>thesis</th><th>통과</th></tr></thead>
-        <tbody>
-          ${pending4of5.map((c) => {
-            const stock = stockMap.get(c.symbol);
-            const industry = stock?.industry ?? "—";
-            const rs = stock?.rsScore != null ? String(stock.rsScore) : "—";
-            const highStr = stock?.pctFromHigh52w != null
-              ? `<span class="${colorClass(stock.pctFromHigh52w)}">${stock.pctFromHigh52w.toFixed(0)}%</span>`
-              : "—";
-            const sepa = stock?.sepaGrade ?? "—";
-            const lowStr = stock?.pctFromLow52w != null
-              ? `<span class="up">+${stock.pctFromLow52w.toFixed(0)}%</span>`
-              : "—";
-            const indData = stock?.industry != null ? industryRsMap.get(stock.industry) : null;
-            let indRsStr = "—";
-            if (indData != null) {
-              const cw = indData.changeWeek;
-              const cwStr = cw != null
-                ? `<span class="${colorClass(cw)}">(${cw >= 0 ? "+" : ""}${Math.abs(cw) < 0.05 ? cw.toFixed(2) : cw.toFixed(1)})</span>`
-                : "";
-              indRsStr = `${indData.avgRs.toFixed(0)} ${cwStr}`;
-            }
-            const phase = stock?.phase != null ? `P${stock.phase}` : "—";
-            return `<tr>
-              <td><strong>${escapeHtml(c.symbol)}</strong></td>
-              <td>${escapeHtml(industry)}</td>
-              <td class="tc">${highStr}</td>
-              <td class="tc">${lowStr}</td>
-              <td class="tc">${escapeHtml(phase)}</td>
-              <td class="tc">${escapeHtml(rs)}</td>
-              <td class="tc">${escapeHtml(sepa)}</td>
-              <td class="tc">${indRsStr}</td>
-              <td class="tc"><span class="gate-check pending">?</span></td>
-              <td class="tc">4/5</td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-      </table>`
-    : "";
+    : `<h3>승격</h3><div class="empty-state">이번 주 신규 승격 없음</div>`;
 
   const exitedHtml = exited.length > 0
     ? `
-      <h3>해제 (${escapeHtml(String(exited.length))}종목)</h3>
+      <h3>탈락 (${escapeHtml(String(exited.length))}종목)</h3>
       <div class="gate5-grid">
         ${exited.map((c) => renderWatchlistChangeCard(c, "exited")).join("")}
       </div>`
     : "";
 
-  return `${registeredHtml}${pending4of5Html}${exitedHtml}`;
+  return `${registeredHtml}${exitedHtml}`;
 }
 
 type WatchlistCardVariant = "registered" | "pending" | "exited";
@@ -1318,12 +1264,12 @@ function renderWatchlistChangeCard(
 ): string {
   const badgeHtml = (() => {
     if (variant === "registered") {
-      return `<span class="gate5-new-badge">5/5 게이트 충족</span>`;
+      return `<span class="gate5-new-badge">포트폴리오 승격</span>`;
     }
     if (variant === "pending") {
-      return `<span class="gate-check pending" style="margin-left:auto;">4/5 (thesis 미충족)</span>`;
+      return `<span class="gate-check pending" style="margin-left:auto;">후보</span>`;
     }
-    return `<span class="gate-check fail" style="margin-left:auto;">해제</span>`;
+    return `<span class="gate-check fail" style="margin-left:auto;">탈락</span>`;
   })();
 
   return `
@@ -1494,13 +1440,13 @@ export function buildWeeklyHtml(
   const sectorTableHtml = renderSectorTable(data.sectorRanking);
   const industryTop10Html = renderIndustryTop10Table(data.industryTop10);
   const watchlistHtml = renderWatchlistSection(data.watchlist);
-  const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges, data.gate5Candidates, data.industryTop10);
+  const watchlistChangesHtml = renderWatchlistChanges(data.watchlistChanges);
 
   // 해석 블록: LLM 텍스트 → marked HTML
   const sectorRotationHtml = mdToHtml(insight.sectorRotationNarrative);
   const industryFlowHtml = mdToHtml(insight.industryFlowNarrative);
   const watchlistNarrativeHtml = mdToHtml(insight.watchlistNarrative);
-  const gate5SummaryHtml = mdToHtml(insight.gate5Summary);
+  const portfolioSummaryHtml = mdToHtml(insight.portfolioSummary);
   const riskFactorsHtml = mdToHtml(insight.riskFactors);
   const nextWeekHtml = mdToHtml(insight.nextWeekWatchpoints);
   const thesisScenariosHtml = mdToHtml(insight.thesisScenarios);
@@ -1580,11 +1526,11 @@ export function buildWeeklyHtml(
         ${data.watchlist.items.length > 0 ? `<div class="content-block">${watchlistNarrativeHtml}</div>` : ""}
       </section>
 
-      <!-- 섹션 5: 5중 게이트 평가 + 등록/해제 -->
+      <!-- 섹션 5: 포트폴리오 승격/탈락 -->
       <section>
-        <h2>🆕 5중 게이트 평가 · 관심종목 등록/해제</h2>
+        <h2>🆕 포트폴리오 승격/탈락</h2>
         ${watchlistChangesHtml}
-        <div class="content-block">${gate5SummaryHtml}</div>
+        <div class="content-block">${portfolioSummaryHtml}</div>
       </section>
 
       <!-- 섹션 6: 다음 주 관전 포인트 -->

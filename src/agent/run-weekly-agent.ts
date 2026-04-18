@@ -17,6 +17,7 @@ import { getSectorLagPatterns } from "@/tools/getSectorLagPatterns";
 import { buildThesisAlignedCandidates } from "@/lib/thesisAlignedCandidates";
 import { certifyThesisAlignedCandidates } from "@/lib/certifyThesisAligned";
 import { selectWeeklyWatchlist, WEEKLY_WATCHLIST_MAX } from "@/lib/watchlistSelection";
+import { saveTrackedStock } from "@/tools/saveTrackedStock";
 
 // Schema + Builder
 import type {
@@ -24,6 +25,7 @@ import type {
   WeeklyReportInsight,
   MarketBreadthData,
   IndustryItem,
+  WatchlistChange,
 } from "@/tools/schemas/weeklyReportSchema";
 import type { ReportedStock } from "@/types";
 import { fillInsightDefaults } from "@/tools/schemas/weeklyReportSchema";
@@ -120,25 +122,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   const indices = Array.isArray(indexData.indices) ? indexData.indices : [];
   const allIndustries = Array.isArray(allIndustryData.industries) ? allIndustryData.industries : [];
 
-  // 4/5 예비종목 판정
-  const industryChangeMap = new Map<string, number>();
-  for (const ind of allIndustries as Array<{ industry: string; changeWeek: number | null }>) {
-    if (ind.changeWeek != null) industryChangeMap.set(ind.industry, ind.changeWeek);
-  }
-
   const stocks = Array.isArray(phase2Data.stocks) ? phase2Data.stocks : [];
-  const pending4of5 = (stocks as Array<{ symbol: string; industry: string | null; rsScore: number; sepaGrade: string | null }>)
-    .filter((s) => {
-      if (s.industry == null) return false;
-      if (s.sepaGrade !== "S" && s.sepaGrade !== "A") return false;
-      const change = industryChangeMap.get(s.industry);
-      return change != null && change > 0;
-    })
-    .map((s) => ({
-      symbol: s.symbol,
-      action: "register" as const,
-      reason: `4/5 통과 (thesis 미확인) — RS ${s.rsScore}, ${s.industry}`,
-    }));
 
   const EMPTY_BREADTH: MarketBreadthData = {
     weeklyTrend: [], phase1to2Transitions: 0,
@@ -172,7 +156,7 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
     watchlistChanges: {
       registered: [],
       exited: [],
-      pending4of5,
+      pending4of5: [],
     },
     thesisAlignedCandidates: thesisAlignedRaw, // 인증 후 덮어씀
     vcpCandidates: vcpRaw != null ? (parse(vcpRaw).candidates as WeeklyReportData["vcpCandidates"]) ?? null : null,
@@ -205,9 +189,202 @@ async function collectWeeklyData(targetDate: string): Promise<WeeklyReportData> 
   const vcpCount = data.vcpCandidates?.length ?? 0;
   const breakoutCount = data.confirmedBreakouts?.length ?? 0;
   const lagCount = data.sectorLagPatterns?.length ?? 0;
-  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | 예비 ${pending4of5.length} | VCP ${vcpCount} | 돌파 ${breakoutCount} | 래그 ${lagCount} | ${taLabel}`);
+  logger.info("Data", `지수 ${data.indexReturns.length} | 섹터 ${data.sectorRanking.length} | 업종 ${allIndustries.length} | Gate5 ${stocks.length} | VCP ${vcpCount} | 돌파 ${breakoutCount} | 래그 ${lagCount} | ${taLabel}`);
 
   return data;
+}
+
+// ─── 포트폴리오 평가 (승격/탈락) ──────────────────────────────────────────────
+
+/** 종목의 최신 종가를 조회한다. */
+async function fetchLatestClose(symbol: string): Promise<number | null> {
+  const { rows } = await pool.query<{ close: string }>(
+    `SELECT close::text FROM daily_prices WHERE symbol = $1 ORDER BY date DESC LIMIT 1`,
+    [symbol],
+  );
+  if (rows.length === 0) return null;
+  const val = Number(rows[0].close);
+  return Number.isFinite(val) ? val : null;
+}
+
+interface PortfolioDecision {
+  action: "promote" | "demote";
+  symbol: string;
+  reason: string;
+  phase?: number;
+  rs_score?: number;
+  sector?: string;
+  industry?: string;
+  price_at_entry?: number;
+  tier?: string;
+  sepa_grade?: string;
+  thesis_id?: number;
+}
+
+/**
+ * LLM CLI로 etl_auto 후보군을 심사하여 포트폴리오 승격/탈락 결정을 내린다.
+ * 결과를 saveTrackedStock으로 실행하고 watchlistChanges에 반영한다.
+ */
+async function evaluatePortfolio(
+  data: WeeklyReportData,
+  targetDate: string,
+): Promise<{ registered: WatchlistChange[]; exited: WatchlistChange[] }> {
+  logger.step("[4.5/7] Evaluating portfolio promotions/demotions...");
+
+  const registered: WatchlistChange[] = [];
+  const exited: WatchlistChange[] = [];
+
+  // ACTIVE agent 종목 중 탈락 후보: Phase 3 진입 or RS 급락
+  const agentItems = data.watchlist.items.filter((w) => w.source === "agent");
+  for (const item of agentItems) {
+    const currentPhase = item.currentPhase ?? item.entryPhase;
+    const currentRs = item.currentRsScore ?? item.entryRsScore ?? 0;
+
+    // 탈락 기준: Phase 3 이상 진입 or RS 30 미만
+    const RS_DEMOTE_THRESHOLD = 30;
+    if (currentPhase >= 3 || currentRs < RS_DEMOTE_THRESHOLD) {
+      const reason = currentPhase >= 3
+        ? `Phase ${currentPhase} 진입 — 상승 추세 이탈`
+        : `RS ${currentRs.toFixed(0)} — 상대강도 급락`;
+
+      try {
+        const result = await saveTrackedStock.execute({
+          action: "exit",
+          exit: {
+            symbol: item.symbol,
+            exit_date: targetDate,
+            exit_reason: reason,
+          },
+        });
+        const parsed = JSON.parse(result);
+        if (parsed.success === true) {
+          exited.push({ symbol: item.symbol, action: "exit", reason });
+          logger.info("Portfolio", `탈락: ${item.symbol} — ${reason}`);
+        }
+      } catch (err) {
+        logger.warn("Portfolio", `탈락 처리 실패 (${item.symbol}): ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  // 승격 후보: LLM CLI 호출로 etl_auto 후보 중 알짜배기 선별
+  const promotionCandidates = data.gate5Candidates
+    .filter((s) => s.phase === 2 && s.rsScore >= 60 && (s.sepaGrade === "S" || s.sepaGrade === "A"))
+    .slice(0, 30); // 토큰 절약을 위해 상위 30개로 제한
+
+  if (promotionCandidates.length === 0) {
+    logger.info("Portfolio", "승격 후보 0건 — Phase 2 + RS 60+ + SEPA S/A 충족 종목 없음");
+    return { registered, exited };
+  }
+
+  // LLM CLI 호출로 승격 결정
+  const cli = new ClaudeCliProvider("claude-sonnet-4-6", 300_000); // 5분 타임아웃
+  try {
+    const candidateList = promotionCandidates
+      .map((s) => `${s.symbol}: Phase ${s.phase}, RS ${s.rsScore}, SEPA ${s.sepaGrade ?? "—"}, ${s.sector ?? "—"} / ${s.industry ?? "—"}, 가격 변화 고점대비 ${s.pctFromHigh52w?.toFixed(1) ?? "—"}%, 저점대비 +${s.pctFromLow52w?.toFixed(0) ?? "—"}%`)
+      .join("\n");
+
+    const sectorContext = data.sectorRanking
+      .map((s) => `${s.sector}: RS ${s.avgRs.toFixed(1)}, Phase ${s.groupPhase}, P2비율 ${s.phase2Ratio.toFixed(1)}%`)
+      .join("\n");
+
+    const systemPrompt = `당신은 미국 주식 포트폴리오 매니저입니다.
+etl_auto 후보군(Phase 2 + RS 60+ + SEPA S/A)에서 포트폴리오에 승격할 종목을 심사합니다.
+
+승격 기준 (2개 이상 충족 시 승격):
+1. RS 강세: RS 70 이상
+2. Phase 2 안정: 52주 고점 대비 -25% 이내
+3. 주도 섹터 소속: 소속 섹터의 Phase가 2이고 P2비율 40%+
+
+승격 시 주의:
+- 한 주에 최대 5개까지만 승격
+- 52주 저점 대비 +200% 이상은 투기적 급등 — 승격 금지
+- 확신이 없으면 승격하지 않는다 (0개도 정상)
+
+반드시 유효한 JSON 배열만 출력하세요. 다른 텍스트 없이.
+각 항목: {"symbol": "AAPL", "reason": "RS 82 + Technology Phase 2 P2비율 55%", "tier": "standard"}
+tier는 "featured"(SEPA S등급) 또는 "standard"(A등급).
+승격할 종목이 없으면 빈 배열 [] 을 출력하세요.`;
+
+    const userMessage = `## 현재 섹터 현황
+${sectorContext}
+
+## 승격 후보 (Phase 2 + RS 60+ + SEPA S/A)
+${candidateList}
+
+위 후보 중 포트폴리오에 승격할 종목을 JSON 배열로 응답하세요.`;
+
+    const result = await cli.call({ systemPrompt, userMessage });
+    const content = result.content.trim();
+    const jsonStr = content.startsWith("```")
+      ? content.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")
+      : content;
+
+    let decisions: PortfolioDecision[];
+    try {
+      const parsed = JSON.parse(jsonStr);
+      decisions = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      logger.warn("Portfolio", `LLM 응답 JSON 파싱 실패 — 승격 0건. 응답: ${content.slice(0, 200)}`);
+      decisions = [];
+    }
+
+    logger.info("Portfolio", `LLM 심사 결과: ${decisions.length}건 승격 결정 (${result.tokensUsed.input} input / ${result.tokensUsed.output} output tokens)`);
+
+    const MAX_PROMOTIONS_PER_WEEK = 5;
+    for (const decision of decisions.slice(0, MAX_PROMOTIONS_PER_WEEK)) {
+      const candidate = promotionCandidates.find((s) => s.symbol === decision.symbol);
+      if (candidate == null) {
+        logger.warn("Portfolio", `승격 대상 ${decision.symbol}이 후보 목록에 없음 — 스킵`);
+        continue;
+      }
+
+      const tier = candidate.sepaGrade === "S" ? "featured" : "standard";
+
+      try {
+        const latestPrice = await fetchLatestClose(candidate.symbol);
+        if (latestPrice == null) {
+          logger.warn("Portfolio", `${candidate.symbol} 가격 조회 실패 — 승격 스킵`);
+          continue;
+        }
+
+        const saveResult = await saveTrackedStock.execute({
+          action: "register",
+          register: {
+            symbol: candidate.symbol,
+            date: targetDate,
+            phase: candidate.phase,
+            rs_score: candidate.rsScore,
+            sector: candidate.sector,
+            industry: candidate.industry,
+            reason: decision.reason ?? "포트폴리오 승격",
+            price_at_entry: latestPrice,
+            tier,
+            sepa_grade: candidate.sepaGrade,
+          },
+        });
+        const parsed = JSON.parse(saveResult);
+        if (parsed.success === true) {
+          registered.push({
+            symbol: candidate.symbol,
+            action: "register",
+            reason: decision.reason ?? "포트폴리오 승격",
+          });
+          logger.info("Portfolio", `승격: ${candidate.symbol} (${tier}) — ${decision.reason}`);
+        } else if (parsed.blocked === true) {
+          logger.info("Portfolio", `승격 차단: ${candidate.symbol} — ${parsed.message}`);
+        }
+      } catch (err) {
+        logger.warn("Portfolio", `승격 실행 실패 (${candidate.symbol}): ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  } catch (err) {
+    logger.warn("Portfolio", `LLM 심사 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    cli.dispose();
+  }
+
+  return { registered, exited };
 }
 
 // ─── LLM 인사이트 생성 ─────────────────────────────────────────────────────
@@ -255,8 +432,9 @@ ${(() => {
 ※ 주봉 관점: Phase 2 연속일이 길수록 주봉 관점에서도 안정적. P2연속 14일+=주봉 3주 이상 유지.
 ※ 지시: 위 종목 중 이번 주 특히 주목할 Top 5~7을 선별하여 watchlistNarrative에 서술하라. 나머지는 간략 언급 또는 생략.
 
-## 예비 관심종목 (4/5 통과, thesis 미충족)
-${data.watchlistChanges.pending4of5.map((p) => `${p.symbol}: ${p.reason}`).join("\n") || "없음"}
+## 포트폴리오 변동 (이번 주 에이전트 심사 결과)
+승격: ${data.watchlistChanges.registered.length > 0 ? data.watchlistChanges.registered.map((r) => `${r.symbol} (${r.reason})`).join(", ") : "없음"}
+탈락: ${data.watchlistChanges.exited.length > 0 ? data.watchlistChanges.exited.map((e) => `${e.symbol} (${e.reason})`).join(", ") : "없음"}
 
 ## VCP 후보 (변동성 수축 패턴)
 ${data.vcpCandidates != null && data.vcpCandidates.length > 0
@@ -290,7 +468,7 @@ ${data.sectorLagPatterns != null && data.sectorLagPatterns.length > 0
   "sectorRotationNarrative": "2~3문장. 구조적 상승 vs 일회성 반등 판단 + 핵심 근거 1개.",
   "industryFlowNarrative": "2~3문장. Top 10 업종의 공통 테마 또는 자금 집중 방향.",
   "watchlistNarrative": "1~2문장. ACTIVE 종목의 서사 유효성. 없으면 '해당 없음'.",
-  "gate5Summary": "1~2문장. 등록/해제 판단 요약. 없으면 '이번 주 신규 등록/해제 없음'.",
+  "portfolioSummary": "1~2문장. 포트폴리오 승격/탈락 판단 요약. 없으면 '이번 주 승격/탈락 없음'.",
   "riskFactors": "핵심 리스크 2~3개. 각 1문장.",
   "nextWeekWatchpoints": "확인할 시그널 2~3개. 각 1문장.",
   "thesisScenarios": "ACTIVE thesis별 다음 주 확인 포인트. 각 1문장.",
@@ -608,6 +786,16 @@ async function main() {
 
   // 4. 데이터 수집 (도구 직접 호출 — LLM 불필요)
   const data = await collectWeeklyData(targetDate);
+
+  // 4.5. 포트폴리오 평가 (승격/탈락 — LLM 심사 + saveTrackedStock 실행)
+  try {
+    const portfolioResult = await evaluatePortfolio(data, targetDate);
+    data.watchlistChanges.registered = portfolioResult.registered;
+    data.watchlistChanges.exited = portfolioResult.exited;
+    logger.info("Portfolio", `승격 ${portfolioResult.registered.length}건, 탈락 ${portfolioResult.exited.length}건`);
+  } catch (err) {
+    logger.warn("Portfolio", `포트폴리오 평가 실패 (계속 진행): ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   // 5. LLM 인사이트 생성 (CLI 단발 호출)
   const { insight, tokensUsed, executionTimeMs } = await generateInsight(data, systemPrompt);

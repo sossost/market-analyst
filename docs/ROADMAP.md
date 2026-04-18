@@ -85,6 +85,7 @@
 | Phase 2 구간 분류 | `phase2_since` 경과일 → 초입(1~5일)/진행(6~20일)/확립(21일+) 구간 분류. 일간/주간 리포트 HTML 배지 + LLM 프롬프트 컨텍스트 (#781) |
 | Bear 게이트 업종 RS 대안 경로 | 경로 1(방어섹터) RS 조건을 `(섹터RS OR 업종RS) 상위 N%`로 확장. 섹터 전체가 약해도 강한 업종(Banks Regional 등) 내 종목 포착 (#785) |
 | 리포트 반영 | 주간 에이전트에 tracked_stocks 성과 주입 |
+| 포트폴리오 시스템 | 주간 에이전트가 etl_auto 후보군을 LLM 심사하여 포트폴리오(source='agent')로 승격/탈락. Phase 3 진입·RS 급락 시 자동 탈락 (#885) |
 | 포착 선행성 KPI (#844) | `detection_lag = entry_date - phase2_since` 소스별 통계 + 구간 분포(early/normal/late). readTrackedStocksPerformance + 주간 QA에 통합. exit_reason별 성과 분리 집계 |
 | 수혜주 자동 동기화 (#842) | `sync-narrative-beneficiaries` ETL — ACTIVE/RESOLVING chain의 beneficiary_tickers를 stock_phases와 대조. Phase 1/4 종목 자동 제거 + 빈 chain은 beneficiary_sectors 기반 Phase 2 + RS >= 60 후보 자동 추가 |
 

@@ -175,7 +175,7 @@ async function main() {
     sectorRotationNarrative: "Energy 섹터가 RS 71.5로 1위를 유지하며 3주 연속 상위권을 지키고 있다. Utilities(RS 59.4)와 Consumer Defensive(RS 57.2)가 2-3위로 방어적 섹터 선호가 뚜렷하다.\n\nTechnology는 RS 43.5로 최하위권에 머물며, 반도체와 소프트웨어 간 괴리가 심화되고 있다.",
     industryFlowNarrative: "Personal Products(+8.2), Consulting Services(+6.5), Software-Services(+5.3) 순으로 주간 RS 변화가 컸다. Industrials 내 3개 업종(Consulting, Trucking, Marine Shipping)이 동시에 Top 10에 진입한 점이 주목할 만하다.",
     watchlistNarrative: "현재 ACTIVE 관심종목이 없는 상태다. EARLY_BEAR 레짐에서 5중 게이트를 통과할 종목이 구조적으로 적은 것은 정상이다.",
-    gate5Summary: "이번 주 5중 게이트 평가 결과, 위 후보들의 thesis 연결과 업종 RS 동반 상승 여부를 추가 확인해야 한다.",
+    portfolioSummary: "이번 주 포트폴리오 승격/탈락 없음 — EARLY_BEAR 레짐에서 보수적 접근 유지.",
     riskFactors: "- **EARLY_BEAR 레짐 지속**: Phase 2 비율 개선이나 탈출 기준까지 거리\n- **VIX 20 이상**: 안정 구간 미진입\n- **공포탐욕 극단적 공포**: 역사적 반등 구간이나 추가 하락 가능성",
     nextWeekWatchpoints: "### RS 가속 업종 Top 3\n- **Personal Products & Services** — RS 55.4 (+8.2)\n- **Consulting Services** — RS 56.1 (+6.5)\n- **Software - Services** — RS 39.3 (+5.3)",
     thesisScenarios: "- **AI 광통신 병목** ACTIVE → Technology RS 50 회복 여부 확인\n- **Financial Services 로테이션** → 섹터 RS 55 돌파 여부\n- **Energy 과열 조정** → 섹터 RS 70 하회 시 전환 확인",
