@@ -192,9 +192,9 @@ export interface AnalysisInputs {
 
   /** 최근 뉴스 5건 (stock_news) — title + site + publishedDate */
   recentNews: Array<{
-    title: string;
+    title: string | null;
     site: string | null;
-    publishedDate: string;
+    publishedDate: string | null;
   }> | null;
 
   /** 30일 이내 실적 발표 일정 (earning_calendar) */
@@ -341,9 +341,9 @@ interface StockPhasesCloseRow {
 }
 
 interface StockNewsRow {
-  title: string;
+  title: string | null;
   site: string | null;
-  published_date: string;
+  published_date: string | null;
 }
 
 interface EarningCalendarRow {

@@ -581,6 +581,27 @@ describe("generateAnalysisReport", () => {
       expect(closeCount).toBe(1);
     });
 
+    it("recentNews의 title이나 publishedDate가 null이어도 크래시 없이 프롬프트를 생성한다", async () => {
+      mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
+
+      const inputsWithNullNews: AnalysisInputs = {
+        ...MINIMAL_INPUTS,
+        recentNews: [
+          { title: null, site: "Reuters", publishedDate: "2026-03-20" },
+          { title: "Some News", site: null, publishedDate: null },
+        ],
+      };
+
+      await generateAnalysisReport("NVDA", "NVIDIA", inputsWithNullNews);
+
+      const callArgs = mockCall.mock.calls[0][0];
+      const userContent = callArgs.userMessage as string;
+      expect(userContent).toContain("<recent_news>");
+      expect(userContent).toContain("Some News");
+      // null title/publishedDate는 빈 문자열로 대체
+      expect(userContent).not.toContain("null");
+    });
+
     it("upcomingEarnings time에 XML 특수문자가 있어도 프롬프트 구조가 깨지지 않는다", async () => {
       mockCall.mockResolvedValue(makeSuccessResult(VALID_REPORT_JSON));
 
