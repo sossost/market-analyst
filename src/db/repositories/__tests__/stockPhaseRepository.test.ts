@@ -14,7 +14,7 @@ vi.mock("@/db/client", () => ({
 }));
 
 import { pool } from "@/db/client";
-import { findPhase2SinceDates } from "../stockPhaseRepository.js";
+import { findPhase2SinceDates, queryWeeklyQaThesisOverall } from "../stockPhaseRepository.js";
 
 const mockQuery = vi.mocked(pool.query);
 
@@ -62,5 +62,28 @@ describe("findPhase2SinceDates", () => {
     expect(result[0].phase2_since).toBe("2026-04-05");
     expect(result[1].symbol).toBe("AAPL");
     expect(result[1].phase2_since).toBe("2026-04-08");
+  });
+});
+
+describe("queryWeeklyQaThesisOverall", () => {
+  it("SQL에 is_status_quo IS NOT TRUE 필터가 포함된다", async () => {
+    await queryWeeklyQaThesisOverall(pool as never);
+
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("is_status_quo IS NOT TRUE");
+  });
+
+  it("결과를 그대로 반환한다", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { agent_persona: "macro", confirmed: 5, invalidated: 2, expired: 1, active: 3, total: 11 },
+      ],
+      rowCount: 1,
+    } as never);
+
+    const result = await queryWeeklyQaThesisOverall(pool as never);
+    expect(result).toHaveLength(1);
+    expect(result[0].agent_persona).toBe("macro");
+    expect(result[0].confirmed).toBe(5);
   });
 });
