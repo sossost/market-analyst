@@ -7,7 +7,7 @@
 import { db } from "@/db/client";
 import { portfolioPositions, stockPhases } from "@/db/schema/analyst";
 import { dailyPrices } from "@/db/schema/market";
-import { and, desc, eq, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 
 // ─── 타입 정의 ────────────────────────────────────────────────────────────────
 
@@ -218,60 +218,72 @@ export async function getAllPortfolioPositions(
 export async function getActivePortfolioPositionsWithCurrentData(
   date: string,
 ): Promise<PortfolioPositionWithCurrentData[]> {
-  const activePositions = await getActivePortfolioPositions();
+  const positions = await getActivePortfolioPositions();
 
-  if (activePositions.length === 0) return [];
+  if (positions.length === 0) return [];
 
-  const enriched = await Promise.all(
-    activePositions.map(async (pos) => {
-      const [priceRows, phaseRows] = await Promise.all([
-        db
-          .select({ close: dailyPrices.close })
-          .from(dailyPrices)
-          .where(and(eq(dailyPrices.symbol, pos.symbol), lte(dailyPrices.date, date)))
-          .orderBy(desc(dailyPrices.date))
-          .limit(1),
-        db
-          .select({ phase: stockPhases.phase, rsScore: stockPhases.rsScore })
-          .from(stockPhases)
-          .where(and(eq(stockPhases.symbol, pos.symbol), lte(stockPhases.date, date)))
-          .orderBy(desc(stockPhases.date))
-          .limit(1),
-      ]);
-      const priceRow = priceRows[0];
-      const phaseRow = phaseRows[0];
+  const symbols = positions.map((p) => p.symbol);
 
-      const currentPrice = priceRow?.close != null
-        ? (() => {
-            const val = Number(priceRow.close);
-            return Number.isFinite(val) ? val : null;
-          })()
+  // 1. daily_prices 배치 조회 — 각 symbol의 date 이하 최신 종가
+  const allPriceRows = await db
+    .select({ symbol: dailyPrices.symbol, close: dailyPrices.close, date: dailyPrices.date })
+    .from(dailyPrices)
+    .where(and(inArray(dailyPrices.symbol, symbols), lte(dailyPrices.date, date)))
+    .orderBy(desc(dailyPrices.date));
+
+  const latestPriceMap = new Map<string, number | null>();
+  for (const row of allPriceRows) {
+    if (!latestPriceMap.has(row.symbol)) {
+      const val = Number(row.close);
+      latestPriceMap.set(row.symbol, Number.isFinite(val) ? val : null);
+    }
+  }
+
+  // 2. stock_phases 배치 조회 — 각 symbol의 date 이하 최신 Phase/RS
+  const allPhaseRows = await db
+    .select({
+      symbol: stockPhases.symbol,
+      phase: stockPhases.phase,
+      rsScore: stockPhases.rsScore,
+      date: stockPhases.date,
+    })
+    .from(stockPhases)
+    .where(and(inArray(stockPhases.symbol, symbols), lte(stockPhases.date, date)))
+    .orderBy(desc(stockPhases.date));
+
+  const latestPhaseMap = new Map<string, { phase: number | null; rsScore: number | null }>();
+  for (const row of allPhaseRows) {
+    if (!latestPhaseMap.has(row.symbol)) {
+      latestPhaseMap.set(row.symbol, {
+        phase: row.phase ?? null,
+        rsScore: row.rsScore != null ? Number(row.rsScore) : null,
+      });
+    }
+  }
+
+  // 3. 조인 — 위치 데이터에 시장 데이터를 결합
+  return positions.map((pos) => {
+    const currentPrice = latestPriceMap.get(pos.symbol) ?? null;
+    const phaseData = latestPhaseMap.get(pos.symbol);
+
+    const entryPriceNum = pos.entryPrice != null
+      ? (() => {
+          const val = Number(pos.entryPrice);
+          return Number.isFinite(val) && val !== 0 ? val : null;
+        })()
+      : null;
+
+    const pnlPercent =
+      currentPrice != null && entryPriceNum != null
+        ? ((currentPrice - entryPriceNum) / entryPriceNum) * 100
         : null;
 
-      const currentPhase = phaseRow?.phase ?? null;
-      const currentRsScore = phaseRow?.rsScore ?? null;
-
-      const entryPriceNum = pos.entryPrice != null
-        ? (() => {
-            const val = Number(pos.entryPrice);
-            return Number.isFinite(val) && val !== 0 ? val : null;
-          })()
-        : null;
-
-      const pnlPercent =
-        currentPrice != null && entryPriceNum != null
-          ? ((currentPrice - entryPriceNum) / entryPriceNum) * 100
-          : null;
-
-      return {
-        ...pos,
-        currentPrice,
-        currentPhase,
-        currentRsScore,
-        pnlPercent,
-      } satisfies PortfolioPositionWithCurrentData;
-    }),
-  );
-
-  return enriched;
+    return {
+      ...pos,
+      currentPrice,
+      currentPhase: phaseData?.phase ?? null,
+      currentRsScore: phaseData?.rsScore ?? null,
+      pnlPercent,
+    } satisfies PortfolioPositionWithCurrentData;
+  });
 }

@@ -30,6 +30,7 @@ import type {
   WeeklyReportInsight,
   MarketBreadthData,
   IndustryItem,
+  WatchlistChange,
 } from "@/tools/schemas/weeklyReportSchema";
 import type { ReportedStock } from "@/types";
 import { fillInsightDefaults } from "@/tools/schemas/weeklyReportSchema";
@@ -405,17 +406,26 @@ async function generateInsight(
 
 // ─── 포트폴리오 승격/탈락 처리 ──────────────────────────────────────────────
 
+interface PortfolioDelta {
+  registered: WatchlistChange[];
+  exited: WatchlistChange[];
+}
+
 /**
  * LLM 인사이트의 포트폴리오 편입/탈락 판단을 실제 DB에 반영한다.
  * gate5Candidates 재검증 (LLM 오판 방어 2중 게이트) 후 INSERT.
  * 탈락 처리는 fail-open — 실패 시 로그 후 계속 진행.
+ * 파라미터를 직접 변이하지 않고, 변경 사항을 반환값으로 돌려준다.
  */
 async function evaluatePortfolio(
   insight: WeeklyReportInsight,
   targetDate: string,
   data: WeeklyReportData,
-): Promise<void> {
+): Promise<PortfolioDelta> {
   const gate5Map = new Map(data.gate5Candidates.map((s) => [s.symbol, s]));
+
+  const registered: WatchlistChange[] = [];
+  const exited: WatchlistChange[] = [];
 
   // 1. 승격 처리 — gate5Candidates 재검증 후 INSERT
   for (const item of insight.portfolioRegistrations ?? []) {
@@ -448,11 +458,7 @@ async function evaluatePortfolio(
     });
 
     if (id != null) {
-      data.watchlistChanges.registered.push({
-        symbol: item.symbol,
-        action: "register",
-        reason: item.reason,
-      });
+      registered.push({ symbol: item.symbol, action: "register", reason: item.reason });
       logger.info("Portfolio", `${item.symbol} 편입 완료 (id=${id})`);
     } else {
       logger.info("Portfolio", `${item.symbol} 이미 편입 (중복 무시)`);
@@ -467,11 +473,7 @@ async function evaluatePortfolio(
         exitReason: item.exit_reason,
         // exitPrice 생략 → null로 저장 (허용)
       });
-      data.watchlistChanges.exited.push({
-        symbol: item.symbol,
-        action: "exit",
-        reason: item.exit_reason,
-      });
+      exited.push({ symbol: item.symbol, action: "exit", reason: item.exit_reason });
       logger.info("Portfolio", `${item.symbol} 탈락 처리 완료`);
     } catch (err) {
       logger.warn(
@@ -481,6 +483,8 @@ async function evaluatePortfolio(
       // fail-open: 계속 진행
     }
   }
+
+  return { registered, exited };
 }
 
 // ─── 발행 ───────────────────────────────────────────────────────────────────
@@ -724,13 +728,21 @@ async function main() {
   });
 
   // 4. 데이터 수집 (도구 직접 호출 — LLM 불필요)
-  const data = await collectWeeklyData(targetDate);
+  let data = await collectWeeklyData(targetDate);
 
   // 5. LLM 인사이트 생성 (CLI 단발 호출)
   const { insight, tokensUsed, executionTimeMs } = await generateInsight(data, systemPrompt);
 
   // 5.5. 포트폴리오 승격/탈락 처리 (LLM 판단 → DB 반영)
-  await evaluatePortfolio(insight, targetDate, data);
+  const portfolioDelta = await evaluatePortfolio(insight, targetDate, data);
+  data = {
+    ...data,
+    watchlistChanges: {
+      ...data.watchlistChanges,
+      registered: [...data.watchlistChanges.registered, ...portfolioDelta.registered],
+      exited: [...data.watchlistChanges.exited, ...portfolioDelta.exited],
+    },
+  };
 
   // 6. HTML 조립 + 발행
   logger.step("[6/7] Building and publishing report...");

@@ -508,10 +508,46 @@ export function fillInsightDefaults(
         ? raw["discordMessage"]
         : defaults.discordMessage,
     portfolioRegistrations: Array.isArray(raw["portfolioRegistrations"])
-      ? (raw["portfolioRegistrations"] as PortfolioRegistrationItem[])
+      ? raw["portfolioRegistrations"].filter(isValidPortfolioRegistrationItem)
       : defaults.portfolioRegistrations,
     portfolioExits: Array.isArray(raw["portfolioExits"])
-      ? (raw["portfolioExits"] as PortfolioExitItem[])
+      ? raw["portfolioExits"].filter(isValidPortfolioExitItem)
       : defaults.portfolioExits,
   };
+}
+
+// ─── LLM 응답 항목 검증 헬퍼 ─────────────────────────────────────────────────
+
+/**
+ * LLM 응답의 portfolioRegistrations 항목이 필수 필드를 갖고 있는지 검증한다.
+ * null symbol, 빈 symbol, 잘못된 tier 등 DB 오류를 유발하는 항목을 사전 차단한다.
+ */
+function isValidPortfolioRegistrationItem(
+  item: unknown,
+): item is PortfolioRegistrationItem {
+  if (item == null || typeof item !== "object") return false;
+  const i = item as Record<string, unknown>;
+  return (
+    typeof i["symbol"] === "string" &&
+    i["symbol"].length > 0 &&
+    typeof i["phase"] === "number" &&
+    typeof i["reason"] === "string" &&
+    (i["tier"] === "standard" || i["tier"] === "featured")
+  );
+}
+
+/**
+ * LLM 응답의 portfolioExits 항목이 필수 필드를 갖고 있는지 검증한다.
+ * null symbol, 빈 entry_date 등 DB 조회 실패를 유발하는 항목을 사전 차단한다.
+ */
+function isValidPortfolioExitItem(item: unknown): item is PortfolioExitItem {
+  if (item == null || typeof item !== "object") return false;
+  const i = item as Record<string, unknown>;
+  return (
+    typeof i["symbol"] === "string" &&
+    i["symbol"].length > 0 &&
+    typeof i["entry_date"] === "string" &&
+    i["entry_date"].length > 0 &&
+    typeof i["exit_reason"] === "string"
+  );
 }
