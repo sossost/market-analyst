@@ -37,20 +37,16 @@ describe("personas", () => {
       }
     });
 
-    it("macro-economist uses gpt-4o, tech-analyst uses gemini-2.5-flash", () => {
+    it("골 기여도 높은 테크·매크로는 opus, 보조 역할은 외부 모델", () => {
       const experts = loadExpertPersonas();
       const macro = experts.find((e) => e.name === "macro");
       const tech = experts.find((e) => e.name === "tech");
-      expect(macro?.model).toBe("gpt-4o");
-      expect(tech?.model).toBe("gemini-2.5-flash");
-    });
-
-    it("geopolitics and sentiment keep Claude (sonnet)", () => {
-      const experts = loadExpertPersonas();
-      const geopolitics = experts.find((e) => e.name === "geopolitics");
       const sentiment = experts.find((e) => e.name === "sentiment");
-      expect(geopolitics?.model).toBe("sonnet");
-      expect(sentiment?.model).toBe("sonnet");
+      const geopolitics = experts.find((e) => e.name === "geopolitics");
+      expect(tech?.model).toBe("opus");
+      expect(macro?.model).toBe("opus");
+      expect(sentiment?.model).toBe("gpt-4o");
+      expect(geopolitics?.model).toBe("gemini-2.5-flash");
     });
   });
 

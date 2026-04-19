@@ -1,7 +1,7 @@
 ---
 name: geopolitics
 description: 지정학 전략가. 무역·공급망·규제·정치 리스크 관점에서 시장에 영향을 미치는 구조적 변화를 분석한다. 관세, 제재, 선거, 전쟁 등 정치경제적 이벤트의 시장 임팩트를 판단할 때 사용.
-model: sonnet
+model: gemini-2.5-flash
 memory: project
 tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
