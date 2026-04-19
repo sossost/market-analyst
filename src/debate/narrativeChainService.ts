@@ -18,7 +18,7 @@ import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider";
 const MIN_KEYWORD_OVERLAP = 3;
 
 /** LLM 메타 레짐 링킹에 사용하는 모델 — 단순 분류 작업이므로 Haiku 우선 */
-const LLM_LINKING_MODEL = "claude-haiku-4-5";
+const LLM_LINKING_MODEL = "claude-haiku-4-5-20251001";
 
 /**
  * Jaccard word similarity between two strings.
@@ -199,7 +199,7 @@ ${regimeList}
     }
 
     // JSON 블록 추출 (```json ... ``` 형식 대응)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (jsonMatch == null) {
       logger.warn("NarrativeChain", `LLM 링킹 JSON 추출 실패 (megatrend: ${megatrend}): ${text.slice(0, 100)}`);
       return [];
@@ -504,8 +504,8 @@ export async function recordNarrativeChain(
             info.nextBottleneck,
             info.megatrend,
             info.demandDriver,
-            info.beneficiarySectors,
-            info.beneficiaryTickers,
+            nextBeneficiarySectors,
+            nextBeneficiaryTickers,
             thesisId,
           );
         }
@@ -533,8 +533,8 @@ export async function recordNarrativeChain(
             info.nextBottleneck,
             info.megatrend,
             info.demandDriver,
-            info.beneficiarySectors,
-            info.beneficiaryTickers,
+            nextBeneficiarySectors,
+            nextBeneficiaryTickers,
             thesisId,
           );
         }

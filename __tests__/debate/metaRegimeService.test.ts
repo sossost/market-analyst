@@ -60,8 +60,8 @@ function makeSelectChain(fromResult?: unknown) {
   return chain;
 }
 
-vi.mock("../../src/db/client.js", () => ({
-  db: {
+vi.mock("../../src/db/client.js", () => {
+  const dbImpl = {
     insert: (...args: unknown[]) => {
       mockInsert(...args);
       return {
@@ -94,8 +94,10 @@ vi.mock("../../src/db/client.js", () => ({
         },
       };
     },
-  },
-}));
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(dbImpl),
+  };
+  return { db: dbImpl };
+});
 
 import {
   createMetaRegime,

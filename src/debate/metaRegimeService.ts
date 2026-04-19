@@ -478,19 +478,50 @@ export async function detectAndCreateNewRegimes(): Promise<number> {
       ? "supply_chain"
       : "narrative_shift";
 
-    const { id: regimeId } = await createMetaRegime({
-      name: firstChain.megatrend,
-      propagationType,
-    });
+    let regimeId: number;
 
-    for (let i = 0; i < group.chains.length; i++) {
-      await linkChainToRegime(group.chains[i].id, regimeId, "medium");
-    }
+    await db.transaction(async (tx) => {
+      // regime 생성
+      const [regimeResult] = await tx
+        .insert(metaRegimes)
+        .values({
+          name: firstChain.megatrend,
+          propagationType,
+          activatedAt: new Date(),
+        })
+        .returning({ id: metaRegimes.id });
+
+      if (regimeResult == null) {
+        throw new Error(`Failed to insert meta-regime: no row returned for "${firstChain.megatrend}"`);
+      }
+
+      regimeId = regimeResult.id;
+
+      // 각 체인 링크 삽입 — 중간 실패 시 regime + 링크 모두 롤백
+      for (let i = 0; i < group.chains.length; i++) {
+        const [maxResult] = await tx
+          .select({ maxOrder: sql<number>`COALESCE(MAX(${narrativeChainRegimes.sequenceOrder}), 0)` })
+          .from(narrativeChainRegimes)
+          .where(eq(narrativeChainRegimes.regimeId, regimeId));
+
+        const nextOrder = (maxResult?.maxOrder ?? 0) + 1;
+
+        await tx
+          .insert(narrativeChainRegimes)
+          .values({
+            chainId: group.chains[i].id,
+            regimeId,
+            sequenceOrder: nextOrder,
+            sequenceConfidence: "medium",
+          })
+          .onConflictDoNothing();
+      }
+    });
 
     created++;
     logger.info(
       "MetaRegime",
-      `Auto-created regime #${regimeId} "${firstChain.megatrend}" with ${group.chains.length} chains`,
+      `Auto-created regime #${regimeId!} "${firstChain.megatrend}" with ${group.chains.length} chains`,
     );
   }
 

@@ -98,6 +98,7 @@ import {
   findSimilarMetaRegime,
   linkChainToMetaRegime,
   transitionMetaRegimeStatus,
+  groupChainsByMegatrend,
 } from "../metaRegimeService.js";
 
 // ─── 리셋 ─────────────────────────────────────────────────────────────────────
@@ -356,9 +357,7 @@ describe("transitionMetaRegimeStatus", () => {
 });
 
 // =============================================================================
-// groupChainsByMegatrend (로컬 함수 재현 — metaRegimeService.ts에서 추출)
-//
-// 동일 로직을 여기서 재현하여 핵심 그루핑 동작을 검증한다.
+// groupChainsByMegatrend (metaRegimeService.ts에서 import한 실제 함수 사용)
 // =============================================================================
 
 type UnlinkedChain = {
@@ -368,77 +367,22 @@ type UnlinkedChain = {
   status: string;
 };
 
-function groupChainsByMegatrend(
-  chains: UnlinkedChain[],
-): Map<string, UnlinkedChain[]> {
-  const STOP = new Set([
-    "the", "a", "an", "in", "on", "at", "to", "for", "of", "is", "are", "was", "were",
-    "의", "에", "에서", "로", "으로", "가", "이", "을", "를", "는", "은", "과", "와", "및",
-  ]);
-
-  const extractKw = (text: string): Set<string> =>
-    new Set(
-      text
-        .toLowerCase()
-        .replace(/[^a-zA-Z가-힣0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length >= 2 && !STOP.has(w)),
-    );
-
-  const MIN_OVERLAP = 2;
-  const groups: Array<{ keywords: Set<string>; chains: UnlinkedChain[] }> = [];
-
-  for (const chain of chains) {
-    const kw = extractKw(chain.megatrend);
-    let merged = false;
-
-    for (const group of groups) {
-      let overlap = 0;
-      for (const k of kw) {
-        if (group.keywords.has(k)) overlap++;
-      }
-      if (overlap >= MIN_OVERLAP) {
-        group.chains.push(chain);
-        // 공통 키워드만 유지 (교집합)
-        for (const gk of [...group.keywords]) {
-          if (!kw.has(gk)) group.keywords.delete(gk);
-        }
-        merged = true;
-        break;
-      }
-    }
-
-    if (!merged) {
-      groups.push({ keywords: new Set(kw), chains: [chain] });
-    }
-  }
-
-  const result = new Map<string, UnlinkedChain[]>();
-  for (const group of groups) {
-    const key = [...group.keywords].sort().join(" ");
-    if (key.length > 0) {
-      result.set(key, group.chains);
-    }
-  }
-  return result;
-}
-
 function makeChain(id: number, megatrend: string): UnlinkedChain {
   return { id, megatrend, bottleneck: "", status: "ACTIVE" };
 }
 
 describe("groupChainsByMegatrend", () => {
-  it("동일 megatrend 키워드를 2개 이상 공유하는 체인 2개를 1개 그룹으로 묶는다", () => {
+  it("동일 megatrend 키워드를 3개 이상 공유하는 체인 2개를 1개 그룹으로 묶는다", () => {
     const chains: UnlinkedChain[] = [
       makeChain(1, "AI 반도체 HBM 공급망 병목"),
-      makeChain(2, "AI 반도체 수요 급증 사이클"),
+      makeChain(2, "AI 반도체 HBM 수요 급증 사이클"),
       makeChain(3, "에너지 전환 풍력 태양광 확산"),
     ];
 
     const result = groupChainsByMegatrend(chains);
 
     const groups = [...result.values()];
-    const aiGroup = groups.find((g) => g.some((c) => c.id === 1 && g.some((c2) => c2.id === 2)));
+    const aiGroup = groups.find((g) => g.some((c) => c.id === 1) && g.some((c) => c.id === 2));
 
     expect(aiGroup).toBeDefined();
     expect(aiGroup).toHaveLength(2);
@@ -446,7 +390,7 @@ describe("groupChainsByMegatrend", () => {
     expect(aiGroup?.map((c) => c.id)).toContain(2);
   });
 
-  it("모든 체인이 서로 다른 megatrend이면 각각 독립 그룹이 된다", () => {
+  it("공유 키워드가 3개 미만이면 각각 독립 그룹이 된다", () => {
     const chains: UnlinkedChain[] = [
       makeChain(1, "AI 반도체 HBM 병목"),
       makeChain(2, "에너지 전환 태양광 보조금"),
@@ -499,7 +443,7 @@ describe("groupChainsByMegatrend", () => {
 describe("LLM 링킹 응답 파싱 (단위 검증)", () => {
   it("정상 JSON 응답이면 regimeIds를 파싱한다", () => {
     const text = '{"regimeIds": [1, 3]}';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     expect(jsonMatch).not.toBeNull();
     const parsed = JSON.parse(jsonMatch![0]) as { regimeIds: unknown[] };
     expect(parsed.regimeIds).toEqual([1, 3]);
@@ -507,7 +451,7 @@ describe("LLM 링킹 응답 파싱 (단위 검증)", () => {
 
   it("빈 배열 응답이면 빈 배열을 반환한다", () => {
     const text = '{"regimeIds": []}';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     expect(jsonMatch).not.toBeNull();
     const parsed = JSON.parse(jsonMatch![0]) as { regimeIds: unknown[] };
     expect(parsed.regimeIds).toEqual([]);
@@ -515,13 +459,13 @@ describe("LLM 링킹 응답 파싱 (단위 검증)", () => {
 
   it("JSON 형식 오류이면 null 매치를 반환한다", () => {
     const text = "잘못된 응답입니다";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     expect(jsonMatch).toBeNull();
   });
 
   it("regimeIds 키가 없는 JSON이면 파싱 실패로 처리한다", () => {
     const text = '{"result": [1, 2]}';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     expect(jsonMatch).not.toBeNull();
     const parsed = JSON.parse(jsonMatch![0]) as Record<string, unknown>;
     expect("regimeIds" in parsed).toBe(false);
@@ -529,7 +473,7 @@ describe("LLM 링킹 응답 파싱 (단위 검증)", () => {
 
   it("마크다운 코드 블록 내 JSON도 추출된다", () => {
     const text = '```json\n{"regimeIds": [2]}\n```';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     expect(jsonMatch).not.toBeNull();
     const parsed = JSON.parse(jsonMatch![0]) as { regimeIds: unknown[] };
     expect(parsed.regimeIds).toEqual([2]);
