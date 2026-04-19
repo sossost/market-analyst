@@ -2,6 +2,7 @@ import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
 import { eq, and, sql, inArray, asc, gte } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { getDedupedCounts } from "@/lib/thesis-dedup";
 import type { Thesis, ThesisCategory, Confidence, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "@/types/debate";
 import { recordNarrativeChain } from "./narrativeChainService.js";
 import { tryQuantitativeVerification, parseQuantitativeCondition } from "./quantitativeVerifier.js";
@@ -536,19 +537,28 @@ export interface CategoryHitRateWithStatusQuo {
   pureHitRate: number | null;
 }
 
+/**
+ * #911: 동일 검증 조건 중복 보정 적용.
+ */
 export async function getThesisHitRateByCategory(): Promise<CategoryHitRateWithStatusQuo[]> {
   const rows = await db
     .select({
       category: theses.category,
       status: theses.status,
       isStatusQuo: theses.isStatusQuo,
-      count: sql<number>`count(*)::int`,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
-    .groupBy(theses.category, theses.status, theses.isStatusQuo);
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]));
 
-  const map = new Map<string, CategoryHitRateWithStatusQuo>();
+  const map = new Map<string, {
+    category: ThesisCategory;
+    allRows: typeof rows;
+    statusQuoRows: typeof rows;
+    nonStatusQuoRows: typeof rows;
+    legacyRows: typeof rows;
+  }>();
 
   for (const r of rows) {
     const cat = (r.category ?? "sector_rotation") as ThesisCategory;
@@ -556,44 +566,51 @@ export async function getThesisHitRateByCategory(): Promise<CategoryHitRateWithS
     if (!map.has(cat)) {
       map.set(cat, {
         category: cat,
-        confirmed: 0,
-        invalidated: 0,
-        hitRate: null,
-        statusQuo: { confirmed: 0, invalidated: 0 },
-        nonStatusQuo: { confirmed: 0, invalidated: 0 },
-        legacy: { confirmed: 0, invalidated: 0 },
-        pureHitRate: null,
+        allRows: [],
+        statusQuoRows: [],
+        nonStatusQuoRows: [],
+        legacyRows: [],
       });
     }
 
     const entry = map.get(cat)!;
-    const statusKey = r.status === "CONFIRMED" ? "confirmed" : "invalidated";
-
-    entry[statusKey] += r.count;
+    entry.allRows.push(r);
 
     if (r.isStatusQuo === true) {
-      entry.statusQuo[statusKey] += r.count;
+      entry.statusQuoRows.push(r);
     } else if (r.isStatusQuo === false) {
-      entry.nonStatusQuo[statusKey] += r.count;
+      entry.nonStatusQuoRows.push(r);
     } else {
-      entry.legacy[statusKey] += r.count;
+      entry.legacyRows.push(r);
     }
   }
 
   const result: CategoryHitRateWithStatusQuo[] = [];
 
   for (const entry of map.values()) {
-    const total = entry.confirmed + entry.invalidated;
-    entry.hitRate = total > 0 ? entry.confirmed / total : null;
+    const all = getDedupedCounts(entry.allRows);
+    const sq = getDedupedCounts(entry.statusQuoRows);
+    const nsq = getDedupedCounts(entry.nonStatusQuoRows);
+    const leg = getDedupedCounts(entry.legacyRows);
 
-    const pureConfirmed = entry.nonStatusQuo.confirmed + entry.legacy.confirmed;
-    const pureInvalidated = entry.nonStatusQuo.invalidated + entry.legacy.invalidated;
-    const pureTotal = pureConfirmed + pureInvalidated;
-    entry.pureHitRate = pureTotal > 0
-      ? pureConfirmed / pureTotal
-      : null;
+    const total = all.confirmed + all.invalidated;
+    const hitRate = total > 0 ? all.confirmed / total : null;
 
-    result.push(entry);
+    // nonStatusQuo + legacy를 합쳐서 dedup — 동일 조건이 양쪽에 걸쳐도 1건으로 보정
+    const pure = getDedupedCounts([...entry.nonStatusQuoRows, ...entry.legacyRows]);
+    const pureTotal = pure.confirmed + pure.invalidated;
+    const pureHitRate = pureTotal > 0 ? pure.confirmed / pureTotal : null;
+
+    result.push({
+      category: entry.category,
+      confirmed: all.confirmed,
+      invalidated: all.invalidated,
+      hitRate,
+      statusQuo: { confirmed: sq.confirmed, invalidated: sq.invalidated },
+      nonStatusQuo: { confirmed: nsq.confirmed, invalidated: nsq.invalidated },
+      legacy: { confirmed: leg.confirmed, invalidated: leg.invalidated },
+      pureHitRate,
+    });
   }
 
   return result;
@@ -628,6 +645,7 @@ export async function getConsensusByHitRate(): Promise<ConsensusHitRateRow[]> {
 
 /**
  * Confidence별 적중률 통계.
+ * #911: 동일 검증 조건 중복 보정 적용.
  */
 export async function getConfidenceHitRates(): Promise<
   Array<{ confidence: Confidence; confirmed: number; invalidated: number; hitRate: number | null }>
@@ -635,20 +653,28 @@ export async function getConfidenceHitRates(): Promise<
   const rows = await db
     .select({
       confidence: theses.confidence,
-      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
-      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
+      status: theses.status,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]))
-    .groupBy(theses.confidence);
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED"]));
 
-  return rows.map((r) => {
-    const total = r.confirmed + r.invalidated;
+  const grouped = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const existing = grouped.get(r.confidence) ?? [];
+    existing.push(r);
+    grouped.set(r.confidence, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([confidence, confRows]) => {
+    const deduped = getDedupedCounts(confRows);
+    const total = deduped.confirmed + deduped.invalidated;
     return {
-      confidence: r.confidence as Confidence,
-      confirmed: r.confirmed,
-      invalidated: r.invalidated,
-      hitRate: total > 0 ? r.confirmed / total : null,
+      confidence: confidence as Confidence,
+      confirmed: deduped.confirmed,
+      invalidated: deduped.invalidated,
+      hitRate: total > 0 ? deduped.confirmed / total : null,
     };
   });
 }

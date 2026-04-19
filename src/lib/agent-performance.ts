@@ -1,7 +1,12 @@
 /**
  * 애널리스트(에이전트)별 thesis 적중률 집계.
  * 순수 로직 — DB 의존 없이 테스트 가능.
+ *
+ * #911: 동일 검증 조건(verificationMetric + targetCondition) 중복 보정 적용.
+ * verificationMetric/targetCondition이 있으면 중복 보정, 없으면 기존 동작 유지.
  */
+
+import { getDedupedCounts, type ThesisForDedup } from "@/lib/thesis-dedup";
 
 // ── Types ──
 
@@ -10,6 +15,10 @@ export interface ThesisRow {
   confidence: string; // 'low' | 'medium' | 'high'
   consensusLevel: string;
   status: string; // 'ACTIVE' | 'CONFIRMED' | 'INVALIDATED' | 'EXPIRED'
+  /** #911: 중복 보정에 필요. 없으면 보정 미적용 (하위 호환). */
+  verificationMetric?: string;
+  /** #911: 중복 보정에 필요. 없으면 보정 미적용 (하위 호환). */
+  targetCondition?: string;
 }
 
 export interface ConfidenceBreakdown {
@@ -31,10 +40,32 @@ export interface AgentStats {
   byConfidence: Record<string, ConfidenceBreakdown>;
 }
 
+// ── Internal ──
+
+/** 중복 보정 가능 여부 확인 — 모든 행에 필수 필드가 있어야 함 */
+function canDedup(rows: ThesisRow[]): rows is (ThesisRow & Required<Pick<ThesisRow, "verificationMetric" | "targetCondition">>)[] {
+  return rows.length > 0 && rows.every(
+    (r) => r.verificationMetric != null && r.targetCondition != null,
+  );
+}
+
+/** 중복 보정된 카운트를 반환 (보정 불가 시 단순 카운트) */
+function countResolved(rows: ThesisRow[]): { confirmed: number; invalidated: number; expired: number } {
+  if (canDedup(rows)) {
+    return getDedupedCounts(rows as ThesisForDedup[]);
+  }
+  return {
+    confirmed: rows.filter((r) => r.status === "CONFIRMED").length,
+    invalidated: rows.filter((r) => r.status === "INVALIDATED").length,
+    expired: rows.filter((r) => r.status === "EXPIRED").length,
+  };
+}
+
 // ── Pure Functions ──
 
 /**
  * theses 배열을 받아서 애널리스트별 통계 생성.
+ * #911: verificationMetric/targetCondition이 있으면 동일 조건 중복 보정 적용.
  */
 export function calculateAgentPerformance(
   theses: ThesisRow[],
@@ -56,10 +87,8 @@ export function calculateAgentPerformance(
   const stats: AgentStats[] = [];
 
   for (const [persona, rows] of grouped) {
-    const confirmed = rows.filter((r) => r.status === "CONFIRMED").length;
-    const invalidated = rows.filter((r) => r.status === "INVALIDATED").length;
-    const expired = rows.filter((r) => r.status === "EXPIRED").length;
     const active = rows.filter((r) => r.status === "ACTIVE").length;
+    const { confirmed, invalidated, expired } = countResolved(rows);
     const resolved = confirmed + invalidated + expired;
     const hitRate = resolved > 0 ? confirmed / resolved : 0;
 
@@ -78,23 +107,15 @@ export function calculateAgentPerformance(
     }
 
     for (const [conf, confRows] of confidenceGroups) {
-      const confConfirmed = confRows.filter(
-        (r) => r.status === "CONFIRMED",
-      ).length;
-      const confInvalidated = confRows.filter(
-        (r) => r.status === "INVALIDATED",
-      ).length;
-      const confExpired = confRows.filter(
-        (r) => r.status === "EXPIRED",
-      ).length;
-      const confResolved = confConfirmed + confInvalidated + confExpired;
+      const confCounts = countResolved(confRows);
+      const confResolved = confCounts.confirmed + confCounts.invalidated + confCounts.expired;
 
       byConfidence[conf] = {
         total: confRows.length,
-        confirmed: confConfirmed,
-        invalidated: confInvalidated,
-        expired: confExpired,
-        hitRate: confResolved > 0 ? confConfirmed / confResolved : 0,
+        confirmed: confCounts.confirmed,
+        invalidated: confCounts.invalidated,
+        expired: confCounts.expired,
+        hitRate: confResolved > 0 ? confCounts.confirmed / confResolved : 0,
       };
     }
 

@@ -10,6 +10,7 @@ import { db } from "@/db/client";
 import { theses, marketRegimes, type MarketRegimeType } from "@/db/schema/analyst";
 import { sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { getDedupedCounts } from "@/lib/thesis-dedup";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -48,14 +49,15 @@ const MIN_SAMPLES_PER_REGIME = 5;
  * 레짐별 thesis 적중률을 산출한다.
  * thesis.debate_date = market_regimes.regime_date 기준 조인.
  * 확정된(confirmed) 레짐만 사용하여 노이즈 방지.
+ * #911: 동일 검증 조건 중복 보정 적용.
  */
 export async function calcRegimeHitRates(): Promise<RegimeHitRate[]> {
   const rows = await db
     .select({
       regime: marketRegimes.regime,
-      total: sql<number>`count(*)::int`,
-      confirmed: sql<number>`sum(case when ${theses.status} = 'CONFIRMED' then 1 else 0 end)::int`,
-      invalidated: sql<number>`sum(case when ${theses.status} = 'INVALIDATED' then 1 else 0 end)::int`,
+      status: theses.status,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
     .innerJoin(
@@ -64,16 +66,28 @@ export async function calcRegimeHitRates(): Promise<RegimeHitRate[]> {
     )
     .where(
       sql`${theses.status} in ('CONFIRMED', 'INVALIDATED') and ${marketRegimes.isConfirmed} = true`,
-    )
-    .groupBy(marketRegimes.regime);
+    );
 
-  return rows.map((r) => ({
-    regime: r.regime as MarketRegimeType,
-    total: r.total,
-    confirmed: r.confirmed,
-    invalidated: r.invalidated,
-    hitRate: r.total > 0 ? Number((r.confirmed / r.total).toFixed(2)) : 0,
-  }));
+  // 레짐별 그룹화 후 중복 보정
+  const grouped = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const regime = r.regime as string;
+    const existing = grouped.get(regime) ?? [];
+    existing.push(r);
+    grouped.set(regime, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([regime, regimeRows]) => {
+    const deduped = getDedupedCounts(regimeRows);
+    const total = deduped.confirmed + deduped.invalidated;
+    return {
+      regime: regime as MarketRegimeType,
+      total,
+      confirmed: deduped.confirmed,
+      invalidated: deduped.invalidated,
+      hitRate: total > 0 ? Number((deduped.confirmed / total).toFixed(2)) : 0,
+    };
+  });
 }
 
 /**

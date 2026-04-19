@@ -140,14 +140,18 @@ function makeThesis(overrides: Partial<{
   verificationMethod: string | null;
   status: string;
   category: string;
+  targetCondition: string;
 }> = {}) {
+  const id = overrides.id ?? 1;
   return {
-    id: 1,
+    id,
     agentPersona: "trend-follower",
     verificationMetric: "RS > 80",
     verificationMethod: "quantitative",
     status: "CONFIRMED",
     category: "sector_rotation",
+    // #911: 각 thesis에 고유 targetCondition 부여 (dedup 테스트 정합성 유지)
+    targetCondition: `> ${id * 10}`,
     ticker: "AAPL",
     sectorName: "Technology",
     thesisText: "test",

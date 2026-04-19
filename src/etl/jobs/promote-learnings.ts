@@ -7,6 +7,8 @@ export const BEAR_KEYWORDS_FOR_PRIORITY = ["하락", "약세", "부정", "조정
 import { assertValidEnvironment } from "@/etl/utils/validation";
 import { binomialTest } from "@/lib/statisticalTests";
 import { detectBullBias } from "@/lib/biasDetector";
+import { normalizeMetricKey } from "@/lib/normalize-metric";
+import { getDedupedHitMiss, getDedupedCounts } from "@/lib/thesis-dedup";
 import { logger } from "@/lib/logger";
 
 const TAG = "PROMOTE_LEARNINGS";
@@ -87,72 +89,9 @@ interface PromotionCandidate {
   verificationMethods: string[];
 }
 
-// ---------------------------------------------------------------------------
-// verificationMetric 정규화
-//
-// LLM이 같은 지표를 다양한 형태로 생성하므로 (e.g. "Technology RS", "Tech RS",
-// "Information Technology 섹터 RS") 학습 그룹핑 시 정규화가 필요하다.
-// ---------------------------------------------------------------------------
-
-const METRIC_ALIASES: Record<string, string> = {
-  spx: "S&P 500", sp500: "S&P 500", "s&p500": "S&P 500", "s&p 500": "S&P 500",
-  qqq: "NASDAQ", nasdaq: "NASDAQ",
-  iwm: "Russell 2000", "russell 2000": "Russell 2000",
-  "dow 30": "DOW 30", dow: "DOW 30", djia: "DOW 30",
-  vix: "VIX",
-  "fear & greed": "Fear & Greed", "fear and greed": "Fear & Greed", "공포탐욕지수": "Fear & Greed",
-  // Commodities (#427)
-  wti: "WTI Crude", "wti crude": "WTI Crude", "crude oil": "WTI Crude", "원유": "WTI Crude",
-  "brent": "Brent Crude", "brent crude": "Brent Crude", "브렌트유": "Brent Crude",
-  gold: "Gold", "금": "Gold", xau: "Gold",
-  silver: "Silver", "은": "Silver",
-  copper: "Copper", "구리": "Copper",
-  // Rates
-  "10y": "US 10Y Yield", "10년물": "US 10Y Yield", "us 10y": "US 10Y Yield", "us 10y yield": "US 10Y Yield",
-  "2y": "US 2Y Yield", "2년물": "US 2Y Yield", "us 2y": "US 2Y Yield", "us 2y yield": "US 2Y Yield",
-  dxy: "DXY", "달러인덱스": "DXY", "dollar index": "DXY",
-};
-
-const SECTOR_METRIC_ALIASES: Record<string, string> = {
-  tech: "Technology", it: "Technology", "information technology": "Technology", "info tech": "Technology",
-  "comm services": "Communication Services", communications: "Communication Services", telecom: "Communication Services",
-  "consumer discretionary": "Consumer Cyclical", "cons cyclical": "Consumer Cyclical", discretionary: "Consumer Cyclical",
-  "consumer staples": "Consumer Defensive", "cons defensive": "Consumer Defensive", staples: "Consumer Defensive",
-  financials: "Financial Services", finance: "Financial Services", financial: "Financial Services",
-  materials: "Basic Materials", "basic material": "Basic Materials",
-  health: "Healthcare", "health care": "Healthcare",
-  industrial: "Industrials",
-  realestate: "Real Estate", reit: "Real Estate", reits: "Real Estate",
-  utility: "Utilities",
-};
-
-const SECTOR_RS_NORMALIZE_PATTERN = /^(.+?)\s*(?:섹터\s+|sector\s+)?RS(?:\s+score)?$/i;
-
-/**
- * verificationMetric 문자열을 정규화된 키로 변환.
- *
- * "Tech RS" → "Technology RS"
- * "Information Technology 섹터 RS" → "Technology RS"
- * "SPX" → "S&P 500"
- */
-export function normalizeMetricKey(raw: string): string {
-  const trimmed = raw.trim();
-  const lower = trimmed.toLowerCase();
-
-  // 섹터 RS 패턴 매칭
-  const sectorMatch = SECTOR_RS_NORMALIZE_PATTERN.exec(trimmed);
-  if (sectorMatch != null) {
-    const rawSector = sectorMatch[1].trim().toLowerCase();
-    const canonical = SECTOR_METRIC_ALIASES[rawSector] ?? sectorMatch[1].trim();
-    return `${canonical} RS`;
-  }
-
-  // 지수/기타 지표 별칭
-  const aliased = METRIC_ALIASES[lower];
-  if (aliased != null) return aliased;
-
-  return trimmed;
-}
+// normalizeMetricKey는 src/lib/normalize-metric.ts로 추출 (#911)
+// 하위 호환을 위한 re-export
+export { normalizeMetricKey } from "@/lib/normalize-metric";
 
 // anti-pattern 중복 방지는 promoteAntiPatterns 내부의 cautionSourceKey DB 조회로 처리.
 // thesis ID 단위 추적은 불필요 — sourceThesisIds에 persona::metric JSON 키를 저장하므로.
@@ -403,6 +342,7 @@ export async function demoteImmatureLearnings(
 /**
  * sourceThesisIds 기준으로 hitCount/missCount를 절대값으로 재계산.
  * 누적이 아닌 재계산 방식으로 중복 카운트 버그 방지.
+ * #911: 동일 검증 조건 중복 보정 — 같은 조건 N건을 1건으로 카운트.
  */
 async function updateLearningStats(
   learnings: typeof agentLearnings.$inferSelect[],
@@ -410,8 +350,10 @@ async function updateLearningStats(
   invalidatedTheses: typeof theses.$inferSelect[],
   today: string,
 ): Promise<number> {
-  const confirmedIds = new Set(confirmedTheses.map((t) => t.id));
-  const invalidatedIds = new Set(invalidatedTheses.map((t) => t.id));
+  // #911: ID → thesis 맵 (dedup에 필요)
+  const thesisById = new Map(
+    [...confirmedTheses, ...invalidatedTheses].map((t) => [t.id, t]),
+  );
 
   // 업데이트 대상만 먼저 필터
   const toUpdate: Array<{ id: number; hits: number; misses: number }> = [];
@@ -426,8 +368,8 @@ async function updateLearningStats(
     } catch {
       sourceIds = [];
     }
-    const hits = sourceIds.filter((id) => confirmedIds.has(id)).length;
-    const misses = sourceIds.filter((id) => invalidatedIds.has(id)).length;
+    // #911: 동일 검증 조건 중복 보정 적용
+    const { hits, misses } = getDedupedHitMiss(sourceIds, thesisById);
 
     // 변화 없으면 스킵
     if (hits === learning.hitCount && misses === learning.missCount) continue;
@@ -545,9 +487,7 @@ export async function absorbNewTheses(
   }
 
   // DB 업데이트: sourceThesisIds 확장 + stats 재계산
-  const confirmedIds = new Set(allJudgedTheses.filter((t) => t.status === "CONFIRMED").map((t) => t.id));
-  const negativeIds = new Set(allJudgedTheses.filter((t) => t.status === "INVALIDATED" || t.status === "EXPIRED").map((t) => t.id));
-
+  // #911: 동일 검증 조건 중복 보정 — thesisById 사용
   let totalAbsorbed = 0;
 
   const entries = Array.from(toAbsorb.entries());
@@ -559,8 +499,8 @@ export async function absorbNewTheses(
         const mergedIds = new Set([...existingIds, ...newIds]);
         const mergedArray = Array.from(mergedIds);
 
-        const hits = mergedArray.filter((id) => confirmedIds.has(id)).length;
-        const misses = mergedArray.filter((id) => negativeIds.has(id)).length;
+        // #911: 동일 검증 조건 중복 보정 적용
+        const { hits, misses } = getDedupedHitMiss(mergedArray, thesisById);
         const total = hits + misses;
         const hitRate = total > 0 ? hits / total : null;
 
@@ -608,6 +548,7 @@ export async function absorbNewTheses(
 /**
  * 그룹 맵에서 threshold를 충족하는 후보를 필터링하여 PromotionCandidate[] 반환.
  * buildPromotionCandidates 내부에서 metric 그룹과 category 폴백 그룹 모두에 사용.
+ * #911: 동일 검증 조건 중복 보정 — hitCount/missCount/hitRate에 dedup 적용.
  */
 function filterCandidateGroups(
   groups: Map<string, { confirmed: typeof theses.$inferSelect[]; invalidated: typeof theses.$inferSelect[] }>,
@@ -616,11 +557,17 @@ function filterCandidateGroups(
 ): PromotionCandidate[] {
   return Array.from(groups.entries())
     .filter(([key, g]) => {
-      const total = g.confirmed.length + g.invalidated.length;
-      const hitRate = total > 0 ? g.confirmed.length / total : 0;
+      // #911: 그룹 내 동일 조건 중복 보정
+      const allGroupTheses = [
+        ...g.confirmed.map((t) => ({ ...t, status: "CONFIRMED" as const })),
+        ...g.invalidated.map((t) => ({ ...t, status: "INVALIDATED" as const })),
+      ];
+      const deduped = getDedupedCounts(allGroupTheses);
+      const total = deduped.confirmed + deduped.invalidated;
+      const hitRate = total > 0 ? deduped.confirmed / total : 0;
 
-      if (g.confirmed.length < thresholds.minHits) {
-        logger.info(TAG, `  REJECT (minHits): ${key} — hits=${g.confirmed.length} < ${thresholds.minHits}`);
+      if (deduped.confirmed < thresholds.minHits) {
+        logger.info(TAG, `  REJECT (minHits): ${key} — hits=${deduped.confirmed} < ${thresholds.minHits}`);
         return false;
       }
       if (hitRate < thresholds.minHitRate) {
@@ -636,7 +583,7 @@ function filterCandidateGroups(
         const phaseLabel = activeLearningCount < BOOTSTRAP_THRESHOLD ? "BOOTSTRAP" : activeLearningCount < COLD_START_THRESHOLD ? "COLD_START" : "EARLY_GROWTH";
         logger.info(TAG, `  ${phaseLabel}: ${key} — binomial test 면제 (활성 학습 ${activeLearningCount}건)`);
       } else {
-        const test = binomialTest(g.confirmed.length, total);
+        const test = binomialTest(deduped.confirmed, total);
         if (!test.isSignificant) {
           logger.info(TAG, `  REJECT (binomial): ${key} — p=${test.pValue.toFixed(4)}, h=${test.cohenH.toFixed(2)} (not significant)`);
           return false;
@@ -656,13 +603,20 @@ function filterCandidateGroups(
         ),
       ];
 
+      // #911: sourceThesisIds는 전체 ID 유지 (추적용), hitCount/missCount는 dedup 적용
+      const allGroupTheses = [
+        ...g.confirmed.map((t) => ({ ...t, status: "CONFIRMED" as const })),
+        ...g.invalidated.map((t) => ({ ...t, status: "INVALIDATED" as const })),
+      ];
+      const deduped = getDedupedCounts(allGroupTheses);
+
       return {
         persona,
         metric,
         confirmedIds: g.confirmed.map((t) => t.id),
         invalidatedIds: g.invalidated.map((t) => t.id),
-        hitCount: g.confirmed.length,
-        missCount: g.invalidated.length,
+        hitCount: deduped.confirmed,
+        missCount: deduped.invalidated,
         verificationMethods,
       };
     });

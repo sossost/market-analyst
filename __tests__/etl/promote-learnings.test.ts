@@ -34,14 +34,16 @@ function calculateHitRate(hits: number, misses: number): number | null {
 }
 
 function makeThesis(overrides: Record<string, unknown>) {
+  // #911: 각 thesis에 고유 targetCondition 부여 (dedup 테스트 정합성 유지)
+  const id = (overrides.id as number) ?? 1;
   return {
-    id: 1,
+    id,
     debateDate: "2026-03-01",
     agentPersona: "macro",
     thesis: "test thesis",
     timeframeDays: 30,
     verificationMetric: "S&P 500",
-    targetCondition: ">5800",
+    targetCondition: `>${5800 + id}`,
     invalidationCondition: null,
     confidence: "high",
     consensusLevel: "3/4",
