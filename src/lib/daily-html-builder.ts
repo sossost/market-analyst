@@ -989,6 +989,10 @@ function renderDivergenceAlert(signal: DailyBreadthSnapshot["divergenceSignal"])
         return "Phase 2 유지 중이나 MA50 이상 비율 하락 — 중기 약화 경고";
       case "positive":
         return "SPX 하락 중이나 브레드스 내부 개선 — 중기 반등 신호";
+      default: {
+        const _exhaustive: never = signal;
+        throw new Error(`Unhandled divergence signal: ${_exhaustive}`);
+      }
     }
   })();
   return `<div class="alert-block alert-warning">
