@@ -2,6 +2,7 @@ import { db } from "@/db/client";
 import {
   metaRegimes,
   narrativeChains,
+  narrativeChainRegimes,
   type MetaRegimePropagationType,
   type MetaRegimeStatus,
   type NarrativeChainStatus,
@@ -157,15 +158,16 @@ export async function getMetaRegimeWithChains(
       id: narrativeChains.id,
       bottleneck: narrativeChains.bottleneck,
       supplyChain: narrativeChains.supplyChain,
-      sequenceOrder: narrativeChains.sequenceOrder,
-      sequenceConfidence: narrativeChains.sequenceConfidence,
+      sequenceOrder: narrativeChainRegimes.sequenceOrder,
+      sequenceConfidence: narrativeChainRegimes.sequenceConfidence,
       status: narrativeChains.status,
       activatedAt: narrativeChains.activatedAt,
       peakAt: narrativeChains.peakAt,
     })
-    .from(narrativeChains)
-    .where(eq(narrativeChains.metaRegimeId, regimeId))
-    .orderBy(asc(narrativeChains.sequenceOrder));
+    .from(narrativeChainRegimes)
+    .innerJoin(narrativeChains, eq(narrativeChainRegimes.chainId, narrativeChains.id))
+    .where(eq(narrativeChainRegimes.regimeId, regimeId))
+    .orderBy(asc(narrativeChainRegimes.sequenceOrder));
 
   return {
     ...regime,
@@ -216,23 +218,23 @@ export async function transitionMetaRegimeStatuses(): Promise<number> {
   const activeRegimes = await getActiveMetaRegimes();
   if (activeRegimes.length === 0) return 0;
 
-  // Batch fetch chains for all active regimes in a single query
+  // junction table 기준으로 배치 조회 — N+1 방지
   const regimeIds = activeRegimes.map((r) => r.id);
   const allChains = await db
     .select({
-      metaRegimeId: narrativeChains.metaRegimeId,
+      regimeId: narrativeChainRegimes.regimeId,
       status: narrativeChains.status,
     })
-    .from(narrativeChains)
-    .where(inArray(narrativeChains.metaRegimeId, regimeIds));
+    .from(narrativeChainRegimes)
+    .innerJoin(narrativeChains, eq(narrativeChainRegimes.chainId, narrativeChains.id))
+    .where(inArray(narrativeChainRegimes.regimeId, regimeIds));
 
   // Group chain statuses by regime ID
   const chainsByRegime = new Map<number, NarrativeChainStatus[]>();
   for (const chain of allChains) {
-    if (chain.metaRegimeId == null) continue;
-    const existing = chainsByRegime.get(chain.metaRegimeId) ?? [];
+    const existing = chainsByRegime.get(chain.regimeId) ?? [];
     existing.push(chain.status as NarrativeChainStatus);
-    chainsByRegime.set(chain.metaRegimeId, existing);
+    chainsByRegime.set(chain.regimeId, existing);
   }
 
   let transitioned = 0;
@@ -292,29 +294,31 @@ const MIN_MEGATREND_OVERLAP = 3;
 const ACTIVE_CHAIN_STATUSES: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
 
 /**
- * Link a specific chain to a regime with auto-assigned sequence_order.
+ * junction table에 체인-국면 링크를 삽입한다.
+ * sequence_order는 해당 국면의 기존 최대값 + 1로 자동 부여.
+ * 이미 존재하는 링크는 무시한다 (ON CONFLICT DO NOTHING).
  */
 export async function linkChainToRegime(
   chainId: number,
   regimeId: number,
   confidence: "low" | "medium" | "high" = "medium",
 ): Promise<void> {
-  // Get max existing sequence_order for the regime
   const [maxResult] = await db
-    .select({ maxOrder: sql<number>`COALESCE(MAX(${narrativeChains.sequenceOrder}), 0)` })
-    .from(narrativeChains)
-    .where(eq(narrativeChains.metaRegimeId, regimeId));
+    .select({ maxOrder: sql<number>`COALESCE(MAX(${narrativeChainRegimes.sequenceOrder}), 0)` })
+    .from(narrativeChainRegimes)
+    .where(eq(narrativeChainRegimes.regimeId, regimeId));
 
   const nextOrder = (maxResult?.maxOrder ?? 0) + 1;
 
   await db
-    .update(narrativeChains)
-    .set({
-      metaRegimeId: regimeId,
+    .insert(narrativeChainRegimes)
+    .values({
+      chainId,
+      regimeId,
       sequenceOrder: nextOrder,
       sequenceConfidence: confidence,
     })
-    .where(eq(narrativeChains.id, chainId));
+    .onConflictDoNothing();
 
   logger.info(
     "MetaRegime",
@@ -323,43 +327,47 @@ export async function linkChainToRegime(
 }
 
 /**
- * Find unlinked active chains and link them to matching active regimes.
- * Matching is based on megatrend keyword overlap.
- * Returns count of chains linked.
+ * junction table에 미등록된 활성 체인을 찾아 기존 활성 국면에 링크한다.
+ * 매칭은 megatrend 키워드 overlap 기반으로 수행한다.
+ * 반환: 링크된 체인 수.
  */
 export async function linkUnlinkedChainsToRegimes(): Promise<number> {
+  // LEFT JOIN으로 단일 쿼리에서 미연결 활성 체인만 필터링
   const unlinkedChains = await db
     .select({
       id: narrativeChains.id,
       megatrend: narrativeChains.megatrend,
     })
     .from(narrativeChains)
+    .leftJoin(narrativeChainRegimes, eq(narrativeChainRegimes.chainId, narrativeChains.id))
     .where(
       and(
-        isNull(narrativeChains.metaRegimeId),
+        isNull(narrativeChainRegimes.chainId),
         inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
       ),
     );
 
   if (unlinkedChains.length === 0) return 0;
 
-  // Get active regimes with their chains' megatrends (batch fetch)
   const activeRegimes = await getActiveMetaRegimes();
   if (activeRegimes.length === 0) return 0;
 
   const regimeIds = activeRegimes.map((r) => r.id);
+
+  // junction table 기준으로 각 국면에 연결된 체인의 megatrend를 배치 조회
   const allRegimeChains = await db
     .select({
-      metaRegimeId: narrativeChains.metaRegimeId,
+      regimeId: narrativeChainRegimes.regimeId,
       megatrend: narrativeChains.megatrend,
     })
-    .from(narrativeChains)
-    .where(inArray(narrativeChains.metaRegimeId, regimeIds));
+    .from(narrativeChainRegimes)
+    .innerJoin(narrativeChains, eq(narrativeChainRegimes.chainId, narrativeChains.id))
+    .where(inArray(narrativeChainRegimes.regimeId, regimeIds));
 
-  // Pre-compute keyword sets per regime to avoid redundant extraction inside the loop
+  // 국면별 키워드 집합 사전 계산 — 루프 내 중복 추출 방지
   const regimeChainData = activeRegimes.map((regime) => {
     const megatrends = allRegimeChains
-      .filter((c) => c.metaRegimeId === regime.id)
+      .filter((c) => c.regimeId === regime.id)
       .map((c) => c.megatrend);
     const keywords = new Set<string>();
     for (const mt of megatrends) {
@@ -403,11 +411,12 @@ export async function linkUnlinkedChainsToRegimes(): Promise<number> {
 // ─── Auto Regime Creation ───────────────────────────────────────────
 
 /**
- * Detect groups of 2+ unlinked chains with similar megatrend and create regimes.
- * A chain can only belong to one regime — already-linked chains are excluded.
- * Returns count of regimes created.
+ * junction table에 미등록된 활성 체인 2개 이상이 megatrend를 공유하는 경우
+ * 새 국면을 자동 생성하고 해당 체인들을 연결한다.
+ * 반환: 생성된 국면 수.
  */
 export async function detectAndCreateNewRegimes(): Promise<number> {
+  // LEFT JOIN으로 단일 쿼리에서 미연결 활성 체인만 필터링
   const unlinkedChains = await db
     .select({
       id: narrativeChains.id,
@@ -415,19 +424,22 @@ export async function detectAndCreateNewRegimes(): Promise<number> {
       supplyChain: narrativeChains.supplyChain,
     })
     .from(narrativeChains)
+    .leftJoin(narrativeChainRegimes, eq(narrativeChainRegimes.chainId, narrativeChains.id))
     .where(
       and(
-        isNull(narrativeChains.metaRegimeId),
+        isNull(narrativeChainRegimes.chainId),
         inArray(narrativeChains.status, ACTIVE_CHAIN_STATUSES),
       ),
     );
 
   if (unlinkedChains.length < 2) return 0;
 
+  type UnlinkedChain = { id: number; megatrend: string; supplyChain: string };
+
   // Greedy first-match grouping by megatrend keyword overlap.
   // Note: result is order-dependent — a chain matching multiple groups joins the first one.
   // Acceptable for current scale (typically < 10 unlinked chains per debate run).
-  const groups: Array<{ chains: typeof unlinkedChains; keywords: Set<string> }> = [];
+  const groups: Array<{ chains: UnlinkedChain[]; keywords: Set<string> }> = [];
 
   for (const chain of unlinkedChains) {
     const chainKeywords = extractMegatrendKeywords(chain.megatrend);
@@ -466,19 +478,50 @@ export async function detectAndCreateNewRegimes(): Promise<number> {
       ? "supply_chain"
       : "narrative_shift";
 
-    const { id: regimeId } = await createMetaRegime({
-      name: firstChain.megatrend,
-      propagationType,
-    });
+    let regimeId: number;
 
-    for (let i = 0; i < group.chains.length; i++) {
-      await linkChainToRegime(group.chains[i].id, regimeId, "medium");
-    }
+    await db.transaction(async (tx) => {
+      // regime 생성
+      const [regimeResult] = await tx
+        .insert(metaRegimes)
+        .values({
+          name: firstChain.megatrend,
+          propagationType,
+          activatedAt: new Date(),
+        })
+        .returning({ id: metaRegimes.id });
+
+      if (regimeResult == null) {
+        throw new Error(`Failed to insert meta-regime: no row returned for "${firstChain.megatrend}"`);
+      }
+
+      regimeId = regimeResult.id;
+
+      // 각 체인 링크 삽입 — 중간 실패 시 regime + 링크 모두 롤백
+      for (let i = 0; i < group.chains.length; i++) {
+        const [maxResult] = await tx
+          .select({ maxOrder: sql<number>`COALESCE(MAX(${narrativeChainRegimes.sequenceOrder}), 0)` })
+          .from(narrativeChainRegimes)
+          .where(eq(narrativeChainRegimes.regimeId, regimeId));
+
+        const nextOrder = (maxResult?.maxOrder ?? 0) + 1;
+
+        await tx
+          .insert(narrativeChainRegimes)
+          .values({
+            chainId: group.chains[i].id,
+            regimeId,
+            sequenceOrder: nextOrder,
+            sequenceConfidence: "medium",
+          })
+          .onConflictDoNothing();
+      }
+    });
 
     created++;
     logger.info(
       "MetaRegime",
-      `Auto-created regime #${regimeId} "${firstChain.megatrend}" with ${group.chains.length} chains`,
+      `Auto-created regime #${regimeId!} "${firstChain.megatrend}" with ${group.chains.length} chains`,
     );
   }
 
@@ -537,16 +580,17 @@ export async function formatMetaRegimesForPrompt(): Promise<string> {
   const regimeIds = regimes.map((r) => r.id);
   const allChains = await db
     .select({
-      metaRegimeId: narrativeChains.metaRegimeId,
+      regimeId: narrativeChainRegimes.regimeId,
       bottleneck: narrativeChains.bottleneck,
       supplyChain: narrativeChains.supplyChain,
-      sequenceOrder: narrativeChains.sequenceOrder,
-      sequenceConfidence: narrativeChains.sequenceConfidence,
+      sequenceOrder: narrativeChainRegimes.sequenceOrder,
+      sequenceConfidence: narrativeChainRegimes.sequenceConfidence,
       status: narrativeChains.status,
     })
-    .from(narrativeChains)
-    .where(inArray(narrativeChains.metaRegimeId, regimeIds))
-    .orderBy(asc(narrativeChains.sequenceOrder));
+    .from(narrativeChainRegimes)
+    .innerJoin(narrativeChains, eq(narrativeChainRegimes.chainId, narrativeChains.id))
+    .where(inArray(narrativeChainRegimes.regimeId, regimeIds))
+    .orderBy(asc(narrativeChainRegimes.sequenceOrder));
 
   const sections: string[] = [
     "## 현재 활성 국면 (Meta-Regime)\n",
@@ -565,7 +609,7 @@ export async function formatMetaRegimesForPrompt(): Promise<string> {
       sections.push(`- 설명: ${regime.description}`);
     }
 
-    const chains = allChains.filter((c) => c.metaRegimeId === regime.id);
+    const chains = allChains.filter((c) => c.regimeId === regime.id);
 
     if (chains.length > 0) {
       sections.push("");
@@ -653,8 +697,9 @@ export async function updateMetaRegimeDescription(
 }
 
 /**
- * Link a narrative chain to a meta-regime with a sequence order.
- * narrative_chains 테이블의 metaRegimeId, sequenceOrder 컬럼을 업데이트한다.
+ * junction table에 체인-국면 링크를 삽입한다.
+ * 시그니처는 기존과 동일하게 유지하여 run-debate-agent.ts 호환성을 보장한다.
+ * 이미 존재하는 링크는 무시한다 (ON CONFLICT DO NOTHING).
  */
 export async function linkChainToMetaRegime(
   chainId: number,
@@ -663,9 +708,14 @@ export async function linkChainToMetaRegime(
 ): Promise<void> {
   try {
     await db
-      .update(narrativeChains)
-      .set({ metaRegimeId: regimeId, sequenceOrder })
-      .where(eq(narrativeChains.id, chainId));
+      .insert(narrativeChainRegimes)
+      .values({
+        chainId,
+        regimeId,
+        sequenceOrder,
+        sequenceConfidence: "medium",
+      })
+      .onConflictDoNothing();
 
     logger.info(
       "MetaRegime",
@@ -734,8 +784,9 @@ export async function syncMetaRegimeStatus(regimeId: number): Promise<{
 
     const chains = await db
       .select({ status: narrativeChains.status })
-      .from(narrativeChains)
-      .where(eq(narrativeChains.metaRegimeId, regimeId));
+      .from(narrativeChainRegimes)
+      .innerJoin(narrativeChains, eq(narrativeChainRegimes.chainId, narrativeChains.id))
+      .where(eq(narrativeChainRegimes.regimeId, regimeId));
 
     if (chains.length === 0) {
       return { regimeId, previousStatus, newStatus: previousStatus, changed: false };
@@ -831,15 +882,15 @@ export async function findSimilarMetaRegime(
 }
 
 /**
- * 특정 국면에 연결된 체인 수를 조회한다.
+ * junction table 기준으로 특정 국면에 연결된 체인 수를 조회한다.
  * linkChainToMetaRegime 호출 시 sequenceOrder 계산에 사용된다.
  */
 export async function getChainCountInMetaRegime(regimeId: number): Promise<number> {
-  const chains = await db
-    .select({ id: narrativeChains.id })
-    .from(narrativeChains)
-    .where(eq(narrativeChains.metaRegimeId, regimeId));
-  return chains.length;
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(narrativeChainRegimes)
+    .where(eq(narrativeChainRegimes.regimeId, regimeId));
+  return row?.count ?? 0;
 }
 
 type UnlinkedChain = {
