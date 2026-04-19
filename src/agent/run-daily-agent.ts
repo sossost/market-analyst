@@ -42,7 +42,7 @@ import {
   formatThesesForPrompt,
 } from "@/debate/thesisStore";
 import { formatChainsForDailyPrompt } from "@/lib/narrativeChainStats";
-import { loadTodayDebateInsight, loadTodayDebateSummary } from "@/debate/sessionStore";
+import { loadTodayDebateInsight, loadTodayDebateSummary, loadTodayDebateGistUrl } from "@/debate/sessionStore";
 import { loadPreviousReportContext } from "@/lib/previousReportContext";
 import { loadSectorClusterContext } from "@/lib/sectorClusterContext";
 import { loadConfirmedRegime } from "@/debate/regimeStore";
@@ -466,9 +466,10 @@ async function main() {
     logger.warn("Regime", `레짐 로드 실패 (계속 진행): ${reason}`);
   }
 
-  const [debateInsight, debateSummary] = await Promise.all([
+  const [debateInsight, debateSummary, debateGistUrl] = await Promise.all([
     loadTodayDebateInsight(targetDate),
     loadTodayDebateSummary(targetDate),
+    loadTodayDebateGistUrl(targetDate),
   ]);
   if (debateInsight !== "") {
     logger.info("DebateInsight", "오늘의 토론 인사이트 로드 완료");
@@ -505,7 +506,7 @@ async function main() {
 
   // 6. HTML 조립 + 발행
   logger.step("[6/8] Building and publishing report...");
-  const html = buildDailyHtml(data, insight, targetDate, debateSummary);
+  const html = buildDailyHtml(data, insight, targetDate, debateSummary, debateGistUrl);
 
   logger.info("HTML", `Generated (${(html.length / 1024).toFixed(1)} KB)`);
 

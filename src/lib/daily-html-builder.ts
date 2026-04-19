@@ -1351,7 +1351,7 @@ export function renderRisingRSSection(
 
 // ─── 토론 요약 섹션 ─────────────────────────────────────────────────────────
 
-export function renderDebateSummary(summary: DebateSummary | null): string {
+export function renderDebateSummary(summary: DebateSummary | null, gistUrl?: string | null): string {
   if (summary == null) return "";
 
   const topicsHtml = summary.keyTopics.length > 0
@@ -1373,12 +1373,17 @@ export function renderDebateSummary(summary: DebateSummary | null): string {
     ? `<div class="debate-conclusion">${mdToHtml(sanitizeForMd(summary.conclusion))}</div>`
     : "";
 
+  const gistLinkHtml = gistUrl != null && gistUrl !== ""
+    ? `<p style="margin:10px 0 0;font-size:0.82rem;"><a href="${escapeHtml(gistUrl)}" style="color:var(--accent);text-decoration:none;">토론 전문 보기 →</a></p>`
+    : "";
+
   return `
     <div class="debate-summary">
       <p class="debate-headline">${escapeHtml(summary.headline).replace(/&quot;/g, '"')}</p>
       ${topicsHtml}
       ${dissentHtml}
       ${conclusionHtml}
+      ${gistLinkHtml}
     </div>`;
 }
 
@@ -1415,6 +1420,7 @@ export function buildDailyHtml(
   insight: DailyReportInsight,
   date: string,
   debateSummary?: DebateSummary | null,
+  debateGistUrl?: string | null,
 ): string {
   const temperatureCls = escapeHtml(insight.marketTemperature);
   const temperatureLabel = escapeHtml(insight.marketTemperatureLabel);
@@ -1445,7 +1451,7 @@ export function buildDailyHtml(
     insight.risingRSNarrative,
   );
   const insightHtml = renderInsightSection(insight);
-  const debateSummaryHtml = renderDebateSummary(debateSummary ?? null);
+  const debateSummaryHtml = renderDebateSummary(debateSummary ?? null, debateGistUrl);
 
   return `<!DOCTYPE html>
 <html lang="ko">

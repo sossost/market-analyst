@@ -268,3 +268,33 @@ export async function loadTodayDebateSummary(date: string): Promise<DebateSummar
     return null;
   }
 }
+
+/**
+ * debate_sessions의 gist_url을 업데이트한다.
+ * Gist 발행 후 URL을 저장하여 일간 리포트에서 링크로 활용.
+ */
+export async function updateDebateSessionGistUrl(date: string, gistUrl: string): Promise<void> {
+  await db
+    .update(debateSessions)
+    .set({ gistUrl })
+    .where(eq(debateSessions.date, date));
+  logger.info("SessionStore", `Gist URL saved for ${date}: ${gistUrl}`);
+}
+
+/**
+ * 오늘 토론 세션의 Gist URL을 조회한다.
+ * 일간 리포트 HTML에서 "전문 보기" 링크로 사용.
+ */
+export async function loadTodayDebateGistUrl(date: string): Promise<string | null> {
+  try {
+    const rows = await db
+      .select({ gistUrl: debateSessions.gistUrl })
+      .from(debateSessions)
+      .where(eq(debateSessions.date, date))
+      .limit(1);
+
+    return rows[0]?.gistUrl ?? null;
+  } catch {
+    return null;
+  }
+}

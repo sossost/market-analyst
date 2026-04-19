@@ -35,6 +35,7 @@ import { logger } from "@/lib/logger";
 import { runDebateQA, type DebateQAResult } from "./debateQA";
 import { reportQAIssue } from "@/lib/qaIssueReporter";
 import { runReviewPipeline, draftsToFullContent, type ReportDraft } from "./reviewAgent";
+import { createGist } from "@/lib/gist";
 import { loadFundamentalData } from "@/lib/fundamental-data-loader";
 import { scoreFundamentals, promoteTopToS } from "@/lib/fundamental-scorer";
 import { formatFundamentalContext } from "@/debate/round3-synthesis";
@@ -858,6 +859,24 @@ async function main() {
     logger.warn("Session", `Failed to save session: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // 6.4. Gist 발행 — synthesis_report 전문을 Gist로 업로드
+  let gistUrl: string | null = null;
+  try {
+    const gistResult = await createGist(
+      `debate-${debateDate}.md`,
+      result.round3.report,
+      `시장 분석 종합 브리핑 (${debateDate})`,
+    );
+    if (gistResult != null) {
+      gistUrl = gistResult.url;
+      // DB에 gist_url 저장
+      const { updateDebateSessionGistUrl } = await import("@/debate/sessionStore");
+      await updateDebateSessionGistUrl(debateDate, gistUrl);
+    }
+  } catch (err) {
+    logger.warn("Gist", `Gist 발행 실패 (발송 계속): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 6.5. 메타 국면 자동 관리 (#743)
   // 상태 전이 → 체인↔국면 연결 → 신규 국면 생성 (에러 격리)
   try {
@@ -966,6 +985,25 @@ async function main() {
   // 7. 발송 경로 결정
   // DEBATE_SEND_MODE=legacy: 기존 조건부 Discord 발송 (롤백 안전장치)
   // 기본(생략): 발송 없음 — 일간 에이전트가 debate_sessions에서 인사이트를 읽어 통합 발송
+  // Gist 링크를 토론 채널에 발송 (Gist 발행 성공 시)
+  if (gistUrl != null) {
+    const headlineMatch = result.round3.report.match(/\*\*(.+?)\*\*/);
+    const headline = headlineMatch != null ? headlineMatch[1] : "시황 브리핑";
+    const gistMessage = [
+      `📊 **시장 분석 종합 브리핑** (${debateDate})`,
+      "",
+      `> ${headline}`,
+      "",
+      `📄 [전문 보기](${gistUrl})`,
+    ].join("\n");
+    try {
+      await sendDiscordMessage(gistMessage, "DISCORD_DEBATE_WEBHOOK_URL");
+      logger.info("Discord", "토론 브리핑 Gist 링크 발송 완료");
+    } catch (err) {
+      logger.warn("Discord", `Gist 링크 발송 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   const isLegacyMode = process.env.DEBATE_SEND_MODE === "legacy";
 
   if (isLegacyMode) {
