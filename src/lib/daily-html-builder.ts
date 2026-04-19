@@ -12,6 +12,7 @@
  */
 
 import { Marked } from "marked";
+import type { DebateSummary } from "../debate/insightExtractor.js";
 import type {
   DailyIndexReturn,
   FearGreedData,
@@ -526,6 +527,74 @@ const DAILY_REPORT_CSS = `
   .insight-card-body li { margin-bottom: 4px; }
 
   .insight-card-body strong { font-weight: 600; }
+
+  /* Debate Summary Section */
+  .debate-summary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+
+  .debate-headline {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 12px;
+    line-height: 1.5;
+  }
+
+  .debate-topics {
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+  }
+
+  .debate-topics li {
+    font-size: 0.85rem;
+    color: var(--text);
+    padding: 4px 0 4px 16px;
+    position: relative;
+    line-height: 1.6;
+  }
+
+  .debate-topics li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--text-muted);
+  }
+
+  .debate-dissent {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 0 0 12px;
+    font-size: 0.82rem;
+    color: var(--text);
+    line-height: 1.65;
+  }
+
+  .debate-dissent-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 6px;
+  }
+
+  .debate-conclusion {
+    font-size: 0.85rem;
+    color: var(--text);
+    line-height: 1.65;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin: 0;
+  }
+
+  .debate-conclusion strong { font-weight: 600; }
 
   .empty-state {
     background: var(--surface);
@@ -1280,6 +1349,39 @@ export function renderRisingRSSection(
  * 배지 + 판단 근거 텍스트만. 정량 기준 없는 3분할 바는 제거.
  */
 
+// ─── 토론 요약 섹션 ─────────────────────────────────────────────────────────
+
+export function renderDebateSummary(summary: DebateSummary | null): string {
+  if (summary == null) return "";
+
+  const topicsHtml = summary.keyTopics.length > 0
+    ? `<ul class="debate-topics">${summary.keyTopics.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>`
+    : "";
+
+  // dissent/conclusion: ~를 이스케이프하여 strikethrough 방지, 마크다운 헤딩 제거
+  const sanitizeForMd = (text: string): string =>
+    text.replace(/~/g, "\\~").replace(/^#{1,4}\s+/gm, "");
+
+  const dissentHtml = summary.dissent !== ""
+    ? `<div class="debate-dissent">
+        <p class="debate-dissent-label">분석가 이견</p>
+        <div>${mdToHtml(sanitizeForMd(summary.dissent))}</div>
+      </div>`
+    : "";
+
+  const conclusionHtml = summary.conclusion !== ""
+    ? `<div class="debate-conclusion">${mdToHtml(sanitizeForMd(summary.conclusion))}</div>`
+    : "";
+
+  return `
+    <div class="debate-summary">
+      <p class="debate-headline">${escapeHtml(summary.headline).replace(/&quot;/g, '"')}</p>
+      ${topicsHtml}
+      ${dissentHtml}
+      ${conclusionHtml}
+    </div>`;
+}
+
 // ─── 시장 온도 섹션 ─────────────────────────────────────────────────────────
 
 export function renderInsightSection(insight: DailyReportInsight): string {
@@ -1312,6 +1414,7 @@ export function buildDailyHtml(
   data: DailyReportData,
   insight: DailyReportInsight,
   date: string,
+  debateSummary?: DebateSummary | null,
 ): string {
   const temperatureCls = escapeHtml(insight.marketTemperature);
   const temperatureLabel = escapeHtml(insight.marketTemperatureLabel);
@@ -1342,6 +1445,7 @@ export function buildDailyHtml(
     insight.risingRSNarrative,
   );
   const insightHtml = renderInsightSection(insight);
+  const debateSummaryHtml = renderDebateSummary(debateSummary ?? null);
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -1364,6 +1468,13 @@ export function buildDailyHtml(
         <h2>시장 온도</h2>
         ${insightHtml}
       </section>
+
+      <!-- 토론 요약 (토론 데이터 있을 때만 표시) -->
+      ${debateSummaryHtml !== "" ? `
+      <section>
+        <h2>오늘의 토론</h2>
+        ${debateSummaryHtml}
+      </section>` : ""}
 
       <!-- 섹션 2: 지수 현황 -->
       <section>
