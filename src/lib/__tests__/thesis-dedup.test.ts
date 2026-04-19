@@ -198,11 +198,19 @@ describe("getDedupedHitMiss", () => {
     expect(getDedupedHitMiss([1, 999], thesisMap)).toEqual({ hits: 1, misses: 0 });
   });
 
-  it("EXPIRED thesis는 hit/miss에서 제외", () => {
+  it("EXPIRED thesis는 miss로 카운트", () => {
     const thesisMap = makeThesisMap([
       { id: 1, metric: "Technology RS", condition: "> 50", status: "EXPIRED" },
     ]);
-    expect(getDedupedHitMiss([1], thesisMap)).toEqual({ hits: 0, misses: 0 });
+    expect(getDedupedHitMiss([1], thesisMap)).toEqual({ hits: 0, misses: 1 });
+  });
+
+  it("같은 조건 CONFIRMED + EXPIRED → CONFIRMED 우선 (1 hit)", () => {
+    const thesisMap = makeThesisMap([
+      { id: 1, metric: "Technology RS", condition: "> 50", status: "CONFIRMED" },
+      { id: 2, metric: "Technology RS", condition: "> 50", status: "EXPIRED" },
+    ]);
+    expect(getDedupedHitMiss([1, 2], thesisMap)).toEqual({ hits: 1, misses: 0 });
   });
 
   it("같은 조건 CONFIRMED + INVALIDATED → CONFIRMED 우선 (1 hit)", () => {

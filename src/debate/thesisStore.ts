@@ -596,11 +596,10 @@ export async function getThesisHitRateByCategory(): Promise<CategoryHitRateWithS
     const total = all.confirmed + all.invalidated;
     const hitRate = total > 0 ? all.confirmed / total : null;
 
-    // nonStatusQuo와 legacy는 상호 배타 (isStatusQuo: false vs null) — 합산 안전
-    const pureConfirmed = nsq.confirmed + leg.confirmed;
-    const pureInvalidated = nsq.invalidated + leg.invalidated;
-    const pureTotal = pureConfirmed + pureInvalidated;
-    const pureHitRate = pureTotal > 0 ? pureConfirmed / pureTotal : null;
+    // nonStatusQuo + legacy를 합쳐서 dedup — 동일 조건이 양쪽에 걸쳐도 1건으로 보정
+    const pure = getDedupedCounts([...entry.nonStatusQuoRows, ...entry.legacyRows]);
+    const pureTotal = pure.confirmed + pure.invalidated;
+    const pureHitRate = pureTotal > 0 ? pure.confirmed / pureTotal : null;
 
     result.push({
       category: entry.category,

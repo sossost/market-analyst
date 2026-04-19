@@ -146,7 +146,7 @@ export function getDedupedHitMiss(
   for (const id of sourceIds) {
     const t = thesisById.get(id);
     if (t == null) continue;
-    if (t.status !== "CONFIRMED" && t.status !== "INVALIDATED") continue;
+    if (t.status === "ACTIVE") continue;
 
     const key = buildConditionKey(t.verificationMetric, t.targetCondition);
     const existing = conditionGroups.get(key);
@@ -154,10 +154,9 @@ export function getDedupedHitMiss(
     if (existing == null) {
       conditionGroups.set(key, t.status);
     } else if (
-      t.status === "CONFIRMED" &&
-      existing !== "CONFIRMED"
+      (STATUS_PRIORITY[t.status] ?? 0) > (STATUS_PRIORITY[existing] ?? 0)
     ) {
-      conditionGroups.set(key, "CONFIRMED");
+      conditionGroups.set(key, t.status);
     }
   }
 
