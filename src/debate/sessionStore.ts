@@ -2,7 +2,8 @@ import { db } from "@/db/client";
 import { debateSessions } from "@/db/schema/analyst";
 import { eq, desc, sql } from "drizzle-orm";
 import { logger } from "@/lib/logger";
-import { extractDailyInsight } from "./insightExtractor.js";
+import { extractDailyInsight, extractDebateSummary } from "./insightExtractor.js";
+import type { DebateSummary } from "./insightExtractor.js";
 import type { DebateResult } from "@/types/debate";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 
@@ -230,5 +231,70 @@ export async function loadTodayDebateInsight(date: string): Promise<string> {
       `loadTodayDebateInsight failed for ${date}: ${err instanceof Error ? err.message : String(err)}`,
     );
     return "";
+  }
+}
+
+/**
+ * 오늘 토론 세션에서 구조화된 요약을 추출한다.
+ * 일간 리포트 HTML의 "오늘의 토론" 섹션 렌더링에 사용.
+ *
+ * @param date - 조회할 날짜 (YYYY-MM-DD)
+ * @returns 구조화된 토론 요약. 세션 없음 또는 오류 시 null.
+ */
+export async function loadTodayDebateSummary(date: string): Promise<DebateSummary | null> {
+  try {
+    const rows = await db
+      .select({ synthesisReport: debateSessions.synthesisReport })
+      .from(debateSessions)
+      .where(eq(debateSessions.date, date))
+      .limit(1);
+
+    const session = rows[0] ?? null;
+    if (session == null) {
+      logger.info("SessionStore", `No debate session for ${date} — debate summary skipped`);
+      return null;
+    }
+
+    const summary = extractDebateSummary(session.synthesisReport);
+    if (summary == null) {
+      logger.info("SessionStore", `Debate session found for ${date} but no summary extractable`);
+    }
+    return summary;
+  } catch (err) {
+    logger.warn(
+      "SessionStore",
+      `loadTodayDebateSummary failed for ${date}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * debate_sessions의 gist_url을 업데이트한다.
+ * Gist 발행 후 URL을 저장하여 일간 리포트에서 링크로 활용.
+ */
+export async function updateDebateSessionGistUrl(date: string, gistUrl: string): Promise<void> {
+  await db
+    .update(debateSessions)
+    .set({ gistUrl })
+    .where(eq(debateSessions.date, date));
+  logger.info("SessionStore", `Gist URL saved for ${date}: ${gistUrl}`);
+}
+
+/**
+ * 오늘 토론 세션의 Gist URL을 조회한다.
+ * 일간 리포트 HTML에서 "전문 보기" 링크로 사용.
+ */
+export async function loadTodayDebateGistUrl(date: string): Promise<string | null> {
+  try {
+    const rows = await db
+      .select({ gistUrl: debateSessions.gistUrl })
+      .from(debateSessions)
+      .where(eq(debateSessions.date, date))
+      .limit(1);
+
+    return rows[0]?.gistUrl ?? null;
+  } catch {
+    return null;
   }
 }

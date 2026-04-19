@@ -319,6 +319,9 @@ export const debateSessions = pgTable(
     round2Outputs: text("round2_outputs").notNull(), // JSON: RoundOutput[]
     synthesisReport: text("synthesis_report").notNull(),
 
+    // Gist URL (synthesis_report 전문 뷰어)
+    gistUrl: text("gist_url"),
+
     // 메타데이터
     thesesCount: integer("theses_count").notNull().default(0),
     tokensInput: integer("tokens_input"),
