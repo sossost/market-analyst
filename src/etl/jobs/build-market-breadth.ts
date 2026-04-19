@@ -230,11 +230,11 @@ export function computeBreadthScoreV2(
 }
 
 /**
- * market_breadth_daily에서 targetDate 이전 직전 5거래일 데이터를 조회한다.
- * DESC 정렬 (index 0 = 가장 최신, index 4 = 가장 오래된).
- * 5행 미만이면 있는 만큼 반환한다.
+ * market_breadth_daily에서 targetDate 이전 직전 N거래일 데이터를 조회한다.
+ * DESC 정렬 (index 0 = 가장 최신).
+ * limit행 미만이면 있는 만큼 반환한다.
  */
-async function fetchPrev5Days(targetDate: string): Promise<Prev5DaysBreadthRow[]> {
+async function fetchPrevDays(targetDate: string, limit: number): Promise<Prev5DaysBreadthRow[]> {
   const { rows } = await pool.query<{
     phase2_ratio:        string | null;
     phase1_to2_count_1d: string | null;
@@ -253,7 +253,7 @@ async function fetchPrev5Days(targetDate: string): Promise<Prev5DaysBreadthRow[]
      WHERE date < $1
      ORDER BY date DESC
      LIMIT $2`,
-    [targetDate, PREV_DAYS_COUNT],
+    [targetDate, limit],
   );
 
   return rows.map(r => ({
@@ -492,7 +492,7 @@ export function computePhase2Ma50Divergence(
 
   if (validPast.length < PHASE2_DIVERGENCE_LOOKBACK_DAYS) return null;
 
-  const recentMax = validPast.reduce((max, v) => (v > max ? v : max), validPast[0]);
+  const recentMax = Math.max(...validPast);
   const drop = recentMax - todayPctAboveMa50;
 
   return drop >= PHASE2_DIVERGENCE_MA50_DROP_THRESHOLD_PCT;
@@ -824,7 +824,8 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
 
   // 8. BreadthScore v2 입력 계산
   // 오늘 당일 값은 이미 집계된 변수를 사용, 직전 4일은 DB 조회
-  const prev5Days = await retryDatabaseOperation(() => fetchPrev5Days(targetDate));
+  const prevDaysLimit = Math.max(PREV_DAYS_COUNT, PHASE2_DIVERGENCE_LOOKBACK_DAYS);
+  const prev5Days = await retryDatabaseOperation(() => fetchPrevDays(targetDate, prevDaysLimit));
 
   // 5일 전 phase2Ratio (index 4 = 가장 오래된 날)
   const phase2Ratio5dAgo = prev5Days.length >= PREV_DAYS_COUNT
