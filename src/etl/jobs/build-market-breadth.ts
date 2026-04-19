@@ -541,6 +541,7 @@ async function fetchPctAboveMa50(date: string): Promise<PctAboveMa50Result> {
      JOIN symbols s ON dp.symbol = s.symbol
      WHERE dp.date = $1
        AND dm.ma50 IS NOT NULL
+       AND dp.close IS NOT NULL
        AND s.is_actively_trading = true
        AND s.is_etf = false
        AND s.is_fund = false`,
