@@ -1,8 +1,8 @@
 import { execFile, type ChildProcess } from "node:child_process";
 import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { LLMProviderError } from "./types.js";
+import { CLAUDE_OPUS } from "@/lib/models.js";
 
-const DEFAULT_MODEL = "claude-opus-4-6";
 const TIMEOUT_MS = 3_600_000; // 60분 — Round 3 합성 시 대용량 입력 대응
 const MAX_SYSTEM_PROMPT_BYTES = 64 * 1024; // 64KB
 
@@ -80,7 +80,7 @@ export class ClaudeCliProvider implements LLMProvider {
   private static readonly instances = new Set<ClaudeCliProvider>();
 
   constructor(
-    model: string = DEFAULT_MODEL,
+    model: string = CLAUDE_OPUS,
     timeoutMs: number = TIMEOUT_MS,
   ) {
     this.model = model;

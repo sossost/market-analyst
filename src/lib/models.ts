@@ -11,5 +11,5 @@ export const CLAUDE_SONNET = "claude-sonnet-4-20250514";
 /** Claude Haiku — 경량 작업 */
 export const CLAUDE_HAIKU = "claude-haiku-4-20250514";
 
-/** Claude Opus — 고난도 추론 */
-export const CLAUDE_OPUS = "claude-opus-4-20250514";
+/** Claude Opus — 고난도 추론 (토론 엔진) */
+export const CLAUDE_OPUS = "claude-opus-4-7";
