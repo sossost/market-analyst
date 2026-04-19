@@ -16,7 +16,7 @@ Market Analyst Engine의 파이프라인 상세 문서.
    → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석
 
 2. 멀티 모델 애널리스트 토론 (매일 22:00 UTC)
-   → 매크로(GPT-4o) / 테크(Gemini 2.5 Flash) / 지정학(Claude) / 심리(Claude) 4명이 3라운드 토론
+   → 테크(Claude Opus) / 매크로(Claude Opus) / 심리(GPT-4o) / 지정학(Gemini 2.5 Flash) 4명이 3라운드 토론
    → 멀티 모델 다양성으로 확증편향 구조적 완화 + 외부 API 장애 시 Claude 자동 폴백
    → 조기포착 도구 3종(Phase1Late / RisingRS / 펀더멘탈가속) 결과를 Round 1·3에 주입
    → 교집합 필터: 2+도구에 동시 등장하는 종목을 "고확신 후보"로 별도 태깅

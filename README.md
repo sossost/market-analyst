@@ -29,7 +29,7 @@ ETL 파이프라인 ────────────────────
         │
         ▼
 Multi-Model Debate (매일 22:00 UTC)
-  GPT-4o(매크로) / Gemini 2.5 Flash(테크) / Claude(지정학·심리) — 3라운드 토론
+  Claude Opus(테크·매크로) / GPT-4o(심리) / Gemini 2.5 Flash(지정학) — 3라운드 토론
   RS 귀납 → 공급망 연역 → 수요-공급-병목 서사 → thesis 구조화
   병목 체인(narrative_chains) 추적: 생애주기(식별→해소→다음 병목) + Meta-Regime
         │
@@ -100,8 +100,8 @@ cp .env.example .env  # 환경변수 설정
 |------|------|:----:|
 | `DATABASE_URL` | Supabase PostgreSQL 연결 문자열 | O |
 | `ANTHROPIC_API_KEY` | Claude API (에이전트·토론·QA) | O |
-| `OPENAI_API_KEY` | GPT-4o (매크로 애널리스트) | O |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini 2.5 Flash (테크 애널리스트) | O |
+| `OPENAI_API_KEY` | GPT-4o (심리 애널리스트) | O |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini 2.5 Flash (지정학 애널리스트) | O |
 | `DISCORD_WEBHOOK_URL` | 일간 리포트 채널 | O |
 | `DISCORD_WEEKLY_WEBHOOK_URL` | 주간 리포트 채널 | O |
 | `DISCORD_STOCK_REPORT_WEBHOOK_URL` | S등급 종목 리포트 채널 | O |
@@ -148,7 +148,7 @@ yarn db:studio              # Drizzle Studio UI
 | Runtime | Node.js 20+ (ESM) |
 | Language | TypeScript (strict) |
 | Package Manager | Yarn (Classic 1.x) |
-| AI | Claude Sonnet 4.6, GPT-4o, Gemini 2.5 Flash (멀티 모델 토론) |
+| AI | Claude Opus 4.7, GPT-4o, Gemini 2.5 Flash (멀티 모델 토론) |
 | Database | PostgreSQL (Supabase) via Drizzle ORM |
 | Testing | Vitest |
 | Scheduling | macOS launchd (맥미니 서버) |
