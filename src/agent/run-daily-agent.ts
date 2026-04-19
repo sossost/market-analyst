@@ -82,6 +82,7 @@ const EMPTY_BREADTH_SNAPSHOT: DailyBreadthSnapshot = {
   breadthScore: null,
   breadthScoreChange: null,
   divergenceSignal: null,
+  pctAboveMa50: null,
   topSectors: [],
   phase1to2Count1d: null,
   phase2to3Count1d: null,
@@ -230,6 +231,7 @@ function buildInsightPrompt(data: DailyReportData, systemPrompt: string): { syst
     `시장 평균 RS: ${breadth.marketAvgRs.toFixed(1)}`,
     `A/D: 상승 ${ad.advancers} / 하락 ${ad.decliners} / 보합 ${ad.unchanged}${ad.ratio != null ? ` (비율 ${ad.ratio.toFixed(2)})` : ""}`,
     `신고가/신저가: 신고가 ${hl.newHighs} / 신저가 ${hl.newLows}`,
+    breadth.pctAboveMa50 != null ? `MA50 이상 비율: ${breadth.pctAboveMa50.toFixed(1)}%` : "",
     breadth.divergenceSignal != null ? `Divergence: ${breadth.divergenceSignal}` : "",
   ].filter((l) => l !== "").join("\n");
 

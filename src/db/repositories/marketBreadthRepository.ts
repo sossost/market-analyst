@@ -558,6 +558,7 @@ export async function findMarketBreadthSnapshot(
        breadth_score::text,
        breadth_score_ema::text,
        divergence_signal,
+       pct_above_ma50::text,
        created_at::text
      FROM market_breadth_daily
      WHERE date = $1`,
@@ -604,6 +605,7 @@ export async function findMarketBreadthSnapshots(
        breadth_score::text,
        breadth_score_ema::text,
        divergence_signal,
+       pct_above_ma50::text,
        created_at::text
      FROM market_breadth_daily
      WHERE date = ANY($1::text[])

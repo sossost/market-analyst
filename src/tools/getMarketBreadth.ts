@@ -116,6 +116,7 @@ async function executeWeeklyMode(date: string): Promise<string> {
         breadthScore: latestBreadthScore,
         breadthScoreChange,
         divergenceSignal: latestDivergenceSignal,
+        pctAboveMa50: latestSnap?.pct_above_ma50 != null ? toNum(latestSnap.pct_above_ma50) : null,
         topSectors: topSectors.map((s) => ({
           sector: s.sector,
           avgRs: toNum(s.avg_rs),
@@ -309,6 +310,7 @@ async function executeDailyMode(date: string): Promise<string> {
       breadthScore,
       breadthScoreChange,
       divergenceSignal,
+      pctAboveMa50: snapshot.pct_above_ma50 != null ? toNum(snapshot.pct_above_ma50) : null,
       phase1to2Count1d,
       phase2to3Count1d,
       phase2NetFlow,

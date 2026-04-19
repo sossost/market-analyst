@@ -393,6 +393,32 @@ const DAILY_REPORT_CSS = `
     margin-left: 4px;
   }
 
+  /* Divergence Alert */
+  .alert-block {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 12px 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+  .alert-warning {
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    color: #6d4c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    .alert-warning {
+      background: #3e2c00;
+      border-color: #6d4c00;
+      color: #ffe082;
+    }
+  }
+  .alert-icon { flex-shrink: 0; font-size: 1.1rem; }
+  .alert-text { flex: 1; }
+
   /* Content Blocks (LLM narrative) */
   .content-block {
     background: var(--surface);
@@ -952,6 +978,30 @@ export function renderIndexTable(
 }
 
 /**
+ * divergenceSignal에 따른 경고 알럿 HTML을 생성한다.
+ * null이면 빈 문자열 반환 (알럿 미표시).
+ */
+function renderDivergenceAlert(signal: DailyBreadthSnapshot["divergenceSignal"]): string {
+  if (signal == null) return "";
+  const message: string = (() => {
+    switch (signal) {
+      case "negative":
+        return "Phase 2 유지 중이나 MA50 이상 비율 하락 — 중기 약화 경고";
+      case "positive":
+        return "SPX 하락 중이나 브레드스 내부 개선 — 중기 반등 신호";
+      default: {
+        const _exhaustive: never = signal;
+        throw new Error(`Unhandled divergence signal: ${_exhaustive}`);
+      }
+    }
+  })();
+  return `<div class="alert-block alert-warning">
+          <span class="alert-icon">⚠️</span>
+          <span class="alert-text">중기 브레드스 다이버전스: ${escapeHtml(message)}</span>
+        </div>`;
+}
+
+/**
  * 일간 Phase 분포 바 + 지표 행을 렌더링한다.
  * 주간 빌더의 renderPhase2TrendTable과 달리 단일 스냅샷 기준.
  */
@@ -1064,6 +1114,14 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
             </div>`
           : ""
       }
+      ${
+        data.pctAboveMa50 != null
+          ? `<div class="stat-chip">
+              <span class="stat-label">MA50 이상 비율</span>
+              <span class="stat-value">${escapeHtml(data.pctAboveMa50.toFixed(1))}%</span>
+            </div>`
+          : ""
+      }
     </div>
     ${
       phase2EntryChip !== "" || phase2ExitChip !== ""
@@ -1071,9 +1129,11 @@ export function renderPhaseDistribution(data: DailyBreadthSnapshot, narrative?: 
         : ""
     }`;
 
+  const divergenceAlertHtml = renderDivergenceAlert(data.divergenceSignal);
+
   const narrativeHtml = renderNarrativeBlock(narrative);
 
-  return `${subtitle}${phaseBar}${statsHtml}${narrativeHtml}`;
+  return `${subtitle}${phaseBar}${statsHtml}${divergenceAlertHtml}${narrativeHtml}`;
 }
 
 /**

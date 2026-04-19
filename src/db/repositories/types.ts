@@ -281,6 +281,7 @@ export interface MarketBreadthDailyRow {
   breadth_score: string | null;
   breadth_score_ema: string | null;
   divergence_signal: string | null;
+  pct_above_ma50: string | null;
   created_at: string;
 }
 

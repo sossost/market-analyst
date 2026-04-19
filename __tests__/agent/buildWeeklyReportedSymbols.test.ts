@@ -25,6 +25,7 @@ const EMPTY_BREADTH: WeeklyReportData["marketBreadth"] = {
     breadthScore: null,
     breadthScoreChange: null,
     divergenceSignal: null,
+    pctAboveMa50: null,
     topSectors: [],
   },
 };

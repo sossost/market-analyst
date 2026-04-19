@@ -69,6 +69,7 @@ function createMockMarketBreadth(overrides?: Partial<MarketBreadthData>): Market
       breadthScore: 62.5,
       breadthScoreChange: null,
       divergenceSignal: null,
+      pctAboveMa50: null,
       topSectors: [],
     },
     ...overrides,
@@ -702,6 +703,59 @@ describe("renderPhase2TrendTable", () => {
     const result = renderPhase2TrendTable(breadth);
 
     expect(result).toContain("17건");
+  });
+
+  it("pctAboveMa50가 있으면 MA50 이상 비율 chip을 표시한다", () => {
+    const breadth = createMockMarketBreadth({
+      latestSnapshot: {
+        ...createMockMarketBreadth().latestSnapshot,
+        pctAboveMa50: 48.7,
+      },
+    });
+    const result = renderPhase2TrendTable(breadth);
+    expect(result).toContain("MA50 이상 비율");
+    expect(result).toContain("48.7%");
+  });
+
+  it("pctAboveMa50가 null이면 MA50 이상 비율 chip을 표시하지 않는다", () => {
+    const breadth = createMockMarketBreadth({
+      latestSnapshot: {
+        ...createMockMarketBreadth().latestSnapshot,
+        pctAboveMa50: null,
+      },
+    });
+    const result = renderPhase2TrendTable(breadth);
+    expect(result).not.toContain("MA50 이상 비율");
+  });
+
+  it("divergenceSignal이 negative면 중기 약화 경고 알럿을 표시한다", () => {
+    const breadth = createMockMarketBreadth({
+      latestSnapshot: {
+        ...createMockMarketBreadth().latestSnapshot,
+        divergenceSignal: "negative",
+      },
+    });
+    const result = renderPhase2TrendTable(breadth);
+    expect(result).toContain("alert-warning");
+    expect(result).toContain("중기 약화 경고");
+  });
+
+  it("divergenceSignal이 positive면 중기 반등 신호 알럿을 표시한다", () => {
+    const breadth = createMockMarketBreadth({
+      latestSnapshot: {
+        ...createMockMarketBreadth().latestSnapshot,
+        divergenceSignal: "positive",
+      },
+    });
+    const result = renderPhase2TrendTable(breadth);
+    expect(result).toContain("alert-warning");
+    expect(result).toContain("중기 반등 신호");
+  });
+
+  it("divergenceSignal이 null이면 알럿을 표시하지 않는다", () => {
+    const result = renderPhase2TrendTable(createMockMarketBreadth());
+    expect(result).not.toContain("alert-block");
+    expect(result).not.toContain("다이버전스");
   });
 });
 
