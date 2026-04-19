@@ -1,7 +1,7 @@
 /**
  * daily-html-builder.ts — 일간 리포트 프로그래밍 HTML 렌더러
  *
- * 데이터 블록(지수/Phase 분포/섹터/업종/특이종목/RS상승/관심종목)은
+ * 데이터 블록(지수/Phase 분포/섹터/업종/특이종목/RS상승)은
  * 도구 반환값을 직접 렌더링.
  * 해석 블록(narrative)은 LLM 텍스트를 marked로 마크다운→HTML 변환.
  *
