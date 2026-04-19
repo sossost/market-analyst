@@ -48,6 +48,8 @@ async function main() {
       confidence: theses.confidence,
       consensusLevel: theses.consensusLevel,
       status: theses.status,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
     .where(gte(theses.debateDate, thesisStartStr));

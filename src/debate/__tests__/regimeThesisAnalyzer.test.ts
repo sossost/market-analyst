@@ -20,12 +20,24 @@ vi.mock("@/db/client", () => ({
               mockInnerJoin(...b);
               return {
                 where: (...c: unknown[]) => {
-                  mockWhere(...c);
+                  const whereResult = mockWhere(...c);
+                  // #911: calcRegimeHitRates는 .where()에서 종료 (groupBy 없음)
+                  // mockWhere가 값을 반환하면 그대로 사용, 아니면 groupBy 체인 제공
+                  if (whereResult != null && typeof whereResult.then === "function") {
+                    // Promise를 반환한 경우 — thenable이면 groupBy도 달아줌
+                    const thenableWithGroupBy = whereResult;
+                    thenableWithGroupBy.groupBy = (...d: unknown[]) => {
+                      mockGroupBy(...d);
+                      return mockGroupBy.mock.results.at(-1)?.value ?? [];
+                    };
+                    return thenableWithGroupBy;
+                  }
                   return {
                     groupBy: (...d: unknown[]) => {
                       mockGroupBy(...d);
                       return mockGroupBy.mock.results.at(-1)?.value ?? [];
                     },
+                    then: undefined,
                   };
                 },
               };
@@ -85,47 +97,69 @@ beforeEach(() => {
 // ─── calcRegimeHitRates ──────────────────────────────────────────────────────
 
 describe("calcRegimeHitRates", () => {
-  it("returns hit rates grouped by regime", async () => {
-    mockGroupBy.mockResolvedValueOnce([
-      { regime: "MID_BULL", total: 10, confirmed: 7, invalidated: 3 },
-      { regime: "EARLY_BEAR", total: 5, confirmed: 2, invalidated: 3 },
+  it("returns hit rates grouped by regime (#911: raw rows + dedup)", async () => {
+    // #911: calcRegimeHitRates는 이제 raw rows를 반환하고 JS에서 그룹화/dedup
+    // 쿼리 체인이 .where()에서 종료 (groupBy 없음)
+    mockWhere.mockResolvedValueOnce([
+      // MID_BULL: 7 confirmed, 3 invalidated (각각 고유 조건)
+      ...Array.from({ length: 7 }, (_, i) => ({
+        regime: "MID_BULL", status: "CONFIRMED",
+        verificationMetric: `Metric ${i}`, targetCondition: `> ${i}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        regime: "MID_BULL", status: "INVALIDATED",
+        verificationMetric: `Metric ${100 + i}`, targetCondition: `> ${100 + i}`,
+      })),
+      // EARLY_BEAR: 2 confirmed, 3 invalidated
+      ...Array.from({ length: 2 }, (_, i) => ({
+        regime: "EARLY_BEAR", status: "CONFIRMED",
+        verificationMetric: `Metric ${200 + i}`, targetCondition: `> ${200 + i}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        regime: "EARLY_BEAR", status: "INVALIDATED",
+        verificationMetric: `Metric ${300 + i}`, targetCondition: `> ${300 + i}`,
+      })),
     ]);
 
     const result = await calcRegimeHitRates();
 
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({
-      regime: "MID_BULL",
-      total: 10,
-      confirmed: 7,
-      invalidated: 3,
-      hitRate: 0.7,
-    });
-    expect(result[1]).toEqual({
-      regime: "EARLY_BEAR",
-      total: 5,
-      confirmed: 2,
-      invalidated: 3,
-      hitRate: 0.4,
-    });
+    const midBull = result.find((r) => r.regime === "MID_BULL")!;
+    expect(midBull.confirmed).toBe(7);
+    expect(midBull.invalidated).toBe(3);
+    expect(midBull.total).toBe(10);
+    expect(midBull.hitRate).toBe(0.7);
+
+    const earlyBear = result.find((r) => r.regime === "EARLY_BEAR")!;
+    expect(earlyBear.confirmed).toBe(2);
+    expect(earlyBear.invalidated).toBe(3);
+    expect(earlyBear.total).toBe(5);
+    expect(earlyBear.hitRate).toBe(0.4);
   });
 
   it("returns empty array when no resolved theses exist", async () => {
-    mockGroupBy.mockResolvedValueOnce([]);
+    mockWhere.mockResolvedValueOnce([]);
 
     const result = await calcRegimeHitRates();
 
     expect(result).toHaveLength(0);
   });
 
-  it("handles zero total gracefully (hitRate = 0)", async () => {
-    mockGroupBy.mockResolvedValueOnce([
-      { regime: "BEAR", total: 0, confirmed: 0, invalidated: 0 },
+  it("handles dedup — same condition counts as 1 (#911)", async () => {
+    mockWhere.mockResolvedValueOnce([
+      // 3건 동일 조건 CONFIRMED → 1건으로 보정
+      { regime: "MID_BULL", status: "CONFIRMED", verificationMetric: "Technology RS", targetCondition: "> 50" },
+      { regime: "MID_BULL", status: "CONFIRMED", verificationMetric: "Technology RS", targetCondition: "> 50" },
+      { regime: "MID_BULL", status: "CONFIRMED", verificationMetric: "Technology RS", targetCondition: "> 50" },
+      // 1건 다른 조건 INVALIDATED
+      { regime: "MID_BULL", status: "INVALIDATED", verificationMetric: "VIX", targetCondition: "< 20" },
     ]);
 
     const result = await calcRegimeHitRates();
-
-    expect(result[0].hitRate).toBe(0);
+    expect(result[0].confirmed).toBe(1);
+    expect(result[0].invalidated).toBe(1);
+    expect(result[0].total).toBe(2);
+    expect(result[0].hitRate).toBe(0.5);
   });
 });
 
@@ -166,12 +200,26 @@ describe("calcRegimeBiases", () => {
 
 describe("getRegimePerformanceSummary", () => {
   it("computes overall hit rate and sufficient data flag", async () => {
-    // First call for hit rates
-    mockGroupBy.mockResolvedValueOnce([
-      { regime: "MID_BULL", total: 10, confirmed: 7, invalidated: 3 },
-      { regime: "EARLY_BEAR", total: 6, confirmed: 3, invalidated: 3 },
+    // #911: calcRegimeHitRates는 .where()에서 raw rows 반환
+    mockWhere.mockResolvedValueOnce([
+      ...Array.from({ length: 7 }, (_, i) => ({
+        regime: "MID_BULL", status: "CONFIRMED",
+        verificationMetric: `M${i}`, targetCondition: `>${i}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        regime: "MID_BULL", status: "INVALIDATED",
+        verificationMetric: `M${100 + i}`, targetCondition: `>${100 + i}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        regime: "EARLY_BEAR", status: "CONFIRMED",
+        verificationMetric: `M${200 + i}`, targetCondition: `>${200 + i}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        regime: "EARLY_BEAR", status: "INVALIDATED",
+        verificationMetric: `M${300 + i}`, targetCondition: `>${300 + i}`,
+      })),
     ]);
-    // Second call for biases
+    // Second call for biases (still uses groupBy)
     mockGroupBy.mockResolvedValueOnce([
       { regime: "MID_BULL", category: "structural_narrative", persona: "macro", count: 10 },
       { regime: "EARLY_BEAR", category: "sector_rotation", persona: "tech", count: 6 },
@@ -187,8 +235,12 @@ describe("getRegimePerformanceSummary", () => {
   });
 
   it("marks insufficient data when regime has < 5 samples", async () => {
-    mockGroupBy.mockResolvedValueOnce([
-      { regime: "MID_BULL", total: 3, confirmed: 2, invalidated: 1 },
+    mockWhere.mockResolvedValueOnce([
+      ...Array.from({ length: 2 }, (_, i) => ({
+        regime: "MID_BULL", status: "CONFIRMED",
+        verificationMetric: `M${i}`, targetCondition: `>${i}`,
+      })),
+      { regime: "MID_BULL", status: "INVALIDATED", verificationMetric: "M99", targetCondition: ">99" },
     ]);
     mockGroupBy.mockResolvedValueOnce([]);
 

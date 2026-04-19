@@ -10,6 +10,7 @@ import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
 import { sql, eq, and, inArray, desc } from "drizzle-orm";
 import { logger } from "@/lib/logger";
+import { getDedupedCounts } from "@/lib/thesis-dedup";
 import type { AgentPersona, Confidence, ThesisCategory } from "@/types/debate";
 import type { MarketRegimeType } from "@/db/schema/analyst";
 import { EXPERT_PERSONAS } from "./personas.js";
@@ -458,27 +459,36 @@ export interface PersonaHitRate {
 
 /**
  * 모든 에이전트의 전체 적중률을 조회한다.
+ * #911: 동일 검증 조건 중복 보정 적용 — 같은 조건 N건을 1건으로 카운트.
  */
 export async function getPerAgentHitRates(): Promise<PersonaHitRate[]> {
   const rows = await db
     .select({
       agentPersona: theses.agentPersona,
-      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
-      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
-      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
+      status: theses.status,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]))
-    .groupBy(theses.agentPersona);
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]));
 
-  return rows.map((r) => {
-    const total = r.confirmed + r.invalidated + r.expired;
+  // 에이전트별 그룹화
+  const grouped = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const existing = grouped.get(r.agentPersona) ?? [];
+    existing.push(r);
+    grouped.set(r.agentPersona, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([persona, personaRows]) => {
+    const deduped = getDedupedCounts(personaRows);
+    const total = deduped.confirmed + deduped.invalidated + deduped.expired;
     return {
-      persona: r.agentPersona as AgentPersona,
-      confirmed: r.confirmed,
-      invalidated: r.invalidated,
-      expired: r.expired,
-      hitRate: total > 0 ? r.confirmed / total : null,
+      persona: persona as AgentPersona,
+      confirmed: deduped.confirmed,
+      invalidated: deduped.invalidated,
+      expired: deduped.expired,
+      hitRate: total > 0 ? deduped.confirmed / total : null,
     };
   });
 }
@@ -616,26 +626,37 @@ const CATEGORY_LOW_HIT_RATE_THRESHOLD = 0.55;
 /**
  * 카테고리별 CONFIRMED/INVALIDATED 적중률을 조회한다.
  */
+/**
+ * #911: 동일 검증 조건 중복 보정 적용.
+ */
 export async function getCategoryHitRates(): Promise<CategoryHitRate[]> {
   const rows = await db
     .select({
       category: theses.category,
-      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
-      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
-      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
+      status: theses.status,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]))
-    .groupBy(theses.category);
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]));
 
-  return rows.map((r) => {
-    const total = r.confirmed + r.invalidated + r.expired;
+  const grouped = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const cat = r.category ?? "sector_rotation";
+    const existing = grouped.get(cat) ?? [];
+    existing.push(r);
+    grouped.set(cat, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([category, catRows]) => {
+    const deduped = getDedupedCounts(catRows);
+    const total = deduped.confirmed + deduped.invalidated + deduped.expired;
     return {
-      category: r.category as ThesisCategory,
-      confirmed: r.confirmed,
-      invalidated: r.invalidated,
-      expired: r.expired,
-      hitRate: total > 0 ? r.confirmed / total : null,
+      category: category as ThesisCategory,
+      confirmed: deduped.confirmed,
+      invalidated: deduped.invalidated,
+      expired: deduped.expired,
+      hitRate: total > 0 ? deduped.confirmed / total : null,
     };
   });
 }
@@ -724,15 +745,18 @@ export interface PersonaCategoryHitRate {
 /**
  * 특정 에이전트의 카테고리별 적중률을 조회한다.
  */
+/**
+ * #911: 동일 검증 조건 중복 보정 적용.
+ */
 export async function getPersonaCategoryHitRates(
   persona: AgentPersona,
 ): Promise<PersonaCategoryHitRate[]> {
   const rows = await db
     .select({
       category: theses.category,
-      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
-      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
-      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
+      status: theses.status,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
     .where(
@@ -740,18 +764,26 @@ export async function getPersonaCategoryHitRates(
         eq(theses.agentPersona, persona),
         inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]),
       ),
-    )
-    .groupBy(theses.category);
+    );
 
-  return rows.map((r) => {
-    const total = r.confirmed + r.invalidated + r.expired;
+  const grouped = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const cat = r.category ?? "sector_rotation";
+    const existing = grouped.get(cat) ?? [];
+    existing.push(r);
+    grouped.set(cat, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([category, catRows]) => {
+    const deduped = getDedupedCounts(catRows);
+    const total = deduped.confirmed + deduped.invalidated + deduped.expired;
     return {
       persona,
-      category: r.category as ThesisCategory,
-      confirmed: r.confirmed,
-      invalidated: r.invalidated,
-      expired: r.expired,
-      hitRate: total > 0 ? r.confirmed / total : null,
+      category: category as ThesisCategory,
+      confirmed: deduped.confirmed,
+      invalidated: deduped.invalidated,
+      expired: deduped.expired,
+      hitRate: total > 0 ? deduped.confirmed / total : null,
     };
   });
 }
@@ -813,29 +845,40 @@ const CROSS_MIN_TOTAL = 3;
 /**
  * 모든 에이전트의 카테고리별 적중률을 교차 매트릭스로 조회한다.
  * 모더레이터가 특정 agent×category 조합의 신뢰도를 판단할 수 있도록 한다.
+ * #911: 동일 검증 조건 중복 보정 적용.
  */
 export async function getAllCrossCalibrationRates(): Promise<CrossCalibrationEntry[]> {
   const rows = await db
     .select({
       agentPersona: theses.agentPersona,
       category: theses.category,
-      confirmed: sql<number>`count(*) filter (where ${theses.status} = 'CONFIRMED')::int`,
-      invalidated: sql<number>`count(*) filter (where ${theses.status} = 'INVALIDATED')::int`,
-      expired: sql<number>`count(*) filter (where ${theses.status} = 'EXPIRED')::int`,
+      status: theses.status,
+      verificationMetric: theses.verificationMetric,
+      targetCondition: theses.targetCondition,
     })
     .from(theses)
-    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]))
-    .groupBy(theses.agentPersona, theses.category);
+    .where(inArray(theses.status, ["CONFIRMED", "INVALIDATED", "EXPIRED"]));
 
-  return rows.map((r) => {
-    const total = r.confirmed + r.invalidated + r.expired;
+  // agent×category 그룹화 후 중복 보정
+  const grouped = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const key = `${r.agentPersona}::${r.category}`;
+    const existing = grouped.get(key) ?? [];
+    existing.push(r);
+    grouped.set(key, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([key, groupRows]) => {
+    const [persona, category] = key.split("::");
+    const deduped = getDedupedCounts(groupRows);
+    const total = deduped.confirmed + deduped.invalidated + deduped.expired;
     return {
-      persona: r.agentPersona as AgentPersona,
-      category: r.category as ThesisCategory,
-      confirmed: r.confirmed,
-      invalidated: r.invalidated,
-      expired: r.expired,
-      hitRate: total > 0 ? r.confirmed / total : null,
+      persona: persona as AgentPersona,
+      category: category as ThesisCategory,
+      confirmed: deduped.confirmed,
+      invalidated: deduped.invalidated,
+      expired: deduped.expired,
+      hitRate: total > 0 ? deduped.confirmed / total : null,
     };
   });
 }

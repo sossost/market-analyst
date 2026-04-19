@@ -41,10 +41,9 @@ vi.mock("../../../src/db/client.js", () => ({
       from: () => ({
         where: (condition: { val?: unknown; op?: string; vals?: unknown[] }) => {
           // inArray query (loadConfidenceCalibration)
+          // #911: getConfidenceHitRates는 .where()에서 raw rows를 직접 반환 (groupBy 없음)
           if (condition?.op === "inArray") {
-            return {
-              groupBy: () => Promise.resolve(mockData.confidenceStats),
-            };
+            return Promise.resolve(mockData.confidenceStats);
           }
           const val = condition?.val;
           if (val === true) {
@@ -356,6 +355,23 @@ describe("loadBullBiasWarning", () => {
 // loadConfidenceCalibration
 // ---------------------------------------------------------------------------
 
+// #911: getConfidenceHitRates가 raw rows를 받으므로, 테스트 데이터를 raw rows로 변환
+function makeConfidenceRows(specs: Array<{ confidence: string; confirmed: number; invalidated: number }>) {
+  let idCounter = 0;
+  const rows: Array<{ confidence: string; status: string; verificationMetric: string; targetCondition: string }> = [];
+  for (const spec of specs) {
+    for (let i = 0; i < spec.confirmed; i++) {
+      rows.push({ confidence: spec.confidence, status: "CONFIRMED", verificationMetric: `M${idCounter}`, targetCondition: `>${idCounter}` });
+      idCounter++;
+    }
+    for (let i = 0; i < spec.invalidated; i++) {
+      rows.push({ confidence: spec.confidence, status: "INVALIDATED", verificationMetric: `M${idCounter}`, targetCondition: `>${idCounter}` });
+      idCounter++;
+    }
+  }
+  return rows;
+}
+
 describe("loadConfidenceCalibration", () => {
   beforeEach(() => {
     mockData.confidenceStats = [];
@@ -367,20 +383,20 @@ describe("loadConfidenceCalibration", () => {
   });
 
   it("returns empty string when all confidence levels have >50% hit rate", async () => {
-    mockData.confidenceStats = [
+    mockData.confidenceStats = makeConfidenceRows([
       { confidence: "high", confirmed: 8, invalidated: 2 },
       { confidence: "medium", confirmed: 6, invalidated: 4 },
-    ];
+    ]);
 
     const result = await loadConfidenceCalibration();
     expect(result).toBe("");
   });
 
   it("returns warning when medium confidence hit rate is below 50%", async () => {
-    mockData.confidenceStats = [
+    mockData.confidenceStats = makeConfidenceRows([
       { confidence: "high", confirmed: 4, invalidated: 1 },
       { confidence: "medium", confirmed: 5, invalidated: 6 },
-    ];
+    ]);
 
     const result = await loadConfidenceCalibration();
     expect(result).toContain("Confidence 보정 필요");
@@ -389,10 +405,10 @@ describe("loadConfidenceCalibration", () => {
   });
 
   it("skips confidence levels with fewer than 3 observations", async () => {
-    mockData.confidenceStats = [
+    mockData.confidenceStats = makeConfidenceRows([
       { confidence: "low", confirmed: 0, invalidated: 1 },
       { confidence: "medium", confirmed: 3, invalidated: 7 },
-    ];
+    ]);
 
     const result = await loadConfidenceCalibration();
     expect(result).toContain("Confidence 보정 필요");
@@ -402,9 +418,9 @@ describe("loadConfidenceCalibration", () => {
   });
 
   it("includes confidence calibration warning in buildMemoryContext", async () => {
-    mockData.confidenceStats = [
+    mockData.confidenceStats = makeConfidenceRows([
       { confidence: "medium", confirmed: 2, invalidated: 8 },
-    ];
+    ]);
     mockData.learnings = [
       { principle: "테스트 원칙", category: "confirmed", hitRate: "0.80", hitCount: 4 },
     ];

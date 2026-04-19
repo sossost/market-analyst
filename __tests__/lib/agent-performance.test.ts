@@ -21,7 +21,7 @@ describe("calculateAgentPerformance", () => {
     expect(result).toEqual([]);
   });
 
-  it("calculates stats for a single persona", () => {
+  it("calculates stats for a single persona (no dedup fields → legacy behavior)", () => {
     const theses: ThesisRow[] = [
       makeThesis({ status: "CONFIRMED" }),
       makeThesis({ status: "CONFIRMED" }),
@@ -163,6 +163,47 @@ describe("calculateAgentPerformance", () => {
     const result = calculateAgentPerformance(theses);
     // hitRate = 0 / (0 + 0 + 2) = 0
     expect(result[0].hitRate).toBe(0);
+  });
+
+  // #911: 동일 검증 조건 중복 보정 테스트
+  it("#911: 동일 조건 8건 CONFIRMED → 1건으로 보정", () => {
+    const theses: ThesisRow[] = [
+      // 동일 조건 8건
+      ...Array.from({ length: 8 }, (_, i) => makeThesis({
+        agentPersona: "tech",
+        status: "CONFIRMED",
+        verificationMetric: "Technology RS",
+        targetCondition: "> 50",
+      })),
+      // 1건 INVALIDATED (다른 조건)
+      makeThesis({
+        agentPersona: "tech",
+        status: "INVALIDATED",
+        verificationMetric: "VIX",
+        targetCondition: "< 20",
+      }),
+    ];
+
+    const result = calculateAgentPerformance(theses);
+    expect(result[0].persona).toBe("tech");
+    // 보정: 8건→1건 CONFIRMED + 1건 INVALIDATED → hitRate = 1/2 = 50%
+    expect(result[0].confirmed).toBe(1);
+    expect(result[0].invalidated).toBe(1);
+    expect(result[0].hitRate).toBe(0.5);
+  });
+
+  it("#911: verificationMetric/targetCondition 없으면 기존 동작 유지", () => {
+    const theses: ThesisRow[] = [
+      makeThesis({ agentPersona: "macro", status: "CONFIRMED" }),
+      makeThesis({ agentPersona: "macro", status: "CONFIRMED" }),
+      makeThesis({ agentPersona: "macro", status: "INVALIDATED" }),
+    ];
+
+    const result = calculateAgentPerformance(theses);
+    // 기존 동작: 2 confirmed, 1 invalidated
+    expect(result[0].confirmed).toBe(2);
+    expect(result[0].invalidated).toBe(1);
+    expect(result[0].hitRate).toBeCloseTo(0.6667, 3);
   });
 });
 
