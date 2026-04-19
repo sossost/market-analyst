@@ -2,7 +2,7 @@ import { execFile, type ChildProcess } from "node:child_process";
 import type { LLMCallOptions, LLMCallResult, LLMProvider } from "./types.js";
 import { LLMProviderError } from "./types.js";
 
-const DEFAULT_MODEL = "claude-opus-4-6";
+const DEFAULT_MODEL = "claude-opus-4-7";
 const TIMEOUT_MS = 3_600_000; // 60분 — Round 3 합성 시 대용량 입력 대응
 const MAX_SYSTEM_PROMPT_BYTES = 64 * 1024; // 64KB
 
