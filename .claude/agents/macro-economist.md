@@ -1,7 +1,7 @@
 ---
 name: macro-economist
 description: 매크로 이코노미스트. 금리·통화정책·경기사이클·유동성 관점에서 시장을 분석한다. 거시경제 질문, 자금 흐름의 구조적 방향, 경기 국면 판단이 필요할 때 사용.
-model: gpt-4o
+model: opus
 memory: project
 tools: Read, Grep, Glob, WebSearch, WebFetch
 ---
