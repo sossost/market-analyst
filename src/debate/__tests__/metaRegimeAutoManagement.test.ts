@@ -99,6 +99,7 @@ import {
   linkChainToMetaRegime,
   transitionMetaRegimeStatus,
   groupChainsByMegatrend,
+  resolvePeakAt,
 } from "../metaRegimeService.js";
 
 // ─── 리셋 ─────────────────────────────────────────────────────────────────────
@@ -118,6 +119,37 @@ beforeEach(() => {
   mockInsert.mockReturnValue({ values: mockInsertValues });
   mockInsertValues.mockReturnValue({ onConflictDoNothing: mockInsertOnConflict });
   mockInsertOnConflict.mockResolvedValue(undefined);
+});
+
+// =============================================================================
+// resolvePeakAt — 순수 헬퍼 함수
+// =============================================================================
+
+describe("resolvePeakAt", () => {
+  it("PEAKED 전이 시 currentPeakAt이 null이면 Date를 반환한다", () => {
+    const result = resolvePeakAt("PEAKED", null);
+    expect(result).toBeInstanceOf(Date);
+  });
+
+  it("PEAKED 전이 시 currentPeakAt이 이미 있으면 undefined를 반환한다", () => {
+    const result = resolvePeakAt("PEAKED", new Date("2025-06-01"));
+    expect(result).toBeUndefined();
+  });
+
+  it("RESOLVED 전이 시 currentPeakAt이 null이면 Date를 반환한다 (폴백)", () => {
+    const result = resolvePeakAt("RESOLVED", null);
+    expect(result).toBeInstanceOf(Date);
+  });
+
+  it("RESOLVED 전이 시 currentPeakAt이 이미 있으면 undefined를 반환한다", () => {
+    const result = resolvePeakAt("RESOLVED", new Date("2025-06-01"));
+    expect(result).toBeUndefined();
+  });
+
+  it("ACTIVE 전이 시 항상 undefined를 반환한다", () => {
+    expect(resolvePeakAt("ACTIVE", null)).toBeUndefined();
+    expect(resolvePeakAt("ACTIVE", new Date())).toBeUndefined();
+  });
 });
 
 // =============================================================================
@@ -173,7 +205,9 @@ describe("syncMetaRegimeStatus", () => {
       .mockResolvedValueOnce([
         { status: "RESOLVED" },
         { status: "OVERSUPPLY" },
-      ]);
+      ])
+      // transitionMetaRegimeStatus 내부 SELECT (current peakAt)
+      .mockResolvedValueOnce([{ peakAt: null }]);
 
     const result = await syncMetaRegimeStatus(2);
 
@@ -189,7 +223,9 @@ describe("syncMetaRegimeStatus", () => {
       .mockResolvedValueOnce([
         { status: "OVERSUPPLY" },
         { status: "OVERSUPPLY" },
-      ]);
+      ])
+      // transitionMetaRegimeStatus 내부 SELECT (current peakAt)
+      .mockResolvedValueOnce([{ peakAt: null }]);
 
     const result = await syncMetaRegimeStatus(3);
 
@@ -319,7 +355,10 @@ describe("linkChainToMetaRegime", () => {
 // =============================================================================
 
 describe("transitionMetaRegimeStatus", () => {
-  it("PEAKED 전이 시 peakAt이 set payload에 포함된다", async () => {
+  it("PEAKED 전이 시 peakAt이 null이면 set payload에 포함된다", async () => {
+    // SELECT current peakAt
+    mockSelectWhere.mockResolvedValueOnce([{ peakAt: null }]);
+
     await transitionMetaRegimeStatus(1, "PEAKED");
 
     const setArgs = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
@@ -328,7 +367,35 @@ describe("transitionMetaRegimeStatus", () => {
     expect(setArgs.resolvedAt).toBeUndefined();
   });
 
-  it("RESOLVED 전이 시 resolvedAt이 set payload에 포함된다", async () => {
+  it("PEAKED 전이 시 peakAt이 이미 존재하면 덮어쓰지 않는다", async () => {
+    const existingPeakAt = new Date("2025-06-01");
+    // SELECT current peakAt — 이미 값이 있음
+    mockSelectWhere.mockResolvedValueOnce([{ peakAt: existingPeakAt }]);
+
+    await transitionMetaRegimeStatus(1, "PEAKED");
+
+    const setArgs = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArgs.status).toBe("PEAKED");
+    expect(setArgs.peakAt).toBeUndefined();
+  });
+
+  it("RESOLVED 전이 시 resolvedAt이 set payload에 포함되고 peakAt도 폴백 설정된다", async () => {
+    // SELECT current peakAt — null이므로 폴백 설정 필요
+    mockSelectWhere.mockResolvedValueOnce([{ peakAt: null }]);
+
+    await transitionMetaRegimeStatus(2, "RESOLVED");
+
+    const setArgs = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArgs.status).toBe("RESOLVED");
+    expect(setArgs.resolvedAt).toBeInstanceOf(Date);
+    expect(setArgs.peakAt).toBeInstanceOf(Date);
+  });
+
+  it("RESOLVED 전이 시 peakAt이 이미 존재하면 peakAt을 덮어쓰지 않는다", async () => {
+    const existingPeakAt = new Date("2025-06-01");
+    // SELECT current peakAt — 이미 값이 있음
+    mockSelectWhere.mockResolvedValueOnce([{ peakAt: existingPeakAt }]);
+
     await transitionMetaRegimeStatus(2, "RESOLVED");
 
     const setArgs = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
@@ -344,9 +411,13 @@ describe("transitionMetaRegimeStatus", () => {
     expect(setArgs.status).toBe("ACTIVE");
     expect(setArgs.peakAt).toBeUndefined();
     expect(setArgs.resolvedAt).toBeUndefined();
+    // ACTIVE 전이는 peakAt 조회를 하지 않아야 한다
+    expect(mockSelectWhere).not.toHaveBeenCalled();
   });
 
   it("DB 오류 발생 시 에러를 재던진다", async () => {
+    // SELECT current peakAt
+    mockSelectWhere.mockResolvedValueOnce([{ peakAt: null }]);
     const dbError = new Error("Update failed");
     mockUpdateWhere.mockRejectedValueOnce(dbError);
 
