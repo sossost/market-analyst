@@ -69,6 +69,7 @@
 | Phase 2 조기포착 신호 도구 | VCP 후보(`getVCPCandidates`), 확인된 돌파(`getConfirmedBreakouts`), 섹터 래그 패턴(`getSectorLagPatterns`) 3개 도구 추가 — ETL이 적재한 `daily_noise_signals`/`daily_breakout_signals`/`sector_lag_patterns` 데이터를 에이전트에 노출 (#712) |
 | Thesis-Aligned Candidates | ACTIVE/RESOLVING narrative_chain의 beneficiary_tickers를 stock_phases + fundamental_scores + company_profiles와 자동 조인 → 일간 리포트에 체인별 수혜주 기술적 상태(Phase/RS/SEPA/52w 고점 대비/게이트 충족 수) 표시. beneficiary_tickers 비어있는 신규 chain은 동일 megatrend 기존 chain에서 상속 (#697) |
 | Thesis-Aligned LLM 인증 | 2단계 퍼널: 업종 기반 자동 수집 후 LLM이 각 종목의 thesis 직접 관련성 심사 → 인증 종목만 리포트 표시. 체인당 배치 1회 호출, company_profiles.description 기반 판정, 프롬프트 인젝션 방어(구조적 태그 + 마크다운 제어문자 제거), LLM 실패 시 원본 유지(graceful degradation) (#699) |
+| 일간 토론 요약 섹션 | 일간 리포트 HTML에 "오늘의 토론" 섹션 추가 — synthesis_report에서 핵심 한 줄·주요 논점·이견·결론을 구조화 파싱(LLM 미개입). synthesis 전문은 GitHub Gist로 발행 → Discord 토론 채널 링크 발송 + 일간 리포트 "전문 보기" 링크. `debate_sessions.gist_url` 컬럼 추가. (#926) |
 
 ### Layer 3: 추적 시스템 (F4 + F11 통합) — Done
 추천/관심종목을 단일 테이블로 통합 관리하여 시스템의 포착 선행성을 측정. (#773)
