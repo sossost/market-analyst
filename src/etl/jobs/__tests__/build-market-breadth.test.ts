@@ -6,6 +6,7 @@ import {
   computeBreadthScoreEma,
   computeDivergenceSignal,
   computePctAboveMa50,
+  computePhase2Ma50Divergence,
 } from "../build-market-breadth.js";
 
 // DB 의존성 mock (buildMarketBreadth import 시 pool/db 초기화 방지)
@@ -431,5 +432,57 @@ describe("computePctAboveMa50", () => {
 
   it("above가 1이고 total이 1이면 100을 반환한다", () => {
     expect(computePctAboveMa50(1, 1)).toBe(100);
+  });
+});
+
+// ────────────────────────────────────────────
+// computePhase2Ma50Divergence
+// ────────────────────────────────────────────
+describe("computePhase2Ma50Divergence", () => {
+  it("todayPctAboveMa50이 null이면 null을 반환한다", () => {
+    expect(computePhase2Ma50Divergence(40, null, [60, 62, 64, 66, 68])).toBeNull();
+  });
+
+  it("phase2Ratio가 임계값(35%) 미만이면 false를 반환한다", () => {
+    expect(computePhase2Ma50Divergence(34.99, 50, [60, 62, 64, 66, 68])).toBe(false);
+  });
+
+  it("과거 데이터가 5일 미만이면 null을 반환한다", () => {
+    expect(computePhase2Ma50Divergence(40, 50, [60, 62, 64, 66])).toBeNull();
+  });
+
+  it("과거 데이터에 null이 포함되어 유효 값이 5개 미만이면 null을 반환한다", () => {
+    expect(computePhase2Ma50Divergence(40, 50, [60, null, 64, 66, null])).toBeNull();
+  });
+
+  it("Phase 2 ratio >= 35% + pct_above_ma50 10%p 이상 하락 시 true를 반환한다", () => {
+    // 과거 max = 70, 오늘 = 55 → 하락 15%p >= 10%p
+    expect(computePhase2Ma50Divergence(40, 55, [65, 68, 70, 67, 63])).toBe(true);
+  });
+
+  it("하락폭이 정확히 10%p이면 true를 반환한다 (경계값)", () => {
+    // 과거 max = 60, 오늘 = 50 → 하락 10%p
+    expect(computePhase2Ma50Divergence(35, 50, [60, 58, 56, 54, 52])).toBe(true);
+  });
+
+  it("하락폭이 10%p 미만이면 false를 반환한다", () => {
+    // 과거 max = 60, 오늘 = 51 → 하락 9%p < 10%p
+    expect(computePhase2Ma50Divergence(40, 51, [60, 58, 56, 54, 52])).toBe(false);
+  });
+
+  it("pct_above_ma50이 상승 중이면 false를 반환한다", () => {
+    // 과거 max = 55, 오늘 = 60 → 하락 없음
+    expect(computePhase2Ma50Divergence(40, 60, [50, 52, 53, 54, 55])).toBe(false);
+  });
+
+  it("phase2Ratio가 정확히 35%이면 조건을 충족한다", () => {
+    // 과거 max = 70, 오늘 = 55 → 하락 15%p
+    expect(computePhase2Ma50Divergence(35, 55, [65, 68, 70, 67, 63])).toBe(true);
+  });
+
+  it("6개 이상의 과거 데이터가 있으면 최근 5개만 사용한다", () => {
+    // 전체 배열의 max = 80 (index 5), 하지만 slice(0,5)의 max = 65
+    // 오늘 = 56 → 하락 65-56 = 9%p < 10%p → false
+    expect(computePhase2Ma50Divergence(40, 56, [60, 62, 65, 63, 61, 80])).toBe(false);
   });
 });
