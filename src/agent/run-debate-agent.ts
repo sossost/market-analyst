@@ -254,7 +254,42 @@ export function withDebateQAWarning(
   ];
 }
 
-function buildDebateQuestion(debateDate: string): string {
+/**
+ * formatMetaRegimesForPrompt()가 반환하는 헤더 문자열과 반드시 동기화되어야 한다.
+ * formatMetaRegimesForPrompt() 변경 시 이 상수도 함께 수정할 것.
+ * @see src/debate/metaRegimeService.ts - formatMetaRegimesForPrompt()
+ */
+const NARRATIVE_CHAIN_ACTIVE_REGIME_MARKER = "## 현재 활성 국면";
+
+/**
+ * narrativeChainContext에 실제 ACTIVE 국면 데이터가 있는지 확인한다.
+ * 헤더 존재 여부만으로는 부족하다 — 국면이 없을 때 formatMetaRegimesForPrompt()는
+ * 빈 문자열을 반환하므로, 헤더 자체가 없으면 false다.
+ * 반환값이 false이면 공급망 연역 분석 블록을 삽입하지 않는다.
+ */
+function hasActiveRegimeContext(narrativeChainContext: string): boolean {
+  return narrativeChainContext.includes(NARRATIVE_CHAIN_ACTIVE_REGIME_MARKER);
+}
+
+/**
+ * 토론 에이전트에 전달할 질문을 빌드한다.
+ * narrativeChainContext가 활성 국면을 포함하는 경우 공급망 연역 분석 블록을 조건부로 삽입한다.
+ * 테스트 가능성을 위해 export.
+ */
+export function buildDebateQuestion(debateDate: string, narrativeChainContext = ""): string {
+  const supplyChainBlock = hasActiveRegimeContext(narrativeChainContext)
+    ? `
+
+## 공급망 연역 분석 (tech 에이전트 필수, 나머지 선택)
+
+위 서사 체인 컨텍스트를 참조하여 현재 활성 국면의 공급망 구조를 분석하라.
+
+1. **현재 병목 노드**: 어느 공급망 노드가 가장 강한 제약을 형성하고 있는가?
+2. **N+1 병목 예측**: 현재 병목이 해소되면 다음 제약 지점은 어디인가?
+   - 확신이 없으면 "불명확"으로 표기. 억지로 예측하지 말 것.
+3. **수혜 섹터/종목**: 현재 병목의 직접 수혜를 받는 섹터와 대표 종목`
+    : "";
+
   return `오늘은 ${debateDate}입니다.
 
 우리의 목표는 **상승 초입(바닥을 돌파하여 본격 상승이 시작되는 구간)에 진입 중인 주도섹터와 주도주를 남들보다 먼저 포착**하는 것입니다.
@@ -299,7 +334,7 @@ function buildDebateQuestion(debateDate: string): string {
 
 3. **N+1 병목 예측**: 현재 병목이 해소된다면 공급 체인의 다음 제약 지점은 어디인가?
    예시: GPU 병목 해소 → 다음 제약은 HBM인가, 광트랜시버인가, 데이터센터 전력인가?
-   확신이 없으면 "불명확"으로 표기. 억지로 예측하지 말 것.`;
+   확신이 없으면 "불명확"으로 표기. 억지로 예측하지 말 것.${supplyChainBlock}`;
 }
 
 async function loadFundamentalContextSafely(
@@ -746,7 +781,7 @@ async function main() {
   logger.step(`[5/7] Running debate for ${debateDate}...`);
 
   const result = await runDebate({
-    question: buildDebateQuestion(debateDate),
+    question: buildDebateQuestion(debateDate, narrativeChainContext),
     debateDate,
     memoryContext: enrichedMemory,
     marketDataContext,
