@@ -593,6 +593,7 @@ export async function formatMetaRegimesForPrompt(): Promise<string> {
     .orderBy(asc(narrativeChainRegimes.sequenceOrder));
 
   const sections: string[] = [
+    // 이 헤더 문자열을 변경하면 run-debate-agent.ts의 NARRATIVE_CHAIN_ACTIVE_REGIME_MARKER도 함께 수정해야 한다.
     "## 현재 활성 국면 (Meta-Regime)\n",
     "국면은 여러 내러티브 체인이 순차적으로 활성화되는 상위 테마 사이클입니다.",
     "현재 자금이 어디에 있고, 다음에 어디로 갈지 판단할 때 아래 순서를 참조하세요.\n",
