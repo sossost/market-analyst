@@ -29,7 +29,7 @@ import {
   buildModeratorCrossCalibrationContext,
 } from "@/debate/confidenceCalibrator";
 import { verifyTheses } from "@/debate/thesisVerifier";
-import { saveDebateSession, buildFewShotContext } from "@/debate/sessionStore";
+import { saveDebateSession, buildFewShotContext, updateDebateSessionGistUrl } from "@/debate/sessionStore";
 import { sendDiscordMessage, sendDiscordError } from "@/lib/discord";
 import { logger } from "@/lib/logger";
 import { runDebateQA, type DebateQAResult } from "./debateQA";
@@ -45,6 +45,7 @@ import { loadThemeContext } from "@/debate/themeContextLoader";
 import { loadGapContext } from "@/debate/gapContextLoader";
 // extractDailyInsight는 insightExtractor에서 관리 — 순환 참조 방지를 위해 분리
 export { extractDailyInsight } from "@/debate/insightExtractor";
+import { extractDebateSummary } from "@/debate/insightExtractor";
 
 import type { AgentPersona, DebateResult, RoundOutput } from "@/types/debate";
 import type { MarketSnapshot } from "@/debate/marketDataLoader";
@@ -870,7 +871,6 @@ async function main() {
     if (gistResult != null) {
       gistUrl = gistResult.url;
       // DB에 gist_url 저장
-      const { updateDebateSessionGistUrl } = await import("@/debate/sessionStore");
       await updateDebateSessionGistUrl(debateDate, gistUrl);
     }
   } catch (err) {
@@ -987,8 +987,8 @@ async function main() {
   // 기본(생략): 발송 없음 — 일간 에이전트가 debate_sessions에서 인사이트를 읽어 통합 발송
   // Gist 링크를 토론 채널에 발송 (Gist 발행 성공 시)
   if (gistUrl != null) {
-    const headlineMatch = result.round3.report.match(/\*\*(.+?)\*\*/);
-    const headline = headlineMatch != null ? headlineMatch[1] : "시황 브리핑";
+    const summary = extractDebateSummary(result.round3.report);
+    const headline = summary?.headline || "시황 브리핑";
     const gistMessage = [
       `📊 **시장 분석 종합 브리핑** (${debateDate})`,
       "",

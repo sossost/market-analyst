@@ -1379,7 +1379,7 @@ export function renderDebateSummary(summary: DebateSummary | null, gistUrl?: str
 
   return `
     <div class="debate-summary">
-      <p class="debate-headline">${escapeHtml(summary.headline).replace(/&quot;/g, '"')}</p>
+      <p class="debate-headline">${escapeHtml(summary.headline)}</p>
       ${topicsHtml}
       ${dissentHtml}
       ${conclusionHtml}
