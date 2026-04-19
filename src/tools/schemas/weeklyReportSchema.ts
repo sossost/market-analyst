@@ -1,5 +1,6 @@
 import type { ThesisAlignedData } from "@/lib/thesisAlignedCandidates.js";
 import type { Phase2Segment } from "@/lib/phase2Segment.js";
+import type { DivergenceSignal } from "@/lib/utils";
 
 // ─── 포트폴리오 관련 서브타입 ─────────────────────────────────────────────────
 
@@ -111,7 +112,9 @@ interface BreadthLatestSnapshot {
   newHighLow: NewHighLow;
   breadthScore: number | null;
   breadthScoreChange: number | null;
-  divergenceSignal: string | null;
+  divergenceSignal: DivergenceSignal;
+  /** MA50 이상 종목 비율 (%). null = 데이터 없음 */
+  pctAboveMa50: number | null;
   topSectors: BreadthTopSector[];
 }
 

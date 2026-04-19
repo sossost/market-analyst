@@ -100,6 +100,7 @@ export class WeeklyDataCollector {
           breadthScore: null,
           breadthScoreChange: null,
           divergenceSignal: null,
+          pctAboveMa50: null,
           topSectors: [],
         },
       },
@@ -210,6 +211,7 @@ export class WeeklyDataCollector {
         newHighLow: { newHighs: 0, newLows: 0, ratio: null },
         breadthScore: null,
         divergenceSignal: null,
+        pctAboveMa50: null,
         topSectors: [],
       },
     };

@@ -65,6 +65,7 @@ function createMockBreadthSnapshot(
     breadthScore: 62.5,
     breadthScoreChange: null,
     divergenceSignal: null,
+    pctAboveMa50: null,
     topSectors: [],
     phase1to2Count1d: 25,
     phase2to3Count1d: 10,
@@ -584,6 +585,40 @@ describe("renderPhaseDistribution", () => {
     const html = renderPhaseDistribution(snapshot);
     expect(html).toContain("강세");
     expect(html).not.toContain("252일 퍼센타일");
+  });
+
+  it("pctAboveMa50가 있으면 MA50 이상 비율 chip을 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({ pctAboveMa50: 55.3 });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("MA50 이상 비율");
+    expect(html).toContain("55.3%");
+  });
+
+  it("pctAboveMa50가 null이면 MA50 이상 비율 chip을 표시하지 않는다", () => {
+    const snapshot = createMockBreadthSnapshot({ pctAboveMa50: null });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).not.toContain("MA50 이상 비율");
+  });
+
+  it("divergenceSignal이 negative면 중기 약화 경고 알럿을 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({ divergenceSignal: "negative" });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("alert-warning");
+    expect(html).toContain("중기 약화 경고");
+  });
+
+  it("divergenceSignal이 positive면 중기 반등 신호 알럿을 표시한다", () => {
+    const snapshot = createMockBreadthSnapshot({ divergenceSignal: "positive" });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).toContain("alert-warning");
+    expect(html).toContain("중기 반등 신호");
+  });
+
+  it("divergenceSignal이 null이면 알럿을 표시하지 않는다", () => {
+    const snapshot = createMockBreadthSnapshot({ divergenceSignal: null });
+    const html = renderPhaseDistribution(snapshot);
+    expect(html).not.toContain("alert-block");
+    expect(html).not.toContain("다이버전스");
   });
 });
 
