@@ -296,6 +296,7 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── fundamental_scores     → SEPA 펀더멘탈 점수
 ├── failure_patterns       → Phase 2 신호 후 실패 케이스
 ├── narrative_chains       → 병목 생애주기 추적 (식별/해소/상태)
+├── narrative_chain_regimes → 체인-국면 다대다 junction table (chain_id + regime_id 복합 PK, LLM 링킹)
 ├── sector_phase_events    → 섹터/산업 Phase 전이 이벤트 로그
 ├── sector_lag_patterns    → 섹터 쌍별 시차 통계 (평균/분산/신뢰도)
 ├── market_regimes         → 시장 레짐 분류 (5단계 + 히스테리시스)

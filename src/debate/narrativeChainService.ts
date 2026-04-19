@@ -1,6 +1,7 @@
 import { db } from "@/db/client";
 import {
   narrativeChains,
+  narrativeChainRegimes,
   type NarrativeChainStatus,
 } from "@/db/schema/analyst";
 import { asc, desc, eq, inArray, isNull, and, sql } from "drizzle-orm";
@@ -12,8 +13,12 @@ import {
   STRUCTURAL_OBSERVATION_TAG,
 } from "@/tools/sectorAlphaGate";
 import { getActiveMetaRegimes, extractKeywords } from "@/debate/metaRegimeService";
+import { ClaudeCliProvider } from "@/debate/llm/claudeCliProvider";
 
 const MIN_KEYWORD_OVERLAP = 3;
+
+/** LLM 메타 레짐 링킹에 사용하는 모델 — 단순 분류 작업이므로 Haiku 우선 */
+const LLM_LINKING_MODEL = "claude-haiku-4-5-20251001";
 
 /**
  * Jaccard word similarity between two strings.
@@ -122,58 +127,139 @@ export function parseBottleneckFromThesis(thesis: Thesis): BottleneckInfo | null
   return buildChainFields(thesis);
 }
 
-interface MetaRegimeMatch {
-  id: number;
-}
-
 /**
- * Find the best-matching active meta-regime for a given megatrend string.
- * Computes keyword overlap between the chain's megatrend and each regime's
- * name + description. Returns the regime with the highest overlap if it
- * meets MIN_KEYWORD_OVERLAP, or null if no match is found.
+ * LLM을 사용하여 신규 체인이 속하는 활성 국면 ID 목록을 반환한다.
+ *
+ * 키워드 알고리즘 대체 — 동의어/표현 변형("에너지" vs "전력")을 LLM이 의미적으로 처리한다.
+ * 복수 국면 반환 허용. 파싱 실패 시 [] 반환으로 안전 강등.
  */
-async function matchMetaRegimeForChain(
+async function matchMetaRegimesForChainViaLLM(
   megatrend: string,
-): Promise<MetaRegimeMatch | null> {
+  bottleneck: string,
+  demandDriver: string,
+): Promise<number[]> {
   const activeRegimes = await getActiveMetaRegimes();
-  if (activeRegimes.length === 0) return null;
+  if (activeRegimes.length === 0) return [];
 
-  const chainKeywords = extractKeywords(megatrend);
+  // 각 국면의 연결 체인 요약을 조회하여 LLM에 컨텍스트로 제공
+  const regimeIds = activeRegimes.map((r) => r.id);
+  const linkedChains = await db
+    .select({
+      regimeId: narrativeChainRegimes.regimeId,
+      bottleneck: narrativeChains.bottleneck,
+    })
+    .from(narrativeChainRegimes)
+    .innerJoin(narrativeChains, eq(narrativeChainRegimes.chainId, narrativeChains.id))
+    .where(inArray(narrativeChainRegimes.regimeId, regimeIds));
 
-  let bestMatch: { id: number; overlap: number } | null = null;
-
-  for (const regime of activeRegimes) {
-    const regimeKeywords = extractKeywords(
-      regime.name + " " + (regime.description ?? ""),
-    );
-
-    let overlap = 0;
-    for (const kw of chainKeywords) {
-      if (regimeKeywords.has(kw)) overlap++;
-    }
-
-    if (
-      overlap >= MIN_KEYWORD_OVERLAP &&
-      (bestMatch == null || overlap > bestMatch.overlap)
-    ) {
-      bestMatch = { id: regime.id, overlap };
-    }
+  const chainsByRegime = new Map<number, string[]>();
+  for (const chain of linkedChains) {
+    const existing = chainsByRegime.get(chain.regimeId) ?? [];
+    existing.push(chain.bottleneck);
+    chainsByRegime.set(chain.regimeId, existing);
   }
 
-  if (bestMatch == null) return null;
-  return { id: bestMatch.id };
+  const regimeList = activeRegimes
+    .map((r) => {
+      const chains = chainsByRegime.get(r.id) ?? [];
+      const chainSummary =
+        chains.length > 0
+          ? `\n    연결 체인: ${chains.slice(0, 3).join(", ")}`
+          : "";
+      const desc = r.description != null ? ` — ${r.description}` : "";
+      return `  ${r.id}: ${r.name}${desc}${chainSummary}`;
+    })
+    .join("\n");
+
+  const systemPrompt =
+    "당신은 금융 서사 분석가입니다. 간결하고 정확한 JSON만 반환하세요. 설명이나 마크다운 없이 순수 JSON만 출력하세요.";
+
+  const userMessage = `아래 내러티브 체인이 어떤 국면에 속하는지 판단하세요.
+
+[신규 체인]
+- 메가트렌드: ${megatrend}
+- 병목: ${bottleneck}
+- 수요 동인: ${demandDriver}
+
+[활성 국면 목록]
+${regimeList}
+
+위 국면 중 이 체인이 속하는 국면의 ID를 JSON 배열로 반환하세요.
+없으면 빈 배열. 복수 가능.
+예시: {"regimeIds": [1, 3]} 또는 {"regimeIds": []}`;
+
+  try {
+    const provider = new ClaudeCliProvider(LLM_LINKING_MODEL);
+    const result = await provider.call({ systemPrompt, userMessage });
+
+    const text = result.content.trim();
+    if (text === "") {
+      logger.warn("NarrativeChain", `LLM 링킹 빈 응답 (megatrend: ${megatrend})`);
+      return [];
+    }
+
+    // JSON 블록 추출 (```json ... ``` 형식 대응)
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (jsonMatch == null) {
+      logger.warn("NarrativeChain", `LLM 링킹 JSON 추출 실패 (megatrend: ${megatrend}): ${text.slice(0, 100)}`);
+      return [];
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as unknown;
+    if (
+      parsed == null ||
+      typeof parsed !== "object" ||
+      !("regimeIds" in parsed) ||
+      !Array.isArray((parsed as Record<string, unknown>).regimeIds)
+    ) {
+      logger.warn("NarrativeChain", `LLM 링킹 응답 구조 불일치 (megatrend: ${megatrend}): ${text.slice(0, 100)}`);
+      return [];
+    }
+
+    const rawIds = (parsed as { regimeIds: unknown[] }).regimeIds;
+    const validIds = rawIds.filter((id): id is number => typeof id === "number");
+
+    // 실제 존재하는 활성 국면 ID만 필터링
+    const activeRegimeIdSet = new Set(activeRegimes.map((r) => r.id));
+    return validIds.filter((id) => activeRegimeIdSet.has(id));
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("NarrativeChain", `LLM 링킹 실패 (megatrend: ${megatrend}): ${reason}`);
+    return [];
+  }
 }
 
 /**
- * Count chains already linked to the given meta-regime.
- * Used to assign a 1-based sequenceOrder for a newly linked chain.
+ * junction table 기준으로 특정 국면에 연결된 체인 수를 반환한다.
+ * 신규 링크 시 sequence_order 계산에 사용된다.
  */
 async function countChainsInMetaRegime(regimeId: number): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(narrativeChains)
-    .where(eq(narrativeChains.metaRegimeId, regimeId));
+    .from(narrativeChainRegimes)
+    .where(eq(narrativeChainRegimes.regimeId, regimeId));
   return row?.count ?? 0;
+}
+
+/**
+ * junction table에 체인-국면 링크를 삽입한다.
+ * 이미 존재하는 링크는 무시한다 (ON CONFLICT DO NOTHING).
+ */
+async function insertChainRegimeLink(
+  chainId: number,
+  regimeId: number,
+  sequenceOrder: number,
+  sequenceConfidence: "low" | "medium" | "high" = "medium",
+): Promise<void> {
+  await db
+    .insert(narrativeChainRegimes)
+    .values({
+      chainId,
+      regimeId,
+      sequenceOrder,
+      sequenceConfidence,
+    })
+    .onConflictDoNothing();
 }
 
 /**
@@ -351,7 +437,8 @@ export async function recordNarrativeChain(
       // Update existing chain
       const updatedThesisIds = [...new Set([...existing.linkedThesisIds, thesisId])];
 
-      const isResolved = info.status === "RESOLVED" || info.status === "OVERSUPPLY";
+      // RESOLVED/OVERSUPPLY 상태: 체인 생애주기가 종료된 터미널 상태
+      const isTerminalStatus = info.status === "RESOLVED" || info.status === "OVERSUPPLY";
 
       // N+1 수혜 필드 (비어있지 않을 때만 업데이트)
       const nextBeneficiaryUpdate = {
@@ -359,17 +446,26 @@ export async function recordNarrativeChain(
         ...(nextBeneficiaryTickers.length > 0 && { nextBeneficiaryTickers }),
       };
 
-      // metaRegimeId가 없는 기존 체인에 대해 국면 재매칭 시도
-      let regimeUpdateForExisting: { metaRegimeId: number; sequenceOrder: number } | null = null;
-      if (existing.metaRegimeId == null) {
+      // junction table에 미연결된 기존 체인에 대해 국면 재매칭 시도
+      const existingLinks = await db
+        .select({ regimeId: narrativeChainRegimes.regimeId })
+        .from(narrativeChainRegimes)
+        .where(eq(narrativeChainRegimes.chainId, existing.id));
+
+      const isUnlinked = existingLinks.length === 0;
+      let regimeLinkedForExisting = false;
+
+      if (isUnlinked) {
         try {
-          const regimeMatch = await matchMetaRegimeForChain(info.megatrend);
-          if (regimeMatch != null) {
-            const existingCount = await countChainsInMetaRegime(regimeMatch.id);
-            regimeUpdateForExisting = {
-              metaRegimeId: regimeMatch.id,
-              sequenceOrder: existingCount + 1,
-            };
+          const regimeIds = await matchMetaRegimesForChainViaLLM(
+            info.megatrend,
+            info.bottleneck,
+            info.demandDriver,
+          );
+          for (const regimeId of regimeIds) {
+            const existingCount = await countChainsInMetaRegime(regimeId);
+            await insertChainRegimeLink(existing.id, regimeId, existingCount + 1);
+            regimeLinkedForExisting = true;
           }
         } catch (regimeErr) {
           const reason = regimeErr instanceof Error ? regimeErr.message : String(regimeErr);
@@ -380,7 +476,7 @@ export async function recordNarrativeChain(
         }
       }
 
-      if (isResolved) {
+      if (isTerminalStatus) {
         const now = new Date();
         const resolutionDays = calculateResolutionDays(
           existing.bottleneckIdentifiedAt,
@@ -398,10 +494,21 @@ export async function recordNarrativeChain(
             ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
             ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
             ...(alphaCompatible != null && { alphaCompatible }),
-            ...(regimeUpdateForExisting != null && regimeUpdateForExisting),
             ...nextBeneficiaryUpdate,
           })
           .where(eq(narrativeChains.id, existing.id));
+
+        // RESOLVING/RESOLVED 상태이고 nextBottleneck이 있으면 다음 체인 승격 트리거
+        if (info.nextBottleneck != null && info.nextBottleneck !== "") {
+          await maybePromoteNextBottleneck(
+            info.nextBottleneck,
+            info.megatrend,
+            info.demandDriver,
+            nextBeneficiarySectors,
+            nextBeneficiaryTickers,
+            thesisId,
+          );
+        }
       } else {
         await db
           .update(narrativeChains)
@@ -412,15 +519,28 @@ export async function recordNarrativeChain(
             ...(info.beneficiarySectors.length > 0 && { beneficiarySectors: info.beneficiarySectors }),
             ...(info.beneficiaryTickers.length > 0 && { beneficiaryTickers: info.beneficiaryTickers }),
             ...(alphaCompatible != null && { alphaCompatible }),
-            ...(regimeUpdateForExisting != null && regimeUpdateForExisting),
             ...nextBeneficiaryUpdate,
           })
           .where(eq(narrativeChains.id, existing.id));
+
+        // RESOLVING 상태이고 nextBottleneck이 있으면 다음 체인 승격 트리거
+        if (
+          info.status === "RESOLVING" &&
+          info.nextBottleneck != null &&
+          info.nextBottleneck !== ""
+        ) {
+          await maybePromoteNextBottleneck(
+            info.nextBottleneck,
+            info.megatrend,
+            info.demandDriver,
+            nextBeneficiarySectors,
+            nextBeneficiaryTickers,
+            thesisId,
+          );
+        }
       }
 
-      const regimeTag = regimeUpdateForExisting != null
-        ? `, metaRegimeId: ${regimeUpdateForExisting.metaRegimeId}, seq: ${regimeUpdateForExisting.sequenceOrder}`
-        : "";
+      const regimeTag = regimeLinkedForExisting ? " (regime linked)" : "";
       logger.info(
         "NarrativeChain",
         `Updated chain #${existing.id} (status: ${info.status}, theses: ${updatedThesisIds.length}${alphaCompatible === false ? `, ${STRUCTURAL_OBSERVATION_TAG}` : ""}${regimeTag})`,
@@ -453,24 +573,7 @@ export async function recordNarrativeChain(
         }
       }
 
-      // 새 체인을 메타 레짐과 자동 연결
-      let metaRegimeId: number | null = null;
-      let sequenceOrder: number | null = null;
-      try {
-        const regimeMatch = await matchMetaRegimeForChain(info.megatrend);
-        if (regimeMatch != null) {
-          metaRegimeId = regimeMatch.id;
-          const existingCount = await countChainsInMetaRegime(regimeMatch.id);
-          sequenceOrder = existingCount + 1;
-        }
-      } catch (regimeErr) {
-        const reason = regimeErr instanceof Error ? regimeErr.message : String(regimeErr);
-        logger.warn(
-          "NarrativeChain",
-          `Meta-regime matching failed for new chain (thesis #${thesisId}), proceeding without link: ${reason}`,
-        );
-      }
-
+      // 신규 체인 생성 — metaRegimeId 없이 생성 후 junction table에 링크
       const result = await db
         .insert(narrativeChains)
         .values({
@@ -484,17 +587,43 @@ export async function recordNarrativeChain(
           beneficiarySectors: finalBeneficiarySectors,
           beneficiaryTickers: finalBeneficiaryTickers,
           linkedThesisIds: [thesisId],
-          ...(metaRegimeId != null && { metaRegimeId, sequenceOrder }),
           ...(alphaCompatible != null && { alphaCompatible }),
           ...(nextBeneficiarySectors.length > 0 && { nextBeneficiarySectors }),
           ...(nextBeneficiaryTickers.length > 0 && { nextBeneficiaryTickers }),
         })
         .returning({ id: narrativeChains.id });
 
-      const regimeTag = metaRegimeId != null ? `, metaRegimeId: ${metaRegimeId}, seq: ${sequenceOrder}` : "";
+      const newChainId = result[0]?.id;
+      let linkedRegimeIds: number[] = [];
+
+      if (newChainId != null) {
+        // LLM으로 국면 링킹 — 실패 시 체인 생성은 유지
+        try {
+          const regimeIds = await matchMetaRegimesForChainViaLLM(
+            info.megatrend,
+            info.bottleneck,
+            info.demandDriver,
+          );
+          for (const regimeId of regimeIds) {
+            const existingCount = await countChainsInMetaRegime(regimeId);
+            await insertChainRegimeLink(newChainId, regimeId, existingCount + 1);
+            linkedRegimeIds.push(regimeId);
+          }
+        } catch (regimeErr) {
+          const reason = regimeErr instanceof Error ? regimeErr.message : String(regimeErr);
+          logger.warn(
+            "NarrativeChain",
+            `Meta-regime matching failed for new chain (thesis #${thesisId}), proceeding without link: ${reason}`,
+          );
+        }
+      }
+
+      const regimeTag = linkedRegimeIds.length > 0
+        ? `, regimes: [${linkedRegimeIds.join(",")}]`
+        : "";
       logger.info(
         "NarrativeChain",
-        `Created chain #${result[0]?.id} for "${info.bottleneck}" (megatrend: ${info.megatrend}${alphaCompatible === false ? `, ${STRUCTURAL_OBSERVATION_TAG}` : ""}${regimeTag})`,
+        `Created chain #${newChainId} for "${info.bottleneck}" (megatrend: ${info.megatrend}${alphaCompatible === false ? `, ${STRUCTURAL_OBSERVATION_TAG}` : ""}${regimeTag})`,
       );
     }
   } catch (err) {
@@ -512,8 +641,8 @@ export async function recordNarrativeChain(
 }
 
 /**
- * metaRegimeId가 NULL이고 ACTIVE/RESOLVING 상태인 체인 목록 조회.
- * 메타 레짐 자동 연결/생성 평가 대상 체인.
+ * junction table에 미등록된 ACTIVE/RESOLVING 체인 목록 조회.
+ * metaRegimeId 컬럼이 아닌 narrative_chain_regimes 테이블 기준으로 판단한다.
  */
 export async function getUnlinkedActiveChains(): Promise<Array<{
   id: number;
@@ -522,6 +651,8 @@ export async function getUnlinkedActiveChains(): Promise<Array<{
   status: string;
 }>> {
   const activeStatuses: NarrativeChainStatus[] = ["ACTIVE", "RESOLVING"];
+
+  // LEFT JOIN으로 단일 쿼리에서 미연결 체인만 필터링 — 두 번 조회 불필요
   return db
     .select({
       id: narrativeChains.id,
@@ -530,11 +661,78 @@ export async function getUnlinkedActiveChains(): Promise<Array<{
       status: narrativeChains.status,
     })
     .from(narrativeChains)
+    .leftJoin(narrativeChainRegimes, eq(narrativeChainRegimes.chainId, narrativeChains.id))
     .where(
       and(
-        isNull(narrativeChains.metaRegimeId),
+        isNull(narrativeChainRegimes.chainId),
         inArray(narrativeChains.status, activeStatuses),
       ),
     )
     .orderBy(asc(narrativeChains.id));
+}
+
+/**
+ * RESOLVING/RESOLVED 상태 체인의 nextBottleneck을 신규 체인으로 승격한다.
+ * 중복 생성 방지: findMatchingChain으로 동일 bottleneck이 이미 존재하면 스킵한다.
+ */
+async function maybePromoteNextBottleneck(
+  nextBottleneck: string,
+  megatrend: string,
+  demandDriver: string,
+  beneficiarySectors: string[],
+  beneficiaryTickers: string[],
+  thesisId: number,
+): Promise<void> {
+  try {
+    const alreadyExists = await findMatchingChain({
+      megatrend,
+      bottleneck: nextBottleneck,
+    });
+
+    if (alreadyExists != null) {
+      logger.info(
+        "NarrativeChain",
+        `next_bottleneck 승격 스킵 — 동일 체인 이미 존재 (chain #${alreadyExists.id}, nextBottleneck: ${nextBottleneck})`,
+      );
+      return;
+    }
+
+    const result = await db
+      .insert(narrativeChains)
+      .values({
+        megatrend,
+        demandDriver,
+        supplyChain: "",
+        bottleneck: nextBottleneck,
+        bottleneckIdentifiedAt: new Date(),
+        status: "ACTIVE",
+        beneficiarySectors,
+        beneficiaryTickers,
+        linkedThesisIds: [thesisId],
+      })
+      .returning({ id: narrativeChains.id });
+
+    const newChainId = result[0]?.id;
+    if (newChainId == null) return;
+
+    // 신규 승격 체인도 LLM으로 국면 링킹 시도
+    try {
+      const regimeIds = await matchMetaRegimesForChainViaLLM(megatrend, nextBottleneck, demandDriver);
+      for (const regimeId of regimeIds) {
+        const existingCount = await countChainsInMetaRegime(regimeId);
+        await insertChainRegimeLink(newChainId, regimeId, existingCount + 1);
+      }
+    } catch (regimeErr) {
+      const reason = regimeErr instanceof Error ? regimeErr.message : String(regimeErr);
+      logger.warn("NarrativeChain", `승격 체인 국면 링킹 실패 (chain #${newChainId}): ${reason}`);
+    }
+
+    logger.info(
+      "NarrativeChain",
+      `next_bottleneck 승격 완료 — 신규 체인 #${newChainId} (bottleneck: ${nextBottleneck}, megatrend: ${megatrend})`,
+    );
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("NarrativeChain", `next_bottleneck 승격 실패 (thesisId: ${thesisId}): ${reason}`);
+  }
 }

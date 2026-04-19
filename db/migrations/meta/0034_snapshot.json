@@ -1,6 +1,6 @@
 {
-  "id": "45e7ad3d-c9b3-4a2a-913c-3981b666d090",
-  "prevId": "c4abe3cb-9736-42c3-b799-bec8f3e54fd8",
+  "id": "2471ec9d-490e-4fef-93f1-bc5f290e2b72",
+  "prevId": "6ebebfe8-543c-423d-a9ca-6ceb26b1592f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3586,12 +3586,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "pct_above_ma50": {
-          "name": "pct_above_ma50",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "divergence_signal": {
           "name": "divergence_signal",
           "type": "varchar(20)",
@@ -3816,6 +3810,116 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.narrative_chain_regimes": {
+      "name": "narrative_chain_regimes",
+      "schema": "",
+      "columns": {
+        "chain_id": {
+          "name": "chain_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "regime_id": {
+          "name": "regime_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence_order": {
+          "name": "sequence_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sequence_confidence": {
+          "name": "sequence_confidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_ncr_regime_id": {
+          "name": "idx_ncr_regime_id",
+          "columns": [
+            {
+              "expression": "regime_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_ncr_chain_id": {
+          "name": "idx_ncr_chain_id",
+          "columns": [
+            {
+              "expression": "chain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "narrative_chain_regimes_chain_id_narrative_chains_id_fk": {
+          "name": "narrative_chain_regimes_chain_id_narrative_chains_id_fk",
+          "tableFrom": "narrative_chain_regimes",
+          "tableTo": "narrative_chains",
+          "columnsFrom": [
+            "chain_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "narrative_chain_regimes_regime_id_meta_regimes_id_fk": {
+          "name": "narrative_chain_regimes_regime_id_meta_regimes_id_fk",
+          "tableFrom": "narrative_chain_regimes",
+          "tableTo": "meta_regimes",
+          "columnsFrom": [
+            "regime_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "narrative_chain_regimes_chain_id_regime_id_pk": {
+          "name": "narrative_chain_regimes_chain_id_regime_id_pk",
+          "columns": [
+            "chain_id",
+            "regime_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

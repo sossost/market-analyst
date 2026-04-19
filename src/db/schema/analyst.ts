@@ -652,7 +652,11 @@ export const narrativeChains = pgTable(
     nextBeneficiarySectors: jsonb("next_beneficiary_sectors").$type<string[]>(),
     nextBeneficiaryTickers: jsonb("next_beneficiary_tickers").$type<string[]>(),
 
-    // 국면(meta-regime) 연결 (#735)
+    /**
+     * @deprecated junction table `narrative_chain_regimes`로 이관됨.
+     * 단일 FK 방식(1:1)에서 다대다(N:M)로 전환. 컬럼은 데이터 보존을 위해 유지.
+     * 새 코드에서는 narrativeChainRegimes 테이블을 사용할 것.
+     */
     metaRegimeId: integer("meta_regime_id").references(() => metaRegimes.id),
     sequenceOrder: integer("sequence_order"), // 국면 내 순서 (1-based)
     sequenceConfidence: text("sequence_confidence").$type<"low" | "medium" | "high">(),
@@ -665,6 +669,35 @@ export const narrativeChains = pgTable(
     idxStatus: index("idx_narrative_chains_status").on(t.status),
     idxMegatrend: index("idx_narrative_chains_megatrend").on(t.megatrend),
     idxMetaRegimeId: index("idx_narrative_chains_meta_regime_id").on(t.metaRegimeId),
+  }),
+);
+
+/**
+ * narrative_chain_regimes — narrative_chains ↔ meta_regimes 다대다 junction table.
+ *
+ * 기존 narrative_chains.meta_regime_id 단일 FK(1:1)를 N:M 구조로 전환.
+ * 하나의 체인이 복수 국면(예: "AI 인프라 사이클" + "에너지 전환 사이클")에 속할 수 있다.
+ * LLM이 링킹 판단을 담당하며, sequence_order/sequence_confidence는 각 링크별로 관리된다.
+ */
+export const narrativeChainRegimes = pgTable(
+  "narrative_chain_regimes",
+  {
+    chainId: integer("chain_id")
+      .notNull()
+      .references(() => narrativeChains.id, { onDelete: "cascade" }),
+    regimeId: integer("regime_id")
+      .notNull()
+      .references(() => metaRegimes.id, { onDelete: "cascade" }),
+    sequenceOrder: integer("sequence_order"),
+    sequenceConfidence: text("sequence_confidence").$type<"low" | "medium" | "high">(),
+    linkedAt: timestamp("linked_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.chainId, t.regimeId] }),
+    idxRegimeId: index("idx_ncr_regime_id").on(t.regimeId),
+    idxChainId: index("idx_ncr_chain_id").on(t.chainId),
   }),
 );
 
