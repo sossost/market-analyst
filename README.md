@@ -12,7 +12,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
    → FRED 신용 스프레드/금융 스트레스 지표 수집 (HY OAS, CCC, BBB, STLFSI4) + z-score 이상 감지
    → 뉴스 수집 후 LLM 테마 추출 자동 실행 (인과적 섹터 영향 매핑 → news_themes 테이블 축적)
    → LLM 사각지대 감지: Haiku가 thesis·신용이상·RS·카테고리 분포를 종합하여 미수집 테마 식별 → 동적 쿼리 자동 생성·실행 (#750)
-   → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석
+   → Weinstein Phase 판별, 섹터/산업 RS 계산, 브레드스 분석 (Phase 2 ratio + pct_above_ma50 중기 브레드스)
 
 2. 멀티 모델 애널리스트 토론 (매일 22:00 UTC)
    → 매크로(GPT-4o)/테크(Gemini 2.5 Flash)/지정학(Claude)/심리(Claude) 4명이 3라운드 토론
