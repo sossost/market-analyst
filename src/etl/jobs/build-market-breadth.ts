@@ -111,6 +111,7 @@ interface Prev5DaysBreadthRow {
   phase2To3Count1d:  number | null;
   advancers:         number | null;
   decliners:         number | null;
+  pctAboveMa50:      number | null;
 }
 
 /**
@@ -175,6 +176,11 @@ const FLOW_WINDOW       = 5;
 // EMA 평활 계수: α = 0.2 → 반감기 약 3거래일
 const EMA_ALPHA = 0.2;
 
+// Phase 2 ratio vs pct_above_ma50 다이버전스 탐지 임계값 (#915, 초기값 — #628 백테스트 인프라로 조정 예정)
+const PHASE2_DIVERGENCE_RATIO_THRESHOLD_PCT = 35;       // Phase 2 ratio 최소 기준 (%p)
+const PHASE2_DIVERGENCE_MA50_DROP_THRESHOLD_PCT = 10;   // pct_above_ma50 하락폭 기준 (%p)
+const PHASE2_DIVERGENCE_LOOKBACK_DAYS = 5;               // 롤링 윈도우 (거래일)
+
 /**
  * 5개 지표의 퍼센타일 순위를 가중합산하여 BreadthScore v2(0~100)를 계산한다.
  * VIX가 null인 경우 나머지 4개 가중치를 합이 1이 되도록 재정규화한다.
@@ -235,12 +241,14 @@ async function fetchPrev5Days(targetDate: string): Promise<Prev5DaysBreadthRow[]
     phase2_to3_count_1d: string | null;
     advancers:           string | null;
     decliners:           string | null;
+    pct_above_ma50:      string | null;
   }>(
     `SELECT phase2_ratio::text,
             phase1_to2_count_1d::text,
             phase2_to3_count_1d::text,
             advancers::text,
-            decliners::text
+            decliners::text,
+            pct_above_ma50::text
      FROM market_breadth_daily
      WHERE date < $1
      ORDER BY date DESC
@@ -254,6 +262,7 @@ async function fetchPrev5Days(targetDate: string): Promise<Prev5DaysBreadthRow[]
     phase2To3Count1d: r.phase2_to3_count_1d != null ? toNum(r.phase2_to3_count_1d) : null,
     advancers:        r.advancers            != null ? toNum(r.advancers)            : null,
     decliners:        r.decliners            != null ? toNum(r.decliners)            : null,
+    pctAboveMa50:     r.pct_above_ma50      != null ? toNum(r.pct_above_ma50)      : null,
   }));
 }
 
@@ -457,6 +466,36 @@ export function computeDivergenceSignal(
   if (spx5dChange >  1 && breadthScore5dChange < -3) return 'negative';
 
   return null;
+}
+
+/**
+ * Phase 2 ratio vs pct_above_ma50 다이버전스를 탐지한다.
+ * Phase 2 ratio가 임계값 이상 유지되면서 pct_above_ma50이 급락하면 true.
+ * 데이터 부족 시 null, 조건 미충족 시 false.
+ *
+ * @param phase2Ratio      오늘 Phase 2 비율 (%)
+ * @param todayPctAboveMa50 오늘 pct_above_ma50 (%)
+ * @param pastPctAboveMa50  최신→과거 DESC 정렬 배열 (직전 N일의 pct_above_ma50)
+ */
+export function computePhase2Ma50Divergence(
+  phase2Ratio: number,
+  todayPctAboveMa50: number | null,
+  pastPctAboveMa50: (number | null)[],
+): boolean | null {
+  if (todayPctAboveMa50 == null) return null;
+  if (phase2Ratio < PHASE2_DIVERGENCE_RATIO_THRESHOLD_PCT) return false;
+
+  // 직전 N일 중 non-null 값만 추출
+  const validPast = pastPctAboveMa50
+    .slice(0, PHASE2_DIVERGENCE_LOOKBACK_DAYS)
+    .filter((v): v is number => v != null);
+
+  if (validPast.length < PHASE2_DIVERGENCE_LOOKBACK_DAYS) return null;
+
+  const recentMax = validPast.reduce((max, v) => (v > max ? v : max), validPast[0]);
+  const drop = recentMax - todayPctAboveMa50;
+
+  return drop >= PHASE2_DIVERGENCE_MA50_DROP_THRESHOLD_PCT;
 }
 
 async function fetchPhaseDistribution(
@@ -838,6 +877,14 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     spx5dChange,
   );
 
+  // 9-1. Phase 2 ratio vs pct_above_ma50 다이버전스 탐지
+  const pastPctAboveMa50 = prev5Days.map(r => r.pctAboveMa50);
+  const phase2Ma50Divergence = computePhase2Ma50Divergence(
+    phaseData.phase2Ratio,
+    pctAboveMa50Data.pctAboveMa50,
+    pastPctAboveMa50,
+  );
+
   // 10. BreadthScore EMA 계산
   const prevEma = await retryDatabaseOperation(() => fetchPrevBreadthScoreEma(targetDate));
   const breadthScoreEma = computeBreadthScoreEma(breadthScore, prevEma);
@@ -871,6 +918,7 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
     breadthScore: String(breadthScore),
     breadthScoreEma: String(breadthScoreEma),
     divergenceSignal: divergenceSignal,
+    phase2Ma50Divergence: phase2Ma50Divergence,
   };
 
   await retryDatabaseOperation(() =>
@@ -906,13 +954,14 @@ export async function buildMarketBreadth(targetDate: string): Promise<void> {
           breadthScore: sql`EXCLUDED.breadth_score`,
           breadthScoreEma: sql`EXCLUDED.breadth_score_ema`,
           divergenceSignal: sql`EXCLUDED.divergence_signal`,
+          phase2Ma50Divergence: sql`EXCLUDED.phase2_ma50_divergence`,
         },
       }),
   );
 
   logger.info(
     TAG,
-    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% pctAboveMa50=${pctAboveMa50Data.pctAboveMa50 ?? "null"}% vixClose=${vixData.close ?? "null"} vixHigh=${vixData.high ?? "null"} fg=${fearGreedData.score ?? "null"} breadthScore=${breadthScore} breadthScoreEma=${breadthScoreEma}`,
+    `Done: ${targetDate} | total=${phaseData.total} phase2Ratio=${phaseData.phase2Ratio}% pctAboveMa50=${pctAboveMa50Data.pctAboveMa50 ?? "null"}% phase2Ma50Div=${phase2Ma50Divergence ?? "null"} vixClose=${vixData.close ?? "null"} vixHigh=${vixData.high ?? "null"} fg=${fearGreedData.score ?? "null"} breadthScore=${breadthScore} breadthScoreEma=${breadthScoreEma}`,
   );
 }
 

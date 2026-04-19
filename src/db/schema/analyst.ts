@@ -1388,6 +1388,7 @@ export const marketBreadthDaily = pgTable("market_breadth_daily", {
   breadthScoreEma:     numeric("breadth_score_ema", { precision: 5, scale: 2 }),
   pctAboveMa50:        numeric("pct_above_ma50", { precision: 5, scale: 2 }),
   divergenceSignal:    varchar("divergence_signal", { length: 20 }),
+  phase2Ma50Divergence: boolean("phase2_ma50_divergence"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.date] }),
