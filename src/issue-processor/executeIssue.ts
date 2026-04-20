@@ -87,15 +87,18 @@ ${issue.body || '(본문 없음)'}
    - 포함 항목: 문제 정의, Before→After, 변경 사항, 작업 계획, 리스크
 ${selfValidationStep}
 4. 기획서 기반 구현
-5. 테스트가 통과하는지 확인 (커버리지 80%+)
-6. 코드 셀프 리뷰: CRITICAL/HIGH 이슈 있으면 수정 후 재확인
-7. feat 또는 아키텍처 변경 이슈인 경우, 커밋 전에 README.md와 docs/ROADMAP.md를 업데이트하라:
+4.5. CI 게이트 (push 전 필수 — 통과 없이 다음 단계 절대 금지):
+   - \`yarn test\` 실행 — 실패 시 코드 수정 후 재실행. 통과할 때까지 반복.
+   - \`yarn tsc --noEmit\` 실행 — 타입 에러 있으면 수정 후 재실행. 통과할 때까지 반복.
+   - 두 명령 모두 exit code 0이어야만 커밋 진행. 하나라도 실패하면 커밋/push 금지.
+5. 코드 셀프 리뷰: CRITICAL/HIGH 이슈 있으면 수정 후 재확인
+6. feat 또는 아키텍처 변경 이슈인 경우, 커밋 전에 README.md와 docs/ROADMAP.md를 업데이트하라:
    - README.md: Feature Map, 주요 변경사항 반영
    - docs/ROADMAP.md: 완료/진행 상태 갱신
    - 단순 fix/test/chore 이슈는 문서 업데이트 불필요
-8. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함. **docs/features/ 파일은 커밋하지 마라**)
-9. \`git push -u origin ${branchName}\`
-10. PR 생성:
+7. 변경사항 커밋 (메시지에 "Closes #${issue.number}" 포함. **docs/features/ 파일은 커밋하지 마라**)
+8. \`git push -u origin ${branchName}\`
+9. PR 생성:
    - \`.github/PULL_REQUEST_TEMPLATE.md\` 파일을 읽고 그 형식에 맞춰 PR body를 작성하라
    - body 첫 줄에 반드시 \`Closes #${issue.number}\` 포함
    - "전략비서 체크" 섹션은 기획서 검증 결과를 그대로 반영:
@@ -103,8 +106,9 @@ ${selfValidationStep}
      - 무기 품질: 구현 품질 (타입 안전성, 테스트 커버리지, 에러 핸들링)
      - 무효 판정: 기획서의 무효 판정 결과
      - 종합: PROCEED / HOLD / REJECT
+   - CI 게이트 통과 여부를 PR body에 명시하라: \`yarn test\` 통과 여부, \`yarn tsc --noEmit\` 통과 여부
    - \`gh pr create --title "..." --body "..."\` 로 PR 생성
-11. **반드시** \`git checkout main\`을 실행하여 main 브랜치로 복귀하라. PR 생성 후 피처 브랜치에 잔류하면 이후 cron 작업 전체가 장애 난다.
+10. **반드시** \`git checkout main\`을 실행하여 main 브랜치로 복귀하라. PR 생성 후 피처 브랜치에 잔류하면 이후 cron 작업 전체가 장애 난다.
 
 ## 규칙
 - main 브랜치에 직접 커밋하지 마라
@@ -352,7 +356,10 @@ ${issue.body || '(본문 없음)'}
    - 테스트 실패: 코드 버그 수정 또는 테스트 수정
    - 타입 에러: TypeScript 타입 오류 수정
    - 빌드 에러: 빌드 설정 또는 코드 수정
-4. 테스트가 통과하는지 확인 (커버리지 80%+)
+4. CI 게이트 (push 전 필수 — 통과 없이 다음 단계 절대 금지):
+   - \`yarn test\` 실행 — 실패 시 코드 수정 후 재실행. 통과할 때까지 반복.
+   - \`yarn tsc --noEmit\` 실행 — 타입 에러 있으면 수정 후 재실행. 통과할 때까지 반복.
+   - 두 명령 모두 exit code 0이어야만 커밋 진행. 하나라도 실패하면 커밋/push 금지.
 5. 변경사항 커밋:
    - 메시지: \`fix: CI 실패 수정 — Refs #${issue.number}\`
    - **docs/features/ 파일은 커밋하지 마라**
