@@ -517,3 +517,109 @@ describe('processMerge', () => {
     expect(true).toBe(true) // placeholder: 실제 타임아웃 테스트는 별도 단위 테스트로
   })
 })
+
+// ---------------------------------------------------------------------------
+// CI 게이트 테스트
+// ---------------------------------------------------------------------------
+
+describe('processMerge — CI 게이트', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('CI 통과 시 CI 수정 없이 그대로 머지를 진행한다', async () => {
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { removePrThreadMapping } = await import('../prThreadStore.js')
+    const { fetchFailedChecks } = await import('../../pr-reviewer/checkCiStatus.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    vi.mocked(fetchFailedChecks).mockResolvedValue([])
+
+    mockExecSequence(vi.mocked(execFile), [
+      ...openPrNoReviewSequence(),
+      { stdout: '  main' }, // deleteLocalBranchIfExists
+    ])
+
+    await processMerge(makeMapping(42))
+
+    expect(removePrThreadMapping).toHaveBeenCalledWith(42)
+    // CI 실패 감지 알림은 없어야 함
+    const ciFixCall = vi.mocked(sendThreadMessage).mock.calls.find(
+      ([, msg]) => typeof msg === 'string' && msg.includes('CI 실패 감지'),
+    )
+    expect(ciFixCall).toBeUndefined()
+  })
+
+  it('CI 실패 → 수정 CLI 성공 → CI 재통과 → 머지를 진행한다', async () => {
+    vi.useFakeTimers()
+
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { removePrThreadMapping } = await import('../prThreadStore.js')
+    const { fetchFailedChecks } = await import('../../pr-reviewer/checkCiStatus.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    const failedCheck = [{ name: 'test', link: 'https://github.com/owner/repo/actions/runs/123/job/456', description: 'test failed' }]
+    vi.mocked(fetchFailedChecks)
+      .mockResolvedValueOnce(failedCheck) // CI 게이트 최초 확인: 실패
+      .mockResolvedValue([])              // 폴링: 통과
+
+    mockExecSequence(vi.mocked(execFile), [
+      ...openPrNoReviewCheckSequence(),
+      // fixCiBranchInPlace — Claude CLI 성공
+      { stdout: '' },
+      // gh pr merge
+      { stdout: '' },
+      // checkoutAndPullMain
+      { stdout: '' },
+      { stdout: '' },
+      { stdout: '' },
+      // fetchMergedFiles
+      { stdout: JSON.stringify({ files: [] }) },
+      // deleteLocalBranchIfExists
+      { stdout: '  main' },
+    ])
+
+    const mergePromise = processMerge(makeMapping(42))
+    await vi.runAllTimersAsync()
+    await mergePromise
+
+    vi.useRealTimers()
+
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('CI 실패 감지'),
+    )
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('CI 수정 완료'),
+    )
+    expect(removePrThreadMapping).toHaveBeenCalledWith(42)
+  }, 15_000)
+
+  it('CI 실패 → 수정 CLI 실패 → 머지 중단', async () => {
+    const { execFile } = await import('node:child_process')
+    const { sendThreadMessage } = await import('../discordClient.js')
+    const { removePrThreadMapping } = await import('../prThreadStore.js')
+    const { fetchFailedChecks } = await import('../../pr-reviewer/checkCiStatus.js')
+    const { processMerge } = await import('../mergeProcessor.js')
+
+    const failedCheck = [{ name: 'test', link: 'https://github.com/owner/repo/actions/runs/123/job/456', description: 'test failed' }]
+    vi.mocked(fetchFailedChecks).mockResolvedValue(failedCheck)
+
+    mockExecSequence(vi.mocked(execFile), [
+      ...openPrNoReviewCheckSequence(),
+      // fixCiBranchInPlace — Claude CLI 실패
+      { error: new Error('claude: ENOENT') },
+    ])
+
+    await processMerge(makeMapping(42))
+
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('CI 수정 실패'),
+    )
+    expect(removePrThreadMapping).not.toHaveBeenCalled()
+  })
+})
