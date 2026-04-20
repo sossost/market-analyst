@@ -123,7 +123,7 @@ describe('fetchFailedChecks', () => {
     expect(result).toHaveLength(0)
   })
 
-  it('gh CLI 실패 시 빈 배열을 반환한다 (안전 실패)', async () => {
+  it('gh CLI 실패 시 throw한다', async () => {
     const { execFile } = await import('node:child_process')
     vi.mocked(execFile).mockImplementation((_cmd, _args, _options, callback) => {
       const cb = callback as (err: Error, stdout: string, stderr: string) => void
@@ -132,8 +132,7 @@ describe('fetchFailedChecks', () => {
     })
 
     const { fetchFailedChecks } = await import('../checkCiStatus.js')
-    const result = await fetchFailedChecks(42)
-    expect(result).toHaveLength(0)
+    await expect(fetchFailedChecks(42)).rejects.toThrow('gh CLI 실패')
   })
 })
 

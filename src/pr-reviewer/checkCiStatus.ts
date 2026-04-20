@@ -54,29 +54,23 @@ async function gh(args: string[]): Promise<string> {
 
 /**
  * PR의 CI 체크 결과를 조회하여 실패한 체크만 반환한다.
- * 조회 실패 시 빈 배열 반환 (안전 실패).
+ * 조회 실패 시 throw — 호출자가 머지 중단 등 안전 처리를 해야 한다.
  */
 export async function fetchFailedChecks(prNumber: number): Promise<FailedCheck[]> {
-  try {
-    const raw = await gh([
-      'pr', 'checks', String(prNumber),
-      '--json', 'name,state,link,description',
-    ])
-    if (raw === '') return []
+  const raw = await gh([
+    'pr', 'checks', String(prNumber),
+    '--json', 'name,state,link,description',
+  ])
+  if (raw === '') return []
 
-    const checks: CiCheckRaw[] = JSON.parse(raw)
-    return checks
-      .filter((check) => check.state === 'FAIL')
-      .map((check) => ({
-        name: check.name,
-        link: check.link,
-        description: check.description,
-      }))
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
-    logger.warn(TAG, `PR #${prNumber} CI 체크 조회 실패: ${reason}`)
-    return []
-  }
+  const checks: CiCheckRaw[] = JSON.parse(raw)
+  return checks
+    .filter((check) => check.state === 'FAIL')
+    .map((check) => ({
+      name: check.name,
+      link: check.link,
+      description: check.description,
+    }))
 }
 
 // ---------------------------------------------------------------------------

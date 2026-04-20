@@ -491,16 +491,19 @@ describe('processMerge', () => {
   })
 
   it('CI 실패 → 수정 성공 → CI 재폴링 타임아웃 → 머지 중단', async () => {
+    vi.useFakeTimers()
+
     const { execFile } = await import('node:child_process')
     const { fetchFailedChecks } = await import('../../pr-reviewer/checkCiStatus.js')
     const { sendThreadMessage } = await import('../discordClient.js')
     const { removePrThreadMapping } = await import('../prThreadStore.js')
     const { processMerge } = await import('../mergeProcessor.js')
 
-    // CI 항상 실패 반환 (타임아웃 시뮬레이션)
-    vi.mocked(fetchFailedChecks).mockResolvedValue([
+    const failedCheck = [
       { name: 'test', link: 'https://github.com/owner/repo/actions/runs/123/job/456', description: 'test failed' },
-    ])
+    ]
+    // CI 항상 실패 반환 — 타임아웃까지 통과하지 않음
+    vi.mocked(fetchFailedChecks).mockResolvedValue(failedCheck)
 
     mockExecSequence(vi.mocked(execFile), [
       ...openPrNoReviewCheckSequence(),
@@ -508,14 +511,18 @@ describe('processMerge', () => {
       { stdout: '' },
     ])
 
-    // NOTE: 폴링 간격(30초)이 길어 실제 타임아웃 흐름 테스트가 어렵다.
-    // fetchFailedChecks가 항상 실패를 반환하면 waitForCiPass가 타임아웃(10분)에 도달하는데,
-    // 실제 대기 없이 검증하려면 vi.useFakeTimers()로 Date.now를 조작해야 한다.
-    // 현재 구현에서 waitForCiPass는 Date.now() - startTime < maxWaitMs 조건으로 루프하므로
-    // 타이머를 빠르게 진행시키면 타임아웃이 즉시 발생한다.
-    // 이 placeholder는 향후 타임아웃 전용 단위 테스트로 대체 예정.
-    expect(true).toBe(true) // placeholder: 실제 타임아웃 테스트는 별도 단위 테스트로
-  })
+    const mergePromise = processMerge(makeMapping(42))
+    await vi.runAllTimersAsync()
+    await mergePromise
+
+    vi.useRealTimers()
+
+    expect(sendThreadMessage).toHaveBeenCalledWith(
+      'thread-42',
+      expect.stringContaining('CI 재실패 또는 타임아웃'),
+    )
+    expect(removePrThreadMapping).not.toHaveBeenCalled()
+  }, 15_000)
 })
 
 // ---------------------------------------------------------------------------

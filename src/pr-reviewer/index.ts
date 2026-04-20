@@ -113,7 +113,14 @@ async function resolveVerdictWithCiGate(
   prNumber: number,
   strategic: { success: boolean; output?: string },
 ): Promise<StrategicVerdict> {
-  const failedChecks = await fetchFailedChecks(prNumber)
+  let failedChecks: Awaited<ReturnType<typeof fetchFailedChecks>>
+  try {
+    failedChecks = await fetchFailedChecks(prNumber)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `  PR #${prNumber} CI 체크 조회 실패 — 안전하게 HOLD 처리: ${reason}`)
+    return 'HOLD'
+  }
 
   if (failedChecks.length > 0) {
     logger.warn(TAG, `  PR #${prNumber} CI 실패 ${failedChecks.length}건 — 강제 HOLD`)

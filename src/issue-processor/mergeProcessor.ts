@@ -458,6 +458,11 @@ async function fixCiBranchInPlace(
   errorLog: string,
   prNumber: number,
 ): Promise<boolean> {
+  // 프롬프트 인젝션 방지: 에러 로그에서 프롬프트 구조를 탈출할 수 있는 패턴 이스케이프
+  const sanitizedLog = errorLog
+    .replace(/```/g, '` ` `')
+    .replace(/<\/?[a-zA-Z-]+>/g, (match) => match.replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+
   const prompt = `## 미션
 
 CI 실패를 수정하라. 아래 에러 로그를 분석하고 해당 브랜치에 수정 커밋을 푸시하라.
@@ -465,7 +470,7 @@ CI 실패를 수정하라. 아래 에러 로그를 분석하고 해당 브랜치
 ## 에러 로그
 
 \`\`\`
-${errorLog}
+${sanitizedLog}
 \`\`\`
 
 ## 실행 순서
