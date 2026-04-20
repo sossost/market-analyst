@@ -254,7 +254,7 @@ describe("debateEngine", () => {
     }
   });
 
-  it("injects market data into Round 1 question, not Round 2", async () => {
+  it("injects market data into Round 1 question and Round 2 via market-data tag", async () => {
     openaiCreateMock
       .mockResolvedValueOnce(makeOpenAIResponse("Macro R1"))
       .mockResolvedValueOnce(makeOpenAIResponse("Macro R2"));
@@ -278,26 +278,54 @@ describe("debateEngine", () => {
       marketDataContext: marketData,
     });
 
-    // Round 1 OpenAI call: messages[1].content에 market data 포함
+    // Round 1 OpenAI call: messages[1].content에 market data가 question에 직접 포함
     const openaiR1Content = openaiCreateMock.mock.calls[0][0].messages[1].content;
     expect(openaiR1Content).toContain("실제 시장 데이터");
 
-    // Round 1 Claude CLI calls: stdin으로 전달된 userMessage에 market data 포함
-    // execFile mock의 child.stdin.end(userMessage)로 확인
-    const r1CliCalls = execFileMock.mock.calls.slice(0, 2);
-    for (const call of r1CliCalls) {
-      // stdin.end 호출에서 전달된 메시지 확인
-      const child = call as unknown[];
-      // child_process.execFile의 callback 내에서 stdin.end가 호출되므로
-      // userMessage는 stdin.end의 첫 번째 인수로 전달됨
-      // setupClaudeCliMock에서 child.stdin.end를 vi.fn()으로 만들었으므로 호출 기록 확인
-      // 하지만 mock 구조상 stdin.end 호출을 직접 검증하기 어려우므로
-      // OpenAI Round 1에서 market data가 포함되는 것으로 간접 검증
-    }
-
-    // Round 2 OpenAI call: messages에 market data 없음 (base question만)
+    // Round 2 OpenAI call: market data는 <market-data> 태그로 별도 주입 (#936)
     const openaiR2Content = openaiCreateMock.mock.calls[1][0].messages[1].content;
     expect(openaiR2Content).toContain("Test question");
-    expect(openaiR2Content).not.toContain("실제 시장 데이터");
+    expect(openaiR2Content).toContain("<market-data>");
+    expect(openaiR2Content).toContain("S&P 500: 5,200");
+  });
+
+  it("merges per-persona newsContext and injects into Round 2 via news-context tag", async () => {
+    openaiCreateMock
+      .mockResolvedValueOnce(makeOpenAIResponse("Macro R1"))
+      .mockResolvedValueOnce(makeOpenAIResponse("Macro R2"));
+    geminiGenerateMock
+      .mockResolvedValueOnce(makeGeminiResponse("Tech R1"))
+      .mockResolvedValueOnce(makeGeminiResponse("Tech R2"));
+
+    setupClaudeCliMock([
+      makeCliJsonOutput("Geopolitics R1"),
+      makeCliJsonOutput("Sentiment R1"),
+      makeCliJsonOutput("Geopolitics R2"),
+      makeCliJsonOutput("Sentiment R2"),
+      makeCliJsonOutput("종합...\n\n```json\n[]\n```"),
+    ]);
+
+    await runDebate({
+      question: "Test question",
+      debateDate: "2026-03-05",
+      newsContext: {
+        macro: "Fed 금리 동결 전망",
+        tech: "NVIDIA 실적 서프라이즈",
+        geopolitics: "",
+        sentiment: "",
+      },
+    });
+
+    // Round 2 OpenAI call: 합산된 뉴스가 <news-context> 태그로 주입
+    const openaiR2Content = openaiCreateMock.mock.calls[1][0].messages[1].content;
+    expect(openaiR2Content).toContain("<news-context>");
+    expect(openaiR2Content).toContain("Fed 금리 동결 전망");
+    expect(openaiR2Content).toContain("NVIDIA 실적 서프라이즈");
+    // 빈 뉴스는 필터링됨 — news-context 블록 내에 뉴스가 있는 persona만 포함
+    const newsBlock = openaiR2Content.split("<news-context>")[1]?.split("</news-context>")[0] ?? "";
+    expect(newsBlock).toContain("### macro");
+    expect(newsBlock).toContain("### tech");
+    expect(newsBlock).not.toContain("### geopolitics");
+    expect(newsBlock).not.toContain("### sentiment");
   });
 });
