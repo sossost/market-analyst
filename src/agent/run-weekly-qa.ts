@@ -17,6 +17,11 @@ import {
   queryWeeklyQaVerificationMethods,
   queryWeeklyQaBiasMetrics,
   upsertWeeklyQaReport,
+  queryComponentKpiEtl,
+  queryComponentKpiAgentSource,
+  queryComponentKpiAgentRetention,
+  queryComponentKpiNarrativeChains,
+  queryComponentKpiCorporateAnalyst,
   type WeeklyQaThesisWeeklyRow,
   type WeeklyQaThesisOverallRow,
   type WeeklyQaTrackedStockRow,
@@ -26,6 +31,11 @@ import {
   type WeeklyQaReportLogRow,
   type WeeklyQaVerificationMethodRow,
   type WeeklyQaBiasMetricsRow,
+  type ComponentKpiEtlRow,
+  type ComponentKpiAgentSourceRow,
+  type ComponentKpiAgentRetentionRow,
+  type ComponentKpiNarrativeChainsRow,
+  type ComponentKpiCorporateAnalystRow,
 } from "@/db/repositories/index.js";
 
 import { getThesisHitRateByCategory, type CategoryHitRateWithStatusQuo } from "@/debate/thesisStore.js";
@@ -47,12 +57,17 @@ interface CollectedData {
   verificationMethods: WeeklyQaVerificationMethodRow[] | null;
   biasMetrics: WeeklyQaBiasMetricsRow[] | null;
   categoryHitRate: CategoryHitRateWithStatusQuo[] | null;
+  componentKpiEtl: ComponentKpiEtlRow | null;
+  componentKpiAgentSource: ComponentKpiAgentSourceRow[] | null;
+  componentKpiAgentRetention: ComponentKpiAgentRetentionRow | null;
+  componentKpiNarrativeChains: ComponentKpiNarrativeChainsRow | null;
+  componentKpiCorporateAnalyst: ComponentKpiCorporateAnalystRow | null;
 }
 
-async function queryOrNullFn<T>(
+async function queryOrNull<T>(
   label: string,
-  fn: () => Promise<T[]>,
-): Promise<T[] | null> {
+  fn: () => Promise<T>,
+): Promise<T | null> {
   try {
     return await fn();
   } catch (err) {
@@ -63,21 +78,57 @@ async function queryOrNullFn<T>(
 }
 
 async function collectData(): Promise<CollectedData> {
-  const [thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics, categoryHitRate] =
-    await Promise.all([
-      queryOrNullFn("thesis_weekly", () => queryWeeklyQaThesisWeekly(pool)),
-      queryOrNullFn("thesis_overall", () => queryWeeklyQaThesisOverall(pool)),
-      queryOrNullFn("tracked_stocks", () => queryWeeklyQaRecommendations(pool)),
-      queryOrNullFn("detection_lag", () => queryWeeklyQaDetectionLag(pool)),
-      queryOrNullFn("exit_reason_perf", () => queryWeeklyQaExitReasonPerf(pool)),
-      queryOrNullFn("learnings", () => queryWeeklyQaLearnings(pool)),
-      queryOrNullFn("recent_reports", () => queryWeeklyQaRecentReports(pool)),
-      queryOrNullFn("verification_methods", () => queryWeeklyQaVerificationMethods(pool)),
-      queryOrNullFn("bias_metrics", () => queryWeeklyQaBiasMetrics(pool)),
-      queryOrNullFn("category_hit_rate", () => getThesisHitRateByCategory()),
-    ]);
+  const [
+    thesisWeekly,
+    thesisOverall,
+    trackedStocks,
+    detectionLag,
+    exitReasonPerf,
+    learnings,
+    recentReports,
+    verificationMethods,
+    biasMetrics,
+    categoryHitRate,
+    componentKpiEtl,
+    componentKpiAgentSource,
+    componentKpiAgentRetention,
+    componentKpiNarrativeChains,
+    componentKpiCorporateAnalyst,
+  ] = await Promise.all([
+    queryOrNull("thesis_weekly", () => queryWeeklyQaThesisWeekly(pool)),
+    queryOrNull("thesis_overall", () => queryWeeklyQaThesisOverall(pool)),
+    queryOrNull("tracked_stocks", () => queryWeeklyQaRecommendations(pool)),
+    queryOrNull("detection_lag", () => queryWeeklyQaDetectionLag(pool)),
+    queryOrNull("exit_reason_perf", () => queryWeeklyQaExitReasonPerf(pool)),
+    queryOrNull("learnings", () => queryWeeklyQaLearnings(pool)),
+    queryOrNull("recent_reports", () => queryWeeklyQaRecentReports(pool)),
+    queryOrNull("verification_methods", () => queryWeeklyQaVerificationMethods(pool)),
+    queryOrNull("bias_metrics", () => queryWeeklyQaBiasMetrics(pool)),
+    queryOrNull("category_hit_rate", () => getThesisHitRateByCategory()),
+    queryOrNull("component_kpi_etl", () => queryComponentKpiEtl(pool)),
+    queryOrNull("component_kpi_agent_source", () => queryComponentKpiAgentSource(pool)),
+    queryOrNull("component_kpi_agent_retention", () => queryComponentKpiAgentRetention(pool)),
+    queryOrNull("component_kpi_narrative_chains", () => queryComponentKpiNarrativeChains(pool)),
+    queryOrNull("component_kpi_corporate_analyst", () => queryComponentKpiCorporateAnalyst(pool)),
+  ]);
 
-  return { thesisWeekly, thesisOverall, trackedStocks, detectionLag, exitReasonPerf, learnings, recentReports, verificationMethods, biasMetrics, categoryHitRate };
+  return {
+    thesisWeekly,
+    thesisOverall,
+    trackedStocks,
+    detectionLag,
+    exitReasonPerf,
+    learnings,
+    recentReports,
+    verificationMethods,
+    biasMetrics,
+    categoryHitRate,
+    componentKpiEtl,
+    componentKpiAgentSource,
+    componentKpiAgentRetention,
+    componentKpiNarrativeChains,
+    componentKpiCorporateAnalyst,
+  };
 }
 
 // --- 프롬프트 구성 ---
@@ -88,6 +139,13 @@ function formatDataSection<T>(label: string, data: T[] | null): string {
   }
   if (data.length === 0) {
     return `### ${label}\n데이터 없음\n`;
+  }
+  return `### ${label}\n${JSON.stringify(data, null, 2)}\n`;
+}
+
+function formatSingleDataSection<T>(label: string, data: T | null): string {
+  if (data == null) {
+    return `### ${label}\n데이터 수집 실패\n`;
   }
   return `### ${label}\n${JSON.stringify(data, null, 2)}\n`;
 }
@@ -108,6 +166,12 @@ function buildUserPrompt(data: CollectedData, today: string): string {
     formatDataSection("6. 검증 방식별 통계 (정량/LLM)", data.verificationMethods),
     formatDataSection("7. 학습 검증 경로 분포 (정량/LLM/혼합)", data.biasMetrics),
     formatDataSection("8. 카테고리별 순수 적중률 (status_quo 제외)", data.categoryHitRate),
+    "### 컴포넌트 KPI",
+    formatSingleDataSection("9-1. 컴포넌트 KPI: etl_auto", data.componentKpiEtl),
+    formatDataSection("9-2. 컴포넌트 KPI: source별 tier 분포", data.componentKpiAgentSource),
+    formatSingleDataSection("9-3. 컴포넌트 KPI: featured Phase 2 유지율 + 수익률", data.componentKpiAgentRetention),
+    formatSingleDataSection("9-4. 컴포넌트 KPI: narrative_chains", data.componentKpiNarrativeChains),
+    formatSingleDataSection("9-5. 컴포넌트 KPI: 기업 분석 커버리지", data.componentKpiCorporateAnalyst),
   ];
   return sections.join("\n");
 }
@@ -199,6 +263,25 @@ const SYSTEM_PROMPT = `당신은 두 역할을 겸합니다:
 - 핵심 1줄: "..."
 - 의사결정 필요: [있으면 구체적으로 / 없으면 "없음"]
 \`\`\`
+
+## 6-extra. 컴포넌트 KPI
+각 컴포넌트의 핵심 KPI를 표로 출력한다.
+
+| 컴포넌트 | KPI | 현재값 | 판정 |
+|---------|-----|-------|------|
+| etl_auto | featured 격상 전환율 | X% | GOOD/WATCH/BAD |
+| agent | featured 4주 Phase 2 유지율 | X% | GOOD/WATCH/BAD |
+※ agent Phase 2 유지율은 현재 시점 단면 근사치 (phase_trajectory 파싱 아닌 current_phase 기준). 최근 전환된 종목이 과대 계산될 수 있음.
+| thesis_aligned | detection_lag 평균 (etl_auto/agent 제외 소스) | X일 | GOOD/WATCH/BAD |
+| narrative_chains | beneficiary Phase 2 전환율 | X% | GOOD/WATCH/BAD |
+| 기업 분석 | featured 커버리지 | X% | GOOD/WATCH/BAD |
+
+판정 기준:
+- GOOD: 목표 이상 (etl_auto featured≥10%, agent 4주Phase2≥60%, thesis_aligned lag≤7일, narrative Phase2≥30%, 기업분석 커버리지≥80%)
+- WATCH: 목표 60~100%
+- BAD: 목표 60% 미만 또는 데이터 부족
+
+**채점 보너스 +0.5점**: featured 커버리지 ≥ 50%
 
 ## 규칙
 - 데이터가 부족하면 "데이터 부족으로 판단 보류"라고 명시

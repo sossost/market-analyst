@@ -52,6 +52,11 @@ import type {
   WeeklyQaReportLogRow,
   WeeklyQaVerificationMethodRow,
   WeeklyQaBiasMetricsRow,
+  ComponentKpiEtlRow,
+  ComponentKpiAgentSourceRow,
+  ComponentKpiAgentRetentionRow,
+  ComponentKpiNarrativeChainsRow,
+  ComponentKpiCorporateAnalystRow,
 } from "./types.js";
 
 /**
@@ -1055,6 +1060,13 @@ export async function findPhase2CountForReport(
 // ─── run-weekly-qa 전용 ───────────────────────────────────────────────────────
 
 export type { WeeklyQaThesisWeeklyRow, WeeklyQaThesisOverallRow, WeeklyQaTrackedStockRow, WeeklyQaLearningRow, WeeklyQaReportLogRow, WeeklyQaVerificationMethodRow, WeeklyQaBiasMetricsRow } from "./types.js";
+export type {
+  ComponentKpiEtlRow,
+  ComponentKpiAgentSourceRow,
+  ComponentKpiAgentRetentionRow,
+  ComponentKpiNarrativeChainsRow,
+  ComponentKpiCorporateAnalystRow,
+} from "./types.js";
 
 /**
  * run-weekly-qa 전용: graceful degradation 래퍼와 함께 사용되는 raw SQL 쿼리들을 Pool을 통해 실행한다.
@@ -1183,6 +1195,198 @@ export async function queryWeeklyQaBiasMetrics(pool: Pool): Promise<WeeklyQaBias
      ORDER BY verification_path`,
   );
   return rows;
+}
+
+// ─── run-weekly-qa: 컴포넌트 KPI 전용 ────────────────────────────────────────
+
+/**
+ * etl_auto 컴포넌트 KPI를 조회한다.
+ * - 최근 7일 신규 etl_auto 등록 수
+ * - etl_auto ACTIVE 중 featured 비율
+ * - 최근 7일 Phase 2 전환 수 대비 etl_auto 등록 커버리지
+ */
+export async function queryComponentKpiEtl(pool: Pool): Promise<ComponentKpiEtlRow> {
+  const { rows } = await pool.query<ComponentKpiEtlRow>(
+    `WITH etl_7d AS (
+       SELECT COUNT(*)::int AS new_count_7d
+       FROM tracked_stocks
+       WHERE source = 'etl_auto'
+         AND entry_date::date >= CURRENT_DATE - INTERVAL '7 days'
+     ),
+     etl_active AS (
+       SELECT
+         COUNT(*)::int AS total_active_etl,
+         COUNT(*) FILTER (WHERE tier = 'featured')::int AS featured_count
+       FROM tracked_stocks
+       WHERE source = 'etl_auto'
+         AND status = 'ACTIVE'
+     ),
+     phase2_transitions AS (
+       SELECT COUNT(*)::int AS phase2_transition_7d
+       FROM stock_phases
+       WHERE phase = 2
+         AND prev_phase IS DISTINCT FROM 2
+         AND date::date >= CURRENT_DATE - INTERVAL '7 days'
+     )
+     SELECT
+       e7.new_count_7d,
+       ea.total_active_etl,
+       ea.featured_count,
+       CASE
+         WHEN ea.total_active_etl = 0 THEN NULL
+         ELSE ROUND(ea.featured_count::numeric / ea.total_active_etl * 100, 1)
+       END AS featured_rate,
+       p2.phase2_transition_7d,
+       CASE
+         WHEN p2.phase2_transition_7d = 0 THEN NULL
+         ELSE ROUND(e7.new_count_7d::numeric / p2.phase2_transition_7d * 100, 1)
+       END AS registration_rate
+     FROM etl_7d e7
+     CROSS JOIN etl_active ea
+     CROSS JOIN phase2_transitions p2`,
+  );
+
+  return rows[0] ?? {
+    new_count_7d: 0,
+    total_active_etl: 0,
+    featured_count: 0,
+    featured_rate: null,
+    phase2_transition_7d: 0,
+    registration_rate: null,
+  };
+}
+
+/**
+ * agent 컴포넌트 KPI — source별 tier 분포를 조회한다.
+ */
+export async function queryComponentKpiAgentSource(pool: Pool): Promise<ComponentKpiAgentSourceRow[]> {
+  const { rows } = await pool.query<ComponentKpiAgentSourceRow>(
+    `SELECT source, tier, COUNT(*)::int AS cnt
+     FROM tracked_stocks
+     GROUP BY source, tier
+     ORDER BY source, tier`,
+  );
+  return rows;
+}
+
+/**
+ * agent 컴포넌트 KPI — featured tier Phase 2 유지율 + 수익률을 조회한다.
+ * - entry_date 기준 14일 경과 featured 중 현재 phase=2 비율
+ * - entry_date 기준 28일 경과 featured 중 현재 phase=2 비율
+ * - featured tier return_30d 평균
+ *
+ * 리스크 #1(spec): phase_trajectory JSON 파싱 대신
+ * current_phase + days_tracked 근사치 사용 (정확도 허용 범위 내).
+ */
+export async function queryComponentKpiAgentRetention(pool: Pool): Promise<ComponentKpiAgentRetentionRow> {
+  const { rows } = await pool.query<ComponentKpiAgentRetentionRow>(
+    `WITH featured AS (
+       SELECT
+         current_phase,
+         days_tracked,
+         return_30d
+       FROM tracked_stocks
+       WHERE tier = 'featured'
+         AND status = 'ACTIVE'
+     )
+     SELECT
+       COUNT(*)::int AS total_featured,
+       COUNT(*) FILTER (WHERE days_tracked >= 14)::int AS total_at_14d,
+       COUNT(*) FILTER (WHERE days_tracked >= 14 AND current_phase = 2)::int AS phase2_at_14d,
+       COUNT(*) FILTER (WHERE days_tracked >= 28)::int AS total_at_28d,
+       COUNT(*) FILTER (WHERE days_tracked >= 28 AND current_phase = 2)::int AS phase2_at_28d,
+       ROUND(AVG(return_30d)::numeric, 2)::float AS avg_return_30d
+     FROM featured`,
+  );
+
+  return rows[0] ?? {
+    total_featured: 0,
+    total_at_14d: 0,
+    phase2_at_14d: 0,
+    total_at_28d: 0,
+    phase2_at_28d: 0,
+    avg_return_30d: null,
+  };
+}
+
+/**
+ * narrative_chains 컴포넌트 KPI를 조회한다.
+ * - ACTIVE 체인 수
+ * - beneficiaryTickers 중 현재 Phase 2 비율 (stock_phases 최신 JOIN)
+ * - beneficiaryTickers 중 tracked_stocks(thesis_aligned) 전환율
+ */
+export async function queryComponentKpiNarrativeChains(pool: Pool): Promise<ComponentKpiNarrativeChainsRow> {
+  const { rows } = await pool.query<ComponentKpiNarrativeChainsRow>(
+    `WITH active_chains AS (
+       SELECT beneficiary_tickers
+       FROM narrative_chains
+       WHERE status IN ('ACTIVE', 'RESOLVING')
+         AND beneficiary_tickers IS NOT NULL
+     ),
+     all_tickers AS (
+       SELECT DISTINCT jsonb_array_elements_text(beneficiary_tickers) AS ticker
+       FROM active_chains
+     ),
+     latest_phases AS (
+       SELECT sp.symbol, sp.phase
+       FROM stock_phases sp
+       WHERE sp.date = (SELECT MAX(date) FROM stock_phases)
+     )
+     SELECT
+       (SELECT COUNT(*)::int FROM narrative_chains WHERE status IN ('ACTIVE', 'RESOLVING')) AS active_chain_count,
+       COUNT(*)::int AS total_beneficiary_tickers,
+       COUNT(*) FILTER (WHERE lp.phase = 2)::int AS phase2_beneficiary_count,
+       ROUND(COUNT(*) FILTER (WHERE lp.phase = 2)::numeric / NULLIF(COUNT(*), 0) * 100, 1)::float AS phase2_beneficiary_rate,
+       COUNT(*) FILTER (WHERE ts.symbol IS NOT NULL)::int AS thesis_aligned_count,
+       ROUND(COUNT(*) FILTER (WHERE ts.symbol IS NOT NULL)::numeric / NULLIF(COUNT(*), 0) * 100, 1)::float AS thesis_aligned_rate
+     FROM all_tickers at2
+     LEFT JOIN latest_phases lp ON lp.symbol = at2.ticker
+     LEFT JOIN (
+       SELECT DISTINCT symbol FROM tracked_stocks WHERE source = 'thesis_aligned'
+     ) ts ON ts.symbol = at2.ticker`,
+  );
+
+  return rows[0] ?? {
+    active_chain_count: 0,
+    total_beneficiary_tickers: 0,
+    phase2_beneficiary_count: 0,
+    phase2_beneficiary_rate: null,
+    thesis_aligned_count: 0,
+    thesis_aligned_rate: null,
+  };
+}
+
+/**
+ * 기업 분석 리포트 컴포넌트 KPI를 조회한다.
+ * - featured tier ACTIVE 총 수
+ * - featured 중 stock_analysis_reports 보유 수 (커버리지 %)
+ */
+export async function queryComponentKpiCorporateAnalyst(pool: Pool): Promise<ComponentKpiCorporateAnalystRow> {
+  const { rows } = await pool.query<ComponentKpiCorporateAnalystRow>(
+    `WITH featured_active AS (
+       SELECT symbol
+       FROM tracked_stocks
+       WHERE tier = 'featured'
+         AND status = 'ACTIVE'
+     )
+     SELECT
+       COUNT(fa.symbol)::int AS total_featured_active,
+       COUNT(sar.symbol)::int AS covered_count,
+       CASE
+         WHEN COUNT(fa.symbol) = 0 THEN NULL
+         ELSE ROUND(COUNT(sar.symbol)::numeric / COUNT(fa.symbol) * 100, 1)
+       END AS coverage_rate
+     FROM featured_active fa
+     LEFT JOIN (
+       SELECT DISTINCT symbol FROM stock_analysis_reports
+     ) sar ON sar.symbol = fa.symbol`,
+  );
+
+  return rows[0] ?? {
+    total_featured_active: 0,
+    covered_count: 0,
+    coverage_rate: null,
+  };
 }
 
 export interface WeeklyQaUpsertInput {

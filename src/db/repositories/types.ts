@@ -903,6 +903,47 @@ export interface WeeklyQaBiasMetricsRow {
   cnt: number;
 }
 
+// ─── run-weekly-qa: 컴포넌트 KPI ──────────────────────────────────────────────
+
+export interface ComponentKpiEtlRow {
+  new_count_7d: number;
+  total_active_etl: number;
+  featured_count: number;
+  featured_rate: number | null;
+  phase2_transition_7d: number;
+  registration_rate: number | null;
+}
+
+export interface ComponentKpiAgentSourceRow {
+  source: string;
+  tier: string;
+  cnt: number;
+}
+
+export interface ComponentKpiAgentRetentionRow {
+  total_featured: number;
+  total_at_14d: number;
+  phase2_at_14d: number;
+  total_at_28d: number;
+  phase2_at_28d: number;
+  avg_return_30d: number | null;
+}
+
+export interface ComponentKpiNarrativeChainsRow {
+  active_chain_count: number;
+  total_beneficiary_tickers: number;
+  phase2_beneficiary_count: number;
+  phase2_beneficiary_rate: number | null;
+  thesis_aligned_count: number;
+  thesis_aligned_rate: number | null;
+}
+
+export interface ComponentKpiCorporateAnalystRow {
+  total_featured_active: number;
+  covered_count: number;
+  coverage_rate: number | null;
+}
+
 // ─── signalRepository (Phase 2 조기포착 신호) ──────────────────────────────
 
 export interface VcpCandidateRow {
