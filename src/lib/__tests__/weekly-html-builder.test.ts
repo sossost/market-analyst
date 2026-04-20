@@ -7,8 +7,10 @@ import {
   renderIndustryTop10Table,
   renderWatchlistSection,
   renderWatchlistChanges,
+  renderWeeklyDebateSummary,
   buildWeeklyHtml,
 } from "../weekly-html-builder.js";
+import type { WeeklyDebateSummary } from "@/debate/insightExtractor.js";
 import type {
   IndexReturn,
   FearGreedData,
@@ -1253,5 +1255,119 @@ describe("buildWeeklyHtml", () => {
 
     expect(result).toContain("Tech &amp; &quot;AI&quot;");
     expect(result).not.toContain('Tech & "AI"');
+  });
+
+  it("weeklyDebateSummary가 있으면 토론 종합 섹션이 렌더링된다", () => {
+    const data = createMockWeeklyReportData();
+    const insight = createMockWeeklyReportInsight();
+    const debateSummary: WeeklyDebateSummary = {
+      bottleneckTransitions: [
+        { name: "HBM 공급", initialStatus: "ACTIVE", finalStatus: "RESOLVING", changed: true },
+      ],
+      leadingSectors: [{ name: "Technology", mentionCount: 4, totalDays: 5 }],
+      warnings: [{ target: "TSLA", warningCount: 3, totalDays: 5 }],
+      sessionCount: 5,
+    };
+
+    const result = buildWeeklyHtml(data, insight, "2026-04-04", [], debateSummary);
+
+    expect(result).toContain("5세션 토론 누적 분석");
+    expect(result).toContain("HBM 공급");
+    expect(result).toContain("Technology");
+    expect(result).toContain("TSLA");
+  });
+
+  it("weeklyDebateSummary가 null이면 토론 종합 섹션이 없다", () => {
+    const data = createMockWeeklyReportData();
+    const insight = createMockWeeklyReportInsight();
+
+    const result = buildWeeklyHtml(data, insight, "2026-04-04", [], null);
+
+    expect(result).not.toContain("토론 누적 분석");
+  });
+});
+
+// ─── renderWeeklyDebateSummary ───────────────────────────────────────────────
+
+describe("renderWeeklyDebateSummary", () => {
+  it("null이면 빈 문자열 반환", () => {
+    expect(renderWeeklyDebateSummary(null)).toBe("");
+  });
+
+  it("모든 배열이 비어있으면 빈 문자열 반환", () => {
+    const summary: WeeklyDebateSummary = {
+      bottleneckTransitions: [],
+      leadingSectors: [],
+      warnings: [],
+      sessionCount: 5,
+    };
+    expect(renderWeeklyDebateSummary(summary)).toBe("");
+  });
+
+  it("병목 상태 변화 테이블을 렌더링한다", () => {
+    const summary: WeeklyDebateSummary = {
+      bottleneckTransitions: [
+        { name: "HBM 공급", initialStatus: "ACTIVE", finalStatus: "RESOLVING", changed: true },
+        { name: "GPU 재고", initialStatus: "ACTIVE", finalStatus: "ACTIVE", changed: false },
+      ],
+      leadingSectors: [],
+      warnings: [],
+      sessionCount: 5,
+    };
+
+    const result = renderWeeklyDebateSummary(summary);
+    expect(result).toContain("병목 상태 변화");
+    expect(result).toContain("HBM 공급");
+    expect(result).toContain("ACTIVE");
+    expect(result).toContain("RESOLVING");
+    expect(result).toContain("GPU 재고");
+  });
+
+  it("주도섹터 합의 칩을 렌더링한다", () => {
+    const summary: WeeklyDebateSummary = {
+      bottleneckTransitions: [],
+      leadingSectors: [
+        { name: "Technology", mentionCount: 4, totalDays: 5 },
+        { name: "Energy", mentionCount: 3, totalDays: 5 },
+      ],
+      warnings: [],
+      sessionCount: 5,
+    };
+
+    const result = renderWeeklyDebateSummary(summary);
+    expect(result).toContain("주간 주도섹터/주도주 합의");
+    expect(result).toContain("Technology");
+    expect(result).toContain("4/5일");
+    expect(result).toContain("Energy");
+    expect(result).toContain("3/5일");
+  });
+
+  it("과열 경고 칩을 렌더링한다", () => {
+    const summary: WeeklyDebateSummary = {
+      bottleneckTransitions: [],
+      leadingSectors: [],
+      warnings: [{ target: "TSLA", warningCount: 3, totalDays: 5 }],
+      sessionCount: 5,
+    };
+
+    const result = renderWeeklyDebateSummary(summary);
+    expect(result).toContain("반복 과열/위험 경고");
+    expect(result).toContain("TSLA");
+    expect(result).toContain("3/5일");
+  });
+
+  it("특수문자가 이스케이프된다", () => {
+    const summary: WeeklyDebateSummary = {
+      bottleneckTransitions: [
+        { name: 'Test & "XSS"', initialStatus: "ACTIVE", finalStatus: "ACTIVE", changed: false },
+      ],
+      leadingSectors: [],
+      warnings: [],
+      sessionCount: 1,
+    };
+
+    const result = renderWeeklyDebateSummary(summary);
+    expect(result).toContain("Test &amp; &quot;XSS&quot;");
+    expect(result).not.toContain('Test & "XSS"');
   });
 });

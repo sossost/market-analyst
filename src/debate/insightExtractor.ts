@@ -174,6 +174,311 @@ export function extractDebateSummary(report: string): DebateSummary | null {
   };
 }
 
+// ─── 주간 토론 종합 타입 ────────────────────────────────────────────────────
+
+/** 병목 상태 값 — 알려진 4개 + 파싱 실패 시 UNKNOWN */
+export type BottleneckStatus = "ACTIVE" | "RESOLVING" | "RESOLVED" | "OVERSUPPLY" | "UNKNOWN";
+
+/** 개별 병목 항목 */
+export interface WeeklyBottleneckItem {
+  /** 병목 이름 (예: "HBM 공급", "GPU 재고") */
+  name: string;
+  /** 해당 날짜의 상태 */
+  status: BottleneckStatus;
+  /** 출처 날짜 */
+  date: string;
+}
+
+/** 병목 추이 — 주초 vs 주말 */
+export interface WeeklyBottleneckTransition {
+  name: string;
+  initialStatus: BottleneckStatus;
+  finalStatus: BottleneckStatus;
+  changed: boolean;
+}
+
+/** 주간 주도섹터/주도주 합의 항목 */
+export interface WeeklyLeadingSectorItem {
+  /** 섹터 또는 종목 이름 */
+  name: string;
+  /** 5일 중 언급된 일수 */
+  mentionCount: number;
+  /** 전체 세션 수 */
+  totalDays: number;
+}
+
+/** 주간 과열/위험 경고 항목 */
+export interface WeeklyWarningItem {
+  /** 경고 대상 (섹터 또는 종목) */
+  target: string;
+  /** 경고 횟수 */
+  warningCount: number;
+  /** 전체 세션 수 */
+  totalDays: number;
+}
+
+/** 주간 토론 종합 결과 */
+export interface WeeklyDebateSummary {
+  /** 병목 상태 추이 (주초→주말) */
+  bottleneckTransitions: WeeklyBottleneckTransition[];
+  /** 주도섹터/주도주 합의 (60%+ 언급) */
+  leadingSectors: WeeklyLeadingSectorItem[];
+  /** 과열/위험 경고 (2회+ 반복) */
+  warnings: WeeklyWarningItem[];
+  /** 분석 세션 수 */
+  sessionCount: number;
+}
+
+// ─── 주간 종합용 섹션 추출 (public for testing) ─────────────────────────────
+
+/**
+ * 섹션 3(핵심 발견 + 병목 상태)에서 병목 상태를 추출한다.
+ * 병목 상태 패턴: "병목이름: STATUS", "병목이름 — STATUS", "**병목이름**: STATUS" 등
+ */
+export function extractBottleneckStatuses(report: string): Array<{ name: string; status: BottleneckStatus }> {
+  const section = extractSection(report, 3, "핵심 발견");
+  if (section === "") return [];
+
+  const results: Array<{ name: string; status: BottleneckStatus }> = [];
+  const VALID_STATUSES: readonly BottleneckStatus[] = ["ACTIVE", "RESOLVING", "RESOLVED", "OVERSUPPLY"];
+
+  // 패턴 1: "**병목이름**: STATUS" 또는 "병목이름: STATUS"
+  const statusPattern = /\*{0,2}([^*\n:]+?)\*{0,2}\s*[:：—]\s*(ACTIVE|RESOLVING|RESOLVED|OVERSUPPLY)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = statusPattern.exec(section)) !== null) {
+    const name = match[1].trim().replace(/^[-•]\s*/, "");
+    const status = match[2].toUpperCase() as BottleneckStatus;
+    if (name.length > 0 && VALID_STATUSES.includes(status)) {
+      results.push({ name, status });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * 섹션 4(기회: 주도섹터/주도주)에서 섹터/종목 이름을 추출한다.
+ * 테이블 행(| 섹터/종목 | ... |) 또는 "- **이름**:" 패턴을 처리.
+ */
+export function extractLeadingSectorNames(report: string): string[] {
+  const section = extractSection(report, 4, "기회");
+  if (section === "") return [];
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  // 패턴 1: 마크다운 테이블 행 — | 섹터/종목 | 근거 | 상태 |
+  const tableRowPattern = /^\|\s*([^|]+?)\s*\|/gm;
+  let match: RegExpExecArray | null;
+  while ((match = tableRowPattern.exec(section)) !== null) {
+    const raw = match[1].trim().replace(/\*\*/g, "");
+    // 헤더/구분선 제외
+    if (raw === "" || raw.startsWith("---") || raw === "섹터/종목" || raw === "섹터" || raw === "종목") continue;
+    if (!seen.has(raw)) {
+      seen.add(raw);
+      names.push(raw);
+    }
+  }
+
+  // 패턴 2: 볼드 텍스트 "**이름**" 또는 "- **이름**:"
+  const boldPattern = /\*\*([^*]+?)\*\*/g;
+  while ((match = boldPattern.exec(section)) !== null) {
+    const raw = match[1].trim();
+    // 가드레일/규칙 텍스트 제외
+    if (raw.length > 50 || raw.includes("가드레일") || raw.includes("규칙")) continue;
+    if (!seen.has(raw)) {
+      seen.add(raw);
+      names.push(raw);
+    }
+  }
+
+  return names;
+}
+
+/**
+ * 섹션 5(경고: 과열/위험 종목)에서 경고 대상을 추출한다.
+ */
+export function extractWarningTargets(report: string): string[] {
+  const section = extractSection(report, 5, "경고");
+  if (section === "") return [];
+
+  const targets: string[] = [];
+  const seen = new Set<string>();
+
+  // 패턴 1: 볼드 텍스트 "**대상**"
+  const boldPattern = /\*\*([^*]+?)\*\*/g;
+  let match: RegExpExecArray | null;
+  while ((match = boldPattern.exec(section)) !== null) {
+    const raw = match[1].trim();
+    if (raw.length > 50 || raw.includes("가드레일") || raw.includes("규칙")) continue;
+    if (!seen.has(raw)) {
+      seen.add(raw);
+      targets.push(raw);
+    }
+  }
+
+  // 패턴 2: "- 대상:" 리스트
+  const listPattern = /^[-•]\s*([^:：\n]{2,40})\s*[:：]/gm;
+  while ((match = listPattern.exec(section)) !== null) {
+    const raw = match[1].trim().replace(/\*\*/g, "");
+    if (!seen.has(raw)) {
+      seen.add(raw);
+      targets.push(raw);
+    }
+  }
+
+  return targets;
+}
+
+/**
+ * 여러 세션의 synthesis_report를 종합하여 주간 토론 요약을 생성한다.
+ * 빈 세션 배열이면 null 반환.
+ *
+ * @param sessions - 날짜순 정렬된 세션 배열 (date + synthesisReport)
+ * @returns 주간 토론 종합 요약. 세션 없으면 null.
+ */
+export function aggregateWeeklyDebateInsights(
+  sessions: Array<{ date: string; synthesisReport: string }>,
+): WeeklyDebateSummary | null {
+  if (sessions.length === 0) return null;
+
+  const totalDays = sessions.length;
+
+  // ── 병목 추이 ──
+  // 각 세션에서 병목 상태 추출 후, 주초 vs 주말 비교
+  const bottleneckByDate = sessions.map((s) => ({
+    date: s.date,
+    bottlenecks: extractBottleneckStatuses(s.synthesisReport),
+  }));
+
+  // 모든 병목 이름 수집
+  const allBottleneckNames = new Set<string>();
+  for (const entry of bottleneckByDate) {
+    for (const b of entry.bottlenecks) {
+      allBottleneckNames.add(b.name);
+    }
+  }
+
+  const bottleneckTransitions: WeeklyBottleneckTransition[] = [];
+  for (const name of allBottleneckNames) {
+    // 주초 = 첫 번째 세션에서의 상태, 주말 = 마지막 세션에서의 상태
+    const firstEntry = bottleneckByDate.find((e) => e.bottlenecks.some((b) => b.name === name));
+    const lastEntry = [...bottleneckByDate].reverse().find((e) => e.bottlenecks.some((b) => b.name === name));
+
+    const initialStatus: BottleneckStatus = firstEntry?.bottlenecks.find((b) => b.name === name)?.status ?? "UNKNOWN";
+    const finalStatus: BottleneckStatus = lastEntry?.bottlenecks.find((b) => b.name === name)?.status ?? "UNKNOWN";
+
+    bottleneckTransitions.push({
+      name,
+      initialStatus,
+      finalStatus,
+      changed: initialStatus !== finalStatus,
+    });
+  }
+
+  // ── 주도섹터/주도주 합의 ──
+  // 각 세션에서 언급된 섹터/종목을 카운트 → 60%+ 기준
+  const sectorMentionCount = new Map<string, number>();
+  for (const session of sessions) {
+    const names = extractLeadingSectorNames(session.synthesisReport);
+    const uniqueNames = new Set(names);
+    for (const name of uniqueNames) {
+      sectorMentionCount.set(name, (sectorMentionCount.get(name) ?? 0) + 1);
+    }
+  }
+
+  const CONSENSUS_THRESHOLD = 0.6;
+  const minMentions = Math.ceil(totalDays * CONSENSUS_THRESHOLD);
+  const leadingSectors: WeeklyLeadingSectorItem[] = [];
+  for (const [name, count] of sectorMentionCount) {
+    if (count >= minMentions) {
+      leadingSectors.push({ name, mentionCount: count, totalDays });
+    }
+  }
+  leadingSectors.sort((a, b) => b.mentionCount - a.mentionCount);
+
+  // ── 과열 경고 ──
+  // 2회 이상 반복 경고된 대상
+  const warningMentionCount = new Map<string, number>();
+  for (const session of sessions) {
+    const targets = extractWarningTargets(session.synthesisReport);
+    const uniqueTargets = new Set(targets);
+    for (const target of uniqueTargets) {
+      warningMentionCount.set(target, (warningMentionCount.get(target) ?? 0) + 1);
+    }
+  }
+
+  const MIN_WARNING_COUNT = 2;
+  const warnings: WeeklyWarningItem[] = [];
+  for (const [target, count] of warningMentionCount) {
+    if (count >= MIN_WARNING_COUNT) {
+      warnings.push({ target, warningCount: count, totalDays });
+    }
+  }
+  warnings.sort((a, b) => b.warningCount - a.warningCount);
+
+  return {
+    bottleneckTransitions,
+    leadingSectors,
+    warnings,
+    sessionCount: totalDays,
+  };
+}
+
+/**
+ * WeeklyDebateSummary를 프롬프트 주입용 텍스트로 포매팅한다.
+ * 3,000자 이내로 제한.
+ */
+export function formatWeeklyDebateForPrompt(summary: WeeklyDebateSummary): string {
+  const lines: string[] = [];
+
+  lines.push(`## 주간 토론 종합 (${summary.sessionCount}세션)`);
+  lines.push("");
+
+  // 병목 추이
+  if (summary.bottleneckTransitions.length > 0) {
+    lines.push("### 병목 상태 변화 (주초→주말)");
+    for (const bt of summary.bottleneckTransitions) {
+      const arrow = bt.changed ? "→" : "=";
+      const marker = bt.changed ? " ⚡" : "";
+      lines.push(`- ${bt.name}: ${bt.initialStatus} ${arrow} ${bt.finalStatus}${marker}`);
+    }
+    lines.push("");
+  }
+
+  // 주도섹터 합의
+  if (summary.leadingSectors.length > 0) {
+    lines.push("### 주간 주도섹터/주도주 합의");
+    for (const ls of summary.leadingSectors) {
+      lines.push(`- ${ls.name}: ${ls.mentionCount}/${ls.totalDays}일 언급`);
+    }
+    lines.push("");
+  }
+
+  // 과열 경고
+  if (summary.warnings.length > 0) {
+    lines.push("### 반복 과열/위험 경고");
+    for (const w of summary.warnings) {
+      lines.push(`- ${w.target}: ${w.warningCount}/${w.totalDays}일 경고`);
+    }
+    lines.push("");
+  }
+
+  // 데이터 없는 경우
+  if (
+    summary.bottleneckTransitions.length === 0 &&
+    summary.leadingSectors.length === 0 &&
+    summary.warnings.length === 0
+  ) {
+    lines.push("이번 주 토론에서 구조화 추출 가능한 데이터가 없습니다.");
+    lines.push("");
+  }
+
+  const MAX_PROMPT_CHARS = 3_000;
+  const result = lines.join("\n");
+  return result.length > MAX_PROMPT_CHARS ? result.slice(0, MAX_PROMPT_CHARS) + "\n..." : result;
+}
+
 // ─── 기존 extractDailyInsight (하위 호환) ────────────────────────────────────
 
 /**

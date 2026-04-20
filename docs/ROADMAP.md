@@ -71,6 +71,7 @@
 | Thesis-Aligned LLM 인증 | 2단계 퍼널: 업종 기반 자동 수집 후 LLM이 각 종목의 thesis 직접 관련성 심사 → 인증 종목만 리포트 표시. 체인당 배치 1회 호출, company_profiles.description 기반 판정, 프롬프트 인젝션 방어(구조적 태그 + 마크다운 제어문자 제거), LLM 실패 시 원본 유지(graceful degradation) (#699) |
 | 일간 토론 요약 섹션 | 일간 리포트 HTML에 "오늘의 토론" 섹션 추가 — synthesis_report에서 핵심 한 줄·주요 논점·이견·결론을 구조화 파싱(LLM 미개입). synthesis 전문은 GitHub Gist로 발행 → Discord 토론 채널 링크 발송 + 일간 리포트 "전문 보기" 링크. `debate_sessions.gist_url` 컬럼 추가. (#926) |
 | 중기 브레드스 리포트 표시 | 일간/주간 리포트에 `pct_above_ma50`(MA50 이상 비율) stat-chip + `divergence_signal` 발생 시 경고 알럿 표시. Phase 2 ratio와의 다이버전스 조기 감지를 위한 시각적 신호 제공 (#916) |
+| 주간 토론 누적 분석 | 주간 리포트에 5거래일 토론 종합 섹션 추가 — debate_sessions.synthesis_report에서 병목 상태 추이(주초→주말), 주도섹터/주도주 합의(60%+ 언급), 반복 과열 경고를 구조화 파싱(LLM 미개입). 프롬프트에도 주간 토론 컨텍스트 주입. (#927) |
 
 ### Layer 3: 추적 시스템 (F4 + F11 통합) — Done
 추천/관심종목을 단일 테이블로 통합 관리하여 시스템의 포착 선행성을 측정. (#773)

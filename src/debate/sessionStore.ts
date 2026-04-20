@@ -1,9 +1,9 @@
 import { db } from "@/db/client";
 import { debateSessions } from "@/db/schema/analyst";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte } from "drizzle-orm";
 import { logger } from "@/lib/logger";
-import { extractDailyInsight, extractDebateSummary } from "./insightExtractor.js";
-import type { DebateSummary } from "./insightExtractor.js";
+import { extractDailyInsight, extractDebateSummary, aggregateWeeklyDebateInsights } from "./insightExtractor.js";
+import type { DebateSummary, WeeklyDebateSummary } from "./insightExtractor.js";
 import type { DebateResult } from "@/types/debate";
 import type { MarketSnapshot } from "./marketDataLoader.js";
 
@@ -264,6 +264,57 @@ export async function loadTodayDebateSummary(date: string): Promise<DebateSummar
     logger.warn(
       "SessionStore",
       `loadTodayDebateSummary failed for ${date}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * 주간 범위의 토론 세션을 조회하여 종합 요약을 생성한다.
+ * debate_sessions 테이블에서 startDate~endDate 범위의 세션을 date 오름차순으로 조회.
+ *
+ * fail-open 설계: 세션이 없거나 오류 발생 시 null을 반환한다.
+ *
+ * @param startDate - 시작 날짜 (YYYY-MM-DD, inclusive)
+ * @param endDate - 종료 날짜 (YYYY-MM-DD, inclusive)
+ * @returns 주간 토론 종합 요약. 세션 없음 또는 오류 시 null.
+ */
+export async function loadWeeklyDebateSessions(
+  startDate: string,
+  endDate: string,
+): Promise<WeeklyDebateSummary | null> {
+  try {
+    const rows = await db
+      .select({
+        date: debateSessions.date,
+        synthesisReport: debateSessions.synthesisReport,
+      })
+      .from(debateSessions)
+      .where(
+        and(
+          gte(debateSessions.date, startDate),
+          lte(debateSessions.date, endDate),
+        ),
+      )
+      .orderBy(debateSessions.date);
+
+    if (rows.length === 0) {
+      logger.info("SessionStore", `No debate sessions in ${startDate}~${endDate} — weekly summary skipped`);
+      return null;
+    }
+
+    const summary = aggregateWeeklyDebateInsights(rows);
+    if (summary != null) {
+      logger.info(
+        "SessionStore",
+        `Weekly debate summary: ${summary.sessionCount}세션, 병목 ${summary.bottleneckTransitions.length}, 주도 ${summary.leadingSectors.length}, 경고 ${summary.warnings.length}`,
+      );
+    }
+    return summary;
+  } catch (err) {
+    logger.warn(
+      "SessionStore",
+      `loadWeeklyDebateSessions failed for ${startDate}~${endDate}: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }

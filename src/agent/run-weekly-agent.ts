@@ -62,6 +62,9 @@ import {
   loadPendingRegimes,
   formatRegimeForPrompt,
 } from "@/debate/regimeStore";
+import { loadWeeklyDebateSessions } from "@/debate/sessionStore";
+import { formatWeeklyDebateForPrompt } from "@/debate/insightExtractor";
+import type { WeeklyDebateSummary } from "@/debate/insightExtractor";
 
 // ─── 유틸 ───────────────────────────────────────────────────────────────────
 
@@ -694,6 +697,27 @@ async function main() {
     logger.error("Regime", `실패: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  let debateWeeklySummary = "";
+  let weeklyDebateData: WeeklyDebateSummary | null = null;
+  try {
+    // 주간 범위: targetDate 기준 7일 전 ~ targetDate (캘린더 7일 = 거래일 5일 포함)
+    // DB에는 거래일만 존재하므로 7일 윈도우로 5거래일 전체를 안전하게 포착
+    const endDate = targetDate;
+    const startDateObj = new Date(Date.UTC(
+      Number(targetDate.slice(0, 4)),
+      Number(targetDate.slice(5, 7)) - 1,
+      Number(targetDate.slice(8, 10)) - 7,
+    ));
+    const startDate = startDateObj.toISOString().slice(0, 10);
+    weeklyDebateData = await loadWeeklyDebateSessions(startDate, endDate);
+    if (weeklyDebateData != null) {
+      debateWeeklySummary = formatWeeklyDebateForPrompt(weeklyDebateData);
+      logger.info("Debate", `주간 토론 종합 로딩 완료 (${weeklyDebateData.sessionCount}세션)`);
+    }
+  } catch (err) {
+    logger.warn("Debate", `주간 토론 종합 실패: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const signalPerformance = loadSignalPerformanceSummary();
 
   let trackedStocksContext = "";
@@ -717,6 +741,7 @@ async function main() {
     regimeContext,
     watchlistContext: trackedStocksContext,
     sectorClusterContext,
+    debateWeeklySummary,
   });
 
   // 4. 데이터 수집 (도구 직접 호출 — LLM 불필요)
@@ -747,7 +772,7 @@ async function main() {
       return [];
     },
   );
-  const html = buildWeeklyHtml(data, insight, targetDate, portfolioWithCurrentData);
+  const html = buildWeeklyHtml(data, insight, targetDate, portfolioWithCurrentData, weeklyDebateData);
 
   // 로컬 프리뷰 저장 (항상)
   const { writeFileSync } = await import("fs");
