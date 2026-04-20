@@ -28,6 +28,7 @@ import type {
   ThesisAlignedChainGroup,
 } from "@/lib/thesisAlignedCandidates.js";
 import type { PortfolioPositionWithCurrentData } from "@/db/repositories/portfolioPositionsRepository.js";
+import type { WeeklyDebateSummary } from "@/debate/insightExtractor.js";
 import { selectWeeklyWatchlist, WEEKLY_SPOTLIGHT_COUNT } from "@/lib/watchlistSelection.js";
 
 // ─── Marked 인스턴스 ──────────────────────────────────────────────────────────
@@ -1612,6 +1613,78 @@ function renderThesisAlignedSection(
   return `${narrativeHtml}${summaryHtml}${chainsHtml}${noteHtml}`;
 }
 
+// ─── 주간 토론 종합 렌더링 ──────────────────────────────────────────────────
+
+/**
+ * 주간 토론 종합 데이터를 HTML로 렌더링한다.
+ * 병목 상태 변화 테이블 + 주도섹터 합의 + 과열 경고.
+ * 데이터 없으면 빈 문자열 반환.
+ */
+export function renderWeeklyDebateSummary(summary: WeeklyDebateSummary | null): string {
+  if (summary == null) return "";
+
+  const hasBottlenecks = summary.bottleneckTransitions.length > 0;
+  const hasLeadingSectors = summary.leadingSectors.length > 0;
+  const hasWarnings = summary.warnings.length > 0;
+
+  if (!hasBottlenecks && !hasLeadingSectors && !hasWarnings) return "";
+
+  const parts: string[] = [];
+
+  parts.push(`<div class="debate-weekly-summary" style="margin-bottom:16px;">`);
+  parts.push(`<p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">📋 ${escapeHtml(summary.sessionCount)}세션 토론 누적 분석</p>`);
+
+  // 병목 상태 변화 테이블
+  if (hasBottlenecks) {
+    parts.push(`<h4 style="margin:12px 0 6px;font-size:0.85rem;">병목 상태 변화</h4>`);
+    parts.push(`<table><thead><tr><th>병목</th><th>주초</th><th></th><th>주말</th></tr></thead><tbody>`);
+    for (const bt of summary.bottleneckTransitions) {
+      const arrow = bt.changed ? "→" : "=";
+      const changeClass = bt.changed ? ' style="font-weight:600;"' : "";
+      parts.push(
+        `<tr${changeClass}>` +
+          `<td>${escapeHtml(bt.name)}</td>` +
+          `<td>${escapeHtml(bt.initialStatus)}</td>` +
+          `<td>${arrow}</td>` +
+          `<td>${escapeHtml(bt.finalStatus)}</td>` +
+        `</tr>`,
+      );
+    }
+    parts.push(`</tbody></table>`);
+  }
+
+  // 주도섹터 합의
+  if (hasLeadingSectors) {
+    parts.push(`<h4 style="margin:12px 0 6px;font-size:0.85rem;">주간 주도섹터/주도주 합의</h4>`);
+    parts.push(`<div style="display:flex;flex-wrap:wrap;gap:6px;">`);
+    for (const ls of summary.leadingSectors) {
+      parts.push(
+        `<span class="stat-chip" style="background:var(--surface-2);padding:4px 8px;border-radius:4px;font-size:0.8rem;">` +
+          `${escapeHtml(ls.name)} <strong>${escapeHtml(ls.mentionCount)}/${escapeHtml(ls.totalDays)}일</strong>` +
+        `</span>`,
+      );
+    }
+    parts.push(`</div>`);
+  }
+
+  // 과열 경고
+  if (hasWarnings) {
+    parts.push(`<h4 style="margin:12px 0 6px;font-size:0.85rem;">반복 과열/위험 경고</h4>`);
+    parts.push(`<div style="display:flex;flex-wrap:wrap;gap:6px;">`);
+    for (const w of summary.warnings) {
+      parts.push(
+        `<span class="stat-chip" style="background:#fff3cd;padding:4px 8px;border-radius:4px;font-size:0.8rem;">` +
+          `⚠️ ${escapeHtml(w.target)} <strong>${escapeHtml(w.warningCount)}/${escapeHtml(w.totalDays)}일</strong>` +
+        `</span>`,
+      );
+    }
+    parts.push(`</div>`);
+  }
+
+  parts.push(`</div>`);
+  return parts.join("\n");
+}
+
 /**
  * 주간 리포트 전체 HTML을 조립한다.
  * 데이터 블록은 프로그래밍 렌더링, 해석 블록은 marked 마크다운→HTML 변환.
@@ -1621,12 +1694,14 @@ function renderThesisAlignedSection(
  * @param insight - LLM이 작성한 해석 텍스트
  * @param date - 리포트 기준일 (YYYY-MM-DD)
  * @param portfolioPositions - ACTIVE 포트폴리오 포지션 (현재가·수익률 포함). 섹션 5 렌더링용.
+ * @param weeklyDebateSummary - 주간 토론 종합 데이터. null이면 해당 섹션 생략.
  */
 export function buildWeeklyHtml(
   data: WeeklyReportData,
   insight: WeeklyReportInsight,
   date: string,
   portfolioPositions: PortfolioPositionWithCurrentData[] = [],
+  weeklyDebateSummary: WeeklyDebateSummary | null = null,
 ): string {
   const temperatureCls = escapeHtml(insight.marketTemperature);
   const temperatureLabel = escapeHtml(insight.marketTemperatureLabel);
@@ -1677,6 +1752,7 @@ export function buildWeeklyHtml(
   const narrativeEvolutionHtml = mdToHtml(insight.narrativeEvolution);
   const thesisAccuracyHtml = mdToHtml(insight.thesisAccuracy);
   const regimeContextHtml = mdToHtml(insight.regimeContext);
+  const weeklyDebateSummaryHtml = renderWeeklyDebateSummary(weeklyDebateSummary);
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -1723,6 +1799,7 @@ export function buildWeeklyHtml(
       <!-- 섹션 3: 토론 인사이트 -->
       <section>
         <h2>💬 토론 인사이트</h2>
+        ${weeklyDebateSummaryHtml}
         <h3>Thesis 충돌/강화</h3>
         <div class="content-block">${debateInsightHtml}</div>
         <h3>서사 체인 진화</h3>
