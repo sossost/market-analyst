@@ -30,13 +30,22 @@ vi.mock('node:fs/promises', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
 }))
 
+// checkCiStatus 모킹 — fetchFailedChecks 기본값: CI 통과 (빈 배열)
+vi.mock('@/pr-reviewer/checkCiStatus', () => ({
+  fetchFailedChecks: vi.fn().mockResolvedValue([]),
+  fetchFailedRunLog: vi.fn().mockResolvedValue('(테스트 에러 로그)'),
+  extractRunId: vi.fn().mockReturnValue('run-123'),
+}))
+
 import { execFile } from 'node:child_process'
 import { sendThreadMessage } from '@/issue-processor/discordClient'
 import { processMerge } from '@/issue-processor/mergeProcessor'
+import { fetchFailedChecks } from '@/pr-reviewer/checkCiStatus'
 import type { PrThreadMapping } from '@/issue-processor/types'
 
 const mockExecFile = vi.mocked(execFile)
 const mockSendThreadMessage = vi.mocked(sendThreadMessage)
+const mockFetchFailedChecks = vi.mocked(fetchFailedChecks)
 
 const sampleMapping: PrThreadMapping = {
   prNumber: 42,
@@ -259,6 +268,7 @@ describe('applyDbMigration (processMerge 내부)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetAllMocks()
+    mockFetchFailedChecks.mockResolvedValue([])
   })
 
   it('실패 시 인프라 반영 실패 알림을 보내고 머지 흐름을 중단한다 (매핑 유지)', async () => {
@@ -319,6 +329,7 @@ describe('reloadLaunchd (processMerge 내부)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetAllMocks()
+    mockFetchFailedChecks.mockResolvedValue([])
   })
 
   it('실패 시 예외를 throw하지 않고 에러 메시지를 스레드에 전송한다', async () => {
@@ -357,6 +368,7 @@ describe('checkoutAndPullMain 실행 순서 (processMerge 내부)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.resetAllMocks()
+    mockFetchFailedChecks.mockResolvedValue([])
   })
 
   it('checkoutAndPullMain이 runPostMergeInfra보다 먼저 실행된다', async () => {
