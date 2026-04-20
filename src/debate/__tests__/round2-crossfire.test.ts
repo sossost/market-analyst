@@ -102,6 +102,61 @@ describe("buildCrossfirePrompt", () => {
     expect(fundIdx).toBeLessThan(earlyIdx);
   });
 
+  it("marketDataContext가 없으면 market-data 태그가 포함되지 않는다", () => {
+    const result = buildCrossfirePrompt("macro", round1Outputs, question);
+
+    expect(result).not.toContain("<market-data>");
+    expect(result).not.toContain("</market-data>");
+  });
+
+  it("빈 marketDataContext면 market-data 태그가 포함되지 않는다", () => {
+    const result = buildCrossfirePrompt("macro", round1Outputs, question, undefined, undefined, undefined, "");
+
+    expect(result).not.toContain("<market-data>");
+  });
+
+  it("marketDataContext가 있으면 프롬프트에 포함된다", () => {
+    const marketCtx = "## 실제 시장 데이터\nS&P 500: 5,200 (+1.2%)";
+    const result = buildCrossfirePrompt("macro", round1Outputs, question, undefined, undefined, undefined, marketCtx);
+
+    expect(result).toContain("<market-data>");
+    expect(result).toContain("</market-data>");
+    expect(result).toContain("S&P 500: 5,200");
+    expect(result).toContain("원본 시장 데이터");
+  });
+
+  it("newsContext가 없으면 news-context 태그가 포함되지 않는다", () => {
+    const result = buildCrossfirePrompt("macro", round1Outputs, question);
+
+    expect(result).not.toContain("<news-context>");
+    expect(result).not.toContain("</news-context>");
+  });
+
+  it("빈 newsContext면 news-context 태그가 포함되지 않는다", () => {
+    const result = buildCrossfirePrompt("macro", round1Outputs, question, undefined, undefined, undefined, undefined, "");
+
+    expect(result).not.toContain("<news-context>");
+  });
+
+  it("newsContext가 있으면 프롬프트에 포함된다", () => {
+    const newsCtx = "### macro\nFed 금리 동결 예상\n\n---\n\n### tech\nNVIDIA 실적 서프라이즈";
+    const result = buildCrossfirePrompt("macro", round1Outputs, question, undefined, undefined, undefined, undefined, newsCtx);
+
+    expect(result).toContain("<news-context>");
+    expect(result).toContain("</news-context>");
+    expect(result).toContain("Fed 금리 동결 예상");
+    expect(result).toContain("전체 뉴스 컨텍스트");
+  });
+
+  it("marketDataContext와 newsContext 모두 있으면 둘 다 포함된다", () => {
+    const marketCtx = "S&P 500: 5,200";
+    const newsCtx = "### macro\nFed 뉴스";
+    const result = buildCrossfirePrompt("macro", round1Outputs, question, undefined, undefined, undefined, marketCtx, newsCtx);
+
+    expect(result).toContain("<market-data>");
+    expect(result).toContain("<news-context>");
+  });
+
   it("조기포착 후보 교차 검증 지침이 포함된다", () => {
     const result = buildCrossfirePrompt("macro", round1Outputs, question);
 
@@ -205,6 +260,54 @@ describe("runRound2", () => {
 
     const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(callArgs.systemPrompt).not.toContain("장기 기억");
+  });
+
+  it("marketDataContext와 newsContext가 전문가에게 전달된다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro"), makeExpert("tech")];
+    const round1Outputs = [
+      makeRoundOutput("macro", "매크로 분석"),
+      makeRoundOutput("tech", "테크 분석"),
+    ];
+    const marketCtx = "## 시장 데이터\nS&P 500: 5,200 (+1.2%)";
+    const newsCtx = "### macro\nFed 금리 동결\n\n---\n\n### tech\nNVIDIA 실적";
+
+    await runRound2({
+      getProvider,
+      experts,
+      round1Outputs,
+      question: "시장 분석",
+      marketDataContext: marketCtx,
+      newsContext: newsCtx,
+    });
+
+    const calls = (provider.call as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.length).toBe(2);
+    for (const call of calls) {
+      expect(call[0].userMessage).toContain("<market-data>");
+      expect(call[0].userMessage).toContain("S&P 500: 5,200");
+      expect(call[0].userMessage).toContain("<news-context>");
+      expect(call[0].userMessage).toContain("Fed 금리 동결");
+    }
+  });
+
+  it("marketDataContext/newsContext 없이 호출해도 해당 태그가 포함되지 않는다", async () => {
+    const provider = makeMockProvider();
+    const getProvider = vi.fn().mockReturnValue(provider);
+    const experts = [makeExpert("macro")];
+    const round1Outputs = [makeRoundOutput("macro", "매크로 분석")];
+
+    await runRound2({
+      getProvider,
+      experts,
+      round1Outputs,
+      question: "시장 분석",
+    });
+
+    const callArgs = (provider.call as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.userMessage).not.toContain("<market-data>");
+    expect(callArgs.userMessage).not.toContain("<news-context>");
   });
 
   it("memoryContext가 없으면 시스템 프롬프트에 주입되지 않는다", async () => {

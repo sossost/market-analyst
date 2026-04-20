@@ -17,6 +17,10 @@ interface Round2Input {
   earlyDetectionContext?: string;
   /** 촉매 데이터 (종목 뉴스, 실적 서프라이즈, 임박 실적 발표) */
   catalystContext?: string;
+  /** 원본 시장 데이터 — Round 1 인용 정확성 검증용 (#936) */
+  marketDataContext?: string;
+  /** 전 전문가 뉴스 합산 — Round 1 선택적 인용 검증용 (#936) */
+  newsContext?: string;
 }
 
 interface Round2Result {
@@ -31,6 +35,8 @@ export function buildCrossfirePrompt(
   fundamentalContext?: string,
   earlyDetectionContext?: string,
   catalystContext?: string,
+  marketDataContext?: string,
+  newsContext?: string,
 ): string {
   const othersAnalysis = round1Outputs
     .filter((o) => o.persona !== currentPersona)
@@ -94,6 +100,16 @@ ${othersAnalysis}
     prompt += `\n\n---\n\n<catalyst-data>\n## 촉매 데이터 (뉴스/실적)\n\n아래 촉매 데이터를 참조하여 다른 애널리스트의 섹터 강세 판단 근거를 교차검증하세요.\n실적 서프라이즈 비트율과 뉴스 헤드라인이 해당 섹터/종목의 thesis를 뒷받침하는지 확인하세요.\n\n${catalystContext}\n</catalyst-data>`;
   }
 
+  // 원본 시장 데이터 — Round 1 인용 정확성 검증용 (#936)
+  if (marketDataContext != null && marketDataContext.length > 0) {
+    prompt += `\n\n---\n\n<market-data>\n## 원본 시장 데이터\n\n아래는 Round 1 전문가에게 제공된 원본 시장 데이터입니다.\n다른 애널리스트가 시장 데이터를 정확히 인용했는지 대조 검증하세요.\n수치 오인용이나 선택적 인용이 있으면 반박에서 지적하세요.\n\n${marketDataContext}\n</market-data>`;
+  }
+
+  // 전 전문가 뉴스 컨텍스트 — Round 1 선택적 인용 검증용 (#936)
+  if (newsContext != null && newsContext.length > 0) {
+    prompt += `\n\n---\n\n<news-context>\n## 전체 뉴스 컨텍스트\n\n아래는 각 전문가에게 제공된 뉴스입니다.\n다른 애널리스트가 뉴스를 선택적으로 인용하거나 누락한 부분이 있으면 지적하세요.\n\n${newsContext}\n</news-context>`;
+  }
+
   return prompt;
 }
 
@@ -103,7 +119,7 @@ ${othersAnalysis}
  * Each expert uses the LLMProvider resolved from their persona.model.
  */
 export async function runRound2(input: Round2Input): Promise<Round2Result> {
-  const { getProvider, experts, round1Outputs, question, memoryContext = "", fundamentalContext, earlyDetectionContext, catalystContext } = input;
+  const { getProvider, experts, round1Outputs, question, memoryContext = "", fundamentalContext, earlyDetectionContext, catalystContext, marketDataContext, newsContext } = input;
 
   let totalInput = 0;
   let totalOutput = 0;
@@ -126,7 +142,7 @@ export async function runRound2(input: Round2Input): Promise<Round2Result> {
     const results = await Promise.allSettled(
       batch.map(async (expert) => {
         const persona = expert.name as AgentPersona;
-        const userMessage = buildCrossfirePrompt(persona, round1Outputs, question, fundamentalContext, earlyDetectionContext, catalystContext);
+        const userMessage = buildCrossfirePrompt(persona, round1Outputs, question, fundamentalContext, earlyDetectionContext, catalystContext, marketDataContext, newsContext);
         let systemPrompt = expert.systemPrompt;
         if (memoryContext.length > 0) {
           systemPrompt += `\n\n## 장기 기억 (검증된 원칙)\n${memoryContext}`;

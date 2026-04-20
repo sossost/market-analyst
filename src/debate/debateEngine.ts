@@ -85,8 +85,8 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
   if (themeContext != null && themeContext.length > 0) {
     fullQuestion += `\n\n---\n\n${themeContext}`;
   }
-  // gapContext는 themeContext와 동일하게 Round 1에만 주입.
-  // Round 2는 Round 1 산출물 기반 교차검증이므로 원시 데이터 재주입 불필요.
+  // gapContext와 themeContext는 Round 1의 fullQuestion에 포함되어 Round 1 output에 반영됨.
+  // Round 2에는 marketDataContext + newsContext만 별도 전달 (#936).
   if (gapContext != null && gapContext.length > 0) {
     fullQuestion += `\n\n---\n\n${gapContext}`;
   }
@@ -118,8 +118,15 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     agentErrors.push({ persona, round: 1, error: "Failed to produce output" });
   }
 
-  // Round 2 — Crossfire (market data already in Round 1 outputs, no need to repeat)
+  // Round 2 — Crossfire (marketDataContext + newsContext 전달로 원본 데이터 기반 검증 가능 #936)
   logger.info("Debate", "=== Round 2: Crossfire ===");
+
+  // Per-persona newsContext를 합산하여 Round 2 전문가가 전체 뉴스를 볼 수 있도록 함
+  const mergedNewsContext = Object.entries(newsContext)
+    .filter(([, news]) => news != null && news.length > 0)
+    .map(([persona, news]) => `### ${persona}\n${news}`)
+    .join("\n\n---\n\n");
+
   const round2Result = await runRound2({
     getProvider,
     experts,
@@ -129,6 +136,8 @@ export async function runDebate(config: DebateConfig): Promise<DebateResult> {
     fundamentalContext,
     earlyDetectionContext,
     catalystContext,
+    marketDataContext,
+    newsContext: mergedNewsContext.length > 0 ? mergedNewsContext : undefined,
   });
 
   const activeInRound1 = round1Result.round.outputs.map((o) => o.persona);
