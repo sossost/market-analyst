@@ -19,12 +19,18 @@ import { logger } from '@/lib/logger'
 import type { PrThreadMapping } from './types.js'
 import { sendThreadMessage } from './discordClient.js'
 import { removePrThreadMapping } from './prThreadStore.js'
+import { fetchFailedChecks, fetchFailedRunLog, extractRunId } from '../pr-reviewer/checkCiStatus.js'
+import { buildSandboxedEnv, classifyCliError } from './cliUtils.js'
 
 const TAG = 'MERGE_PROCESSOR'
 const GH_TIMEOUT_MS = 60_000
 const GIT_TIMEOUT_MS = 30_000
 const DB_PUSH_TIMEOUT_MS = 120_000
 const LAUNCHD_TIMEOUT_MS = 30_000
+const CI_FIX_CLI_TIMEOUT_MS = 15 * 60 * 1_000 // 15분
+const CI_WAIT_MAX_MS = 10 * 60 * 1_000 // 10분
+const CI_POLL_INTERVAL_MS = 30_000 // 30초
+const MAX_BUFFER = 50 * 1024 * 1024 // 50MB
 
 const DB_SCHEMA_PATTERNS = ['src/db/schema/', 'db/migrations/']
 const LAUNCHD_PATTERN = 'scripts/launchd/'
@@ -295,7 +301,6 @@ async function deleteLocalBranchIfExists(branchName: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 const REVIEW_CLI_TIMEOUT_MS = 30 * 60 * 1_000 // 30분
-const MAX_BUFFER = 50 * 1024 * 1024 // 50MB
 
 interface ReviewComment {
   body: string
@@ -439,6 +444,133 @@ ${commentsSummary}
   })
 }
 
+// ---------------------------------------------------------------------------
+// CI 게이트 — 머지 전 CI 상태 확인 + 1사이클 수정
+// ---------------------------------------------------------------------------
+
+/**
+ * 브랜치의 CI를 수정하고 푸시한다.
+ * buildCiFixPrompt 로직을 이슈 객체 없이 직접 구현한다.
+ * 성공 시 true, 실패 시 false 반환.
+ */
+async function fixCiBranchInPlace(
+  branchName: string,
+  errorLog: string,
+  prNumber: number,
+): Promise<boolean> {
+  // 프롬프트 인젝션 방지: 코드블록 탈출 + XML 태그 무력화 (sanitizeForXmlBlock 패턴 일관)
+  const sanitizedLog = errorLog
+    .replace(/```/g, '` ` `')
+    .replaceAll('</', '<\\/')
+    .replaceAll('<untrusted', '<\\_untrusted')
+    .replaceAll('<triage', '<\\_triage')
+
+  const prompt = `## 미션
+
+CI 실패를 수정하라. 아래 에러 로그를 분석하고 해당 브랜치에 수정 커밋을 푸시하라.
+
+## 에러 로그
+
+\`\`\`
+${sanitizedLog}
+\`\`\`
+
+## 실행 순서
+
+1. \`git fetch origin ${branchName} && git checkout -B ${branchName} origin/${branchName}\`
+   - 기존 PR 브랜치를 체크아웃한다. 새 브랜치를 생성하지 마라.
+2. 에러 로그를 분석하여 실패 원인을 파악하라.
+3. 실패 원인을 수정하라:
+   - 테스트 실패: 코드 버그 수정 또는 테스트 수정
+   - 타입 에러: TypeScript 타입 오류 수정
+   - 빌드 에러: 빌드 설정 또는 코드 수정
+4. CI 게이트 (push 전 필수 — 통과 없이 다음 단계 절대 금지):
+   - \`yarn test\` 실행 — 실패 시 코드 수정 후 재실행. 통과할 때까지 반복.
+   - \`yarn tsc --noEmit\` 실행 — 타입 에러 있으면 수정 후 재실행. 통과할 때까지 반복.
+   - 두 명령 모두 exit code 0이어야만 커밋 진행. 하나라도 실패하면 커밋/push 금지.
+5. 변경사항 커밋:
+   - 메시지: \`fix: CI 실패 수정 — PR #${prNumber}\`
+   - **docs/features/ 파일은 커밋하지 마라**
+6. \`git push origin ${branchName}\`
+   - CI가 자동으로 재실행된다.
+7. **반드시** \`git checkout main\`을 실행하여 main 브랜치로 복귀하라.
+
+## 규칙
+- 새 브랜치를 생성하지 마라 — 기존 PR 브랜치에 직접 커밋하라
+- 새 PR을 생성하지 마라 — 기존 PR에 커밋이 추가되면 CI가 자동 재실행된다
+- main 브랜치에 직접 커밋하지 마라
+- 테스트 커버리지 80% 이상 유지
+- 작업 완료 후 반드시 \`git checkout main\`으로 복귀하라
+
+## 금지 사항 (절대 위반 불가)
+- Discord API를 직접 호출하지 마라 (fetch, curl 등으로 discord.com 접근 금지)
+- src/issue-processor/ 디렉토리의 코드를 직접 실행하지 마라 (npx tsx, node 등)
+- 테스트 데이터로 외부 API를 호출하지 마라
+- 임시 파일을 프로젝트 루트에 생성하지 마라`
+
+  const args = [
+    '--print',
+    '--dangerously-skip-permissions',
+    '--output-format', 'text',
+  ]
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = execFile(
+        'claude',
+        args,
+        {
+          timeout: CI_FIX_CLI_TIMEOUT_MS,
+          maxBuffer: MAX_BUFFER,
+          env: buildSandboxedEnv(),
+          cwd: process.cwd(),
+        },
+        (error, _stdout, stderr) => {
+          if (error != null) {
+            const classified = classifyCliError(error, stderr ?? '', CI_FIX_CLI_TIMEOUT_MS)
+            reject(new Error(classified))
+            return
+          }
+          resolve()
+        },
+      )
+      child.stdin?.end(prompt, 'utf-8')
+    })
+    return true
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `CI 수정 CLI 실패: ${reason}`)
+    return false
+  }
+}
+
+/**
+ * CI가 통과할 때까지 폴링한다.
+ * 빈 배열 반환 시 CI 통과로 판단.
+ * 타임아웃 시 false 반환.
+ */
+async function waitForCiPass(
+  prNumber: number,
+  maxWaitMs: number = CI_WAIT_MAX_MS,
+  intervalMs: number = CI_POLL_INTERVAL_MS,
+): Promise<boolean> {
+  const startTime = Date.now()
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await new Promise<void>((resolve) => setTimeout(resolve, intervalMs))
+
+    const failedChecks = await fetchFailedChecks(prNumber)
+    if (failedChecks.length === 0) {
+      return true
+    }
+
+    const elapsed = Math.round((Date.now() - startTime) / 1_000)
+    logger.info(TAG, `PR #${prNumber} CI 대기 중 (${elapsed}s 경과, 실패 ${failedChecks.length}건)`)
+  }
+
+  return false
+}
+
 /**
  * PR 리뷰 코멘트를 확인하고 타당한 것을 반영한다.
  * 리뷰가 없으면 바로 true 반환 (머지 진행).
@@ -529,6 +661,58 @@ export async function processMerge(mapping: PrThreadMapping): Promise<void> {
     await sendThreadMessage(
       threadId,
       `리뷰 반영 중 오류 발생: ${reason.slice(0, 300)}\n수동 확인이 필요합니다.`,
+    )
+    return
+  }
+
+  // 2.5. CI 게이트: CI 실패 시 수정 시도 후 재트리거 대기
+  try {
+    const failedChecks = await fetchFailedChecks(prNumber)
+
+    if (failedChecks.length > 0) {
+      logger.warn(TAG, `PR #${prNumber} CI 실패 ${failedChecks.length}건 감지 — 수정 시도`)
+      await sendThreadMessage(
+        threadId,
+        `⚠️ CI 실패 감지 (${failedChecks.length}건) — 자동 수정을 시도합니다. 최대 15분 소요.`,
+      )
+
+      // 실패 로그 수집 (첫 번째 실패 체크의 run ID 사용)
+      let errorLog = '(로그 없음)'
+      const firstRunId = extractRunId(failedChecks[0].link)
+      if (firstRunId != null) {
+        errorLog = await fetchFailedRunLog(firstRunId)
+      }
+
+      const fixSuccess = await fixCiBranchInPlace(branchName, errorLog, prNumber)
+      if (!fixSuccess) {
+        await sendThreadMessage(
+          threadId,
+          `❌ CI 수정 실패 — 머지를 중단합니다. 수동 확인이 필요합니다.`,
+        )
+        return
+      }
+
+      logger.info(TAG, `PR #${prNumber} CI 수정 완료 — 재트리거 대기 (최대 10분)`)
+      await sendThreadMessage(threadId, `✅ CI 수정 완료 — CI 재트리거 대기 중 (최대 10분)...`)
+
+      const ciPassed = await waitForCiPass(prNumber)
+      if (!ciPassed) {
+        await sendThreadMessage(
+          threadId,
+          `❌ CI 재실패 또는 타임아웃 — 머지를 중단합니다. 수동 확인이 필요합니다.`,
+        )
+        return
+      }
+
+      logger.info(TAG, `PR #${prNumber} CI 통과 확인 — 머지 진행`)
+      await sendThreadMessage(threadId, `✅ CI 통과 확인 — 머지를 진행합니다.`)
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error(TAG, `PR #${prNumber} CI 게이트 처리 실패: ${reason}`)
+    await sendThreadMessage(
+      threadId,
+      `❌ CI 게이트 처리 중 오류 발생: ${reason.slice(0, 300)}\n수동 확인이 필요합니다.`,
     )
     return
   }
