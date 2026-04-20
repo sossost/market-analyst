@@ -89,6 +89,7 @@ const WEEKLY_REPORT_CSS = `
     --yellow: #9a6700;
     --orange: #bc4c00;
     --purple: #8250df;
+    --warning-bg: #fff3cd;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1673,7 +1674,7 @@ export function renderWeeklyDebateSummary(summary: WeeklyDebateSummary | null): 
     parts.push(`<div style="display:flex;flex-wrap:wrap;gap:6px;">`);
     for (const w of summary.warnings) {
       parts.push(
-        `<span class="stat-chip" style="background:#fff3cd;padding:4px 8px;border-radius:4px;font-size:0.8rem;">` +
+        `<span class="stat-chip" style="background:var(--warning-bg);padding:4px 8px;border-radius:4px;font-size:0.8rem;">` +
           `⚠️ ${escapeHtml(w.target)} <strong>${escapeHtml(w.warningCount)}/${escapeHtml(w.totalDays)}일</strong>` +
         `</span>`,
       );
