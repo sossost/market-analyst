@@ -100,6 +100,7 @@ import {
   transitionMetaRegimeStatus,
   groupChainsByMegatrend,
   resolvePeakAt,
+  determineRegimeStatus,
 } from "../metaRegimeService.js";
 
 // ─── 리셋 ─────────────────────────────────────────────────────────────────────
@@ -515,5 +516,81 @@ describe("LLM 링킹 응답 파싱 (단위 검증)", () => {
     expect(jsonMatch).not.toBeNull();
     const parsed = JSON.parse(jsonMatch![0]) as { regimeIds: unknown[] };
     expect(parsed.regimeIds).toEqual([2]);
+  });
+});
+
+// =============================================================================
+// determineRegimeStatus (순수 함수 — mock 불필요)
+// =============================================================================
+
+describe("determineRegimeStatus", () => {
+  it("빈 체인 배열이면 null을 반환한다", () => {
+    expect(determineRegimeStatus("ACTIVE", [])).toBeNull();
+  });
+
+  it("모든 체인이 RESOLVED이면 RESOLVED를 반환한다", () => {
+    expect(
+      determineRegimeStatus("ACTIVE", ["RESOLVED", "RESOLVED"]),
+    ).toBe("RESOLVED");
+  });
+
+  it("모든 체인이 INVALIDATED이면 RESOLVED를 반환한다", () => {
+    expect(
+      determineRegimeStatus("ACTIVE", ["INVALIDATED", "INVALIDATED"]),
+    ).toBe("RESOLVED");
+  });
+
+  it("모든 체인이 OVERSUPPLY이면 RESOLVED를 반환한다", () => {
+    expect(
+      determineRegimeStatus("ACTIVE", ["OVERSUPPLY", "OVERSUPPLY"]),
+    ).toBe("RESOLVED");
+  });
+
+  it("RESOLVED + OVERSUPPLY 혼합이면 RESOLVED를 반환한다", () => {
+    expect(
+      determineRegimeStatus("ACTIVE", ["RESOLVED", "OVERSUPPLY"]),
+    ).toBe("RESOLVED");
+  });
+
+  it("OVERSUPPLY + INVALIDATED 혼합이면 RESOLVED를 반환한다", () => {
+    expect(
+      determineRegimeStatus("PEAKED", ["OVERSUPPLY", "INVALIDATED"]),
+    ).toBe("RESOLVED");
+  });
+
+  it("RESOLVED + OVERSUPPLY + INVALIDATED 전체 터미널 혼합이면 RESOLVED를 반환한다", () => {
+    expect(
+      determineRegimeStatus("ACTIVE", ["RESOLVED", "OVERSUPPLY", "INVALIDATED"]),
+    ).toBe("RESOLVED");
+  });
+
+  it("이미 RESOLVED 상태면 null을 반환한다 (변경 없음)", () => {
+    expect(
+      determineRegimeStatus("RESOLVED", ["RESOLVED", "OVERSUPPLY"]),
+    ).toBeNull();
+  });
+
+  it("ACTIVE 체인이 없으면 PEAKED를 반환한다", () => {
+    expect(
+      determineRegimeStatus("ACTIVE", ["RESOLVING", "OVERSUPPLY"]),
+    ).toBe("PEAKED");
+  });
+
+  it("ACTIVE 체인이 하나라도 있으면 ACTIVE를 반환한다", () => {
+    expect(
+      determineRegimeStatus("PEAKED", ["ACTIVE", "OVERSUPPLY"]),
+    ).toBe("ACTIVE");
+  });
+
+  it("이미 PEAKED 상태에서 PEAKED 전이면 null을 반환한다", () => {
+    expect(
+      determineRegimeStatus("PEAKED", ["RESOLVING", "RESOLVED"]),
+    ).toBeNull();
+  });
+
+  it("이미 ACTIVE 상태에서 ACTIVE 전이면 null을 반환한다", () => {
+    expect(
+      determineRegimeStatus("ACTIVE", ["ACTIVE", "RESOLVING"]),
+    ).toBeNull();
   });
 });

@@ -353,11 +353,11 @@ describe("metaRegimeService", () => {
       ).toBe("RESOLVED");
     });
 
-    it("returns PEAKED not RESOLVED when some chains are OVERSUPPLY", () => {
-      // OVERSUPPLY is not RESOLVED/INVALIDATED, so not terminal for regime RESOLVED check
+    it("returns RESOLVED when all chains are terminal including OVERSUPPLY", () => {
+      // OVERSUPPLY is a terminal status (aligned with CHAIN_TERMINAL_STATUSES)
       expect(
         determineRegimeStatus("ACTIVE", ["RESOLVED", "OVERSUPPLY"]),
-      ).toBe("PEAKED");
+      ).toBe("RESOLVED");
     });
 
     it("single RESOLVING chain transitions regime to PEAKED", () => {

@@ -15,6 +15,27 @@ import {
   normalizeSingleWord,
 } from "@/debate/synonymDictionary";
 
+// ─── Chain Status Sets ───────────────────────────────────────────────
+
+/**
+ * 국면 PEAKED 전이 판정에 사용되는 체인 상태 집합.
+ * 체인이 더 이상 ACTIVE가 아닌 상태들.
+ * RESOLVING(해소 중) 이상이면 국면의 피크가 지났다고 판정한다.
+ */
+const CHAIN_PEAKED_OR_BEYOND: Set<NarrativeChainStatus> = new Set([
+  "RESOLVING",
+  "RESOLVED",
+  "OVERSUPPLY",
+  "INVALIDATED",
+]);
+
+/** 국면 RESOLVED 전이 판정에 사용되는 체인 터미널 상태 집합. */
+const CHAIN_TERMINAL_STATUSES: Set<NarrativeChainStatus> = new Set([
+  "RESOLVED",
+  "OVERSUPPLY",
+  "INVALIDATED",
+]);
+
 // ─── Keyword Utilities ───────────────────────────────────────────────
 
 /** Stop words filtered out during keyword extraction. */
@@ -209,7 +230,7 @@ export function resolvePeakAt(
  * Rules (deterministic — no LLM):
  *  - ACTIVE: at least one chain is ACTIVE
  *  - PEAKED: no chain is ACTIVE (all RESOLVING/RESOLVED/OVERSUPPLY/INVALIDATED)
- *  - RESOLVED: all chains are RESOLVED or INVALIDATED
+ *  - RESOLVED: all chains are terminal (RESOLVED/OVERSUPPLY/INVALIDATED)
  */
 export function determineRegimeStatus(
   currentStatus: MetaRegimeStatus,
@@ -217,8 +238,8 @@ export function determineRegimeStatus(
 ): MetaRegimeStatus | null {
   if (chainStatuses.length === 0) return null;
 
-  const allTerminal = chainStatuses.every(
-    (s) => s === "RESOLVED" || s === "INVALIDATED",
+  const allTerminal = chainStatuses.every((s) =>
+    CHAIN_TERMINAL_STATUSES.has(s),
   );
   if (allTerminal) {
     return currentStatus === "RESOLVED" ? null : "RESOLVED";
@@ -763,24 +784,7 @@ export async function linkChainToMetaRegime(
   }
 }
 
-/**
- * 국면 PEAKED 전이 판정에 사용되는 체인 상태 집합.
- * 체인이 더 이상 ACTIVE가 아닌 상태들.
- * RESOLVING(해소 중) 이상이면 국면의 피크가 지났다고 판정한다.
- */
-const CHAIN_PEAKED_OR_BEYOND: Set<NarrativeChainStatus> = new Set([
-  "RESOLVING",
-  "RESOLVED",
-  "OVERSUPPLY",
-  "INVALIDATED",
-]);
-
-/** 국면 RESOLVED 전이 판정에 사용되는 체인 터미널 상태 집합. */
-const CHAIN_TERMINAL_STATUSES: Set<NarrativeChainStatus> = new Set([
-  "RESOLVED",
-  "OVERSUPPLY",
-  "INVALIDATED",
-]);
+// (상수는 파일 상단 — ─── Chain Status Sets ─── 참조)
 
 /**
  * 국면에 연결된 체인 상태를 기반으로 국면 상태를 결정론적으로 동기화한다.
