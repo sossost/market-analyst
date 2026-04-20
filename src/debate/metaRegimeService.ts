@@ -670,27 +670,22 @@ export async function transitionMetaRegimeStatus(
 ): Promise<void> {
   try {
     const now = new Date();
-    const updateFields: Partial<typeof metaRegimes.$inferInsert> = { status: newStatus };
 
     if (newStatus === "PEAKED" || newStatus === "RESOLVED") {
-      const [current] = await db
-        .select({ peakAt: metaRegimes.peakAt })
-        .from(metaRegimes)
+      await db
+        .update(metaRegimes)
+        .set({
+          status: newStatus,
+          peakAt: sql`COALESCE(${metaRegimes.peakAt}, ${now})`,
+          ...(newStatus === "RESOLVED" ? { resolvedAt: now } : {}),
+        })
         .where(eq(metaRegimes.id, regimeId));
-
-      const peakAt = resolvePeakAt(newStatus, current?.peakAt ?? null, now);
-      if (peakAt != null) {
-        updateFields.peakAt = peakAt;
-      }
-      if (newStatus === "RESOLVED") {
-        updateFields.resolvedAt = now;
-      }
+    } else {
+      await db
+        .update(metaRegimes)
+        .set({ status: newStatus })
+        .where(eq(metaRegimes.id, regimeId));
     }
-
-    await db
-      .update(metaRegimes)
-      .set(updateFields)
-      .where(eq(metaRegimes.id, regimeId));
 
     logger.info(
       "MetaRegime",
