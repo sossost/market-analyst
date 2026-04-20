@@ -458,10 +458,12 @@ async function fixCiBranchInPlace(
   errorLog: string,
   prNumber: number,
 ): Promise<boolean> {
-  // 프롬프트 인젝션 방지: 에러 로그에서 프롬프트 구조를 탈출할 수 있는 패턴 이스케이프
+  // 프롬프트 인젝션 방지: 코드블록 탈출 + XML 태그 무력화 (sanitizeForXmlBlock 패턴 일관)
   const sanitizedLog = errorLog
     .replace(/```/g, '` ` `')
-    .replace(/<\/?[a-zA-Z-]+>/g, (match) => match.replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+    .replaceAll('</', '<\\/')
+    .replaceAll('<untrusted', '<\\_untrusted')
+    .replaceAll('<triage', '<\\_triage')
 
   const prompt = `## 미션
 
@@ -482,7 +484,10 @@ ${sanitizedLog}
    - 테스트 실패: 코드 버그 수정 또는 테스트 수정
    - 타입 에러: TypeScript 타입 오류 수정
    - 빌드 에러: 빌드 설정 또는 코드 수정
-4. 테스트가 통과하는지 확인 (커버리지 80%+)
+4. CI 게이트 (push 전 필수 — 통과 없이 다음 단계 절대 금지):
+   - \`yarn test\` 실행 — 실패 시 코드 수정 후 재실행. 통과할 때까지 반복.
+   - \`yarn tsc --noEmit\` 실행 — 타입 에러 있으면 수정 후 재실행. 통과할 때까지 반복.
+   - 두 명령 모두 exit code 0이어야만 커밋 진행. 하나라도 실패하면 커밋/push 금지.
 5. 변경사항 커밋:
    - 메시지: \`fix: CI 실패 수정 — PR #${prNumber}\`
    - **docs/features/ 파일은 커밋하지 마라**
