@@ -263,16 +263,20 @@ export function checkReports(
   rows: { report_date: string; type: string }[],
   now: Date,
 ): ComponentCheckResult[] {
-  // 일간 리포트: 최근 7일
-  const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // 일간 리포트: 최근 7일 (date string 비교로 시간대 경계 문제 방지)
+  const cutoff7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
   const dailyCount = rows.filter(
-    (r) => r.type === "daily" && new Date(r.report_date) >= cutoff7d,
+    (r) => r.type === "daily" && r.report_date >= cutoff7d,
   ).length;
 
   // 주간 리포트: 최근 14일
-  const cutoff14d = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const cutoff14d = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
   const weeklyCount = rows.filter(
-    (r) => r.type === "weekly" && new Date(r.report_date) >= cutoff14d,
+    (r) => r.type === "weekly" && r.report_date >= cutoff14d,
   ).length;
 
   const dailyResult: ComponentCheckResult = (() => {
@@ -604,12 +608,7 @@ export async function runComponentReview(): Promise<void> {
 
   const now = new Date();
 
-  // [1] 환경변수 검증
-  if (process.env.DATABASE_URL == null || process.env.DATABASE_URL === "") {
-    throw new Error("DATABASE_URL 환경변수가 설정되지 않았습니다.");
-  }
-
-  // [2] 병렬 KPI 쿼리
+  // [1] 병렬 KPI 쿼리
   const [
     etlData,
     detectionLagData,
