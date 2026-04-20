@@ -1211,7 +1211,7 @@ export async function queryComponentKpiEtl(pool: Pool): Promise<ComponentKpiEtlR
        SELECT COUNT(*)::int AS new_count_7d
        FROM tracked_stocks
        WHERE source = 'etl_auto'
-         AND entry_date >= (CURRENT_DATE - INTERVAL '7 days')::text
+         AND entry_date::date >= CURRENT_DATE - INTERVAL '7 days'
      ),
      etl_active AS (
        SELECT
@@ -1226,7 +1226,7 @@ export async function queryComponentKpiEtl(pool: Pool): Promise<ComponentKpiEtlR
        FROM stock_phases
        WHERE phase = 2
          AND prev_phase IS DISTINCT FROM 2
-         AND date >= (CURRENT_DATE - INTERVAL '7 days')::text
+         AND date::date >= CURRENT_DATE - INTERVAL '7 days'
      )
      SELECT
        e7.new_count_7d,
@@ -1291,7 +1291,9 @@ export async function queryComponentKpiAgentRetention(pool: Pool): Promise<Compo
      )
      SELECT
        COUNT(*)::int AS total_featured,
+       COUNT(*) FILTER (WHERE days_tracked >= 14)::int AS total_at_14d,
        COUNT(*) FILTER (WHERE days_tracked >= 14 AND current_phase = 2)::int AS phase2_at_14d,
+       COUNT(*) FILTER (WHERE days_tracked >= 28)::int AS total_at_28d,
        COUNT(*) FILTER (WHERE days_tracked >= 28 AND current_phase = 2)::int AS phase2_at_28d,
        ROUND(AVG(return_30d)::numeric, 2)::float AS avg_return_30d
      FROM featured`,
@@ -1299,7 +1301,9 @@ export async function queryComponentKpiAgentRetention(pool: Pool): Promise<Compo
 
   return rows[0] ?? {
     total_featured: 0,
+    total_at_14d: 0,
     phase2_at_14d: 0,
+    total_at_28d: 0,
     phase2_at_28d: 0,
     avg_return_30d: null,
   };

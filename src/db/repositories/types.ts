@@ -922,7 +922,9 @@ export interface ComponentKpiAgentSourceRow {
 
 export interface ComponentKpiAgentRetentionRow {
   total_featured: number;
+  total_at_14d: number;
   phase2_at_14d: number;
+  total_at_28d: number;
   phase2_at_28d: number;
   avg_return_30d: number | null;
 }

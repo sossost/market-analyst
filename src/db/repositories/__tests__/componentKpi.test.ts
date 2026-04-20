@@ -141,7 +141,9 @@ describe("queryComponentKpiAgentRetention", () => {
     const result = await queryComponentKpiAgentRetention(pool);
 
     expect(result.total_featured).toBe(0);
+    expect(result.total_at_14d).toBe(0);
     expect(result.phase2_at_14d).toBe(0);
+    expect(result.total_at_28d).toBe(0);
     expect(result.phase2_at_28d).toBe(0);
     expect(result.avg_return_30d).toBeNull();
   });
@@ -149,7 +151,9 @@ describe("queryComponentKpiAgentRetention", () => {
   it("DB 결과를 그대로 반환한다", async () => {
     const mockRow = {
       total_featured: 14,
+      total_at_14d: 12,
       phase2_at_14d: 10,
+      total_at_28d: 10,
       phase2_at_28d: 8,
       avg_return_30d: 7.3,
     };
@@ -158,7 +162,9 @@ describe("queryComponentKpiAgentRetention", () => {
     const result = await queryComponentKpiAgentRetention(pool);
 
     expect(result.total_featured).toBe(14);
+    expect(result.total_at_14d).toBe(12);
     expect(result.phase2_at_14d).toBe(10);
+    expect(result.total_at_28d).toBe(10);
     expect(result.phase2_at_28d).toBe(8);
     expect(result.avg_return_30d).toBe(7.3);
   });
