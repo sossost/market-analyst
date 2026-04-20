@@ -18,7 +18,6 @@ import { addComment, addLabel, removeLabel } from './githubClient.js'
 import { createThread } from './discordClient.js'
 import { savePrThreadMapping } from './prThreadStore.js'
 import { buildSandboxedEnv, classifyCliError } from './cliUtils.js'
-import { CI_FAILURE_MARKER } from '../pr-reviewer/checkCiStatus.js'
 
 const TAG = 'EXECUTE_ISSUE'
 
