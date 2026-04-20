@@ -99,6 +99,7 @@ import {
   linkChainToMetaRegime,
   transitionMetaRegimeStatus,
   groupChainsByMegatrend,
+  resolvePeakAt,
 } from "../metaRegimeService.js";
 
 // ─── 리셋 ─────────────────────────────────────────────────────────────────────
@@ -118,6 +119,37 @@ beforeEach(() => {
   mockInsert.mockReturnValue({ values: mockInsertValues });
   mockInsertValues.mockReturnValue({ onConflictDoNothing: mockInsertOnConflict });
   mockInsertOnConflict.mockResolvedValue(undefined);
+});
+
+// =============================================================================
+// resolvePeakAt — 순수 헬퍼 함수
+// =============================================================================
+
+describe("resolvePeakAt", () => {
+  it("PEAKED 전이 시 currentPeakAt이 null이면 Date를 반환한다", () => {
+    const result = resolvePeakAt("PEAKED", null);
+    expect(result).toBeInstanceOf(Date);
+  });
+
+  it("PEAKED 전이 시 currentPeakAt이 이미 있으면 undefined를 반환한다", () => {
+    const result = resolvePeakAt("PEAKED", new Date("2025-06-01"));
+    expect(result).toBeUndefined();
+  });
+
+  it("RESOLVED 전이 시 currentPeakAt이 null이면 Date를 반환한다 (폴백)", () => {
+    const result = resolvePeakAt("RESOLVED", null);
+    expect(result).toBeInstanceOf(Date);
+  });
+
+  it("RESOLVED 전이 시 currentPeakAt이 이미 있으면 undefined를 반환한다", () => {
+    const result = resolvePeakAt("RESOLVED", new Date("2025-06-01"));
+    expect(result).toBeUndefined();
+  });
+
+  it("ACTIVE 전이 시 항상 undefined를 반환한다", () => {
+    expect(resolvePeakAt("ACTIVE", null)).toBeUndefined();
+    expect(resolvePeakAt("ACTIVE", new Date())).toBeUndefined();
+  });
 });
 
 // =============================================================================
@@ -319,22 +351,27 @@ describe("linkChainToMetaRegime", () => {
 // =============================================================================
 
 describe("transitionMetaRegimeStatus", () => {
-  it("PEAKED 전이 시 peakAt이 set payload에 포함된다", async () => {
+  it("PEAKED 전이 시 peakAt에 COALESCE SQL 표현식이 포함된다", async () => {
     await transitionMetaRegimeStatus(1, "PEAKED");
 
     const setArgs = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
     expect(setArgs.status).toBe("PEAKED");
-    expect(setArgs.peakAt).toBeInstanceOf(Date);
+    // COALESCE(peak_at, now) — atomic하게 기존 값 보존 또는 현재 시각 설정
+    expect(setArgs.peakAt).toBeDefined();
     expect(setArgs.resolvedAt).toBeUndefined();
+    // SELECT 없이 단일 UPDATE로 처리 — race condition 방지
+    expect(mockSelectWhere).not.toHaveBeenCalled();
   });
 
-  it("RESOLVED 전이 시 resolvedAt이 set payload에 포함된다", async () => {
+  it("RESOLVED 전이 시 resolvedAt과 peakAt COALESCE가 모두 포함된다", async () => {
     await transitionMetaRegimeStatus(2, "RESOLVED");
 
     const setArgs = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
     expect(setArgs.status).toBe("RESOLVED");
     expect(setArgs.resolvedAt).toBeInstanceOf(Date);
-    expect(setArgs.peakAt).toBeUndefined();
+    // COALESCE(peak_at, now) — 기존 peakAt 보존 또는 폴백 설정
+    expect(setArgs.peakAt).toBeDefined();
+    expect(mockSelectWhere).not.toHaveBeenCalled();
   });
 
   it("ACTIVE 전이 시 타임스탬프를 세팅하지 않는다", async () => {
@@ -344,6 +381,7 @@ describe("transitionMetaRegimeStatus", () => {
     expect(setArgs.status).toBe("ACTIVE");
     expect(setArgs.peakAt).toBeUndefined();
     expect(setArgs.resolvedAt).toBeUndefined();
+    expect(mockSelectWhere).not.toHaveBeenCalled();
   });
 
   it("DB 오류 발생 시 에러를 재던진다", async () => {

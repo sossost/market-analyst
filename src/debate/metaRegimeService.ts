@@ -175,6 +175,31 @@ export async function getMetaRegimeWithChains(
   };
 }
 
+// ─── peakAt Resolution Helper ───────────────────────────────────────
+
+/**
+ * Determine whether peakAt should be set during a status transition.
+ * Returns a Date when peakAt should be recorded, undefined otherwise.
+ *
+ * Rules:
+ *  - PEAKED: set peakAt only if not already recorded (preserve first peak)
+ *  - RESOLVED: set peakAt as fallback if not already recorded
+ *  - Other statuses: no peakAt change
+ */
+export function resolvePeakAt(
+  newStatus: MetaRegimeStatus,
+  currentPeakAt: Date | null,
+  now: Date = new Date(),
+): Date | undefined {
+  if (currentPeakAt != null) return undefined;
+
+  if (newStatus === "PEAKED" || newStatus === "RESOLVED") {
+    return now;
+  }
+
+  return undefined;
+}
+
 // ─── Status Transition ──────────────────────────────────────────────
 
 /**
@@ -248,14 +273,12 @@ export async function transitionMetaRegimeStatuses(): Promise<number> {
     const now = new Date();
     const updateFields: Partial<typeof metaRegimes.$inferInsert> = { status: newStatus };
 
-    if (newStatus === "PEAKED" && regime.peakAt == null) {
-      updateFields.peakAt = now;
+    const peakAt = resolvePeakAt(newStatus, regime.peakAt, now);
+    if (peakAt != null) {
+      updateFields.peakAt = peakAt;
     }
     if (newStatus === "RESOLVED") {
       updateFields.resolvedAt = now;
-      if (regime.peakAt == null) {
-        updateFields.peakAt = now;
-      }
     }
 
     await db
@@ -637,24 +660,32 @@ export async function formatMetaRegimesForPrompt(): Promise<string> {
 
 /**
  * Transition meta-regime status.
- * PEAKED 전이 시 peakAt 타임스탬프를 자동 세팅한다.
+ * peakAt 타임스탬프는 resolvePeakAt() 헬퍼로 결정한다:
+ * - PEAKED/RESOLVED: 기존 peakAt이 null일 때만 현재 시각으로 설정
+ * - RESOLVED: resolvedAt도 함께 설정
  */
 export async function transitionMetaRegimeStatus(
   regimeId: number,
   newStatus: MetaRegimeStatus,
 ): Promise<void> {
   try {
-    const isPeaked = newStatus === "PEAKED";
-    const isResolved = newStatus === "RESOLVED";
+    const now = new Date();
 
-    await db
-      .update(metaRegimes)
-      .set({
-        status: newStatus,
-        ...(isPeaked && { peakAt: new Date() }),
-        ...(isResolved && { resolvedAt: new Date() }),
-      })
-      .where(eq(metaRegimes.id, regimeId));
+    if (newStatus === "PEAKED" || newStatus === "RESOLVED") {
+      await db
+        .update(metaRegimes)
+        .set({
+          status: newStatus,
+          peakAt: sql`COALESCE(${metaRegimes.peakAt}, ${now})`,
+          ...(newStatus === "RESOLVED" ? { resolvedAt: now } : {}),
+        })
+        .where(eq(metaRegimes.id, regimeId));
+    } else {
+      await db
+        .update(metaRegimes)
+        .set({ status: newStatus })
+        .where(eq(metaRegimes.id, regimeId));
+    }
 
     logger.info(
       "MetaRegime",
