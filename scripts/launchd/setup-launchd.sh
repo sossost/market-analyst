@@ -29,6 +29,7 @@ PLISTS=(
   "com.market-analyst.issue-triage"
   "com.market-analyst.issue-processor"
   "com.market-analyst.pr-reviewer"
+  "com.market-analyst.component-review"
 )
 
 unload_agents() {
@@ -74,6 +75,7 @@ install_agents() {
   echo "  Strategy:     KST 04:00 매일"
   echo "  Issue Proc:   KST 09:00~02:00 매 정시 (18회/일)"
   echo "  PR Reviewer:  KST 09:30~02:30 매 :30분 (18회/일)"
+  echo "  Comp Review:  KST 06:00 일 (컴포넌트 자가 점검)"
   echo ""
   echo "로그: $PROJECT_DIR/logs/"
 }
