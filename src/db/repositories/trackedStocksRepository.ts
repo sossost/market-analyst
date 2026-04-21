@@ -395,6 +395,20 @@ export async function expireTrackedStock(
 }
 
 /**
+ * tracked_stock의 phase2_since를 갱신한다.
+ * 일일 업데이트에서 null → 실제 값 백필용.
+ */
+export async function updatePhase2Since(
+  id: number,
+  phase2Since: string,
+): Promise<void> {
+  await pool.query(
+    `UPDATE tracked_stocks SET phase2_since = $1 WHERE id = $2`,
+    [phase2Since, id],
+  );
+}
+
+/**
  * tracked_stock의 tier를 변경한다.
  * standard -> featured 승격 또는 그 반대.
  */

@@ -6,9 +6,39 @@
  *
  * Issue #773 — tracked_stocks 통합 ETL Phase 2
  * Issue #833 — Phase Exit 자동화
+ * Issue #796 — phase2_since null 백필
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// DB 의존성 mock
+vi.mock("@/db/client", () => ({
+  pool: { query: vi.fn(), end: vi.fn() },
+}));
+vi.mock("dotenv/config", () => ({}));
+
+const mockFindPhase2SinceDates = vi.fn();
+const mockUpdatePhase2Since = vi.fn();
+
+vi.mock("@/db/repositories/stockPhaseRepository.js", () => ({
+  findPhase2SinceDates: (...args: unknown[]) => mockFindPhase2SinceDates(...args),
+}));
+vi.mock("@/db/repositories/trackedStocksRepository.js", () => ({
+  findActiveTrackedStocks: vi.fn(),
+  updateTracking: vi.fn(),
+  updatePhase2Since: (...args: unknown[]) => mockUpdatePhase2Since(...args),
+  expireTrackedStock: vi.fn(),
+  exitTrackedStock: vi.fn(),
+}));
+vi.mock("@/db/repositories/sectorRepository.js", () => ({
+  findSectorRsByName: vi.fn(),
+}));
+vi.mock("@/etl/utils/validation", () => ({
+  assertValidEnvironment: vi.fn(),
+}));
+vi.mock("@/etl/utils/date-helpers", () => ({
+  getLatestTradeDate: vi.fn(),
+}));
 
 import {
   calculatePnlPercent,
@@ -18,8 +48,10 @@ import {
   calculateDaysTracked,
   buildUpdatedTrajectory,
   calculateDurationReturn,
+  backfillPhase2Since,
   type TrajectoryPoint,
 } from "../update-tracked-stocks.js";
+import type { TrackedStockRow } from "@/db/repositories/trackedStocksRepository.js";
 
 // =============================================================================
 // calculatePnlPercent — 수익률 계산
@@ -306,5 +338,109 @@ describe("calculateDurationReturn", () => {
       durationDays: 7,
     });
     expect(result).toBeNull();
+  });
+});
+
+// =============================================================================
+// backfillPhase2Since — phase2_since null 자동 백필 (#796)
+// =============================================================================
+
+function makeTrackedStockRow(overrides: Partial<TrackedStockRow>): TrackedStockRow {
+  return {
+    id: 1,
+    symbol: "TEST",
+    source: "agent",
+    tier: "standard",
+    entry_date: "2026-04-01",
+    entry_price: "100",
+    entry_phase: 2,
+    entry_prev_phase: null,
+    entry_rs_score: null,
+    entry_sepa_grade: null,
+    entry_thesis_id: null,
+    entry_sector: null,
+    entry_industry: null,
+    entry_reason: null,
+    phase2_since: null,
+    status: "ACTIVE",
+    market_regime: null,
+    current_price: null,
+    current_phase: null,
+    current_rs_score: null,
+    pnl_percent: null,
+    max_pnl_percent: null,
+    days_tracked: 0,
+    last_updated: null,
+    return_7d: null,
+    return_30d: null,
+    return_90d: null,
+    tracking_end_date: "2026-07-01",
+    phase_trajectory: null,
+    sector_relative_perf: null,
+    exit_date: null,
+    exit_reason: null,
+    ...overrides,
+  };
+}
+
+describe("backfillPhase2Since", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("phase2_since가 null인 종목만 조회하고 결과를 업데이트한다", async () => {
+    const items: TrackedStockRow[] = [
+      makeTrackedStockRow({ id: 1, symbol: "LITE", phase2_since: null }),
+      makeTrackedStockRow({ id: 2, symbol: "AAPL", phase2_since: "2026-03-01" }),
+      makeTrackedStockRow({ id: 3, symbol: "AAOI", phase2_since: null }),
+    ];
+
+    mockFindPhase2SinceDates.mockResolvedValue([
+      { symbol: "LITE", phase2_since: "2026-03-15" },
+      { symbol: "AAOI", phase2_since: "2026-03-20" },
+    ]);
+    mockUpdatePhase2Since.mockResolvedValue(undefined);
+
+    const count = await backfillPhase2Since(items, "2026-04-10");
+
+    expect(count).toBe(2);
+    expect(mockFindPhase2SinceDates).toHaveBeenCalledWith(["LITE", "AAOI"], "2026-04-10");
+    expect(mockUpdatePhase2Since).toHaveBeenCalledWith(1, "2026-03-15");
+    expect(mockUpdatePhase2Since).toHaveBeenCalledWith(3, "2026-03-20");
+  });
+
+  it("Phase 2가 아닌 종목은 findPhase2SinceDates 결과에 미포함되므로 null 유지", async () => {
+    const items: TrackedStockRow[] = [
+      makeTrackedStockRow({ id: 1, symbol: "AXTI", phase2_since: null }),
+    ];
+
+    // Phase 2가 아닌 종목은 결과에 포함되지 않음
+    mockFindPhase2SinceDates.mockResolvedValue([]);
+    mockUpdatePhase2Since.mockResolvedValue(undefined);
+
+    const count = await backfillPhase2Since(items, "2026-04-10");
+
+    expect(count).toBe(0);
+    expect(mockUpdatePhase2Since).not.toHaveBeenCalled();
+  });
+
+  it("모든 종목에 phase2_since가 있으면 DB 조회를 하지 않는다", async () => {
+    const items: TrackedStockRow[] = [
+      makeTrackedStockRow({ id: 1, symbol: "AAPL", phase2_since: "2026-03-01" }),
+      makeTrackedStockRow({ id: 2, symbol: "MSFT", phase2_since: "2026-02-15" }),
+    ];
+
+    const count = await backfillPhase2Since(items, "2026-04-10");
+
+    expect(count).toBe(0);
+    expect(mockFindPhase2SinceDates).not.toHaveBeenCalled();
+    expect(mockUpdatePhase2Since).not.toHaveBeenCalled();
+  });
+
+  it("빈 배열이면 아무 작업도 하지 않는다", async () => {
+    const count = await backfillPhase2Since([], "2026-04-10");
+
+    expect(count).toBe(0);
+    expect(mockFindPhase2SinceDates).not.toHaveBeenCalled();
   });
 });

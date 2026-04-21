@@ -19,10 +19,12 @@ import { logger } from "@/lib/logger";
 import {
   findActiveTrackedStocks,
   updateTracking,
+  updatePhase2Since,
   expireTrackedStock,
   exitTrackedStock,
   type TrackedStockRow,
 } from "@/db/repositories/trackedStocksRepository.js";
+import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
 import {
   findSectorRsByName,
 } from "@/db/repositories/sectorRepository.js";
@@ -349,6 +351,43 @@ async function processTrackedStock(
   return { action: "updated", symbol: item.symbol };
 }
 
+// ─── phase2_since 자동 백필 ──────────────────────────────────────────────────
+
+/**
+ * phase2_since가 null인 ACTIVE 종목을 찾아 자동으로 채운다.
+ * agent 경로 등록 시 누락되었거나, 등록 시점에 Phase 2가 아니었지만
+ * 이후 Phase 2로 전환된 경우를 커버한다.
+ */
+export async function backfillPhase2Since(
+  items: TrackedStockRow[],
+  asOfDate: string,
+): Promise<number> {
+  const nullItems = items.filter((item) => item.phase2_since == null);
+  if (nullItems.length === 0) return 0;
+
+  const symbols = nullItems.map((item) => item.symbol);
+  const phase2SinceRows = await retryDatabaseOperation(() =>
+    findPhase2SinceDates(symbols, asOfDate),
+  );
+
+  const phase2SinceMap = new Map(
+    phase2SinceRows.map((r) => [r.symbol, r.phase2_since]),
+  );
+
+  let filledCount = 0;
+  for (const item of nullItems) {
+    const since = phase2SinceMap.get(item.symbol);
+    if (since != null) {
+      await retryDatabaseOperation(() => updatePhase2Since(item.id, since));
+      item.phase2_since = since;
+      logger.info(TAG, `${item.symbol}: phase2_since 백필 → ${since}`);
+      filledCount++;
+    }
+  }
+
+  return filledCount;
+}
+
 // ─── 메인 ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -369,6 +408,12 @@ async function main() {
     logger.info(TAG, "ACTIVE tracked_stocks 없음. 스킵.");
     await pool.end();
     return;
+  }
+
+  // phase2_since null 자동 백필 (#796)
+  const filledCount = await backfillPhase2Since(activeItems, targetDate);
+  if (filledCount > 0) {
+    logger.info(TAG, `phase2_since 백필 완료: ${filledCount}건`);
   }
 
   logger.info(TAG, `ACTIVE tracked_stocks ${activeItems.length}건 처리 시작`);
