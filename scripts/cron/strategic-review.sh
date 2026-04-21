@@ -83,4 +83,16 @@ else
   exit 1
 fi
 
+# 로컬 머신 동기화 (실패해도 파이프라인 중단 안 함)
+if [ -n "${LOCAL_SYNC_TARGET:-}" ]; then
+  log "▶ 로컬 머신 동기화 (strategic-briefing.md)"
+  if scp -o ConnectTimeout=5 -o BatchMode=yes \
+    "$PROJECT_DIR/memory/strategic-briefing.md" \
+    "$LOCAL_SYNC_TARGET" >> "$LOG_FILE" 2>&1; then
+    log "✓ 로컬 동기화 완료"
+  else
+    log "⚠ 로컬 동기화 실패 (비필수 — 계속 진행)"
+  fi
+fi
+
 log "=== 전략 참모 리뷰 완료 ==="
