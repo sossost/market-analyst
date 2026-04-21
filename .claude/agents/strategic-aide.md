@@ -73,7 +73,7 @@ etl_auto 일별 민감 지표도 매일 직접 쿼리한다 (component-health.md
 **트리거 1: QA 점수 연속 하락**
 
 ```sql
-SELECT qa_date, score FROM weekly_qa_reports ORDER BY qa_date DESC LIMIT 4;
+SELECT qa_date, score FROM weekly_qa_reports WHERE score IS NOT NULL ORDER BY qa_date DESC LIMIT 3;
 ```
 
 - 최신 3건이 연속 하락(score[0] < score[1] < score[2])이면 발화
@@ -91,11 +91,12 @@ SELECT
 FROM tracked_stocks
 WHERE phase2_since IS NOT NULL
   AND entry_date IS NOT NULL
+  AND source = 'etl_auto'
   AND entry_date::date >= phase2_since::date
   AND entry_date::date >= CURRENT_DATE - INTERVAL '28 days'
 GROUP BY 1
 ORDER BY 1 DESC
-LIMIT 3;
+LIMIT 2;
 ```
 
 - 최신 2주 결과가 연속 증가(lag[0] > lag[1])면 발화
@@ -114,13 +115,13 @@ WITH ranked AS (
 )
 SELECT 
   'recent' as batch,
-  COUNT(CASE WHEN verification_result = 'CONFIRMED' THEN 1 END)::float / COUNT(*) as hit_rate,
+  COUNT(CASE WHEN verification_result = 'CONFIRMED' THEN 1 END)::float / NULLIF(COUNT(*), 0) as hit_rate,
   COUNT(*) as sample_size
 FROM ranked WHERE rn <= 20
 UNION ALL
 SELECT 
   'previous' as batch,
-  COUNT(CASE WHEN verification_result = 'CONFIRMED' THEN 1 END)::float / COUNT(*) as hit_rate,
+  COUNT(CASE WHEN verification_result = 'CONFIRMED' THEN 1 END)::float / NULLIF(COUNT(*), 0) as hit_rate,
   COUNT(*) as sample_size
 FROM ranked WHERE rn > 20 AND rn <= 40;
 ```
