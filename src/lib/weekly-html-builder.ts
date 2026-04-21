@@ -23,10 +23,6 @@ import type {
   WeeklyReportData,
   WeeklyReportInsight,
 } from "@/tools/schemas/weeklyReportSchema.js";
-import type {
-  ThesisAlignedData,
-  ThesisAlignedChainGroup,
-} from "@/lib/thesisAlignedCandidates.js";
 import type { PortfolioPositionWithCurrentData } from "@/db/repositories/portfolioPositionsRepository.js";
 import type { WeeklyDebateSummary } from "@/debate/insightExtractor.js";
 import { selectWeeklyWatchlist, WEEKLY_SPOTLIGHT_COUNT } from "@/lib/watchlistSelection.js";
@@ -804,14 +800,6 @@ function phaseBadgeClass(phase: number): string {
   return map[phase] ?? "p1";
 }
 
-function formatMarketCap(cap: number | null): string {
-  if (cap == null) return "\u2014";
-  if (cap >= 1_000_000_000_000) return `$${(cap / 1_000_000_000_000).toFixed(1)}T`;
-  if (cap >= 1_000_000_000) return `$${(cap / 1_000_000_000).toFixed(1)}B`;
-  if (cap >= 1_000_000) return `$${(cap / 1_000_000).toFixed(0)}M`;
-  return `$${cap.toLocaleString()}`;
-}
-
 function closePositionLabel(pos: "near_high" | "near_low" | "mid"): string {
   const labels: Record<string, string> = {
     near_high: "고점 근처",
@@ -1492,127 +1480,6 @@ export function renderPortfolioSection(
 }
 
 // ─── 최종 HTML 조립 ───────────────────────────────────────────────────────────
-
-// ─── 서사 수혜 후보 ───────────────────────────────────────────────────────────
-
-function renderChainGroupCard(group: ThesisAlignedChainGroup): string {
-  const statusCls = group.chainStatus === "ACTIVE" ? "up" : "neutral-color";
-
-  if (group.candidates.length === 0) {
-    return "";
-  }
-
-  const hasSeparateBottleneck =
-    group.bottleneck !== group.megatrend && group.bottleneck.trim() !== "";
-  const descriptionHtml = hasSeparateBottleneck
-    ? `\n    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">${escapeHtml(group.bottleneck)}</p>`
-    : "";
-
-  const headerHtml = `
-    <h3>
-      ${escapeHtml(group.megatrend)}
-      <span class="phase-badge p2"><span class="${escapeHtml(statusCls)}">${escapeHtml(group.chainStatus)}</span></span>
-      <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400;">${escapeHtml(String(group.daysSinceIdentified))}일 경과</span>
-    </h3>${descriptionHtml}`;
-
-  const rows = group.candidates
-    .map((c) => {
-      const phaseCls = c.phase != null ? phaseBadgeClass(c.phase) : "p1";
-      const phaseStr = c.phase != null ? `Phase ${escapeHtml(String(c.phase))}` : "\u2014";
-      const rsStr = c.rsScore != null ? escapeHtml(String(c.rsScore)) : "\u2014";
-      const sepaStr = c.sepaGrade != null
-        ? c.sepaGrade === "S"
-          ? `<span class="phase-badge" style="background:#ffe0d0;color:#bc4c00;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
-          : c.sepaGrade === "A"
-            ? `<span class="phase-badge" style="background:#ddf4ff;color:#0969da;font-weight:700;">${escapeHtml(c.sepaGrade)}</span>`
-            : c.sepaGrade === "B"
-              ? `<span class="phase-badge" style="background:#e6f6e6;color:#1a7f37;">${escapeHtml(c.sepaGrade)}</span>`
-              : escapeHtml(c.sepaGrade)
-        : "\u2014";
-      const industryStr = c.industry != null ? escapeHtml(c.industry) : "\u2014";
-      const capStr = formatMarketCap(c.marketCap);
-      const gateStr = `${escapeHtml(String(c.gatePassCount))}/${escapeHtml(String(c.gateTotalCount))}`;
-      const narrativeTag = c.source === "llm"
-        ? `<span style="padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#eef1f4;color:var(--text-muted);">서사수혜</span>`
-        : "";
-      const certTag = c.certified === true
-        ? `<span style="padding:1px 5px;border-radius:3px;font-size:0.65rem;font-weight:600;background:#ddf6dd;color:var(--phase2);">AI인증</span>`
-        : "";
-      return `
-        <tr>
-          <td><div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;"><strong>${escapeHtml(c.symbol)}</strong>${narrativeTag}${certTag}</div></td>
-          <td class="tc"><span class="phase-badge ${escapeHtml(phaseCls)}">${phaseStr}</span></td>
-          <td class="tc">${rsStr}</td>
-          <td class="tc">${sepaStr}</td>
-          <td class="tc">${escapeHtml(capStr)}</td>
-          <td>${industryStr}</td>
-          <td class="tc">${gateStr}</td>
-        </tr>`;
-    })
-    .join("");
-
-  return `${headerHtml}
-    <table style="table-layout:fixed;">
-      <colgroup>
-        <col style="width:20%">
-        <col style="width:12%">
-        <col style="width:8%">
-        <col style="width:8%">
-        <col style="width:10%">
-        <col style="width:32%">
-        <col style="width:10%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>종목</th>
-          <th class="tc">Phase</th>
-          <th class="tc">RS</th>
-          <th class="tc">SEPA</th>
-          <th class="tc">시총</th>
-          <th>업종</th>
-          <th class="tc">게이트</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-function renderThesisAlignedSection(
-  data: ThesisAlignedData | null | undefined,
-  narrative: string,
-): string {
-  if (data == null || data.chains.length === 0) {
-    return "";
-  }
-
-  const narrativeHtml = narrative.trim() !== ""
-    ? `<div class="content-block">${mdToHtml(narrative)}</div>`
-    : "";
-
-  const summaryHtml = `
-    <div class="stat-row">
-      <div class="stat-chip">
-        <span class="stat-label">활성 체인</span>
-        <span class="stat-value">${escapeHtml(String(data.chains.length))}</span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">수혜 후보</span>
-        <span class="stat-value">${escapeHtml(String(data.totalCandidates))}</span>
-      </div>
-      <div class="stat-chip">
-        <span class="stat-label">Phase 2</span>
-        <span class="stat-value ${data.phase2Count > 0 ? "up" : "neutral-color"}">${escapeHtml(String(data.phase2Count))}</span>
-      </div>
-    </div>`;
-
-  const chainsHtml = data.chains
-    .map((group) => renderChainGroupCard(group))
-    .join("");
-
-  const noteHtml = `<p style="font-size:0.75rem;color:var(--text-muted);margin:12px 0 0;">게이트 = Phase2 + RS\u226560 + SEPA S/A + thesis연결 (업종RS 미포함, 4/4 만점) · 업종 탐색은 체인당 RS 상위 10개</p>`;
-
-  return `${narrativeHtml}${summaryHtml}${chainsHtml}${noteHtml}`;
-}
 
 // ─── 주간 토론 종합 렌더링 ──────────────────────────────────────────────────
 
