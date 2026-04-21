@@ -34,19 +34,14 @@ Phase 2 초입 포착 도구들이 정확하게 작동하는가?
 ### 2. 학습 루프 건강도
 시스템이 올바르게 학습하고 있는가?
 
-분석 방법: Supabase DB에 직접 SQL을 실행해라.
-```sql
-SELECT id, principle, category, hit_count, miss_count, hit_rate, is_active, first_confirmed, last_verified
-FROM agent_learnings WHERE is_active = true ORDER BY last_verified DESC LIMIT 30;
-
-SELECT id, thesis, status, confidence, consensus_level, verification_date, verification_result, created_at
-FROM theses WHERE status = 'ACTIVE' AND created_at < NOW() - INTERVAL '30 days';
-```
+분석 방법: `memory/component-health.md`를 읽어라.
+- thesis/debate 행의 hit_rate(판정 컬럼)와 tracked_stocks 행의 avg detection_lag을 확인한다.
+- 파일이 없거나 갱신 시각(첫 줄 타임스탬프)이 7일 이상 오래된 경우 → fallback: 기존 SQL을 직접 실행한다(아래 "component-health.md 참조 규칙" 섹션 참조).
 
 질문:
 - 근거 불충분(hit_count 2회 미만) 학습 항목이 있는가?
 - 판정 지연(30일+) ACTIVE thesis가 있는가?
-- 같은 LLM이 생성+검증하는 자기참조 루프 징후가 있는가?
+- 같은 LLM이 생성+검증하는 자기참조 루프 징후가 있는가? (`src/agent/debate/thesisVerifier.ts` 등 코드 분석)
 
 ### 3. 에이전트 프롬프트 맹점
 토론 에이전트들이 놓치고 있는 관점이 있는가?
@@ -85,7 +80,13 @@ FROM market_regimes ORDER BY regime_date DESC LIMIT 10;
 
 **개별 리포트 품질은 보지 마라** (QA 영역). 여기서는 **성과 패턴**만 본다.
 
-분석 방법:
+**건강도 현황 (component-health.md 참조):**
+`memory/component-health.md`의 tracked_stocks 행과 etl_auto 행을 읽어 현황을 확인한다.
+파일이 없거나 7일 이상 오래된 경우 → fallback: 기존 SQL을 직접 실행한다(아래 "component-health.md 참조 규칙" 섹션 참조).
+
+**역할 구분:** component-health.md = 건강도 상태 판정(OK/ALERT/FAILED). 직접 SQL = 전략적 인사이트(승률, 섹터별 실패 패턴, 에이전트별 적중률 breakdown).
+
+**성과 패턴 분석 (전략적 인사이트 — 직접 쿼리):**
 ```sql
 -- 최근 90일 추천 종목 성과 요약
 SELECT symbol, entry_sector, entry_date, entry_price, current_price,
@@ -105,17 +106,33 @@ WHERE entry_date > (NOW() - INTERVAL '90 days')::date::text
 GROUP BY status;
 ```
 
+**etl_auto 일별 민감 지표 (매일 직접 쿼리 — component-health.md는 주 1회라 부족):**
+```sql
+-- etl_auto 5거래일 연속 신규 0건 체크
+SELECT entry_date::date, COUNT(*)
+FROM tracked_stocks
+WHERE source = 'etl_auto' AND entry_date::date > (NOW() - INTERVAL '7 days')::date::text
+GROUP BY entry_date::date ORDER BY entry_date DESC;
+```
+
 질문:
 - 승률(양수 PnL 비율)과 평균 수익이 알파를 형성하는 수준인가?
 - 특정 섹터/레짐에서 집중적으로 실패하는 패턴이 있는가?
 - entry_phase vs current_phase 변화로 보면 Phase 2 진입 정확도가 어떤가?
 - 실패 종목의 공통 특성(RS 범위, Phase, 섹터)이 있는가?
 - max_pnl_percent은 높은데 pnl_percent이 낮으면 → 청산 타이밍 문제
+- etl_auto 신규 진입이 5거래일 이상 0건이면 → 스캔 파이프라인 점검 필요
 
 ### 8. Thesis 적중률 분석 (결과물 레벨)
 토론에서 나온 예측이 실제로 맞고 있는가?
 
-분석 방법:
+**건강도 현황 (component-health.md 참조):**
+`memory/component-health.md`의 thesis/debate 행을 읽어 전체 hit_rate를 확인한다.
+파일이 없거나 7일 이상 오래된 경우 → fallback: 기존 SQL을 직접 실행한다(아래 "component-health.md 참조 규칙" 섹션 참조).
+
+**역할 구분:** component-health.md = 건강도 상태 판정(OK/ALERT/FAILED). 직접 SQL = 전략적 인사이트(에이전트별/카테고리별 breakdown).
+
+**에이전트별/카테고리별 상세 분석 (전략적 인사이트 — 직접 쿼리):**
 ```sql
 -- Thesis 판정 결과 통계 (is_status_quo 제외 — 현상유지 thesis는 적중률 왜곡)
 SELECT status, category, COUNT(*) as cnt
@@ -151,6 +168,16 @@ GROUP BY agent_persona;
 - category별(structural_narrative/sector_rotation/short_term_outlook) 적중률 차이가 있는가?
 - INVALIDATED thesis의 공통 패턴은? (프롬프트 개선 방향 도출)
 
+## component-health.md 참조 규칙
+
+건강도 지표(영역 2, 7, 8)는 `memory/component-health.md`를 우선 참조한다.
+
+1. 파일이 없으면: fallback으로 기존 SQL을 직접 실행하고, briefing에 "component-reviewer 미실행" 기록
+2. 파일의 갱신 시각(첫 줄 타임스탬프)이 7일 이상 오래되었으면: fallback으로 기존 SQL을 직접 실행하고, briefing에 "component-reviewer 미갱신 (N일 경과)" 기록
+3. 파일이 정상이면: component-health.md에서 건강도 수치를 읽고, 전략적 패턴 분석만 직접 쿼리
+
+**역할 구분:** component-health.md = 건강도 상태 판정(OK/ALERT/FAILED). 직접 SQL = 전략적 인사이트(승률, 섹터별 실패 패턴, 에이전트별 적중률 breakdown).
+
 ## 범위 구분 (중요)
 
 | 이 리뷰가 다루는 것 | QA가 다루는 것 (건드리지 마라) |
@@ -182,6 +209,12 @@ GROUP BY agent_persona;
 
 `memory/strategic-briefing.md` 파일을 아래 포맷으로 **덮어쓰기**한다.
 이 파일은 매니저가 세션 시작 시 읽는 골 정렬 근거다. **가장 중요한 산출물.**
+
+**건강도 매핑 (코드 블록 안에 넣지 마라 — 작성 지시용):**
+- 학습 루프     ← component-health.md의 thesis/debate 행 + tracked_stocks 행
+- Thesis 적중률 ← component-health.md의 thesis/debate 행
+- 추천 성과     ← component-health.md의 tracked_stocks 행 + etl_auto 행 + 영역 7 성과 패턴 직접 분석 결과
+- 데이터 파이프라인 ← component-health.md의 일간 리포트 행 + 주간 리포트 행 + narrative_chains 행
 
 ```markdown
 # 전략 브리핑 (YYYY-MM-DD 갱신)

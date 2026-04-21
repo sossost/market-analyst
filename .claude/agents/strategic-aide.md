@@ -31,6 +31,11 @@ model: sonnet
 매일 KST 04:00 `strategic-review-prompt.md` 기반으로 8개 영역을 분석한 후,
 `memory/strategic-briefing.md`를 갱신한다. 이 파일이 매니저의 골 정렬 근거다.
 
+**건강도 참조 우선순위:** 영역 2(학습 루프), 7(추천 성과), 8(Thesis 적중률)의 건강도 수치는
+`memory/component-health.md`를 읽어 가져온다 (component-reviewer가 주 1회 생성).
+파일이 없거나 7일 이상 오래된 경우 기존 SQL로 직접 계산(fallback).
+etl_auto 일별 민감 지표는 매일 직접 쿼리한다 (component-health.md는 주 1회라 부족).
+
 **포맷 (엄격 제한 — 절대 초과 금지):**
 
 ```markdown
