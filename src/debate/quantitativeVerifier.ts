@@ -308,10 +308,7 @@ function resolveMetricValue(
   const lowerNormalized = normalized.toLowerCase();
   const creditSeriesId = CREDIT_INDICATOR_ALIASES[lowerNormalized];
   if (creditSeriesId != null) {
-    const ci = snapshot.creditIndicators.find((c) => c.seriesId === creditSeriesId);
-    if (ci != null) {
-      return ci.value;
-    }
+    return snapshot.creditIndicators.find((c) => c.seriesId === creditSeriesId)?.value ?? null;
   }
 
   return null;

@@ -865,12 +865,21 @@ export function logConditionParsability(theses: Thesis[]): void {
     const hasTarget = t.targetCondition != null && t.targetCondition !== "";
     const targetParsed = hasTarget ? parseQuantitativeCondition(t.targetCondition) : null;
 
-    // targetCondition이 파싱 불가인 경우만 경고 (invalidation은 optional)
     if (hasTarget && targetParsed == null) {
       unparseable++;
       logger.warn(
         "Round3",
         `[UNPARSEABLE] ${t.agentPersona} thesis의 targetCondition 정량 파싱 불가: "${t.targetCondition}" — LLM 판정으로 전락`,
+      );
+    }
+
+    const hasInvalidation = t.invalidationCondition != null && t.invalidationCondition !== "";
+    const invalidationParsed = hasInvalidation ? parseQuantitativeCondition(t.invalidationCondition!) : null;
+
+    if (hasInvalidation && invalidationParsed == null) {
+      logger.warn(
+        "Round3",
+        `[UNPARSEABLE] ${t.agentPersona} thesis의 invalidationCondition 정량 파싱 불가: "${t.invalidationCondition}" — LLM 판정으로 전락`,
       );
     }
   }
