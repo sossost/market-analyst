@@ -112,6 +112,90 @@ function normalizeSectorName(rawSectorName: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Credit indicator alias mapping
+//
+// LLM이 생성하는 신용 지표 이름을 FRED series ID로 매핑.
+// DB 실제 series ID: BAMLH0A0HYM2, BAMLH0A3HYC, BAMLC0A4CBBB, STLFSI4
+// ---------------------------------------------------------------------------
+
+const CREDIT_INDICATOR_ALIASES: Record<string, string> = {
+  // HY OAS Spread (BAMLH0A0HYM2)
+  "hy spread": "BAMLH0A0HYM2",
+  "hy oas": "BAMLH0A0HYM2",
+  "hy oas spread": "BAMLH0A0HYM2",
+  "hy 스프레드": "BAMLH0A0HYM2",
+  "high yield spread": "BAMLH0A0HYM2",
+  "high yield oas": "BAMLH0A0HYM2",
+  bamlh0a0hym2: "BAMLH0A0HYM2",
+
+  // CCC Spread (BAMLH0A3HYC)
+  "ccc spread": "BAMLH0A3HYC",
+  "ccc 스프레드": "BAMLH0A3HYC",
+  bamlh0a3hyc: "BAMLH0A3HYC",
+
+  // BBB Spread (BAMLC0A4CBBB)
+  "bbb spread": "BAMLC0A4CBBB",
+  "bbb 스프레드": "BAMLC0A4CBBB",
+  bamlc0a4cbbb: "BAMLC0A4CBBB",
+
+  // Financial Stress (STLFSI4)
+  "financial stress": "STLFSI4",
+  "금융 스트레스": "STLFSI4",
+  stlfsi: "STLFSI4",
+  stlfsi4: "STLFSI4",
+};
+
+// ---------------------------------------------------------------------------
+// Supported metrics — exported for prompt injection
+// ---------------------------------------------------------------------------
+
+/**
+ * 시스템이 자동 검증할 수 있는 지표 전체 목록.
+ * round3-synthesis 프롬프트에 주입되어 LLM이 파싱 가능한 조건을 생성하도록 유도.
+ */
+export const SUPPORTED_METRICS = {
+  indices: ["S&P 500", "NASDAQ", "DOW 30", "Russell 2000", "VIX"],
+  indexAliases: INDEX_ALIASES,
+  sectorRS: [
+    "Technology RS", "Energy RS", "Healthcare RS", "Financial Services RS",
+    "Consumer Cyclical RS", "Consumer Defensive RS", "Industrials RS",
+    "Communication Services RS", "Basic Materials RS", "Real Estate RS", "Utilities RS",
+  ],
+  fearGreed: ["Fear & Greed"],
+  creditIndicators: [
+    { alias: "HY OAS", description: "High Yield OAS 스프레드" },
+    { alias: "CCC spread", description: "CCC등급 스프레드" },
+    { alias: "BBB spread", description: "BBB등급 스프레드" },
+    { alias: "Financial Stress", description: "금융 스트레스 지수 (STLFSI4)" },
+  ],
+} as const;
+
+/**
+ * SUPPORTED_METRICS를 프롬프트 주입용 텍스트로 포맷.
+ * 이 함수의 출력을 Round 3 프롬프트에 삽입하여 LLM이 파싱 가능한 조건을 생성하도록 유도.
+ */
+export function formatSupportedMetricsForPrompt(): string {
+  const aliasEntries = Object.entries(SUPPORTED_METRICS.indexAliases)
+    .map(([alias, target]) => `${alias} (→ ${target})`)
+    .join(", ");
+
+  const creditEntries = SUPPORTED_METRICS.creditIndicators
+    .map((ci) => `${ci.alias} (${ci.description})`)
+    .join(", ");
+
+  return [
+    "**시스템이 자동 검증 가능한 지표 전체 목록:**",
+    `- 지수: ${SUPPORTED_METRICS.indices.join(", ")}`,
+    `- 지수 별칭: ${aliasEntries}`,
+    `- 섹터 RS: ${SUPPORTED_METRICS.sectorRS.join(", ")}`,
+    `- 공포탐욕지수: ${SUPPORTED_METRICS.fearGreed.join(", ")}`,
+    `- 신용 지표: ${creditEntries}`,
+    "",
+    "**위 목록 외의 지표를 targetCondition/invalidationCondition에 사용하면 자동 검증이 불가능하여 LLM 주관 판정으로 전락합니다.**",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Sector RS metric pattern
 //
 // Matches forms like:
@@ -217,6 +301,16 @@ function resolveMetricValue(
     );
     if (vix != null) {
       return vix.close;
+    }
+  }
+
+  // Check credit indicators
+  const lowerNormalized = normalized.toLowerCase();
+  const creditSeriesId = CREDIT_INDICATOR_ALIASES[lowerNormalized];
+  if (creditSeriesId != null) {
+    const ci = snapshot.creditIndicators.find((c) => c.seriesId === creditSeriesId);
+    if (ci != null) {
+      return ci.value;
     }
   }
 

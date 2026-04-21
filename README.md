@@ -14,7 +14,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 | **thesis_aligned** | narrative_chains 수혜주를 자동 등록 — 서사 기반 선제 포착 |
 | **tracked_stocks** | detection_lag(entry_date - phase2_since) 소스별 통계로 포착 선행성 측정 |
 | **Multi-Model Debate** | RS 귀납 → 공급망 연역: 강한 종목의 이유를 역추적하고, 병목 식별 → 수혜 종목을 선행 예측 |
-| **Learning Loop** | thesis 적중/실패 원인 분석 → 패턴 승격 → 다음 토론 few-shot 주입 |
+| **Learning Loop** | thesis 적중/실패 원인 분석 → 패턴 승격 → 다음 토론 few-shot 주입. 정량 검증 가능 지표(지수·섹터 RS·신용 지표 4종) 프롬프트 주입으로 자동 검증 커버리지 확대 |
 | **일간 리포트** | 시장 컨디션 체크 — 진입/관망 판단 근거 제공 |
 | **주간 리포트** | 주봉 관점 Top 5~7 선별 + 포트폴리오 현황 — CEO의 매주 판단 지원 |
 | **기업 리포트** | featured 종목 한정 심층 분석 + 정량 목표주가 — 확신도 제고 |

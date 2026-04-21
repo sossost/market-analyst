@@ -8,6 +8,7 @@ import { verifyConsensusLevels } from "./consensusVerifier.js";
 import { detectContradictions } from "./contradictionDetector.js";
 import { STRUCTURAL_NARRATIVE_MIN_DAYS, SECTOR_ROTATION_MIN_DAYS, THESIS_EXPIRE_PROGRESS } from "./thesisConstants.js";
 import { MAX_ACTIVE_THESES_PER_AGENT } from "./thesisStore.js";
+import { formatSupportedMetricsForPrompt, parseQuantitativeCondition } from "./quantitativeVerifier.js";
 
 const MODERATOR_MAX_TOKENS = 16384;
 
@@ -385,6 +386,8 @@ ${round2Section}
 - 지수 예시: "S&P 500 > 5800", "NASDAQ > 18000", "VIX < 20", "Russell 2000 > 2100"
 - 섹터 RS 예시: "Technology RS > 60", "Energy RS > 55", "Healthcare RS < 45"
   (형식: "[섹터명] RS [비교연산자] [숫자]" — 섹터명은 DB에 저장된 영문 섹터명 그대로 사용)
+- 신용 지표 예시: "HY OAS > 5.0", "Financial Stress > 2.0", "CCC spread > 10", "BBB spread > 2.5"
+  (geopolitics 에이전트 포함 모든 에이전트가 신용 지표를 정량 프록시로 활용 가능)
 - **개별 종목 티커(NVDA, AAPL 등)를 조건에 사용하지 마세요** — 시스템이 종목 가격을 자동 검증할 수 없습니다
   - 잘못된 예: "NVDA > 850", "AAPL > 200" ← 자동 검증 불가, LLM 주관 판정으로 전락
   - 올바른 대안: 해당 종목의 섹터 RS 또는 관련 지수로 변환하세요 (예: "Technology RS > 60", "NASDAQ > 18000")
@@ -393,15 +396,14 @@ ${round2Section}
 - **정성적 조건은 수치 비교가 구조적으로 불가능한 경우에만 허용합니다** (예: 규제 발표, 지정학 이벤트)
   - 정성적 조건 허용 예: "반도체 수출 규제 추가 발표", "FOMC 금리 동결 결정"
   - 정성적 조건 불허 예: "AI 반도체 수요 지속", "기술주 실적 호조 유지", "시장 심리 개선" — 이런 조건은 verificationMetric과 함께 수치 형식으로 변환하세요
+- **geopolitics 에이전트 주의**: 지정학 전망도 반드시 정량 프록시를 포함하세요. 예: "HY OAS > 5.0" (신용 스트레스), "VIX > 30" (시장 공포), "Financial Stress > 2.0" (금융 스트레스). 정성적 thesis도 위 신용 지표를 활용하면 자동 검증이 가능합니다.
 - **tech 에이전트 전망 주의**: 기술/산업 전망도 반드시 지수 또는 섹터 RS 기반 정량 조건을 포함하세요. 예: "Technology RS > 65", "NASDAQ > 18000". 정량 조건이 없는 tech thesis는 자동 검증이 불가능하여 ACTIVE 상태로 적체되고, 학습 루프(agent_learnings)에 반영되지 않습니다. 검증 불가 thesis는 진행률 ${THESIS_EXPIRE_PROGRESS * 100}% 이상 시 강제 만료됩니다.
 - **structural_narrative 해소 조건 필수**: structural_narrative thesis는 구조적 방향성을 다루지만, 반드시 정량적 해소 조건(targetCondition, invalidationCondition)을 수치 비교 형식으로 작성하세요. "AI capex 사이클 전환 가속" 같은 정성적 thesis도 "Technology RS >= 60" 또는 "NASDAQ > 18000" 등 수치로 검증 가능한 조건을 포함해야 합니다. 에이전트당 ACTIVE thesis 상한은 ${MAX_ACTIVE_THESES_PER_AGENT}건이므로, 판정 불가 thesis가 쌓이면 새 thesis 생성 여력이 줄어듭니다.
 
+${formatSupportedMetricsForPrompt()}
+
 **verificationMetric 지원 형식:**
-- 지수명: "S&P 500", "NASDAQ", "DOW 30", "Russell 2000", "VIX"
-- 지수 별칭: "SPX" (S&P 500), "QQQ" (NASDAQ), "IWM" (Russell 2000)
-- 섹터 RS: "[섹터명] RS" (예: "Technology RS", "Energy RS", "Healthcare RS", "Financials RS")
-- 공포탐욕지수: "fear & greed" 또는 "공포탐욕지수"
-- 개별 종목 티커는 지원되지 않으므로 verificationMetric을 지수 또는 섹터 RS로 설정하세요
+위 지표 전체 목록과 동일합니다. 개별 종목 티커는 지원되지 않으므로 verificationMetric을 지수, 섹터 RS, 신용 지표 중 하나로 설정하세요.
 
 \`\`\`json
 [
@@ -851,12 +853,45 @@ export function extractThesesFromText(text: string): ExtractionResult {
 }
 
 /**
+ * thesis의 targetCondition/invalidationCondition이 정량 파서로 파싱 가능한지 검증.
+ * 파싱 불가능한 조건은 LLM 주관 판정으로 전락하므로 경고 로그를 남긴다.
+ * 순수 함수 — thesis를 변경하지 않고 통계만 로깅.
+ */
+export function logConditionParsability(theses: Thesis[]): void {
+  if (theses.length === 0) return;
+
+  let unparseable = 0;
+  for (const t of theses) {
+    const hasTarget = t.targetCondition != null && t.targetCondition !== "";
+    const targetParsed = hasTarget ? parseQuantitativeCondition(t.targetCondition) : null;
+
+    // targetCondition이 파싱 불가인 경우만 경고 (invalidation은 optional)
+    if (hasTarget && targetParsed == null) {
+      unparseable++;
+      logger.warn(
+        "Round3",
+        `[UNPARSEABLE] ${t.agentPersona} thesis의 targetCondition 정량 파싱 불가: "${t.targetCondition}" — LLM 판정으로 전락`,
+      );
+    }
+  }
+
+  const parseableRate = ((theses.length - unparseable) / theses.length * 100).toFixed(0);
+  logger.info(
+    "Round3",
+    `정량 조건 파싱률: ${parseableRate}% (${theses.length - unparseable}/${theses.length})`,
+  );
+}
+
+/**
  * 공통 thesis 필터 파이프라인.
  * extractThesesFromText / extractDebateOutput 양쪽에서 동일한 필터를 적용한다.
  * #845: filterTechPriceTargets, filterShortTermOutlookCap 제거 (short_term_outlook 완전 제거).
+ * #794: 조건 파싱 가능 여부 검증 로깅 추가.
  */
 function applyThesisFilters(theses: Thesis[]): Thesis[] {
-  return filterNumericPredictions(theses);
+  const filtered = filterNumericPredictions(theses);
+  logConditionParsability(filtered);
+  return filtered;
 }
 
 /**

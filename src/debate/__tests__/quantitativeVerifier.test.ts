@@ -35,6 +35,8 @@ import {
   parseQuantitativeCondition,
   evaluateQuantitativeCondition,
   tryQuantitativeVerification,
+  SUPPORTED_METRICS,
+  formatSupportedMetricsForPrompt,
 } from "../quantitativeVerifier.js";
 import type { MarketSnapshot } from "../marketDataLoader.js";
 
@@ -378,5 +380,157 @@ describe("tryQuantitativeVerification", () => {
     const result = tryQuantitativeVerification(thesis, snapshot);
 
     expect(result?.verdict).toBe("CONFIRMED");
+  });
+});
+
+// ─── 신용 지표 (Credit Indicators) ──────────────────────────────────────────
+
+describe("신용 지표 매핑", () => {
+  function makeCreditSnapshot(
+    indicators: Array<{ seriesId: string; value: number }>,
+  ): MarketSnapshot {
+    return {
+      ...makeSnapshot(),
+      creditIndicators: indicators.map((ci) => ({
+        seriesId: ci.seriesId,
+        value: ci.value,
+        zScore: null,
+        change1w: null,
+        change1m: null,
+      })),
+    };
+  }
+
+  it("'HY OAS > 5.0' — HY 스프레드 조건을 평가한다", () => {
+    const parsed = parseQuantitativeCondition("HY OAS > 5.0");
+    const snapshot = makeCreditSnapshot([{ seriesId: "BAMLH0A0HYM2", value: 6.2 }]);
+
+    const result = evaluateQuantitativeCondition(parsed!, snapshot);
+
+    expect(result).toEqual({ result: true, actualValue: 6.2 });
+  });
+
+  it("'HY spread < 4.0' — 별칭으로도 평가한다", () => {
+    const parsed = parseQuantitativeCondition("HY spread < 4.0");
+    const snapshot = makeCreditSnapshot([{ seriesId: "BAMLH0A0HYM2", value: 3.5 }]);
+
+    const result = evaluateQuantitativeCondition(parsed!, snapshot);
+
+    expect(result).toEqual({ result: true, actualValue: 3.5 });
+  });
+
+  it("'Financial Stress > 2.0' — 금융 스트레스 지수를 평가한다", () => {
+    const parsed = parseQuantitativeCondition("Financial Stress > 2.0");
+    const snapshot = makeCreditSnapshot([{ seriesId: "STLFSI4", value: 2.5 }]);
+
+    const result = evaluateQuantitativeCondition(parsed!, snapshot);
+
+    expect(result).toEqual({ result: true, actualValue: 2.5 });
+  });
+
+  it("'CCC spread > 10' — CCC 스프레드 조건을 평가한다", () => {
+    const parsed = parseQuantitativeCondition("CCC spread > 10");
+    const snapshot = makeCreditSnapshot([{ seriesId: "BAMLH0A3HYC", value: 12.3 }]);
+
+    const result = evaluateQuantitativeCondition(parsed!, snapshot);
+
+    expect(result).toEqual({ result: true, actualValue: 12.3 });
+  });
+
+  it("'BBB spread > 2.5' — BBB 스프레드 조건을 평가한다", () => {
+    const parsed = parseQuantitativeCondition("BBB spread > 2.5");
+    const snapshot = makeCreditSnapshot([{ seriesId: "BAMLC0A4CBBB", value: 3.1 }]);
+
+    const result = evaluateQuantitativeCondition(parsed!, snapshot);
+
+    expect(result).toEqual({ result: true, actualValue: 3.1 });
+  });
+
+  it("신용 지표가 스냅샷에 없으면 null을 반환한다", () => {
+    const parsed = parseQuantitativeCondition("HY OAS > 5.0");
+    const snapshot = makeCreditSnapshot([]); // 빈 배열
+
+    const result = evaluateQuantitativeCondition(parsed!, snapshot);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("신용 지표 — tryQuantitativeVerification", () => {
+  function makeCreditThesis(overrides: {
+    targetCondition: string | null;
+    invalidationCondition?: string | null;
+  }) {
+    return {
+      agentPersona: "geopolitics",
+      thesis: "지정학 리스크 확대로 신용 스프레드 악화",
+      timeframeDays: 60,
+      verificationMetric: "HY OAS",
+      confidence: "medium",
+      consensusLevel: "2/4",
+      targetCondition: overrides.targetCondition,
+      invalidationCondition: overrides.invalidationCondition,
+    } as unknown as Parameters<typeof tryQuantitativeVerification>[0];
+  }
+
+  it("HY OAS targetCondition 충족 → CONFIRMED", () => {
+    const thesis = makeCreditThesis({ targetCondition: "HY OAS > 5.0" });
+    const snapshot: MarketSnapshot = {
+      ...makeSnapshot(),
+      creditIndicators: [{ seriesId: "BAMLH0A0HYM2", value: 6.0, zScore: null, change1w: null, change1m: null }],
+    };
+
+    const result = tryQuantitativeVerification(thesis, snapshot);
+
+    expect(result?.verdict).toBe("CONFIRMED");
+    expect(result?.method).toBe("quantitative");
+  });
+
+  it("Financial Stress invalidationCondition 충족 → INVALIDATED", () => {
+    const thesis = makeCreditThesis({
+      targetCondition: "HY OAS > 5.0",
+      invalidationCondition: "Financial Stress < 0",
+    });
+    const snapshot: MarketSnapshot = {
+      ...makeSnapshot(),
+      creditIndicators: [
+        { seriesId: "BAMLH0A0HYM2", value: 3.0, zScore: null, change1w: null, change1m: null },
+        { seriesId: "STLFSI4", value: -0.5, zScore: null, change1w: null, change1m: null },
+      ],
+    };
+
+    const result = tryQuantitativeVerification(thesis, snapshot);
+
+    expect(result?.verdict).toBe("INVALIDATED");
+  });
+});
+
+// ─── SUPPORTED_METRICS & formatSupportedMetricsForPrompt ────────────────────
+
+describe("SUPPORTED_METRICS", () => {
+  it("지수 목록이 비어 있지 않다", () => {
+    expect(SUPPORTED_METRICS.indices.length).toBeGreaterThan(0);
+  });
+
+  it("섹터 RS 목록이 11개 섹터를 포함한다", () => {
+    expect(SUPPORTED_METRICS.sectorRS.length).toBe(11);
+  });
+
+  it("신용 지표가 4종 포함되어 있다", () => {
+    expect(SUPPORTED_METRICS.creditIndicators.length).toBe(4);
+  });
+});
+
+describe("formatSupportedMetricsForPrompt", () => {
+  it("프롬프트 텍스트에 지수, 섹터 RS, 신용 지표가 모두 포함된다", () => {
+    const text = formatSupportedMetricsForPrompt();
+
+    expect(text).toContain("S&P 500");
+    expect(text).toContain("VIX");
+    expect(text).toContain("Technology RS");
+    expect(text).toContain("Fear & Greed");
+    expect(text).toContain("HY OAS");
+    expect(text).toContain("Financial Stress");
+    expect(text).toContain("자동 검증 가능한 지표");
   });
 });

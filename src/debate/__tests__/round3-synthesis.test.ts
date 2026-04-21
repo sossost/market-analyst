@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { formatFundamentalContext, buildSynthesisPrompt, formatRegimeContext } from "../round3-synthesis.js";
+import { describe, it, expect, vi } from "vitest";
+import { formatFundamentalContext, buildSynthesisPrompt, formatRegimeContext, logConditionParsability } from "../round3-synthesis.js";
 import { formatExistingThesesForSynthesis, DEDUP_LOOKBACK_DAYS } from "../thesisStore.js";
 import type { MarketRegimeRow } from "../regimeStore.js";
 import type { FundamentalScore } from "@/types/fundamental";
@@ -496,5 +496,73 @@ describe("buildSynthesisPrompt — existingThesesContext", () => {
     expect(existingIdx).toBeGreaterThan(-1);
     expect(analysisIdx).toBeGreaterThan(-1);
     expect(existingIdx).toBeLessThan(analysisIdx);
+  });
+});
+
+// ─── logConditionParsability ────────────────────────────────────────────────
+
+describe("logConditionParsability", () => {
+  it("빈 배열이면 아무 로그도 남기지 않는다 (에러 없이 완료)", () => {
+    expect(() => logConditionParsability([])).not.toThrow();
+  });
+
+  it("파싱 가능한 조건이면 경고 없이 처리된다", () => {
+    const theses = [
+      {
+        agentPersona: "tech" as const,
+        thesis: "기술 섹터 강세",
+        targetCondition: "Technology RS > 60",
+        invalidationCondition: "Technology RS < 40",
+      },
+    ] as any;
+
+    expect(() => logConditionParsability(theses)).not.toThrow();
+  });
+
+  it("파싱 불가능한 조건이 있어도 에러 없이 처리된다 (경고 로그만)", () => {
+    const theses = [
+      {
+        agentPersona: "geopolitics" as const,
+        thesis: "지정학 리스크",
+        targetCondition: "중동 긴장 고조로 에너지 가격 상승",
+        invalidationCondition: null,
+      },
+    ] as any;
+
+    expect(() => logConditionParsability(theses)).not.toThrow();
+  });
+});
+
+// ─── buildSynthesisPrompt — 지원 지표 목록 주입 ─────────────────────────────
+
+describe("buildSynthesisPrompt — 지원 지표 주입", () => {
+  it("프롬프트에 시스템이 자동 검증 가능한 지표 전체 목록이 포함된다", () => {
+    const round1: RoundOutput[] = [];
+    const round2: RoundOutput[] = [];
+    const prompt = buildSynthesisPrompt(round1, round2, "테스트 질문");
+
+    expect(prompt).toContain("시스템이 자동 검증 가능한 지표 전체 목록");
+    expect(prompt).toContain("HY OAS");
+    expect(prompt).toContain("Financial Stress");
+    expect(prompt).toContain("CCC spread");
+    expect(prompt).toContain("BBB spread");
+  });
+
+  it("프롬프트에 신용 지표 예시가 포함된다", () => {
+    const round1: RoundOutput[] = [];
+    const round2: RoundOutput[] = [];
+    const prompt = buildSynthesisPrompt(round1, round2, "테스트 질문");
+
+    expect(prompt).toContain("HY OAS > 5.0");
+    expect(prompt).toContain("Financial Stress > 2.0");
+  });
+
+  it("프롬프트에 geopolitics 에이전트 가이드가 포함된다", () => {
+    const round1: RoundOutput[] = [];
+    const round2: RoundOutput[] = [];
+    const prompt = buildSynthesisPrompt(round1, round2, "테스트 질문");
+
+    expect(prompt).toContain("geopolitics 에이전트 주의");
+    expect(prompt).toContain("정량 프록시");
   });
 });
