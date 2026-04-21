@@ -329,7 +329,7 @@ export async function findPhase2SinceDates(
        WHERE phase <> 2
        GROUP BY symbol
      )
-     SELECT r.symbol, MIN(r.date) AS phase2_since
+     SELECT r.symbol, MIN(r.date)::text AS phase2_since
      FROM ranked r
      LEFT JOIN first_break fb ON r.symbol = fb.symbol
      WHERE r.phase = 2

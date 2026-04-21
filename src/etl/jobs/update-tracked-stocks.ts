@@ -379,6 +379,7 @@ export async function backfillPhase2Since(
     const since = phase2SinceMap.get(item.symbol);
     if (since != null) {
       await retryDatabaseOperation(() => updatePhase2Since(item.id, since));
+      item.phase2_since = since;
       logger.info(TAG, `${item.symbol}: phase2_since 백필 → ${since}`);
       filledCount++;
     }
