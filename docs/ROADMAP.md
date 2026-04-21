@@ -123,6 +123,7 @@
 | Consensus 검증 | Round 1 에이전트 출력 키워드 매칭으로 Moderator consensus 교차 검증 + 2단계 이상 불일치 시 `consensus_unverified` 플래그 (#713) |
 | 현상유지 필터 | 생성 시점에 targetCondition이 이미 충족된 thesis를 `is_status_quo`로 태깅 → 적중률 분리 집계 + 학습 루프에서 제외하여 측정 왜곡 방지 (#733) |
 | Cross-thesis 모순 탐지 | 같은 target entity에 방향성 상반 thesis 쌍 감지 → lower consensus 쪽에 `contradiction_detected` 플래그 부착하여 학습 루프 모순 신호 유입 방지 (#752) |
+| 정량 조건 강제 + 신용 지표 | `SUPPORTED_METRICS`(지수·섹터 RS·신용 지표 4종) 전체 목록을 Round 3 프롬프트에 주입 → LLM이 파싱 가능한 조건 생성 유도. 신용 지표(HY OAS·CCC·BBB 스프레드·금융 스트레스) 정량 검증 지원 추가. 추출 후 파싱률 모니터링 (#794) |
 
 ### Layer 6: 펀더멘탈 검증 (F7) — Done
 기술적 신호를 펀더멘탈로 교차 검증.
