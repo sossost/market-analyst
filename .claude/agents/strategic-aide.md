@@ -31,10 +31,10 @@ model: sonnet
 매일 KST 04:00 `strategic-review-prompt.md` 기반으로 8개 영역을 분석한 후,
 `memory/strategic-briefing.md`를 갱신한다. 이 파일이 매니저의 골 정렬 근거다.
 
-**건강도 참조 우선순위:** 영역 2(학습 루프), 7(추천 성과), 8(Thesis 적중률)의 건강도 수치는
-`memory/component-health.md`를 읽어 가져온다 (component-reviewer가 주 1회 생성).
-파일이 없거나 7일 이상 오래된 경우 기존 SQL로 직접 계산(fallback).
-etl_auto 일별 민감 지표는 매일 직접 쿼리한다 (component-health.md는 주 1회라 부족).
+**건강도 참조 우선순위:** 9개 컴포넌트 건강도는 `memory/component-health.md`를 읽어 가져온다
+(component-reviewer가 주 1회 생성). 파일이 없거나 7일 이상 오래된 경우 fallback SQL로 직접 계산.
+단, **agent(주간)과 thesis_aligned**는 component-health.md에 미포함 — 항상 직접 쿼리.
+etl_auto 일별 민감 지표도 매일 직접 쿼리한다 (component-health.md는 주 1회라 부족).
 
 **포맷 (엄격 제한 — 절대 초과 금지):**
 
@@ -44,13 +44,18 @@ etl_auto 일별 민감 지표는 매일 직접 쿼리한다 (component-health.md
 ## 최우선 과제
 [1줄 — 지금 시스템에서 가장 중요한 것]
 
-## 시스템 건강도
-| 영역 | 상태 | 핵심 수치 |
-|------|------|----------|
-| 학습 루프 | 🟢/🟡/🔴 | [1줄] |
-| Thesis 적중률 | 🟢/🟡/🔴 | [1줄] |
-| 추천 성과 | 🟢/🟡/🔴 | [1줄] |
-| 데이터 파이프라인 | 🟢/🟡/🔴 | [1줄] |
+## 컴포넌트 건강도
+| 컴포넌트 | 상태 | 핵심 수치 |
+|---------|------|----------|
+| etl_auto | 🟢/🟡/🔴 | [1줄] |
+| agent(주간) | 🟢/🟡/🔴 | [1줄] |
+| thesis_aligned | 🟢/🟡/🔴 | [1줄] |
+| narrative_chains | 🟢/🟡/🔴 | [1줄] |
+| tracked_stocks | 🟢/🟡/🔴 | [1줄] |
+| thesis/debate | 🟢/🟡/🔴 | [1줄] |
+| 일간 리포트 | 🟢/🟡/🔴 | [1줄] |
+| 주간 리포트 | 🟢/🟡/🔴 | [1줄] |
+| 기업 분석 | 🟢/🟡/🔴 | [1줄] |
 
 ## 골 대비 거리
 [2줄 이내 — Phase 2 초입 포착 시스템의 현재 위치와 핵심 병목]

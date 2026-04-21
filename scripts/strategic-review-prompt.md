@@ -179,11 +179,32 @@ GROUP BY agent_persona;
 
 ## component-health.md 참조 규칙
 
-건강도 지표(영역 2, 7, 8)는 `memory/component-health.md`를 우선 참조한다.
+건강도 지표(9개 컴포넌트 전체)는 `memory/component-health.md`를 우선 참조한다.
+단, agent(주간)과 thesis_aligned는 component-health.md에 미포함 — 항상 직접 쿼리.
+etl_auto 일별 민감 지표도 매일 직접 쿼리 병행 (component-health.md는 주 1회라 부족).
 
 1. 파일이 없으면: fallback으로 기존 SQL을 직접 실행하고, briefing에 "component-reviewer 미실행" 기록
 2. 파일의 갱신 시각(첫 줄 타임스탬프)이 7일 이상 오래되었으면: fallback으로 기존 SQL을 직접 실행하고, briefing에 "component-reviewer 미갱신 (N일 경과)" 기록
 3. 파일이 정상이면: component-health.md에서 건강도 수치를 읽고, 전략적 패턴 분석만 직접 쿼리
+
+**상시 직접 쿼리 (component-health.md 미포함 컴포넌트):**
+```sql
+-- agent(주간): 최근 7일 featured 격상 건수
+SELECT COUNT(*) AS featured_count
+FROM tracked_stocks
+WHERE source = 'agent' AND tier = 'featured'
+AND entry_date::date > (NOW() - INTERVAL '7 days')::date::text;
+
+-- thesis_aligned: 최근 7일 자동 등록 건수
+SELECT COUNT(*) AS aligned_count
+FROM tracked_stocks
+WHERE source = 'thesis_aligned'
+AND entry_date::date > (NOW() - INTERVAL '7 days')::date::text;
+```
+
+**판정 기준:**
+- agent(주간): featured_count 기반. 0건이어도 주간 에이전트 미실행 주에는 정상 → 🟢. 2주 연속 0건이면 🟡.
+- thesis_aligned: aligned_count 기반. Phase 2 진입 수혜주가 없으면 0건도 정상 → 🟢. narrative_chains ACTIVE가 있는데 aligned_count가 4주 연속 0건이면 🟡.
 
 **역할 구분:** component-health.md = 건강도 상태 판정(OK/ALERT/FAILED). 직접 SQL = 전략적 인사이트(승률, 섹터별 실패 패턴, 에이전트별 적중률 breakdown).
 
@@ -219,11 +240,16 @@ GROUP BY agent_persona;
 `memory/strategic-briefing.md` 파일을 아래 포맷으로 **덮어쓰기**한다.
 이 파일은 매니저가 세션 시작 시 읽는 골 정렬 근거다. **가장 중요한 산출물.**
 
-**건강도 매핑 (코드 블록 안에 넣지 마라 — 작성 지시용):**
-- 학습 루프     ← component-health.md의 thesis/debate 행 + tracked_stocks 행
-- Thesis 적중률 ← component-health.md의 thesis/debate 행
-- 추천 성과     ← component-health.md의 tracked_stocks 행 + etl_auto 행 + 영역 7 성과 패턴 직접 분석 결과
-- 데이터 파이프라인 ← component-health.md의 일간 리포트 행 + 주간 리포트 행 + narrative_chains 행
+**컴포넌트별 매핑 (코드 블록 안에 넣지 마라 — 작성 지시용):**
+- etl_auto         ← component-health.md etl_auto 행 + 영역 7 etl_auto 일별 직접 쿼리
+- agent(주간)      ← 항상 직접 쿼리 (component-health.md 미포함)
+- thesis_aligned   ← 항상 직접 쿼리 (component-health.md 미포함)
+- narrative_chains ← component-health.md narrative_chains 행
+- tracked_stocks   ← component-health.md tracked_stocks 행 + 영역 7 성과 패턴 직접 쿼리
+- thesis/debate    ← component-health.md thesis/debate 행 + 영역 8 적중률 직접 쿼리
+- 일간 리포트      ← component-health.md 일간 리포트 행
+- 주간 리포트      ← component-health.md 주간 리포트 행
+- 기업 분석        ← component-health.md 기업 분석 행
 
 ```markdown
 # 전략 브리핑 (YYYY-MM-DD 갱신)
@@ -231,13 +257,18 @@ GROUP BY agent_persona;
 ## 최우선 과제
 [1줄 — 지금 시스템에서 가장 중요한 것]
 
-## 시스템 건강도
-| 영역 | 상태 | 핵심 수치 |
-|------|------|----------|
-| 학습 루프 | 🟢/🟡/🔴 | [1줄] |
-| Thesis 적중률 | 🟢/🟡/🔴 | [1줄] |
-| 추천 성과 | 🟢/🟡/🔴 | [1줄] |
-| 데이터 파이프라인 | 🟢/🟡/🔴 | [1줄] |
+## 컴포넌트 건강도
+| 컴포넌트 | 상태 | 핵심 수치 |
+|---------|------|----------|
+| etl_auto | 🟢/🟡/🔴 | [1줄] |
+| agent(주간) | 🟢/🟡/🔴 | [1줄] |
+| thesis_aligned | 🟢/🟡/🔴 | [1줄] |
+| narrative_chains | 🟢/🟡/🔴 | [1줄] |
+| tracked_stocks | 🟢/🟡/🔴 | [1줄] |
+| thesis/debate | 🟢/🟡/🔴 | [1줄] |
+| 일간 리포트 | 🟢/🟡/🔴 | [1줄] |
+| 주간 리포트 | 🟢/🟡/🔴 | [1줄] |
+| 기업 분석 | 🟢/🟡/🔴 | [1줄] |
 
 ## 골 대비 거리
 [2줄 이내 — Phase 2 초입 포착 시스템의 현재 위치와 핵심 병목]
