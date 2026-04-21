@@ -205,12 +205,10 @@ async function main() {
           `${candidate.symbol}: 등록 완료 (tier=${tier}, chain=${chain.bottleneck})`,
         );
 
-        // 기업 분석 리포트 — featured tier 종목만 생성 (#847)
-        if (tier === "featured") {
-          corporateAnalystPromises.push(
-            fireCorporateAnalyst(candidate.symbol, targetDate, pool, TAG),
-          );
-        }
+        // 기업 분석 리포트 — thesis_aligned 신규 등록 전체 생성 (#806)
+        corporateAnalystPromises.push(
+          fireCorporateAnalyst(candidate.symbol, targetDate, pool, TAG),
+        );
       }
     }
   }
