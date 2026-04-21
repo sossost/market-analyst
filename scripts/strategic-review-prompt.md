@@ -36,7 +36,16 @@ Phase 2 초입 포착 도구들이 정확하게 작동하는가?
 
 분석 방법: `memory/component-health.md`를 읽어라.
 - thesis/debate 행의 hit_rate(판정 컬럼)와 tracked_stocks 행의 avg detection_lag을 확인한다.
-- 파일이 없거나 갱신 시각(첫 줄 타임스탬프)이 7일 이상 오래된 경우 → fallback: 기존 SQL을 직접 실행한다(아래 "component-health.md 참조 규칙" 섹션 참조).
+- 파일이 없거나 갱신 시각(첫 줄 타임스탬프)이 7일 이상 오래된 경우 → fallback: 아래 SQL을 직접 실행한다.
+
+**Fallback SQL (component-health.md 미사용 시에만):**
+```sql
+SELECT id, principle, category, hit_count, miss_count, hit_rate, is_active, first_confirmed, last_verified
+FROM agent_learnings WHERE is_active = true ORDER BY last_verified DESC LIMIT 30;
+
+SELECT id, thesis, status, confidence, consensus_level, verification_date, verification_result, created_at
+FROM theses WHERE status = 'ACTIVE' AND created_at < NOW() - INTERVAL '30 days';
+```
 
 질문:
 - 근거 불충분(hit_count 2회 미만) 학습 항목이 있는가?
