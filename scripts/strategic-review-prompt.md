@@ -193,13 +193,13 @@ etl_auto 일별 민감 지표도 매일 직접 쿼리 병행 (component-health.m
 SELECT COUNT(*) AS featured_count
 FROM tracked_stocks
 WHERE source = 'agent' AND tier = 'featured'
-AND entry_date::date > (NOW() - INTERVAL '7 days')::date::text;
+AND entry_date > (NOW() - INTERVAL '7 days')::date::text;
 
 -- thesis_aligned: 최근 7일 자동 등록 건수
 SELECT COUNT(*) AS aligned_count
 FROM tracked_stocks
 WHERE source = 'thesis_aligned'
-AND entry_date::date > (NOW() - INTERVAL '7 days')::date::text;
+AND entry_date > (NOW() - INTERVAL '7 days')::date::text;
 ```
 
 **판정 기준:**
