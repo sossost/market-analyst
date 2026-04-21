@@ -66,6 +66,74 @@ etl_auto 일별 민감 지표도 매일 직접 쿼리한다 (component-health.md
 - #ZZZ: [1줄]
 ```
 
+#### 골 재검토 트리거 (브리핑 갱신 시 매일 평가)
+
+브리핑 갱신 시 아래 3개 트리거를 추가로 평가한다. 발화 시 "최우선 과제" 끝에 인라인 병기.
+
+**트리거 1: QA 점수 연속 하락**
+
+```sql
+SELECT qa_date, score FROM weekly_qa_reports ORDER BY qa_date DESC LIMIT 4;
+```
+
+- 최신 3건이 연속 하락(score[0] < score[1] < score[2])이면 발화
+- 3건 미만이면 발화 금지
+- 메시지: "⚠ QA 점수 3주 연속 하락(N→N→N) — 세부 골 재검토 권고"
+
+**트리거 2: detection_lag 중앙값 연속 악화**
+
+```sql
+SELECT 
+  DATE_TRUNC('week', entry_date::date) as week,
+  PERCENTILE_CONT(0.5) WITHIN GROUP (
+    ORDER BY (entry_date::date - phase2_since::date)
+  ) as median_lag_days
+FROM tracked_stocks
+WHERE phase2_since IS NOT NULL
+  AND entry_date IS NOT NULL
+  AND entry_date::date >= phase2_since::date
+  AND entry_date::date >= CURRENT_DATE - INTERVAL '28 days'
+GROUP BY 1
+ORDER BY 1 DESC
+LIMIT 3;
+```
+
+- 최신 2주 결과가 연속 증가(lag[0] > lag[1])면 발화
+- 2건 미만이면 발화 금지
+- 메시지: "⚠ detection_lag 2주 연속 악화(Nd→Nd) — etl_auto 세부 골 재검토 권고"
+
+**트리거 3: structural_narrative 적중률 하락**
+
+```sql
+WITH ranked AS (
+  SELECT verification_result, ROW_NUMBER() OVER (ORDER BY verification_date DESC) as rn
+  FROM theses
+  WHERE category = 'structural_narrative'
+    AND verification_result IS NOT NULL
+    AND status IN ('CONFIRMED', 'INVALIDATED')
+)
+SELECT 
+  'recent' as batch,
+  COUNT(CASE WHEN verification_result = 'CONFIRMED' THEN 1 END)::float / COUNT(*) as hit_rate,
+  COUNT(*) as sample_size
+FROM ranked WHERE rn <= 20
+UNION ALL
+SELECT 
+  'previous' as batch,
+  COUNT(CASE WHEN verification_result = 'CONFIRMED' THEN 1 END)::float / COUNT(*) as hit_rate,
+  COUNT(*) as sample_size
+FROM ranked WHERE rn > 20 AND rn <= 40;
+```
+
+- 최근 20건 hit_rate < 직전 20건 hit_rate이고, 양쪽 sample_size >= 5이면 발화
+- 샘플 부족 시 발화 금지 (무시, 메시지도 불필요)
+- 메시지: "⚠ structural_narrative 적중률 하락(N%→N%) — thesis/debate 세부 골 재검토 권고"
+
+**발화 표시 규칙:**
+- 트리거 0개 발화: 최우선 과제만 표시 (변경 없음)
+- 트리거 1개 발화: "최우선 과제 내용 / ⚠ [트리거 메시지]"
+- 트리거 복수 발화: "최우선 과제 내용 / ⚠ 복수 재검토 트리거: [트리거1 요약] + [트리거2 요약]"
+
 **제약:** 새 섹션 추가 금지. 각 항목 길이 제한 엄수. 이 포맷이 상황판이다.
 
 ### 2. GitHub 이슈 생성 (부수)
