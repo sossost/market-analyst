@@ -302,7 +302,7 @@ export async function buildBreakoutSignals() {
         SELECT
           td.symbol,
           ${latestDate} AS date,
-          FALSE AS is_confirmed_breakout,
+          TRUE AS is_confirmed_breakout,
           (td.close / h.high_20d - 1) * 100 AS breakout_percent,
           (td.volume / td.vol_ma30) AS volume_ratio
         FROM today_data td
@@ -403,7 +403,7 @@ export async function buildBreakoutSignals() {
         ma20_distance_percent
       FROM merged
       WHERE
-        breakout_percent IS NOT NULL
+        is_confirmed_breakout IS TRUE
         OR is_perfect_retest IS TRUE;
     `);
 
