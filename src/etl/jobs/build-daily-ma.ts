@@ -149,6 +149,7 @@ async function processBatch(symbols: string[], targetDate: string) {
                   volMa30: maData.volMa30,
                   maCompressionPct: maData.maCompressionPct,
                   disparityMa200Pct: maData.disparityMa200Pct,
+                  // maCompressionAvg10d: processDate 끝 일괄 UPDATE에서 계산
                 },
               }),
           DEFAULT_RETRY_OPTIONS,
@@ -216,7 +217,7 @@ async function processDate(targetDate: string) {
   }
 
   // 10거래일 압축도 이동평균 일괄 계산 — 종목별 추가 쿼리 없이 단일 UPDATE로 처리
-  await retryDatabaseOperation(
+  const compressionResult = await retryDatabaseOperation(
     () =>
       db.execute(sql`
         WITH ranked AS (
@@ -240,7 +241,11 @@ async function processDate(targetDate: string) {
       `),
     DEFAULT_RETRY_OPTIONS,
   );
-  logger.info(TAG, `Updated ma_compression_avg_10d for ${targetDate}`);
+  const compressionUpdated = (compressionResult as { rowCount?: number }).rowCount ?? 0;
+  logger.info(TAG, `Updated ma_compression_avg_10d for ${targetDate}: ${compressionUpdated} symbols`);
+  if (compressionUpdated === 0) {
+    logger.warn(TAG, `ma_compression_avg_10d update wrote 0 rows for ${targetDate}`);
+  }
 
   const totalTime = Date.now() - startTime;
   logger.info(TAG, `Completed ${targetDate}: ${totalProcessed} ok, ${totalErrors} failed (${Math.round(totalTime / 1000)}s)`);
