@@ -7,8 +7,10 @@ import {
   renderUnusualStocksSection,
   renderRisingRSSection,
   renderInsightSection,
+  renderNewsSection,
   buildDailyHtml,
 } from "../daily-html-builder.js";
+import type { NewsItemForReport } from "../../debate/newsLoader.js";
 import type {
   DailyIndexReturn,
   FearGreedData,
@@ -188,6 +190,18 @@ function createMockInsight(
   };
 }
 
+function createMockNewsItem(
+  overrides?: Partial<NewsItemForReport>,
+): NewsItemForReport {
+  return {
+    title: "Fed Signals Rate Cut in 2026",
+    source: "reuters.com",
+    url: "https://reuters.com/article/fed-rate",
+    category: "POLICY",
+    ...overrides,
+  };
+}
+
 function createMockDailyReportData(
   overrides?: Partial<DailyReportData>,
 ): DailyReportData {
@@ -200,6 +214,7 @@ function createMockDailyReportData(
     unusualStocks: [createMockUnusualStock()],
     risingRS: [createMockRisingRSStock()],
     marketPosition: null,
+    newsItems: [],
     ...overrides,
   };
 }
@@ -1145,6 +1160,120 @@ describe("buildDailyHtml", () => {
 
     expect(indexSectionContent).not.toContain("시장 환경");
     expect(breadthSectionContent).toContain("시장 환경");
+  });
+});
+
+// ─── renderNewsSection ────────────────────────────────────────────────────────
+
+describe("renderNewsSection", () => {
+  it("빈 배열이면 빈 문자열을 반환한다 (섹션 미출력)", () => {
+    const html = renderNewsSection([]);
+    expect(html).toBe("");
+  });
+
+  it("뉴스 항목이 있으면 참고 뉴스 섹션을 렌더링한다", () => {
+    const items = [createMockNewsItem()];
+    const html = renderNewsSection(items);
+    expect(html).toContain("참고 뉴스");
+    expect(html).toContain("news-list");
+  });
+
+  it("각 항목에 제목 링크와 출처·카테고리 메타를 렌더링한다", () => {
+    const item = createMockNewsItem({
+      title: "Fed Signals Rate Cut",
+      source: "reuters.com",
+      url: "https://reuters.com/article",
+      category: "POLICY",
+    });
+    const html = renderNewsSection([item]);
+    expect(html).toContain("Fed Signals Rate Cut");
+    expect(html).toContain('href="https://reuters.com/article"');
+    expect(html).toContain("reuters.com");
+    expect(html).toContain("POLICY");
+    expect(html).toContain('news-meta');
+  });
+
+  it("링크에 target=\"_blank\" rel=\"noopener noreferrer\"를 적용한다", () => {
+    const html = renderNewsSection([createMockNewsItem()]);
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+  });
+
+  it("source가 null이면 '—'를 표시한다", () => {
+    const item = createMockNewsItem({ source: null });
+    const html = renderNewsSection([item]);
+    expect(html).toContain("—");
+  });
+
+  it("복수 항목을 모두 렌더링한다", () => {
+    const items = [
+      createMockNewsItem({ title: "뉴스1", category: "POLICY" }),
+      createMockNewsItem({ title: "뉴스2", category: "TECHNOLOGY" }),
+      createMockNewsItem({ title: "뉴스3", category: "MARKET" }),
+    ];
+    const html = renderNewsSection(items);
+    expect(html).toContain("뉴스1");
+    expect(html).toContain("뉴스2");
+    expect(html).toContain("뉴스3");
+    expect(html).toContain("TECHNOLOGY");
+    expect(html).toContain("MARKET");
+  });
+
+  it("XSS 공격 문자를 제목에서 이스케이프한다", () => {
+    const item = createMockNewsItem({ title: '<script>alert("xss")</script>' });
+    const html = renderNewsSection([item]);
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("XSS 공격 문자를 url에서 이스케이프한다", () => {
+    const item = createMockNewsItem({ url: 'https://example.com/&test=<div>' });
+    const html = renderNewsSection([item]);
+    expect(html).not.toContain("<div>");
+    expect(html).toContain("&lt;div&gt;");
+  });
+
+  it("XSS 공격 문자를 source에서 이스케이프한다", () => {
+    const item = createMockNewsItem({ source: '<b>evil</b>' });
+    const html = renderNewsSection([item]);
+    expect(html).not.toContain("<b>");
+    expect(html).toContain("&lt;b&gt;");
+  });
+
+  it("content-block 래퍼를 포함한다", () => {
+    const html = renderNewsSection([createMockNewsItem()]);
+    expect(html).toContain("content-block");
+  });
+});
+
+// ─── buildDailyHtml — 뉴스 섹션 연결 검증 ────────────────────────────────────
+
+describe("buildDailyHtml — 뉴스 섹션", () => {
+  it("newsItems가 비어 있으면 참고 뉴스 섹션을 렌더링하지 않는다", () => {
+    const data = createMockDailyReportData({ newsItems: [] });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    expect(html).not.toContain("참고 뉴스");
+  });
+
+  it("newsItems가 있으면 참고 뉴스 섹션을 리포트에 포함한다", () => {
+    const data = createMockDailyReportData({
+      newsItems: [createMockNewsItem({ title: "AI Capex Surge" })],
+    });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    expect(html).toContain("참고 뉴스");
+    expect(html).toContain("AI Capex Surge");
+  });
+
+  it("뉴스 섹션은 기존 콘텐츠(RS 상승 초기 종목) 뒤 footer 앞에 위치한다", () => {
+    const data = createMockDailyReportData({
+      newsItems: [createMockNewsItem({ title: "TestNews" })],
+    });
+    const html = buildDailyHtml(data, createMockInsight(), "2026-04-04");
+    const newsIdx = html.indexOf("참고 뉴스");
+    // <footer 태그 위치로 비교 (CSS의 .report-footer보다 확실)
+    const footerTagIdx = html.indexOf("<footer ");
+    expect(newsIdx).toBeGreaterThan(0);
+    expect(newsIdx).toBeLessThan(footerTagIdx);
   });
 });
 

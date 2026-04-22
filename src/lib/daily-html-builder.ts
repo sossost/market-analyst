@@ -13,6 +13,7 @@
 
 import { Marked } from "marked";
 import type { DebateSummary } from "../debate/insightExtractor.js";
+import type { NewsItemForReport } from "../debate/newsLoader.js";
 import type {
   DailyIndexReturn,
   FearGreedData,
@@ -631,6 +632,12 @@ const DAILY_REPORT_CSS = `
     color: var(--text-muted);
     font-size: 0.9rem;
   }
+
+  /* News List */
+  .news-list { list-style: none; padding: 0; }
+  .news-list li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+  .news-list li:last-child { border-bottom: none; }
+  .news-meta { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
 
   /* Footer */
   .report-footer {
@@ -1409,6 +1416,47 @@ export function renderRisingRSSection(
  * 배지 + 판단 근거 텍스트만. 정량 기준 없는 3분할 바는 제거.
  */
 
+// ─── 참고 뉴스 섹션 ─────────────────────────────────────────────────────────
+
+/**
+ * 일간 리포트 뉴스 섹션을 렌더링한다.
+ * items가 빈 배열이면 빈 문자열 반환 (섹션 미출력).
+ * 제목/출처에 escapeHtml() 적용. url은 target="_blank" rel="noopener noreferrer".
+ *
+ * @param items - fetchNewsForDailyReport 결과
+ * @returns HTML 문자열 (빈 배열이면 빈 문자열)
+ */
+export function renderNewsSection(items: NewsItemForReport[]): string {
+  if (items.length === 0) {
+    return "";
+  }
+
+  const listItems = items
+    .map((item) => {
+      const titleHtml = escapeHtml(item.title);
+      const sourceHtml = item.source != null ? escapeHtml(item.source) : "—";
+      const categoryHtml = escapeHtml(item.category);
+      const urlHtml = escapeHtml(item.url);
+
+      return `
+        <li>
+          <a href="${urlHtml}" target="_blank" rel="noopener noreferrer">${titleHtml}</a>
+          <span class="news-meta">${sourceHtml} · ${categoryHtml}</span>
+        </li>`;
+    })
+    .join("");
+
+  return `
+    <section>
+      <h2>참고 뉴스</h2>
+      <div class="content-block">
+        <ul class="news-list">
+          ${listItems}
+        </ul>
+      </div>
+    </section>`;
+}
+
 // ─── 토론 요약 섹션 ─────────────────────────────────────────────────────────
 
 export function renderDebateSummary(summary: DebateSummary | null, gistUrl?: string | null): string {
@@ -1474,6 +1522,8 @@ export function renderInsightSection(insight: DailyReportInsight): string {
  * @param data - 도구 반환값에서 직접 추출한 구조화 데이터
  * @param insight - LLM이 작성한 해석 텍스트
  * @param date - 리포트 기준일 (YYYY-MM-DD)
+ * @param debateSummary - 오늘의 토론 요약 (없으면 미출력)
+ * @param debateGistUrl - 토론 전문 링크 (없으면 미출력)
  */
 export function buildDailyHtml(
   data: DailyReportData,
@@ -1512,6 +1562,7 @@ export function buildDailyHtml(
   );
   const insightHtml = renderInsightSection(insight);
   const debateSummaryHtml = renderDebateSummary(debateSummary ?? null, debateGistUrl);
+  const newsSectionHtml = renderNewsSection(data.newsItems ?? []);
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -1580,6 +1631,8 @@ export function buildDailyHtml(
         <h2>RS 상승 초기 종목</h2>
         ${risingRSHtml}
       </section>` : ""}
+
+      ${newsSectionHtml}
     </div>
 
     <footer class="report-footer">
