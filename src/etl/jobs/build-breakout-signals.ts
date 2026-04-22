@@ -250,6 +250,206 @@ export async function buildBreakoutSignals() {
       });
 
     logger.info(TAG, "Breakout signals upserted into daily_breakout_signals");
+
+    // latestDate 기준 unconfirmed breakout + retest 추가 저장
+    // 기존 쿼리는 previousDate(전일) 확정 돌파만 계산하므로, 최신 거래일의 미확정 신호를 별도로 추가한다.
+    const unconfirmedResult = await db.execute(sql`
+      WITH today_data AS (
+        SELECT
+          dp.symbol,
+          dp.close,
+          dp.open,
+          dp.low,
+          dp.high,
+          dp.volume,
+          dm.ma20,
+          dm.ma50,
+          dm.ma200,
+          dm.vol_ma30
+        FROM daily_prices dp
+        JOIN daily_ma dm ON dp.symbol = dm.symbol AND dp.date = dm.date
+        WHERE dp.date = ${latestDate}
+          AND dp.close IS NOT NULL
+          AND dp.open IS NOT NULL
+          AND dp.low IS NOT NULL
+          AND dp.high IS NOT NULL
+          AND dp.volume IS NOT NULL
+          AND dp.volume > 0
+          AND dm.ma20 IS NOT NULL
+          AND dm.ma50 IS NOT NULL
+          AND dm.ma200 IS NOT NULL
+          AND dm.ma20 > 0
+          AND dm.ma50 > 0
+          AND dm.ma200 > 0
+      ),
+      trading_dates_20 AS (
+        SELECT DISTINCT date
+        FROM daily_prices
+        WHERE date < ${latestDate}
+        ORDER BY date DESC
+        LIMIT ${BREAKOUT_CONFIG.WINDOW_DAYS}
+      ),
+      high_20d_agg AS (
+        SELECT
+          dp.symbol,
+          MAX(dp.high) AS high_20d
+        FROM daily_prices dp
+        JOIN trading_dates_20 td ON dp.date = td.date
+        WHERE dp.high IS NOT NULL
+        GROUP BY dp.symbol
+      ),
+      candidate_breakout AS (
+        SELECT
+          td.symbol,
+          ${latestDate} AS date,
+          FALSE AS is_confirmed_breakout,
+          (td.close / h.high_20d - 1) * 100 AS breakout_percent,
+          (td.volume / td.vol_ma30) AS volume_ratio
+        FROM today_data td
+        JOIN high_20d_agg h ON h.symbol = td.symbol
+        WHERE
+          h.high_20d IS NOT NULL
+          AND td.vol_ma30 IS NOT NULL
+          AND td.vol_ma30 > 0
+          AND td.close >= h.high_20d
+          AND td.volume >= (td.vol_ma30 * ${BREAKOUT_CONFIG.VOLUME_MULTIPLIER})
+          AND (td.high - td.low) > 0
+          AND (td.high - td.close) < ((td.high - td.low) * ${BREAKOUT_CONFIG.UPPER_SHADOW_MAX_RATIO})
+      ),
+      retest_trading_dates AS (
+        SELECT date, ROW_NUMBER() OVER (ORDER BY date DESC) AS rn
+        FROM (
+          SELECT DISTINCT date
+          FROM daily_prices
+          WHERE date < ${latestDate}
+          ORDER BY date DESC
+          LIMIT ${BREAKOUT_CONFIG.RETEST_LOOKBACK_MAX_DAYS}
+        ) sub
+      ),
+      retest_range_dates AS (
+        SELECT date
+        FROM retest_trading_dates
+        WHERE rn >= ${BREAKOUT_CONFIG.RETEST_LOOKBACK_MIN_DAYS}
+          AND rn <= ${BREAKOUT_CONFIG.RETEST_LOOKBACK_MAX_DAYS}
+      ),
+      retest_window_dates AS (
+        SELECT
+          rd.date AS retest_date,
+          td.date AS window_date
+        FROM retest_range_dates rd
+        JOIN LATERAL (
+          SELECT DISTINCT date
+          FROM daily_prices
+          WHERE date <= rd.date
+          ORDER BY date DESC
+          LIMIT ${BREAKOUT_CONFIG.WINDOW_DAYS}
+        ) td ON TRUE
+      ),
+      retest_high_20d AS (
+        SELECT
+          rw.retest_date,
+          dp.symbol,
+          MAX(dp.high) AS high_20d_at_date
+        FROM retest_window_dates rw
+        JOIN daily_prices dp ON dp.date = rw.window_date
+        WHERE dp.high IS NOT NULL
+        GROUP BY rw.retest_date, dp.symbol
+      ),
+      past_breakouts_retest AS (
+        SELECT DISTINCT dp.symbol
+        FROM daily_prices dp
+        JOIN retest_range_dates rd ON dp.date = rd.date
+        JOIN retest_high_20d rh ON rh.retest_date = rd.date AND rh.symbol = dp.symbol
+        WHERE dp.close IS NOT NULL
+          AND dp.close >= rh.high_20d_at_date
+      ),
+      perfect_retest AS (
+        SELECT
+          td.symbol,
+          TRUE AS is_perfect_retest,
+          (td.close / td.ma20 - 1) * 100 AS ma20_distance_percent
+        FROM today_data td
+        JOIN past_breakouts_retest pb ON pb.symbol = td.symbol
+        WHERE
+          td.ma20 IS NOT NULL
+          AND td.ma20 > 0
+          AND td.close >= (td.ma20 * ${BREAKOUT_CONFIG.MA20_DISTANCE_MIN})
+          AND td.close <= (td.ma20 * ${BREAKOUT_CONFIG.MA20_DISTANCE_MAX})
+          AND (
+            td.close >= td.open OR
+            (td.open - td.low) > (td.close - td.open)
+          )
+      ),
+      merged AS (
+        SELECT
+          td.symbol,
+          ${latestDate} AS date,
+          COALESCE(cb.is_confirmed_breakout, FALSE) AS is_confirmed_breakout,
+          cb.breakout_percent,
+          cb.volume_ratio,
+          COALESCE(pr.is_perfect_retest, FALSE) AS is_perfect_retest,
+          pr.ma20_distance_percent
+        FROM today_data td
+        LEFT JOIN candidate_breakout cb ON cb.symbol = td.symbol
+        LEFT JOIN perfect_retest pr ON pr.symbol = td.symbol
+      )
+      SELECT
+        symbol,
+        date,
+        is_confirmed_breakout,
+        breakout_percent,
+        volume_ratio,
+        is_perfect_retest,
+        ma20_distance_percent
+      FROM merged
+      WHERE
+        is_confirmed_breakout IS TRUE
+        OR is_perfect_retest IS TRUE;
+    `);
+
+    const unconfirmedRows = unconfirmedResult.rows as unknown as Row[];
+    logger.info(
+      TAG,
+      `unconfirmed breakout/retest signals for ${latestDate}: ${unconfirmedRows.length}`,
+    );
+
+    if (unconfirmedRows.length > 0) {
+      await db
+        .insert(dailyBreakoutSignals)
+        .values(
+          unconfirmedRows.map((r) => ({
+            symbol: r.symbol,
+            date: r.date,
+            isConfirmedBreakout: r.is_confirmed_breakout,
+            breakoutPercent:
+              r.breakout_percent != null
+                ? String(Number(r.breakout_percent))
+                : null,
+            volumeRatio:
+              r.volume_ratio != null ? String(Number(r.volume_ratio)) : null,
+            isPerfectRetest: r.is_perfect_retest,
+            ma20DistancePercent:
+              r.ma20_distance_percent != null
+                ? String(Number(r.ma20_distance_percent))
+                : null,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [dailyBreakoutSignals.symbol, dailyBreakoutSignals.date],
+          set: {
+            isConfirmedBreakout: sql`EXCLUDED.is_confirmed_breakout`,
+            breakoutPercent: sql`EXCLUDED.breakout_percent`,
+            volumeRatio: sql`EXCLUDED.volume_ratio`,
+            isPerfectRetest: sql`EXCLUDED.is_perfect_retest`,
+            ma20DistancePercent: sql`EXCLUDED.ma20_distance_percent`,
+          },
+        });
+
+      logger.info(
+        TAG,
+        `Unconfirmed breakout signals upserted into daily_breakout_signals for ${latestDate}`,
+      );
+    }
   } catch (error) {
     logger.error(TAG, `Failed to build breakout signals: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
