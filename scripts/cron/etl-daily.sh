@@ -133,7 +133,7 @@ if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
       log "✓ Learnings 승격 완료"
     else
       log "⚠ Learnings 승격 실패 (비블로킹)"
-      send_error "Learnings 승격 실패 (비블로킹 — 파이프라인 계속 진행)" "promote-learnings"
+      send_error "Learnings 승격 실패 (비블로킹 — 파이프라인 계속 진행)" "Learnings 승격"
     fi
 
     # 투자 브리핑 QA (비블로킹)
