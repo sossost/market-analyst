@@ -13,8 +13,8 @@
 	<string>__PROJECT_DIR__</string>
 	<key>StartCalendarInterval</key>
 	<array>
-		<!-- KST 06:00 (= UTC 21:00) — 미국장 마감 후 -->
-		<dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+		<!-- KST 06:45 (= UTC 21:45) — 미국장 마감 후, ETL(07:00) 직전 -->
+		<dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>45</integer></dict>
 		<!-- KST 18:00 (= UTC 09:00) — 한국장 마감 후 -->
 		<dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
 	</array>

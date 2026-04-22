@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# 뉴스 수집 — 12시간 간격 실행
+# 뉴스 수집 — 1일 2회 실행
 #
-# KST 06:00, 18:00 (= UTC 21:00, 09:00)
+# KST 06:45, 18:00 (= UTC 21:45, 09:00)
 #
 # Usage:
 #   ./scripts/cron/news-collect.sh
