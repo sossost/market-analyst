@@ -215,6 +215,33 @@ async function processDate(targetDate: string) {
     totalErrors += batch.length - processed.length;
   }
 
+  // 10거래일 압축도 이동평균 일괄 계산 — 종목별 추가 쿼리 없이 단일 UPDATE로 처리
+  await retryDatabaseOperation(
+    () =>
+      db.execute(sql`
+        WITH ranked AS (
+          SELECT symbol, date, ma_compression_pct,
+            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+          FROM daily_ma
+          WHERE date <= ${targetDate}
+            AND date >= (${targetDate}::date - INTERVAL '30 days')
+            AND ma_compression_pct IS NOT NULL
+        )
+        UPDATE daily_ma dm
+        SET ma_compression_avg_10d = sub.avg_val
+        FROM (
+          SELECT symbol, ROUND(AVG(ma_compression_pct), 4) as avg_val
+          FROM ranked
+          WHERE rn <= 10
+          GROUP BY symbol
+        ) sub
+        WHERE dm.symbol = sub.symbol
+          AND dm.date = ${targetDate}
+      `),
+    DEFAULT_RETRY_OPTIONS,
+  );
+  logger.info(TAG, `Updated ma_compression_avg_10d for ${targetDate}`);
+
   const totalTime = Date.now() - startTime;
   logger.info(TAG, `Completed ${targetDate}: ${totalProcessed} ok, ${totalErrors} failed (${Math.round(totalTime / 1000)}s)`);
 }
