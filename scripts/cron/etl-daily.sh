@@ -133,6 +133,7 @@ if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
       log "✓ Learnings 승격 완료"
     else
       log "⚠ Learnings 승격 실패 (비블로킹)"
+      send_error "Learnings 승격 실패 (비블로킹 — 파이프라인 계속 진행)" "promote-learnings"
     fi
 
     # 투자 브리핑 QA (비블로킹)
@@ -141,6 +142,7 @@ if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
       log "✓ 투자 브리핑 QA 완료"
     else
       log "⚠ 투자 브리핑 QA 실패 (비블로킹)"
+      send_error "투자 브리핑 QA 실패 (비블로킹 — 파이프라인 계속 진행)" "투자 브리핑 QA"
     fi
   else
     log "✗ 토론 에이전트 ${TOTAL_ATTEMPTS}회 시도 모두 실패 — 일간보고서 스킵"
@@ -158,6 +160,7 @@ if [ "${ETL_SKIP_AGENT:-}" != "1" ]; then
     log "✓ Daily Report QA 완료"
   else
     log "⚠ Daily Report QA 실패 (비블로킹)"
+    send_error "Daily Report QA 실패 (비블로킹 — 파이프라인 계속 진행)" "Daily Report QA"
   fi
 fi
 
