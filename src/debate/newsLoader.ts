@@ -1,6 +1,6 @@
 import { db } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
-import { and, gte, inArray, desc, ne } from "drizzle-orm";
+import { and, gte, inArray, eq, desc, ne } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 
 type Persona = "macro" | "tech" | "geopolitics" | "sentiment";
@@ -85,7 +85,7 @@ export async function fetchNewsForDailyReport(
       .from(newsArchive)
       .where(
         and(
-          inArray(newsArchive.category, [category]),
+          eq(newsArchive.category, category),
           gte(newsArchive.collectedAt, cutoff),
           ne(newsArchive.url, ""),
         ),
