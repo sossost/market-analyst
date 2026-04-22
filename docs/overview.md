@@ -2,7 +2,7 @@
 
 **Status:** Active (운영 중)
 **Created:** 2026-03-04
-**Last Updated:** 2026-04-14
+**Last Updated:** 2026-04-22
 
 ---
 
@@ -275,7 +275,7 @@ Phase N-2: 검증 인프라 — 대기 중 (착수 기준 아래 참조)
 screener DB (기존 테이블 — 읽기 전용)
 ├── symbols               → 종목 메타데이터
 ├── daily_prices           → 일별 가격 + RS
-├── daily_ma               → 이동평균 + 거래량 MA
+├── daily_ma               → 이동평균 + 거래량 MA + MA 4선 압축도(ma_compression_pct) + MA200 이격도(disparity_ma200_pct)
 ├── daily_ratios           → 일별 밸류에이션
 ├── quarterly_financials   → 분기 재무
 ├── quarterly_ratios       → 분기 비율
