@@ -52,17 +52,23 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
   const ma200 = calculateMA(priceRows, 200);
   const volMa30 = calculateVolumeMA(priceRows, 30);
 
-  const maCompressionPct =
-    ma20 != null && ma50 != null && ma100 != null && ma200 != null
-      ? ((Math.max(ma20, ma50, ma100, ma200) -
-          Math.min(ma20, ma50, ma100, ma200)) /
-          ((ma20 + ma50 + ma100 + ma200) / 4)) *
-        100
-      : null;
+  const allMaPresent =
+    ma20 != null && ma50 != null && ma100 != null && ma200 != null;
+  let maCompressionPct: number | null = null;
+  if (allMaPresent) {
+    const maValues = [ma20, ma50, ma100, ma200];
+    const maMax = Math.max(...maValues);
+    const maMin = Math.min(...maValues);
+    const maAvg = maValues.reduce((a, b) => a + b, 0) / maValues.length;
+    maCompressionPct = ((maMax - maMin) / maAvg) * 100;
+  }
 
-  const latestClose = Number(priceRows[priceRows.length - 1].close);
+  const rawClose = priceRows[priceRows.length - 1].close;
+  const latestClose = rawClose != null ? Number(rawClose) : null;
   const disparityMa200Pct =
-    ma200 != null ? ((latestClose - ma200) / ma200) * 100 : null;
+    ma200 != null && latestClose != null
+      ? ((latestClose - ma200) / ma200) * 100
+      : null;
 
   const maData = {
     symbol,
