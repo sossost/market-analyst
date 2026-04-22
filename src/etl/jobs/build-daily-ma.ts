@@ -52,6 +52,18 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
   const ma200 = calculateMA(priceRows, 200);
   const volMa30 = calculateVolumeMA(priceRows, 30);
 
+  const maCompressionPct =
+    ma20 != null && ma50 != null && ma100 != null && ma200 != null
+      ? ((Math.max(ma20, ma50, ma100, ma200) -
+          Math.min(ma20, ma50, ma100, ma200)) /
+          ((ma20 + ma50 + ma100 + ma200) / 4)) *
+        100
+      : null;
+
+  const latestClose = Number(priceRows[priceRows.length - 1].close);
+  const disparityMa200Pct =
+    ma200 != null ? ((latestClose - ma200) / ma200) * 100 : null;
+
   const maData = {
     symbol,
     date: targetDate,
@@ -60,6 +72,8 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
     ma100: ma100?.toString() ?? null,
     ma200: ma200?.toString() ?? null,
     volMa30: volMa30?.toString() ?? null,
+    maCompressionPct: maCompressionPct?.toFixed(4) ?? null,
+    disparityMa200Pct: disparityMa200Pct?.toFixed(4) ?? null,
   };
 
   const validationResult = validateMovingAverageData(maData);
@@ -127,6 +141,8 @@ async function processBatch(symbols: string[], targetDate: string) {
                   ma100: maData.ma100,
                   ma200: maData.ma200,
                   volMa30: maData.volMa30,
+                  maCompressionPct: maData.maCompressionPct,
+                  disparityMa200Pct: maData.disparityMa200Pct,
                 },
               }),
           DEFAULT_RETRY_OPTIONS,
