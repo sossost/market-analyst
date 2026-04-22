@@ -217,6 +217,10 @@ async function processDate(targetDate: string) {
   }
 
   // 10거래일 압축도 이동평균 일괄 계산 — 종목별 추가 쿼리 없이 단일 UPDATE로 처리
+  const lookbackDate = new Date(targetDate);
+  lookbackDate.setDate(lookbackDate.getDate() - 30);
+  const lookbackDateStr = lookbackDate.toISOString().split("T")[0];
+
   const compressionResult = await retryDatabaseOperation(
     () =>
       db.execute(sql`
@@ -225,7 +229,7 @@ async function processDate(targetDate: string) {
             ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
           FROM daily_ma
           WHERE date <= ${targetDate}
-            AND date >= (${targetDate}::date - INTERVAL '30 days')
+            AND date >= ${lookbackDateStr}
             AND ma_compression_pct IS NOT NULL
         )
         UPDATE daily_ma dm
