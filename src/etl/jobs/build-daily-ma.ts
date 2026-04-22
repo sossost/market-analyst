@@ -60,13 +60,13 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
     const maMax = Math.max(...maValues);
     const maMin = Math.min(...maValues);
     const maAvg = maValues.reduce((a, b) => a + b, 0) / maValues.length;
-    maCompressionPct = ((maMax - maMin) / maAvg) * 100;
+    maCompressionPct = maAvg !== 0 ? ((maMax - maMin) / maAvg) * 100 : null;
   }
 
   const rawClose = priceRows[priceRows.length - 1].close;
   const latestClose = rawClose != null ? Number(rawClose) : null;
   const disparityMa200Pct =
-    ma200 != null && latestClose != null
+    ma200 != null && ma200 !== 0 && latestClose != null
       ? ((latestClose - ma200) / ma200) * 100
       : null;
 
