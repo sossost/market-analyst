@@ -1,6 +1,6 @@
 import { db } from "@/db/client";
 import { newsArchive } from "@/db/schema/analyst";
-import { and, gte, inArray, desc } from "drizzle-orm";
+import { and, gte, inArray, eq, desc, ne } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 
 type Persona = "macro" | "tech" | "geopolitics" | "sentiment";
@@ -32,6 +32,73 @@ export interface NewsArchiveRow {
   description: string | null;
   source: string | null;
   category: string;
+}
+
+/**
+ * 일간 리포트 뉴스 섹션 전용 아이템.
+ * url을 포함하여 링크 렌더링에 사용한다.
+ */
+export interface NewsItemForReport {
+  title: string;
+  source: string | null;
+  url: string;
+  category: string;
+}
+
+// 리포트 대상 카테고리 전체 목록 (고정값으로 명시)
+const REPORT_CATEGORIES = [
+  "POLICY",
+  "TECHNOLOGY",
+  "MARKET",
+  "GEOPOLITICAL",
+  "CAPEX",
+  "OTHER",
+] as const;
+
+const DEFAULT_MAX_PER_CATEGORY = 2;
+
+/**
+ * 일간 리포트용 뉴스를 조회한다.
+ * 카테고리별 최신 N건을 병렬 쿼리로 수집하여 반환한다.
+ * 빈 url은 제외, 전체 최대 10건 제한.
+ *
+ * @param hoursBack - 몇 시간 전까지의 뉴스를 조회할지 (기본 24h)
+ * @param maxPerCategory - 카테고리별 최대 건수 (기본 2건)
+ * @returns 카테고리별 최신 뉴스 항목 배열 (최대 10건)
+ */
+export async function fetchNewsForDailyReport(
+  hoursBack: number = DEFAULT_HOURS_BACK,
+  maxPerCategory: number = DEFAULT_MAX_PER_CATEGORY,
+): Promise<NewsItemForReport[]> {
+  const MAX_TOTAL_ITEMS = 10;
+  const cutoff = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+
+  // 카테고리별 최신 N건 병렬 쿼리
+  const queries = REPORT_CATEGORIES.map((category) =>
+    db
+      .select({
+        title: newsArchive.title,
+        source: newsArchive.source,
+        url: newsArchive.url,
+        category: newsArchive.category,
+      })
+      .from(newsArchive)
+      .where(
+        and(
+          eq(newsArchive.category, category),
+          gte(newsArchive.collectedAt, cutoff),
+          ne(newsArchive.url, ""),
+        ),
+      )
+      .orderBy(desc(newsArchive.collectedAt))
+      .limit(maxPerCategory),
+  );
+
+  const results = await Promise.all(queries);
+
+  const allItems = results.flat();
+
+  return allItems.slice(0, MAX_TOTAL_ITEMS);
 }
 
 /**

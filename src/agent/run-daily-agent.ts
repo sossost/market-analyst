@@ -41,6 +41,7 @@ import {
   loadActiveTheses,
   formatThesesForPrompt,
 } from "@/debate/thesisStore";
+import { fetchNewsForDailyReport } from "@/debate/newsLoader";
 import { formatChainsForDailyPrompt } from "@/lib/narrativeChainStats";
 import { loadTodayDebateInsight, loadTodayDebateSummary, loadTodayDebateGistUrl } from "@/debate/sessionStore";
 import { loadPreviousReportContext } from "@/lib/previousReportContext";
@@ -103,6 +104,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     unusualRaw,
     risingRsRaw,
     marketPositionRaw,
+    newsItems,
   ] = await Promise.all([
     getIndexReturns.execute({ mode: "daily", date: targetDate }).catch((err: unknown) => {
       logger.warn("Tool", `getIndexReturns 실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -134,6 +136,10 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     getMarketPosition(targetDate).catch((err: unknown) => {
       logger.warn("Tool", `getMarketPosition 실패: ${err instanceof Error ? err.message : String(err)}`);
       return null;
+    }),
+    fetchNewsForDailyReport().catch((err: unknown) => {
+      logger.warn("Tool", `fetchNewsForDailyReport 실패: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
     }),
   ]);
 
@@ -182,6 +188,7 @@ async function collectDailyData(targetDate: string): Promise<DailyReportData> {
     unusualStocks: filteredUnusualStocks,
     risingRS: (Array.isArray(risingRsData.stocks) ? risingRsData.stocks : []) as DailyReportData["risingRS"],
     marketPosition: marketPositionRaw,
+    newsItems: Array.isArray(newsItems) ? newsItems : [],
   };
 
   const gateLabel =

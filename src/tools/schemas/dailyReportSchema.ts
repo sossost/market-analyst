@@ -244,6 +244,8 @@ export interface DailyReportData {
   risingRS: DailyRisingRSStock[];
   /** getMarketPosition 반환값. 수집 실패 시 null */
   marketPosition: MarketPositionData | null;
+  /** fetchNewsForDailyReport 반환값. 0건이면 섹션 미출력. */
+  newsItems: import("@/debate/newsLoader.js").NewsItemForReport[];
 }
 
 // ─── 해석 컨테이너 (LLM 텍스트 전용) ─────────────────────────────────────────
