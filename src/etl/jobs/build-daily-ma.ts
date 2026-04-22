@@ -63,6 +63,17 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
     maCompressionPct = maAvg !== 0 ? ((maMax - maMin) / maAvg) * 100 : null;
   }
 
+  // 3-line compression (MA20/50/100 only — excludes MA200)
+  const threeMaPresent = ma20 != null && ma50 != null && ma100 != null;
+  let maCompression3linePct: number | null = null;
+  if (threeMaPresent) {
+    const threeLineValues = [ma20, ma50, ma100];
+    const threeLineMax = Math.max(...threeLineValues);
+    const threeLineMin = Math.min(...threeLineValues);
+    const threeLineAvg = threeLineValues.reduce((a, b) => a + b, 0) / threeLineValues.length;
+    maCompression3linePct = threeLineAvg !== 0 ? ((threeLineMax - threeLineMin) / threeLineAvg) * 100 : null;
+  }
+
   const rawClose = priceRows[priceRows.length - 1].close;
   const latestClose = rawClose != null ? Number(rawClose) : null;
   const disparityMa200Pct =
@@ -79,6 +90,7 @@ async function calculateMAForSymbol(symbol: string, targetDate: string) {
     ma200: ma200?.toString() ?? null,
     volMa30: volMa30?.toString() ?? null,
     maCompressionPct: maCompressionPct?.toFixed(4) ?? null,
+    maCompression3linePct: maCompression3linePct?.toFixed(4) ?? null,
     disparityMa200Pct: disparityMa200Pct?.toFixed(4) ?? null,
   };
 
@@ -148,8 +160,9 @@ async function processBatch(symbols: string[], targetDate: string) {
                   ma200: maData.ma200,
                   volMa30: maData.volMa30,
                   maCompressionPct: maData.maCompressionPct,
+                  maCompression3linePct: maData.maCompression3linePct,
                   disparityMa200Pct: maData.disparityMa200Pct,
-                  // maCompressionAvg10d: processDate 끝 일괄 UPDATE에서 계산
+                  // maCompressionAvg10d, maCompression3lineAvg10d: processDate 끝 일괄 UPDATE에서 계산
                 },
               }),
           DEFAULT_RETRY_OPTIONS,
@@ -249,6 +262,37 @@ async function processDate(targetDate: string) {
   logger.info(TAG, `Updated ma_compression_avg_10d for ${targetDate}: ${compressionUpdated} symbols`);
   if (compressionUpdated === 0) {
     logger.warn(TAG, `ma_compression_avg_10d update wrote 0 rows for ${targetDate}`);
+  }
+
+  // 3선 압축도 10거래일 이동평균 일괄 계산
+  const compression3lineResult = await retryDatabaseOperation(
+    () =>
+      db.execute(sql`
+        WITH ranked AS (
+          SELECT symbol, date, ma_compression_3line_pct,
+            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+          FROM daily_ma
+          WHERE date <= ${targetDate}
+            AND date >= ${lookbackDateStr}
+            AND ma_compression_3line_pct IS NOT NULL
+        )
+        UPDATE daily_ma dm
+        SET ma_compression_3line_avg_10d = sub.avg_val
+        FROM (
+          SELECT symbol, ROUND(AVG(ma_compression_3line_pct), 4) as avg_val
+          FROM ranked
+          WHERE rn <= 10
+          GROUP BY symbol
+        ) sub
+        WHERE dm.symbol = sub.symbol
+          AND dm.date = ${targetDate}
+      `),
+    DEFAULT_RETRY_OPTIONS,
+  );
+  const compression3lineUpdated = (compression3lineResult as { rowCount?: number }).rowCount ?? 0;
+  logger.info(TAG, `Updated ma_compression_3line_avg_10d for ${targetDate}: ${compression3lineUpdated} symbols`);
+  if (compression3lineUpdated === 0) {
+    logger.warn(TAG, `ma_compression_3line_avg_10d update wrote 0 rows for ${targetDate}`);
   }
 
   const totalTime = Date.now() - startTime;

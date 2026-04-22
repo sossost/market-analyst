@@ -177,6 +177,8 @@ export const dailyMa = pgTable(
     volMa30: numeric("vol_ma30"),
     maCompressionPct: numeric("ma_compression_pct"),
     maCompressionAvg10d: numeric("ma_compression_avg_10d"),
+    maCompression3linePct: numeric("ma_compression_3line_pct"),
+    maCompression3lineAvg10d: numeric("ma_compression_3line_avg_10d"),
     disparityMa200Pct: numeric("disparity_ma200_pct"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
