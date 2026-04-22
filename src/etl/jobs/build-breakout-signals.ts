@@ -403,7 +403,7 @@ export async function buildBreakoutSignals() {
         ma20_distance_percent
       FROM merged
       WHERE
-        is_confirmed_breakout IS TRUE
+        breakout_percent IS NOT NULL
         OR is_perfect_retest IS TRUE;
     `);
 
