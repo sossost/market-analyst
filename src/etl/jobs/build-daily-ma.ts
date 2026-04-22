@@ -149,6 +149,7 @@ async function processBatch(symbols: string[], targetDate: string) {
                   volMa30: maData.volMa30,
                   maCompressionPct: maData.maCompressionPct,
                   disparityMa200Pct: maData.disparityMa200Pct,
+                  // maCompressionAvg10d: processDate 끝 일괄 UPDATE에서 계산
                 },
               }),
           DEFAULT_RETRY_OPTIONS,
@@ -213,6 +214,37 @@ async function processDate(targetDate: string) {
     const processed = await processBatch(batch, targetDate);
     totalProcessed += processed.length;
     totalErrors += batch.length - processed.length;
+  }
+
+  // 10거래일 압축도 이동평균 일괄 계산 — 종목별 추가 쿼리 없이 단일 UPDATE로 처리
+  const compressionResult = await retryDatabaseOperation(
+    () =>
+      db.execute(sql`
+        WITH ranked AS (
+          SELECT symbol, date, ma_compression_pct,
+            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+          FROM daily_ma
+          WHERE date <= ${targetDate}
+            AND date >= (${targetDate}::date - INTERVAL '30 days')
+            AND ma_compression_pct IS NOT NULL
+        )
+        UPDATE daily_ma dm
+        SET ma_compression_avg_10d = sub.avg_val
+        FROM (
+          SELECT symbol, ROUND(AVG(ma_compression_pct), 4) as avg_val
+          FROM ranked
+          WHERE rn <= 10
+          GROUP BY symbol
+        ) sub
+        WHERE dm.symbol = sub.symbol
+          AND dm.date = ${targetDate}
+      `),
+    DEFAULT_RETRY_OPTIONS,
+  );
+  const compressionUpdated = (compressionResult as { rowCount?: number }).rowCount ?? 0;
+  logger.info(TAG, `Updated ma_compression_avg_10d for ${targetDate}: ${compressionUpdated} symbols`);
+  if (compressionUpdated === 0) {
+    logger.warn(TAG, `ma_compression_avg_10d update wrote 0 rows for ${targetDate}`);
   }
 
   const totalTime = Date.now() - startTime;
