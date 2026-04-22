@@ -153,7 +153,7 @@ async function main() {
   // 6. INSERT — thesis_aligned
   let savedCount = 0;
   let skippedCount = 0;
-  const corporateAnalystPromises: Promise<void>[] = [];
+  const savedSymbols: string[] = [];
 
   for (const chain of certifiedData.chains) {
     for (const candidate of chain.candidates) {
@@ -200,24 +200,21 @@ async function main() {
         logger.info(TAG, `${candidate.symbol}: 이미 등록됨 (UNIQUE 충돌)`);
       } else {
         savedCount++;
+        savedSymbols.push(candidate.symbol);
         logger.info(
           TAG,
           `${candidate.symbol}: 등록 완료 (tier=${tier}, chain=${chain.bottleneck})`,
         );
-
-        // 기업 분석 리포트 — featured tier 종목만 생성 (#847)
-        if (tier === "featured") {
-          corporateAnalystPromises.push(
-            fireCorporateAnalyst(candidate.symbol, targetDate, pool, TAG),
-          );
-        }
       }
     }
   }
 
-  if (corporateAnalystPromises.length > 0) {
-    logger.info(TAG, `CorporateAnalyst ${corporateAnalystPromises.length}건 대기 중...`);
-    await Promise.allSettled(corporateAnalystPromises);
+  // 기업 분석 리포트 — 순차 실행 (ClaudeCliProvider CLI 세션 경합 방지)
+  if (savedSymbols.length > 0) {
+    logger.info(TAG, `CorporateAnalyst ${savedSymbols.length}건 순차 실행...`);
+    for (const symbol of savedSymbols) {
+      await fireCorporateAnalyst(symbol, targetDate, pool, TAG);
+    }
   }
 
   logger.info(
