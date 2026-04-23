@@ -266,7 +266,11 @@ function computeStats(rows: FactorRow[]): SliceStats {
 
   const pnls = closedRows.map((r) => toNum(r.pnl_percent));
   const avgPnl = pnls.reduce((s, v) => s + v, 0) / pnls.length;
-  const maxPnl = Math.max(...closedRows.map((r) => toNum(r.max_pnl_percent)));
+  const maxPnls = closedRows
+    .map((r) => r.max_pnl_percent)
+    .filter((v): v is string => v != null)
+    .map(toNum);
+  const maxPnl = maxPnls.length > 0 ? Math.max(...maxPnls) : null;
   const winners = pnls.filter((p) => p > 0).length;
   const winRate = Math.round((winners / closedRows.length) * 100);
   const avgDays =
@@ -278,7 +282,7 @@ function computeStats(rows: FactorRow[]): SliceStats {
     activeCount,
     closedCount,
     avgPnl: Math.round(avgPnl * 100) / 100,
-    maxPnl: Math.round(maxPnl * 100) / 100,
+    maxPnl: maxPnl != null ? Math.round(maxPnl * 100) / 100 : null,
     winRate,
     avgDaysTracked: Math.round(avgDays),
   };
