@@ -101,6 +101,9 @@ run_step_optional "Load Earning Calendar" "src/etl/jobs/load-earning-calendar.ts
 run_step_optional "Load Stock News" "src/etl/jobs/load-stock-news.ts"
 run_step_optional "Load Earnings Surprises FMP" "src/etl/jobs/load-earnings-surprises-fmp.ts"
 
+# Phase 3.10 — featured 미커버 종목 기업 분석 catch-up (#971)
+run_step_optional "Corporate Analyst Catch-up" "src/agent/run-corporate-analyst.ts"
+
 # Phase 4
 run_step "Validate Data" "src/etl/jobs/validate-data.ts"
 
