@@ -14,7 +14,7 @@ vi.mock("@/db/client", () => ({
 }));
 
 import { pool } from "@/db/client";
-import { findPhase2SinceDates, queryWeeklyQaThesisOverall, findPortfolioEligibleStock } from "../stockPhaseRepository.js";
+import { findPhase2SinceDates, queryWeeklyQaThesisOverall, findPortfolioEligibleStock, findPrevPhaseBeforePhase2 } from "../stockPhaseRepository.js";
 
 const mockQuery = vi.mocked(pool.query);
 
@@ -133,5 +133,65 @@ describe("queryWeeklyQaThesisOverall", () => {
     expect(result).toHaveLength(1);
     expect(result[0].agent_persona).toBe("macro");
     expect(result[0].confirmed).toBe(5);
+  });
+});
+
+describe("findPrevPhaseBeforePhase2", () => {
+  it("빈 배열 입력 시 DB 조회 없이 빈 배열 반환", async () => {
+    const result = await findPrevPhaseBeforePhase2([]);
+    expect(result).toEqual([]);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("SQL에 stock_phases, phase2_since, prev_date 조건이 포함된다", async () => {
+    await findPrevPhaseBeforePhase2([
+      { symbol: "NVDA", phase2_since: "2026-04-05" },
+    ]);
+
+    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(sql).toContain("stock_phases");
+    expect(sql).toContain("phase2_since");
+    expect(sql).toContain("prev_date");
+  });
+
+  it("symbol과 phase2_since를 파라미터로 전달한다", async () => {
+    await findPrevPhaseBeforePhase2([
+      { symbol: "NVDA", phase2_since: "2026-04-05" },
+    ]);
+
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params).toContain("NVDA");
+    expect(params).toContain("2026-04-05");
+  });
+
+  it("여러 종목을 일괄 조회한다", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { symbol: "NVDA", phase: 1 },
+        { symbol: "AAPL", phase: 3 },
+      ],
+      rowCount: 2,
+    } as never);
+
+    const result = await findPrevPhaseBeforePhase2([
+      { symbol: "NVDA", phase2_since: "2026-04-05" },
+      { symbol: "AAPL", phase2_since: "2026-04-08" },
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].symbol).toBe("NVDA");
+    expect(result[0].phase).toBe(1);
+    expect(result[1].symbol).toBe("AAPL");
+    expect(result[1].phase).toBe(3);
+  });
+
+  it("VALUES 파라미터가 올바르게 구성된다", async () => {
+    await findPrevPhaseBeforePhase2([
+      { symbol: "NVDA", phase2_since: "2026-04-05" },
+      { symbol: "AAPL", phase2_since: "2026-04-08" },
+    ]);
+
+    const params = mockQuery.mock.calls[0][1] as unknown[];
+    expect(params).toEqual(["NVDA", "2026-04-05", "AAPL", "2026-04-08"]);
   });
 });

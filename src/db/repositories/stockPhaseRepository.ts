@@ -342,6 +342,46 @@ export async function findPhase2SinceDates(
 }
 
 /**
+ * Phase 2 진입 직전 거래일의 phase를 일괄 조회한다.
+ * phase2_since 날짜 바로 이전 거래일의 stock_phases.phase를 반환.
+ * phase2_since가 없거나, 이전 거래일 데이터가 없는 종목은 결과에 미포함.
+ */
+export async function findPrevPhaseBeforePhase2(
+  phase2SincePairs: Array<{ symbol: string; phase2_since: string }>,
+): Promise<Array<{ symbol: string; phase: number }>> {
+  if (phase2SincePairs.length === 0) {
+    return [];
+  }
+
+  // VALUES 리스트 구성: ($1, $2), ($3, $4), ...
+  const params: Array<string> = [];
+  const valueClauses: string[] = [];
+  for (const pair of phase2SincePairs) {
+    const idx = params.length;
+    params.push(pair.symbol, pair.phase2_since);
+    valueClauses.push(`($${idx + 1}, $${idx + 2}::date)`);
+  }
+
+  const { rows } = await pool.query<{ symbol: string; phase: number }>(
+    `WITH targets(symbol, phase2_since) AS (
+       VALUES ${valueClauses.join(", ")}
+     ),
+     prev_day AS (
+       SELECT t.symbol, MAX(sp.date) AS prev_date
+       FROM targets t
+       JOIN stock_phases sp ON sp.symbol = t.symbol AND sp.date < t.phase2_since
+       GROUP BY t.symbol
+     )
+     SELECT pd.symbol, sp.phase
+     FROM prev_day pd
+     JOIN stock_phases sp ON sp.symbol = pd.symbol AND sp.date = pd.prev_date`,
+    params,
+  );
+
+  return rows;
+}
+
+/**
  * 복합 조건으로 특이종목을 조회한다 (getUnusualStocks 전용).
  * 등락률, 거래량, Phase 전환 조건 중 하나 이상 충족 종목.
  */

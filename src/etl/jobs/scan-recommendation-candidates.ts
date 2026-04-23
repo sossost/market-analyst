@@ -51,6 +51,7 @@ import {
   findPhase2Persistence,
   findPhase2SinceDates,
   findPhase2Stability,
+  findPrevPhaseBeforePhase2,
 } from "@/db/repositories/stockPhaseRepository.js";
 import {
   findSymbolMeta,
@@ -198,6 +199,18 @@ async function main() {
   );
   const phase2SinceMap = new Map(
     phase2SinceRows.map((r) => [r.symbol, r.phase2_since]),
+  );
+
+  // Phase 2 진입 직전 phase 역추적 (#973)
+  const phase2SincePairs = phase2SinceRows.map((r) => ({
+    symbol: r.symbol,
+    phase2_since: r.phase2_since,
+  }));
+  const prevPhaseBeforePhase2Rows = await retryDatabaseOperation(() =>
+    findPrevPhaseBeforePhase2(phase2SincePairs),
+  );
+  const prevPhaseBeforePhase2Map = new Map(
+    prevPhaseBeforePhase2Rows.map((r) => [r.symbol, r.phase]),
   );
 
   // 실패 패턴 필터용: 시장 브레드스 방향 도출 (#799)
@@ -397,13 +410,16 @@ async function main() {
       reason = `[Late Bull 감쇠] ${reason}`;
     }
 
+    // Phase 2 진입 직전 phase 사용 (#973) — fallback: stock_phases.prev_phase
+    const entryPrevPhase = prevPhaseBeforePhase2Map.get(symbol) ?? stock.prev_phase ?? null;
+
     gatePassedCandidates.push({
       symbol,
       phase: phase ?? null,
       rs_score: rs_score ?? null,
       sector: sector ?? null,
       industry: industry ?? null,
-      prev_phase: stock.prev_phase ?? null,
+      prev_phase: entryPrevPhase,
       entryPrice,
       reason,
     });
