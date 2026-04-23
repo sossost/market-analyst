@@ -12,7 +12,7 @@ Claude Agent가 자율적으로 시장을 분석하여 **주도섹터와 Phase 2
 |----------|--------|
 | **etl_auto** | Phase 2 초입 후보를 8개 게이트로 광망 수집 — 누락 없이, 오염 없이 |
 | **thesis_aligned** | narrative_chains 수혜주를 자동 등록 — 서사 기반 선제 포착 |
-| **tracked_stocks** | detection_lag(entry_date - phase2_since) 소스별 통계로 포착 선행성 측정 |
+| **tracked_stocks** | detection_lag(entry_date - phase2_since) 소스별 통계로 포착 선행성 측정 + 팩터별 성과 슬라이싱(SEPA/RS/섹터/업종/Phase전이/lag) 교차 분석으로 알파 팩터 검증 |
 | **Multi-Model Debate** | RS 귀납 → 공급망 연역: 강한 종목의 이유를 역추적하고, 병목 식별 → 수혜 종목을 선행 예측 |
 | **Learning Loop** | thesis 적중/실패 원인 분석 → 패턴 승격 → 다음 토론 few-shot 주입. 정량 검증 가능 지표(지수·섹터 RS·신용 지표 4종) 프롬프트 주입으로 자동 검증 커버리지 확대 |
 | **일간 리포트** | 시장 컨디션 체크 — 진입/관망 판단 근거 제공 |

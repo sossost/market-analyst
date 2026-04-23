@@ -90,6 +90,7 @@
 | 리포트 반영 | 주간 에이전트에 tracked_stocks 성과 주입 |
 | 포착 선행성 KPI (#844) | `detection_lag = entry_date - phase2_since` 소스별 통계 + 구간 분포(early/normal/late). readTrackedStocksPerformance + 주간 QA에 통합. exit_reason별 성과 분리 집계 |
 | 수혜주 자동 동기화 (#842) | `sync-narrative-beneficiaries` ETL — ACTIVE/RESOLVING chain의 beneficiary_tickers를 stock_phases와 대조. Phase 1/4 종목 자동 제거 + 빈 chain은 beneficiary_sectors 기반 Phase 2 + RS >= 60 후보 자동 추가 |
+| 팩터별 성과 슬라이싱 (#974) | `analyze_tracked_factors` 에이전트 도구 — SEPA등급/RS구간/섹터/업종/Phase전이/detection_lag 6축 슬라이싱 + SEPA×RS, SEPA×섹터 교차 분석. 어떤 팩터가 알파를 만드는지 데이터 기반 검증 |
 
 ### Layer 4: 멀티 모델 애널리스트 토론 시스템 (F6) — Done
 멀티 모델 다양성으로 확증편향을 구조적으로 완화하는 토론 시스템.
