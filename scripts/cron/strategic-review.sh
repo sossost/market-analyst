@@ -69,7 +69,7 @@ fi
 # Claude Code CLI 실행 — stdin으로 프롬프트 전달
 log "▶ Claude Code CLI 실행 (타임아웃: ${TIMEOUT_SEC}초)"
 
-if $TIMEOUT_CMD "$TIMEOUT_SEC" env -u ANTHROPIC_API_KEY claude -p --dangerously-skip-permissions --output-format text < "$PROMPT_FILE" >> "$LOG_FILE" 2>&1; then
+if run_claude_p $TIMEOUT_CMD "$TIMEOUT_SEC" claude -p --dangerously-skip-permissions --output-format text < "$PROMPT_FILE" >> "$LOG_FILE" 2>&1; then
   log "✓ 전략 리뷰 완료"
 else
   EXIT_CODE=$?
