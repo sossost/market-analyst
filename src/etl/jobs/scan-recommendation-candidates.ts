@@ -202,12 +202,8 @@ async function main() {
   );
 
   // Phase 2 진입 직전 phase 역추적 (#973)
-  const phase2SincePairs = phase2SinceRows.map((r) => ({
-    symbol: r.symbol,
-    phase2_since: r.phase2_since,
-  }));
   const prevPhaseBeforePhase2Rows = await retryDatabaseOperation(() =>
-    findPrevPhaseBeforePhase2(phase2SincePairs),
+    findPrevPhaseBeforePhase2(phase2SinceRows),
   );
   const prevPhaseBeforePhase2Map = new Map(
     prevPhaseBeforePhase2Rows.map((r) => [r.symbol, r.phase]),

@@ -359,7 +359,7 @@ export async function findPrevPhaseBeforePhase2(
   for (const pair of phase2SincePairs) {
     const idx = params.length;
     params.push(pair.symbol, pair.phase2_since);
-    valueClauses.push(`($${idx + 1}, $${idx + 2}::date)`);
+    valueClauses.push(`($${idx + 1}, $${idx + 2}::text)`);
   }
 
   const { rows } = await pool.query<{ symbol: string; phase: number }>(
