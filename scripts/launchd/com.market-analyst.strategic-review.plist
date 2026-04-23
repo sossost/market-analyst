@@ -16,6 +16,8 @@
 		<!-- 매일 KST 04:00 (UTC 19:00 전날) -->
 		<dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>0</integer></dict>
 	</array>
+	<key>ExitTimeout</key>
+	<integer>2100</integer>
 	<key>StandardOutPath</key>
 	<string>__PROJECT_DIR__/logs/launchd-strategic-review.log</string>
 	<key>StandardErrorPath</key>
