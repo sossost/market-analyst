@@ -138,7 +138,10 @@ async function main() {
      WHERE ts.entry_sepa_grade IS NULL
        AND EXISTS (
          SELECT 1 FROM fundamental_scores fs
-         WHERE fs.symbol = ts.symbol AND fs.scored_date <= ts.entry_date
+         WHERE fs.symbol = ts.symbol
+           AND fs.scored_date <= ts.entry_date
+           AND fs.grade IS NOT NULL
+           AND fs.grade != ''
        )`,
   );
   const matchableCount = parseInt(matchableRows[0].cnt, 10);
