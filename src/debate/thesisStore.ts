@@ -1,6 +1,6 @@
 import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
-import { eq, and, sql, inArray, asc, gte, like, or } from "drizzle-orm";
+import { eq, and, sql, inArray, asc, gte, or } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { getDedupedCounts } from "@/lib/thesis-dedup";
 import type { Thesis, ThesisCategory, Confidence, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "@/types/debate";
@@ -47,7 +47,10 @@ export async function saveTheses(
   }
 
   // 같은 날짜의 기존 thesis 삭제 (재실행 시 중복 방지)
-  await db.delete(theses).where(eq(theses.debateDate, debateDate));
+  // CANDIDATE는 삭제하지 않는다 — 재실행 시에도 N+1 병목 후보가 보존되어야 한다 (#981)
+  await db
+    .delete(theses)
+    .where(and(eq(theses.debateDate, debateDate), sql`${theses.status} != 'CANDIDATE'`));
 
   const rows = extractedTheses.map((t) => {
     const isStatusQuo = snapshot != null
@@ -949,12 +952,13 @@ export async function saveCandidateThesisFromNextBottleneck(params: {
   const candidateThesisText = `${CANDIDATE_THESIS_PREFIX}${nextBottleneck}`;
 
   // 중복 체크: 동일 병목 텍스트의 CANDIDATE/ACTIVE thesis가 이미 존재하면 스킵
+  // exact match를 사용한다 — trailing '%'와 LLM 텍스트 내 '%' 문자가 와일드카드로 작동하는 것을 방지
   const existing = await db
     .select({ id: theses.id })
     .from(theses)
     .where(
       and(
-        like(theses.thesis, `${CANDIDATE_THESIS_PREFIX}${nextBottleneck}%`),
+        eq(theses.thesis, candidateThesisText),
         or(eq(theses.status, "CANDIDATE"), eq(theses.status, "ACTIVE")),
       ),
     )
@@ -1017,8 +1021,10 @@ export async function saveCandidateThesisFromNextBottleneck(params: {
 export async function expireStaleCandidateTheses(
   today: string,
 ): Promise<{ promotedCleanup: number; expired: number }> {
-  // 1. 동일 thesis 텍스트가 ACTIVE로 전환된 CANDIDATE 정리
-  // CANDIDATE와 ACTIVE가 동시에 존재하는 경우 CANDIDATE를 EXPIRED 처리
+  // 1. 동일 병목 텍스트가 ACTIVE thesis 본문에 포함된 CANDIDATE 정리
+  // CANDIDATE thesis 텍스트는 "[N+1 후보] {bottleneck}" 형식이고,
+  // ACTIVE thesis는 LLM이 새로 생성한 다른 텍스트이므로 thesis = thesis 비교는 절대 매칭 안 됨.
+  // prefix를 제거한 원본 병목 텍스트를 ACTIVE thesis 본문에서 LIKE 검색한다.
   const promotedCleanupResult = await db
     .update(theses)
     .set({
@@ -1033,7 +1039,7 @@ export async function expireStaleCandidateTheses(
         sql`EXISTS (
           SELECT 1 FROM theses t2
           WHERE t2.status = 'ACTIVE'
-            AND t2.thesis = ${theses.thesis}
+            AND t2.thesis LIKE '%' || REPLACE(${theses.thesis}, ${CANDIDATE_THESIS_PREFIX}, '') || '%'
         )`,
       ),
     )

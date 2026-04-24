@@ -230,7 +230,7 @@ export const theses = pgTable(
 
     category: text("category").$type<import("../../types/debate.js").ThesisCategory>().notNull(), // 'structural_narrative' | 'sector_rotation'
 
-    status: text("status").notNull().default("ACTIVE"), // ACTIVE | CONFIRMED | INVALIDATED | EXPIRED
+    status: text("status").notNull().default("ACTIVE"), // ACTIVE | CONFIRMED | INVALIDATED | EXPIRED | CANDIDATE
     verificationDate: text("verification_date"),
     verificationResult: text("verification_result"),
     causalAnalysis: text("causal_analysis"), // JSON: { causalChain, keyFactors, reusablePattern, lessonsLearned }

@@ -42,7 +42,6 @@ vi.mock("drizzle-orm", () => ({
   eq: (col: unknown, val: unknown) => ({ eq: { col, val } }),
   and: (...args: unknown[]) => ({ and: args }),
   inArray: (col: unknown, vals: unknown) => ({ inArray: { col, vals } }),
-  like: (col: unknown, pattern: unknown) => ({ like: { col, pattern } }),
   or: (...args: unknown[]) => ({ or: args }),
   asc: (col: unknown) => ({ asc: col }),
   gte: (col: unknown, val: unknown) => ({ gte: { col, val } }),
