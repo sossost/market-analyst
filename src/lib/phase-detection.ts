@@ -115,8 +115,8 @@ function determinePhase(
   const totalConditions = detail.phase2ConditionsMet;
 
   // Phase 2: Core conditions (price > MA150, MA150 > MA200, slope positive)
-  // + at least 6/8 total conditions met.
-  // Previously required 8/8 — relaxed to 6/8 to capture Phase 2 early/transitioning stocks.
+  // + at least 8/9 total conditions met.
+  // #934: 거래량 서지 조건 추가 (9번째), 임계값 7/8→8/9로 조정.
   if (
     priceAboveMa150 &&
     ma150AboveMa200 &&

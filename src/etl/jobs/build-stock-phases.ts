@@ -169,6 +169,9 @@ async function main() {
       const highLow = highLowBySymbol.get(sym.symbol) ?? { high: 0, low: 0 };
       const price = closes[0].close;
 
+      const volHist = volHistBySymbol.get(sym.symbol) ?? [];
+      const volMa30 = ma.vol_ma30 != null ? toNum(ma.vol_ma30) : null;
+
       const input: PhaseInput = {
         price,
         ma50: toNum(ma.ma50),
@@ -178,10 +181,7 @@ async function main() {
         rsScore,
         high52w: highLow.high,
         low52w: highLow.low,
-        recentVolSurge: calculateRecentVolSurge(
-          volHistBySymbol.get(sym.symbol) ?? [],
-          ma.vol_ma30 != null ? toNum(ma.vol_ma30) : null,
-        ),
+        recentVolSurge: calculateRecentVolSurge(volHist, volMa30),
       };
 
       const result = detectPhase(input);
@@ -189,14 +189,10 @@ async function main() {
 
       // Volume ratio: today's volume / 30-day volume MA
       const volume = volBySymbol.get(sym.symbol) ?? null;
-      const volMa30 = ma.vol_ma30 != null ? toNum(ma.vol_ma30) : null;
       const volRatio =
         volume != null && volMa30 != null && volMa30 > 0
           ? volume / volMa30
           : null;
-
-      // VDU ratio: 5-day avg volume / 50-day avg volume
-      const volHist = volHistBySymbol.get(sym.symbol) ?? [];
       const vduRatio = calculateVduRatio(volHist, VDU_SHORT_PERIOD, VDU_LONG_PERIOD);
 
       // Weekly volume ratio: recent 1-week total / prior 4-week weekly average
@@ -270,8 +266,12 @@ function calculateMa150(
 
 /**
  * 최근 N 거래일 내 vol_ratio >= threshold 인 날이 1일 이상이면 true.
- * vol_ma30은 30일 평균이므로 5일 내 변동이 미미하여 당일 값으로 일괄 비교한다.
- * volMa30이 null이거나 0이면 false (데이터 미확보).
+ *
+ * @param volumes - 최신순 정렬된 거래량 배열 (index 0 = targetDate). findVolumeHistoryForBatch의 date DESC 결과.
+ * @param volMa30 - 오늘 기준 30일 거래량 이동평균 (단일값). 5일 각각의 vol_ma30을 별도 조회하지 않고
+ *   당일 값으로 일괄 비교한다. 30일 평균이므로 5일 내 변동이 미미하다는 가정. 단, 어닝 서프라이즈 등으로
+ *   거래량 구조가 급변한 종목에서는 근사치가 부정확할 수 있다.
+ * @returns volMa30이 null이거나 0이면 false (데이터 미확보).
  */
 export function calculateRecentVolSurge(
   volumes: number[],

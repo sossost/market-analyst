@@ -3,7 +3,7 @@ import { calculateRecentVolSurge } from "@/etl/jobs/build-stock-phases";
 
 describe("calculateRecentVolSurge", () => {
   it("최근 5거래일 중 1일이라도 vol_ratio >= 1.5 이면 true 반환", () => {
-    // 5일 중 마지막 날(index 4)이 서지
+    // 5일 중 가장 오래된 날(index 4)이 서지 (배열은 최신순 정렬)
     const volumes = [1000, 1000, 1000, 1000, 1500];
     expect(calculateRecentVolSurge(volumes, 1000)).toBe(true);
   });
