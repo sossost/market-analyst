@@ -1152,19 +1152,22 @@ export async function queryWeeklyQaRecommendations(pool: Pool): Promise<WeeklyQa
 }
 
 export async function queryWeeklyQaDetectionLag(pool: Pool): Promise<WeeklyQaDetectionLagRow[]> {
+  const RELEVANCE_WINDOW = 30; // calendar days — 유효 포착 윈도우
   const { rows } = await pool.query<WeeklyQaDetectionLagRow>(
     `SELECT
        source,
-       COUNT(*)::int as cnt,
-       ROUND(AVG(entry_date::date - phase2_since::date)::numeric, 1)::float as avg_lag,
-       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY entry_date::date - phase2_since::date)::float as median_lag,
+       COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date <= $1)::int as cnt,
+       ROUND(AVG(entry_date::date - phase2_since::date) FILTER (WHERE entry_date::date - phase2_since::date <= $1)::numeric, 1)::float as avg_lag,
+       (PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY entry_date::date - phase2_since::date) FILTER (WHERE entry_date::date - phase2_since::date <= $1))::float as median_lag,
        COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date <= 3)::int as early_cnt,
        COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date BETWEEN 4 AND 7)::int as normal_cnt,
-       COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date > 7)::int as late_cnt
+       COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date BETWEEN 8 AND $1)::int as late_cnt,
+       COUNT(*) FILTER (WHERE entry_date::date - phase2_since::date > $1)::int as catchup_cnt
      FROM tracked_stocks
      WHERE phase2_since IS NOT NULL
      GROUP BY source
      ORDER BY source`,
+    [RELEVANCE_WINDOW],
   );
   return rows;
 }

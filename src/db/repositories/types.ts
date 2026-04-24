@@ -873,6 +873,7 @@ export interface WeeklyQaDetectionLagRow {
   early_cnt: number;
   normal_cnt: number;
   late_cnt: number;
+  catchup_cnt: number;
 }
 
 export interface WeeklyQaExitReasonPerfRow {
