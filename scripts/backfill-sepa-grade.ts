@@ -61,7 +61,9 @@ async function findNullGradeRows(): Promise<NullGradeRow[]> {
 
 /**
  * NULL 레코드를 fundamental_scores에서 백필한다.
- * LATERAL JOIN으로 각 레코드의 entry_date 기준 가장 최근 grade를 매칭.
+ * 양방향 LATERAL JOIN: entry_date 이전 최근 grade 우선, 없으면 이후 가장 가까운 grade로 fallback.
+ * after fallback은 entry 시점에 아직 없던 스코어를 소급 적용하므로 정확도가 낮을 수 있으나,
+ * NULL 방치보다 팩터 슬라이싱 품질에 유리하다.
  * 반환: 실제 UPDATE된 행 목록.
  */
 async function backfillGrades(
