@@ -19,7 +19,6 @@ import { logger } from "@/lib/logger";
 import { loadConfirmedRegime, loadPendingRegimes } from "@/debate/regimeStore";
 import { evaluateBearException } from "@/tools/bearExceptionGate.js";
 import { evaluateLateBullGate } from "@/tools/lateBullGate.js";
-import { fireCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 import {
   BEAR_REGIMES,
   COOLDOWN_CALENDAR_DAYS,
@@ -437,7 +436,6 @@ async function main() {
 
   // Phase 3: 선택된 후보만 INSERT
   let savedCount = 0;
-  const corporateAnalystPromises: Promise<void>[] = [];
 
   for (const candidate of selectedCandidates) {
     const {
@@ -494,17 +492,6 @@ async function main() {
     await saveFactorSnapshot(symbol, targetDate);
     savedCount++;
 
-    // 기업 분석 리포트 — featured tier 종목만 생성 (#847)
-    if (tier === "featured") {
-      corporateAnalystPromises.push(
-        fireCorporateAnalyst(symbol, targetDate, pool, TAG),
-      );
-    }
-  }
-
-  if (corporateAnalystPromises.length > 0) {
-    logger.info(TAG, `CorporateAnalyst ${corporateAnalystPromises.length}건 대기 중...`);
-    await Promise.allSettled(corporateAnalystPromises);
   }
 
   const summaryMsg =

@@ -27,7 +27,7 @@ import {
 } from "@/db/repositories/trackedStocksRepository.js";
 import { findLatestClose } from "@/db/repositories/priceRepository.js";
 import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
-import { fireCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
+
 import { toNum } from "@/etl/utils/common";
 
 const TAG = "SCAN_THESIS_ALIGNED_CANDIDATES";
@@ -206,14 +206,6 @@ async function main() {
           `${candidate.symbol}: 등록 완료 (tier=${tier}, chain=${chain.bottleneck})`,
         );
       }
-    }
-  }
-
-  // 기업 분석 리포트 — 순차 실행 (ClaudeCliProvider CLI 세션 경합 방지)
-  if (savedSymbols.length > 0) {
-    logger.info(TAG, `CorporateAnalyst ${savedSymbols.length}건 순차 실행...`);
-    for (const symbol of savedSymbols) {
-      await fireCorporateAnalyst(symbol, targetDate, pool, TAG);
     }
   }
 

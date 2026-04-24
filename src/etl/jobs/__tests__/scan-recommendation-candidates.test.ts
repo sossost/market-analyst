@@ -44,10 +44,6 @@ vi.mock("@/tools/bearExceptionGate.js", () => ({
 vi.mock("@/tools/lateBullGate.js", () => ({
   evaluateLateBullGate: vi.fn(),
 }));
-vi.mock("@/corporate-analyst/runCorporateAnalyst.js", () => ({
-  fireCorporateAnalyst: vi.fn().mockResolvedValue(undefined),
-}));
-
 // ─── import (mock 이후) ────────────────────────────────────────────────────────
 
 import { getLatestTradeDate } from "@/etl/utils/date-helpers";
