@@ -71,19 +71,28 @@ async function backfillGrades(
     `UPDATE tracked_stocks ts
      SET entry_sepa_grade = fs.grade
      FROM (
-       SELECT ts2.id, f.grade
+       SELECT ts2.id, COALESCE(before.grade, after.grade) AS grade
        FROM tracked_stocks ts2
-       JOIN LATERAL (
+       LEFT JOIN LATERAL (
          SELECT grade
          FROM fundamental_scores
          WHERE symbol = ts2.symbol
            AND scored_date <= ts2.entry_date
-           AND grade IS NOT NULL
-           AND grade != ''
+           AND grade IS NOT NULL AND grade != ''
          ORDER BY scored_date DESC
          LIMIT 1
-       ) f ON true
+       ) before ON true
+       LEFT JOIN LATERAL (
+         SELECT grade
+         FROM fundamental_scores
+         WHERE symbol = ts2.symbol
+           AND scored_date > ts2.entry_date
+           AND grade IS NOT NULL AND grade != ''
+         ORDER BY scored_date ASC
+         LIMIT 1
+       ) after ON true
        WHERE ts2.entry_sepa_grade IS NULL
+         AND COALESCE(before.grade, after.grade) IS NOT NULL
      ) fs
      WHERE ts.id = fs.id
      RETURNING ts.id, ts.symbol, ts.entry_sepa_grade AS grade`,
@@ -139,7 +148,6 @@ async function main() {
        AND EXISTS (
          SELECT 1 FROM fundamental_scores fs
          WHERE fs.symbol = ts.symbol
-           AND fs.scored_date <= ts.entry_date
            AND fs.grade IS NOT NULL
            AND fs.grade != ''
        )`,
