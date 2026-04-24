@@ -1039,7 +1039,7 @@ export async function expireStaleCandidateTheses(
         sql`EXISTS (
           SELECT 1 FROM theses t2
           WHERE t2.status = 'ACTIVE'
-            AND t2.thesis LIKE '%' || REPLACE(${theses.thesis}, ${CANDIDATE_THESIS_PREFIX}, '') || '%'
+            AND t2.thesis LIKE '%' || REPLACE(REPLACE(REPLACE(${theses.thesis}, ${CANDIDATE_THESIS_PREFIX}, ''), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
         )`,
       ),
     )
