@@ -1,6 +1,6 @@
 import { db } from "@/db/client";
 import { theses } from "@/db/schema/analyst";
-import { eq, and, sql, inArray, asc, gte } from "drizzle-orm";
+import { eq, and, sql, inArray, asc, gte, or } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 import { getDedupedCounts } from "@/lib/thesis-dedup";
 import type { Thesis, ThesisCategory, Confidence, ConsensusLevel, ConsensusHitRateRow, MinorityView } from "@/types/debate";
@@ -47,7 +47,10 @@ export async function saveTheses(
   }
 
   // 같은 날짜의 기존 thesis 삭제 (재실행 시 중복 방지)
-  await db.delete(theses).where(eq(theses.debateDate, debateDate));
+  // CANDIDATE는 삭제하지 않는다 — 재실행 시에도 N+1 병목 후보가 보존되어야 한다 (#981)
+  await db
+    .delete(theses)
+    .where(and(eq(theses.debateDate, debateDate), sql`${theses.status} != 'CANDIDATE'`));
 
   const rows = extractedTheses.map((t) => {
     const isStatusQuo = snapshot != null
@@ -110,6 +113,25 @@ export async function saveTheses(
   for (const { thesis, savedId } of pairs) {
     if (thesis.category === "structural_narrative" && savedId != null) {
       await recordNarrativeChain(thesis, savedId);
+
+      // N+1 병목이 있으면 CANDIDATE thesis로 보존 (에러 격리 — 원본 저장 보호)
+      if (thesis.nextBottleneck != null && thesis.nextBottleneck !== "") {
+        try {
+          await saveCandidateThesisFromNextBottleneck({
+            nextBottleneck: thesis.nextBottleneck,
+            sourceThesisId: savedId,
+            agentPersona: thesis.agentPersona,
+            megatrend: thesis.narrativeChain?.megatrend ?? "",
+            debateDate,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.warn(
+            "ThesisStore",
+            `CANDIDATE thesis 저장 실패 (격리) — sourceId: ${savedId}, bottleneck: "${thesis.nextBottleneck}": ${msg}`,
+          );
+        }
+      }
     }
   }
 
@@ -880,4 +902,216 @@ export async function getThesisStatsByPersona(): Promise<
   }
 
   return result;
+}
+
+// ─── CANDIDATE Thesis ────────────────────────────────────────────────────────
+
+/**
+ * CANDIDATE thesis의 thesis 컬럼 prefix.
+ * 중복 체크 및 포매팅에 사용하는 단일 진실 공급원.
+ */
+const CANDIDATE_THESIS_PREFIX = "[N+1 후보] ";
+
+/**
+ * CANDIDATE thesis의 기본 timeframe (일).
+ * N+1 병목은 구조적 장기 변화이므로 180일을 기본값으로 한다.
+ */
+const CANDIDATE_TIMEFRAME_DAYS = 180;
+
+/**
+ * CANDIDATE thesis의 최대 수명 (일).
+ * 30회 토론에서 채택되지 않으면 시장에서 유효성을 잃은 것으로 판단한다.
+ */
+const CANDIDATE_EXPIRE_DAYS = 30;
+
+/**
+ * CANDIDATE thesis를 Round 3 프롬프트에 주입할 때의 최대 건수 상한.
+ * 누적 과다로 프롬프트가 오염되는 것을 방지한다.
+ */
+const CANDIDATE_PROMPT_MAX_COUNT = 10;
+
+/**
+ * N+1 병목 제안을 CANDIDATE thesis로 저장한다.
+ *
+ * 동작:
+ * 1. 동일 nextBottleneck 텍스트의 CANDIDATE/ACTIVE thesis가 이미 있으면 스킵 (중복 방지)
+ * 2. CANDIDATE thesis 삽입
+ *
+ * 에러는 호출부에서 격리 — 이 함수 자체는 throw하지 않는다.
+ * 반환: 저장된 thesis ID, 또는 null (스킵/실패)
+ */
+export async function saveCandidateThesisFromNextBottleneck(params: {
+  nextBottleneck: string;
+  sourceThesisId: number;
+  agentPersona: AgentPersona;
+  megatrend: string;
+  debateDate: string;
+}): Promise<number | null> {
+  const { nextBottleneck, agentPersona, debateDate } = params;
+
+  const candidateThesisText = `${CANDIDATE_THESIS_PREFIX}${nextBottleneck}`;
+
+  // 중복 체크: 동일 병목 텍스트의 CANDIDATE/ACTIVE thesis가 이미 존재하면 스킵
+  // exact match를 사용한다 — trailing '%'와 LLM 텍스트 내 '%' 문자가 와일드카드로 작동하는 것을 방지
+  const existing = await db
+    .select({ id: theses.id })
+    .from(theses)
+    .where(
+      and(
+        eq(theses.thesis, candidateThesisText),
+        or(eq(theses.status, "CANDIDATE"), eq(theses.status, "ACTIVE")),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    logger.info(
+      "ThesisStore",
+      `CANDIDATE thesis 중복 스킵: "${nextBottleneck}" — 기존 #${existing[0]!.id}`,
+    );
+    return null;
+  }
+
+  const result = await db
+    .insert(theses)
+    .values({
+      debateDate,
+      agentPersona,
+      thesis: candidateThesisText,
+      timeframeDays: CANDIDATE_TIMEFRAME_DAYS,
+      verificationMetric: "다음 토론 세션 에이전트 합의",
+      targetCondition: "에이전트 2명 이상이 동일 병목을 독립적으로 제안",
+      invalidationCondition: null,
+      confidence: "low",
+      consensusLevel: "1/4",
+      consensusScore: 1,
+      category: "structural_narrative",
+      status: "CANDIDATE",
+      nextBottleneck: null,
+      dissentReason: null,
+      minorityView: null,
+      consensusUnverified: null,
+      contradictionDetected: null,
+      isStatusQuo: null,
+    })
+    .returning({ id: theses.id });
+
+  const saved = result[0];
+  if (saved == null) {
+    logger.warn("ThesisStore", `CANDIDATE thesis 저장 실패: "${nextBottleneck}"`);
+    return null;
+  }
+
+  logger.info(
+    "ThesisStore",
+    `CANDIDATE thesis 저장: #${saved.id} "${nextBottleneck}" (by ${agentPersona})`,
+  );
+  return saved.id;
+}
+
+/**
+ * CANDIDATE thesis 수명 관리.
+ *
+ * 처리 순서:
+ * 1. 동일 병목 텍스트로 ACTIVE thesis가 존재하는 CANDIDATE → EXPIRED (승격 중복 정리)
+ * 2. 생성 후 CANDIDATE_EXPIRE_DAYS 초과 CANDIDATE → EXPIRED (방치 방지)
+ *
+ * Returns: { promotedCleanup, expired } 카운트
+ */
+export async function expireStaleCandidateTheses(
+  today: string,
+): Promise<{ promotedCleanup: number; expired: number }> {
+  // 1. 동일 병목 텍스트가 ACTIVE thesis 본문에 포함된 CANDIDATE 정리
+  // CANDIDATE thesis 텍스트는 "[N+1 후보] {bottleneck}" 형식이고,
+  // ACTIVE thesis는 LLM이 새로 생성한 다른 텍스트이므로 thesis = thesis 비교는 절대 매칭 안 됨.
+  // prefix를 제거한 원본 병목 텍스트를 ACTIVE thesis 본문에서 LIKE 검색한다.
+  const promotedCleanupResult = await db
+    .update(theses)
+    .set({
+      status: "EXPIRED",
+      verificationDate: today,
+      verificationResult: "동일 병목이 ACTIVE thesis로 승격됨 — CANDIDATE 중복 정리",
+      closeReason: "promoted_to_active",
+    })
+    .where(
+      and(
+        eq(theses.status, "CANDIDATE"),
+        sql`EXISTS (
+          SELECT 1 FROM theses t2
+          WHERE t2.status = 'ACTIVE'
+            AND t2.thesis LIKE '%' || REPLACE(REPLACE(REPLACE(${theses.thesis}, ${CANDIDATE_THESIS_PREFIX}, ''), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\'
+        )`,
+      ),
+    )
+    .returning({ id: theses.id });
+
+  const promotedCleanup = promotedCleanupResult.length;
+
+  // 2. CANDIDATE_EXPIRE_DAYS 초과 CANDIDATE → EXPIRED
+  const expiredResult = await db
+    .update(theses)
+    .set({
+      status: "EXPIRED",
+      verificationDate: today,
+      verificationResult: `${CANDIDATE_EXPIRE_DAYS}일 내 에이전트 채택 없음 — 후보 만료`,
+      closeReason: "candidate_timeout",
+    })
+    .where(
+      and(
+        eq(theses.status, "CANDIDATE"),
+        sql`${theses.createdAt}::date + ${CANDIDATE_EXPIRE_DAYS} * interval '1 day' <= ${today}::date`,
+      ),
+    )
+    .returning({ id: theses.id });
+
+  const expired = expiredResult.length;
+
+  if (promotedCleanup > 0) {
+    logger.info(
+      "ThesisStore",
+      `CANDIDATE 중복 정리: ${promotedCleanup}건 → EXPIRED (ACTIVE 승격 감지)`,
+    );
+  }
+  if (expired > 0) {
+    logger.info(
+      "ThesisStore",
+      `CANDIDATE 방치 만료: ${expired}건 → EXPIRED (${CANDIDATE_EXPIRE_DAYS}일 초과)`,
+    );
+  }
+
+  return { promotedCleanup, expired };
+}
+
+/**
+ * CANDIDATE thesis 목록을 조회한다.
+ * Round 3 프롬프트 주입용 — 최신 CANDIDATE_PROMPT_MAX_COUNT건 상한.
+ */
+export async function loadCandidateTheses(): Promise<Awaited<ReturnType<typeof loadActiveTheses>>> {
+  return db
+    .select()
+    .from(theses)
+    .where(eq(theses.status, "CANDIDATE"))
+    .orderBy(asc(theses.createdAt))
+    .limit(CANDIDATE_PROMPT_MAX_COUNT);
+}
+
+/**
+ * CANDIDATE thesis를 Round 3 모더레이터 프롬프트용 텍스트로 변환.
+ * 별도 섹션으로 구분하여 에이전트가 지지/폐기/강화를 결정할 수 있게 한다.
+ * 빈 배열이면 빈 문자열 반환.
+ */
+export function formatCandidateThesesForPrompt(
+  rows: Awaited<ReturnType<typeof loadActiveTheses>>,
+): string {
+  if (rows.length === 0) return "";
+
+  const lines = rows.map((t) => {
+    const label = PERSONA_LABEL[t.agentPersona] ?? t.agentPersona;
+    return `- ${t.thesis.replace(/\n/g, " ")} (제안일: ${t.debateDate}, 제안 에이전트: ${label})`;
+  });
+
+  return [
+    "[후보 thesis — 다음 토론 검증 대상]",
+    ...lines,
+  ].join("\n");
 }

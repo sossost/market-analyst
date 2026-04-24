@@ -6,7 +6,7 @@ export type AgentPersona = "macro" | "tech" | "geopolitics" | "sentiment";
 export type ModeratorRole = "moderator";
 export type DebateRole = AgentPersona | ModeratorRole;
 
-export type ThesisStatus = "ACTIVE" | "CONFIRMED" | "INVALIDATED" | "EXPIRED";
+export type ThesisStatus = "ACTIVE" | "CONFIRMED" | "INVALIDATED" | "EXPIRED" | "CANDIDATE";
 export type Confidence = "low" | "medium" | "high";
 export type ConsensusLevel = "4/4" | "3/4" | "2/4" | "1/4";
 export type TimeframeDays = 45 | 60 | 90;
