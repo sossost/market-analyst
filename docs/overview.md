@@ -290,7 +290,7 @@ market-analyst DB (신규 테이블 — 읽기/쓰기)
 ├── portfolio_positions    → 모델 포트폴리오 편입/청산 이력 (ACTIVE/EXITED 상태, 편입 시점 팩터 스냅샷, thesis FK)
 ├── ~~recommendations~~    → deprecated (tracked_stocks로 통합)
 ├── ~~watchlist_stocks~~   → deprecated (tracked_stocks로 통합)
-├── theses                 → 토론 thesis (카테고리 분리)
+├── theses                 → 토론 thesis (status: ACTIVE/CONFIRMED/INVALIDATED/EXPIRED/CANDIDATE)
 ├── debate_sessions        → 토론 세션 저장
 ├── agent_learnings        → 장기 기억 (검증된 원칙 + 경계 패턴)
 ├── fundamental_scores     → SEPA 펀더멘탈 점수
