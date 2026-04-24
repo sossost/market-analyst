@@ -13,7 +13,7 @@ import { logger } from "@/lib/logger";
 import { sendDiscordMessage, sendDiscordError } from "@/lib/discord";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
 import {
-  findAllActiveTrackedStocks,
+  findActiveFeaturedTrackedStocks,
   findActiveTrackedStockBySymbol,
   findExistingAnalysisReports,
 } from "@/db/repositories/index.js";
@@ -70,9 +70,9 @@ function validateEnvironment(): void {
   }
 }
 
-// ------- DB 쿼리: ACTIVE 트래킹 종목 전체 조회 -------
+// ------- DB 쿼리: ACTIVE + featured 트래킹 종목 조회 -------
 async function fetchActiveRecommendations(): Promise<ActiveTrackedStock[]> {
-  return findAllActiveTrackedStocks(pool);
+  return findActiveFeaturedTrackedStocks(pool);
 }
 
 // ------- DB 쿼리: 이미 리포트가 있는 (symbol, date) 집합 조회 -------
