@@ -23,7 +23,7 @@ import type {
   CorporatePeerGroupRow,
   CorporatePeerRatiosRow,
   CorporatePriceTargetConsensusRow,
-  CorporateStockPhasesCloseRow,
+  CorporateDailyPriceCloseRow,
   CorporateSectorRsRow,
   CorporateIndustryRsRow,
   CorporateAnalysisReportRow,
@@ -253,14 +253,14 @@ export async function findPriceTargetConsensus(
   return rows;
 }
 
-export async function findCurrentPriceFromStockPhases(
+export async function findCurrentPrice(
   symbol: string,
   recommendationDate: string,
   pool: Pool,
-): Promise<CorporateStockPhasesCloseRow[]> {
-  const { rows } = await pool.query<CorporateStockPhasesCloseRow>(
+): Promise<CorporateDailyPriceCloseRow[]> {
+  const { rows } = await pool.query<CorporateDailyPriceCloseRow>(
     `SELECT close
-     FROM stock_phases
+     FROM daily_prices
      WHERE symbol = $1 AND date <= $2
      ORDER BY date DESC
      LIMIT 1`,
@@ -336,24 +336,8 @@ export async function findUpcomingEarnings(
 // ---------------------------------------------------------------------------
 
 /**
- * ACTIVE + featured 상태 트래킹 종목 조회.
- * 기업 분석 리포트는 featured tier 한정 (#971).
- */
-export async function findActiveFeaturedTrackedStocks(
-  pool: Pool,
-): Promise<CorporateActiveTrackedRow[]> {
-  const { rows } = await pool.query<CorporateActiveTrackedRow>(
-    `SELECT symbol, entry_date
-     FROM tracked_stocks
-     WHERE status = 'ACTIVE' AND tier = 'featured'
-     ORDER BY entry_date DESC`,
-  );
-  return rows;
-}
-
-/**
- * 단일 종목 ACTIVE + featured 트래킹 최신 1건 조회.
- * 기업 분석 리포트는 featured tier 한정 (#971).
+ * 단일 종목 ACTIVE 포트폴리오 포지션 조회.
+ * 기업 분석 리포트는 portfolio_positions ACTIVE 종목 한정 (#987).
  */
 export async function findActiveTrackedStockBySymbol(
   symbol: string,
@@ -361,8 +345,8 @@ export async function findActiveTrackedStockBySymbol(
 ): Promise<CorporateActiveTrackedRow[]> {
   const { rows } = await pool.query<CorporateActiveTrackedRow>(
     `SELECT symbol, entry_date
-     FROM tracked_stocks
-     WHERE symbol = $1 AND status = 'ACTIVE' AND tier = 'featured'
+     FROM portfolio_positions
+     WHERE symbol = $1 AND status = 'ACTIVE'
      ORDER BY entry_date DESC
      LIMIT 1`,
     [symbol],

@@ -13,10 +13,10 @@ import { logger } from "@/lib/logger";
 import { sendDiscordMessage, sendDiscordError } from "@/lib/discord";
 import { runCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst";
 import {
-  findActiveFeaturedTrackedStocks,
   findActiveTrackedStockBySymbol,
   findExistingAnalysisReports,
 } from "@/db/repositories/index.js";
+import { getActivePortfolioPositions } from "@/db/repositories/portfolioPositionsRepository.js";
 
 // ------- 상수 -------
 const CONCURRENCY_LIMIT = 2;
@@ -70,9 +70,13 @@ function validateEnvironment(): void {
   }
 }
 
-// ------- DB 쿼리: ACTIVE + featured 트래킹 종목 조회 -------
+// ------- DB 쿼리: ACTIVE 포트폴리오 포지션 조회 -------
 async function fetchActiveRecommendations(): Promise<ActiveTrackedStock[]> {
-  return findActiveFeaturedTrackedStocks(pool);
+  const positions = await getActivePortfolioPositions();
+  return positions.map((p) => ({
+    symbol: p.symbol,
+    entry_date: p.entryDate,
+  }));
 }
 
 // ------- DB 쿼리: 이미 리포트가 있는 (symbol, date) 집합 조회 -------

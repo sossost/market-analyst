@@ -20,7 +20,6 @@ import {
 } from "@/db/repositories/trackedStocksRepository.js";
 import { findPhase2SinceDates } from "@/db/repositories/stockPhaseRepository.js";
 import { logger } from "@/lib/logger";
-import { fireCorporateAnalyst } from "@/corporate-analyst/runCorporateAnalyst.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -320,11 +319,6 @@ async function executeRegister(
     "SaveTrackedStock",
     `${symbol}: 트래킹 종목 등록 완료 (source=agent, tier=${tier}, Phase: ${phase}, RS: ${rsScore ?? "N/A"}, thesis: ${thesisId ?? "없음"})`,
   );
-
-  // 종목 심층 리포트 생성 — featured tier만 (fire-and-forget) (#847)
-  if (tier === "featured") {
-    fireCorporateAnalyst(symbol, date, pool, "CorporateAnalyst");
-  }
 
   return JSON.stringify({
     success: true,

@@ -645,9 +645,10 @@ export interface CorporatePriceTargetConsensusRow {
   target_median: string | null;
 }
 
-export interface CorporateStockPhasesCloseRow {
+export interface CorporateDailyPriceCloseRow {
   close: string;
 }
+
 
 export interface CorporateSectorRsRow {
   avg_rs: string | null;
