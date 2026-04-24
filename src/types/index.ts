@@ -13,6 +13,8 @@ export interface PhaseInput {
   rsScore: number; // 0-100
   high52w: number;
   low52w: number;
+  /** 최근 5거래일 중 1일 이상 vol_ratio(volume / vol_ma30) >= 1.5 */
+  recentVolSurge: boolean;
 }
 
 export interface PhaseResult {
@@ -30,8 +32,9 @@ export interface PhaseDetail {
   rsAbove50: boolean;
   priceAbove30PctFromLow: boolean;
   priceWithin25PctOfHigh: boolean;
+  recentVolSurge: boolean;
   conditionsMet: string[];
-  /** Number of Phase 2 conditions met (0-8). Used to identify near-Phase-2 stocks. */
+  /** Number of Phase 2 conditions met (0-9). Used to identify near-Phase-2 stocks. */
   phase2ConditionsMet: number;
 }
 

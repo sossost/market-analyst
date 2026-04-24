@@ -34,6 +34,8 @@ const CLOSE_DAYS_NEEDED = 170; // 150 for MA150 + 20 for slope
 const HIGH_LOW_DAYS = 252; // ~1 year trading days
 const VDU_SHORT_PERIOD = 5; // VDU ratio: short-term average window
 const VDU_LONG_PERIOD = 50; // VDU ratio: long-term average window
+const PHASE2_VOL_SURGE_THRESHOLD = 1.5; // vol_ratio >= 1.5 을 서지로 판정
+const PHASE2_VOL_SURGE_LOOKBACK = 5; // 최근 N 거래일 내 1일 이상 서지
 
 async function main() {
   assertValidEnvironment();
@@ -176,6 +178,10 @@ async function main() {
         rsScore,
         high52w: highLow.high,
         low52w: highLow.low,
+        recentVolSurge: calculateRecentVolSurge(
+          volHistBySymbol.get(sym.symbol) ?? [],
+          ma.vol_ma30 != null ? toNum(ma.vol_ma30) : null,
+        ),
       };
 
       const result = detectPhase(input);
@@ -260,6 +266,22 @@ function calculateMa150(
   if (slice.length < period) return 0;
   const sum = slice.reduce((acc, c) => acc + c.close, 0);
   return sum / period;
+}
+
+/**
+ * 최근 N 거래일 내 vol_ratio >= threshold 인 날이 1일 이상이면 true.
+ * vol_ma30은 30일 평균이므로 5일 내 변동이 미미하여 당일 값으로 일괄 비교한다.
+ * volMa30이 null이거나 0이면 false (데이터 미확보).
+ */
+export function calculateRecentVolSurge(
+  volumes: number[],
+  volMa30: number | null,
+): boolean {
+  if (volMa30 == null || volMa30 === 0) return false;
+
+  return volumes
+    .slice(0, PHASE2_VOL_SURGE_LOOKBACK)
+    .some((v) => v / volMa30 >= PHASE2_VOL_SURGE_THRESHOLD);
 }
 
 /**

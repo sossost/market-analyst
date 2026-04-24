@@ -16,19 +16,20 @@ const MA150_FLAT_THRESHOLD = 0.05; // ±5% considered flat (#594: ±2% was too n
 const PRICE_NEAR_MA150_THRESHOLD = 0.05; // within 5% of MA150
 
 /**
- * Minimum Phase 2 conditions required (out of 8).
+ * Minimum Phase 2 conditions required (out of 9).
  * Core conditions (must ALL be met): price > MA150, MA150 > MA200, MA150 slope > 0.
  *
  * 변경 이력:
  * - 6/8: 소형주에서 하루만에 조건 깨지는 false positive 양산 (승률 0%, #376)
  * - 7/8: 초입 포착 유지하면서 최소 안정성 확보
+ * - 8/9: 거래량 서지 조건 추가 (#934) — 총 9개 조건 중 8개 이상
  */
-const PHASE_2_MIN_CONDITIONS = 7;
+const PHASE_2_MIN_CONDITIONS = 8;
 
 /**
  * Detect Weinstein Phase for a stock.
  *
- * Phase 2 conditions (8 total):
+ * Phase 2 conditions (9 total):
  *   1. price > MA150
  *   2. price > MA200
  *   3. MA150 > MA200
@@ -37,10 +38,11 @@ const PHASE_2_MIN_CONDITIONS = 7;
  *   6. RS > 50
  *   7. price > 30% above 52w low
  *   8. price within 25% of 52w high
+ *   9. recent vol surge (최근 5거래일 중 1일 이상 vol_ratio >= 1.5)
  *
- * Phase 2 판정: Core 3개 조건 충족 + 총 6/8 이상 → Phase 2.
+ * Phase 2 판정: Core 3개 조건 충족 + 총 8/9 이상 → Phase 2.
  *   Core: price > MA150, MA150 > MA200, MA150 slope > 0
- *   이전 8/8 이진 판정에서 6/8 최소로 완화하여 전환 초입 포착.
+ *   이전 8/8 이진 판정에서 완화 후 거래량 게이트 추가 (#934).
  *
  * Phase 4: price < MA150, MA150 < MA200, slope negative, RS < 50
  * Phase 3 (distribution): price ≤ MA150 AND MA150 > MA200 (topping after Phase 2 run)
@@ -50,12 +52,21 @@ const PHASE_2_MIN_CONDITIONS = 7;
  * 판정 우선순위: Phase 2 → Phase 4 → Phase 3(distribution) → Phase 1 → Phase 3(default)
  */
 export function detectPhase(input: PhaseInput): PhaseResult {
-  const { price, ma50, ma150, ma200, ma150_20dAgo, rsScore, high52w, low52w } =
-    input;
+  const {
+    price,
+    ma50,
+    ma150,
+    ma200,
+    ma150_20dAgo,
+    rsScore,
+    high52w,
+    low52w,
+    recentVolSurge,
+  } = input;
 
   const ma150Slope = calculateMa150Slope(ma150, ma150_20dAgo);
 
-  // Evaluate all 8 Phase 2 conditions
+  // Evaluate all 9 Phase 2 conditions
   const priceAboveMa150 = price > ma150;
   const priceAboveMa200 = price > ma200;
   const ma150AboveMa200 = ma150 > ma200;
@@ -73,8 +84,8 @@ export function detectPhase(input: PhaseInput): PhaseResult {
   if (ma150SlopePositive) conditionsMet.push("MA150 slope > 0");
   if (rsAbove50) conditionsMet.push("RS > 50");
   if (priceAbove30PctFromLow) conditionsMet.push("price > 30% from 52w low");
-  if (priceWithin25PctOfHigh)
-    conditionsMet.push("price within 25% of 52w high");
+  if (priceWithin25PctOfHigh) conditionsMet.push("price within 25% of 52w high");
+  if (recentVolSurge) conditionsMet.push("vol surge within 5d");
 
   const detail: PhaseDetail = {
     priceAboveMa150,
@@ -85,6 +96,7 @@ export function detectPhase(input: PhaseInput): PhaseResult {
     rsAbove50,
     priceAbove30PctFromLow,
     priceWithin25PctOfHigh,
+    recentVolSurge,
     conditionsMet,
     phase2ConditionsMet: conditionsMet.length,
   };

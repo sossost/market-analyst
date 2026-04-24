@@ -12,8 +12,9 @@ import type { PhaseInput } from "@/types";
  * 6. RS score > 50
  * 7. price > 30% above 52-week low
  * 8. price within 25% of 52-week high
+ * 9. recent vol surge (최근 5거래일 중 1일 이상 vol_ratio >= 1.5)
  *
- * Phase 2 판정: Core 3개(price > MA150, MA150 > MA200, slope > 0) + 총 7/8 이상 (#376)
+ * Phase 2 판정: Core 3개(price > MA150, MA150 > MA200, slope > 0) + 총 8/9 이상 (#934)
  */
 
 function makePhase2Input(overrides: Partial<PhaseInput> = {}): PhaseInput {
@@ -26,6 +27,7 @@ function makePhase2Input(overrides: Partial<PhaseInput> = {}): PhaseInput {
     rsScore: 75,
     high52w: 160,
     low52w: 80,
+    recentVolSurge: true,
     ...overrides,
   };
 }
@@ -58,16 +60,16 @@ describe("calculateMa150Slope", () => {
 
 describe("detectPhase", () => {
   describe("Phase 2 detection", () => {
-    it("returns Phase 2 when all 8 conditions are met", () => {
+    it("returns Phase 2 when all 9 conditions are met", () => {
       const input = makePhase2Input();
       const result = detectPhase(input);
 
       expect(result.phase).toBe(2);
-      expect(result.detail.conditionsMet).toHaveLength(8);
-      expect(result.detail.phase2ConditionsMet).toBe(8);
+      expect(result.detail.conditionsMet).toHaveLength(9);
+      expect(result.detail.phase2ConditionsMet).toBe(9);
     });
 
-    it("includes all 8 condition labels when Phase 2", () => {
+    it("includes all 9 condition labels when Phase 2", () => {
       const result = detectPhase(makePhase2Input());
 
       expect(result.detail.priceAboveMa150).toBe(true);
@@ -78,6 +80,7 @@ describe("detectPhase", () => {
       expect(result.detail.rsAbove50).toBe(true);
       expect(result.detail.priceAbove30PctFromLow).toBe(true);
       expect(result.detail.priceWithin25PctOfHigh).toBe(true);
+      expect(result.detail.recentVolSurge).toBe(true);
     });
 
     it("reports ma150Slope in result", () => {
@@ -85,36 +88,36 @@ describe("detectPhase", () => {
       expect(result.ma150Slope).toBeGreaterThan(0);
     });
 
-    it("returns Phase 2 with 7/8 conditions (missing MA50 > MA150)", () => {
+    it("returns Phase 2 with 8/9 conditions (missing MA50 > MA150)", () => {
       // Core conditions met: price > MA150, MA150 > MA200, slope positive
-      // Missing: MA50 > MA150 only → 7/8 → Phase 2 early
+      // Missing: MA50 > MA150 only → 8/9 → Phase 2 early
       const result = detectPhase(makePhase2Input({ ma50: 130 }));
       expect(result.phase).toBe(2);
-      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
       expect(result.detail.ma50AboveMa150).toBe(false);
     });
 
-    it("returns Phase 2 with 7/8 conditions (missing RS > 50)", () => {
+    it("returns Phase 2 with 8/9 conditions (missing RS > 50)", () => {
       const result = detectPhase(makePhase2Input({ rsScore: 40 }));
       expect(result.phase).toBe(2);
-      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
       expect(result.detail.rsAbove50).toBe(false);
     });
 
-    it("does NOT return Phase 2 with 6/8 conditions (7/8 minimum required, #376)", () => {
-      // Missing: MA50 > MA150 and RS > 50 → 6/8
+    it("does NOT return Phase 2 with 7/9 conditions (8/9 minimum required, #934)", () => {
+      // Missing: MA50 > MA150 and RS > 50 → 7/9
       const result = detectPhase(makePhase2Input({ ma50: 130, rsScore: 40 }));
       expect(result.phase).not.toBe(2);
-      expect(result.detail.phase2ConditionsMet).toBe(6);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
     });
 
-    it("does NOT return Phase 2 with 5/8 conditions", () => {
-      // Missing: MA50 > MA150, RS > 50, price not 30% above low → 5/8
+    it("does NOT return Phase 2 with 6/9 conditions", () => {
+      // Missing: MA50 > MA150, RS > 50, price not 30% above low → 6/9
       const result = detectPhase(
         makePhase2Input({ ma50: 130, rsScore: 40, low52w: 120 }),
       );
       expect(result.phase).not.toBe(2);
-      expect(result.detail.phase2ConditionsMet).toBe(5);
+      expect(result.detail.phase2ConditionsMet).toBe(6);
     });
 
     it("does NOT return Phase 2 when core condition price > MA150 fails", () => {
@@ -141,24 +144,24 @@ describe("detectPhase", () => {
     it("returns Phase 2 even when price is not 30% above 52w low", () => {
       // price = 150, low52w needs to be high enough so 150 < low52w * 1.3
       const result = detectPhase(makePhase2Input({ low52w: 120 }));
-      // 120 * 1.3 = 156, price=150 < 156 → fails this condition but 7/8 → still Phase 2
+      // 120 * 1.3 = 156, price=150 < 156 → fails this condition but 8/9 → still Phase 2
       expect(result.phase).toBe(2);
       expect(result.detail.priceAbove30PctFromLow).toBe(false);
-      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
     });
 
     it("returns Phase 2 even when price is more than 25% below 52w high", () => {
       // high52w = 250 → 250*0.75 = 187.5, price=150 < 187.5 → fails
       const result = detectPhase(makePhase2Input({ high52w: 250 }));
-      // 7/8 conditions → still Phase 2
+      // 8/9 conditions → still Phase 2
       expect(result.phase).toBe(2);
       expect(result.detail.priceWithin25PctOfHigh).toBe(false);
-      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
     });
   });
 
   describe("Phase 2 early detection (issue #328 fix)", () => {
-    it("captures 7/8 stock that was previously misclassified as Phase 3", () => {
+    it("captures 8/9 stock that was previously misclassified as Phase 3", () => {
       // Classic Phase 2 transitioning: all conditions met except MA50 hasn't crossed MA150 yet
       const result = detectPhase({
         price: 150,
@@ -169,14 +172,15 @@ describe("detectPhase", () => {
         rsScore: 75,
         high52w: 160,
         low52w: 80,
+        recentVolSurge: true,
       });
       expect(result.phase).toBe(2);
-      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
     });
 
-    it("does NOT capture Phase 1 → Phase 2 transition with only 6/8 conditions (#376)", () => {
+    it("does NOT capture Phase 1 → Phase 2 transition with only 7/9 conditions (#934)", () => {
       // Emerging from base: core structural conditions met, but RS and MA50 still catching up
-      // 6/8 is no longer sufficient — must meet 7/8 minimum
+      // 7/9 is no longer sufficient — must meet 8/9 minimum
       const result = detectPhase({
         price: 140,
         ma50: 130, // below MA150
@@ -186,9 +190,10 @@ describe("detectPhase", () => {
         rsScore: 45, // RS still below 50
         high52w: 160,
         low52w: 80,
+        recentVolSurge: true, // vol surge present, but 2 other conditions missing
       });
       expect(result.phase).not.toBe(2);
-      expect(result.detail.phase2ConditionsMet).toBe(6);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
     });
   });
 
@@ -203,6 +208,7 @@ describe("detectPhase", () => {
         rsScore: 20,
         high52w: 150,
         low52w: 70,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(4);
@@ -218,6 +224,7 @@ describe("detectPhase", () => {
         rsScore: 30,
         high52w: 140,
         low52w: 75,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(4);
@@ -233,6 +240,7 @@ describe("detectPhase", () => {
         rsScore: 49,
         high52w: 150,
         low52w: 80,
+        recentVolSurge: false,
       };
       const result = detectPhase(input);
       expect(result.phase).toBe(4);
@@ -251,6 +259,7 @@ describe("detectPhase", () => {
         rsScore: 45,
         high52w: 130,
         low52w: 85,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(1);
@@ -266,6 +275,7 @@ describe("detectPhase", () => {
         rsScore: 48,
         high52w: 125,
         low52w: 88,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(1);
@@ -284,6 +294,7 @@ describe("detectPhase", () => {
         rsScore: 55,
         high52w: 120,
         low52w: 70,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(1);
@@ -300,6 +311,7 @@ describe("detectPhase", () => {
         rsScore: 45,
         high52w: 130,
         low52w: 70,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(1);
@@ -316,6 +328,7 @@ describe("detectPhase", () => {
         rsScore: 45,
         high52w: 130,
         low52w: 70,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(3);
@@ -332,6 +345,7 @@ describe("detectPhase", () => {
         rsScore: 55,
         high52w: 130,
         low52w: 70,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(3);
@@ -348,6 +362,7 @@ describe("detectPhase", () => {
         rsScore: 50,
         high52w: 130,
         low52w: 70,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(1);
@@ -364,6 +379,7 @@ describe("detectPhase", () => {
         rsScore: 50, // RS >= 50 → not Phase 4
         high52w: 130,
         low52w: 70,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(1);
@@ -381,6 +397,7 @@ describe("detectPhase", () => {
         rsScore: 35,
         high52w: 150,
         low52w: 80,
+        recentVolSurge: false,
       };
       const result = detectPhase(input);
       expect(result.phase).toBe(4);
@@ -396,6 +413,7 @@ describe("detectPhase", () => {
         rsScore: 35,
         high52w: 150,
         low52w: 80,
+        recentVolSurge: false,
       };
       const result = detectPhase(input);
       expect(result.phase).toBe(1);
@@ -416,19 +434,75 @@ describe("detectPhase", () => {
         rsScore: 55,
         high52w: 155,
         low52w: 80,
+        recentVolSurge: false,
       });
 
       expect(result.phase).toBe(3);
     });
   });
 
+  describe("거래량 게이트 (recentVolSurge, #934)", () => {
+    it("9/9 모든 조건 충족 시 Phase 2 판정", () => {
+      const result = detectPhase(makePhase2Input({ recentVolSurge: true }));
+      expect(result.phase).toBe(2);
+      expect(result.detail.recentVolSurge).toBe(true);
+      expect(result.detail.phase2ConditionsMet).toBe(9);
+    });
+
+    it("recentVolSurge false 이고 나머지 8개 충족 시 Phase 2 판정 (8/9 통과)", () => {
+      const result = detectPhase(makePhase2Input({ recentVolSurge: false }));
+      expect(result.phase).toBe(2);
+      expect(result.detail.recentVolSurge).toBe(false);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
+    });
+
+    it("recentVolSurge false + 기존 조건 1개 false → 7/9 → Phase 2 아님", () => {
+      const result = detectPhase(
+        makePhase2Input({ recentVolSurge: false, ma50: 130 }),
+      );
+      expect(result.phase).not.toBe(2);
+      expect(result.detail.recentVolSurge).toBe(false);
+      expect(result.detail.ma50AboveMa150).toBe(false);
+      expect(result.detail.phase2ConditionsMet).toBe(7);
+    });
+
+    it("recentVolSurge true + 기존 조건 1개 false → 8/9 → Phase 2 판정", () => {
+      const result = detectPhase(
+        makePhase2Input({ recentVolSurge: true, ma50: 130 }),
+      );
+      expect(result.phase).toBe(2);
+      expect(result.detail.recentVolSurge).toBe(true);
+      expect(result.detail.ma50AboveMa150).toBe(false);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
+    });
+
+    it("Core 조건 미충족 시 recentVolSurge true 여도 Phase 2 아님", () => {
+      // Core 조건: price > MA150 실패
+      const result = detectPhase(
+        makePhase2Input({ recentVolSurge: true, price: 130 }),
+      );
+      expect(result.phase).not.toBe(2);
+      expect(result.detail.priceAboveMa150).toBe(false);
+    });
+
+    it("conditionsMet 배열에 vol surge within 5d 레이블 포함", () => {
+      const result = detectPhase(makePhase2Input({ recentVolSurge: true }));
+      expect(result.detail.conditionsMet).toContain("vol surge within 5d");
+    });
+
+    it("recentVolSurge false 시 conditionsMet 배열에 vol surge 레이블 미포함", () => {
+      const result = detectPhase(makePhase2Input({ recentVolSurge: false }));
+      expect(result.detail.conditionsMet).not.toContain("vol surge within 5d");
+    });
+  });
+
   describe("boundary values", () => {
     it("RS exactly 50 does not qualify for Phase 2 RS condition", () => {
       const result = detectPhase(makePhase2Input({ rsScore: 50 }));
-      // 7/8 conditions → still Phase 2 (core conditions met)
+      // 8/9 conditions → still Phase 2 (core conditions met)
       expect(result.phase).toBe(2);
       expect(result.detail.rsAbove50).toBe(false);
-      expect(result.detail.phase2ConditionsMet).toBe(7);
+      expect(result.detail.phase2ConditionsMet).toBe(8);
     });
 
     it("RS 51 qualifies for Phase 2 rs condition", () => {
@@ -458,10 +532,10 @@ describe("detectPhase", () => {
 
     it("phase2ConditionsMet is always set correctly", () => {
       const result = detectPhase(makePhase2Input());
-      expect(result.detail.phase2ConditionsMet).toBe(8);
+      expect(result.detail.phase2ConditionsMet).toBe(9);
 
       const result2 = detectPhase(makePhase2Input({ rsScore: 30, ma50: 100 }));
-      expect(result2.detail.phase2ConditionsMet).toBe(6);
+      expect(result2.detail.phase2ConditionsMet).toBe(7);
     });
   });
 });
