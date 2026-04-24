@@ -352,7 +352,8 @@ export async function findActiveFeaturedTrackedStocks(
 }
 
 /**
- * 단일 종목 ACTIVE 트래킹 최신 1건 조회.
+ * 단일 종목 ACTIVE + featured 트래킹 최신 1건 조회.
+ * 기업 분석 리포트는 featured tier 한정 (#971).
  */
 export async function findActiveTrackedStockBySymbol(
   symbol: string,
@@ -361,7 +362,7 @@ export async function findActiveTrackedStockBySymbol(
   const { rows } = await pool.query<CorporateActiveTrackedRow>(
     `SELECT symbol, entry_date
      FROM tracked_stocks
-     WHERE symbol = $1 AND status = 'ACTIVE'
+     WHERE symbol = $1 AND status = 'ACTIVE' AND tier = 'featured'
      ORDER BY entry_date DESC
      LIMIT 1`,
     [symbol],
