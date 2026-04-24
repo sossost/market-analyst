@@ -61,7 +61,9 @@ async function findNullGradeRows(): Promise<NullGradeRow[]> {
 
 /**
  * NULL 레코드를 fundamental_scores에서 백필한다.
- * LATERAL JOIN으로 각 레코드의 entry_date 기준 가장 최근 grade를 매칭.
+ * 양방향 LATERAL JOIN: entry_date 이전 최근 grade 우선, 없으면 이후 가장 가까운 grade로 fallback.
+ * after fallback은 entry 시점에 아직 없던 스코어를 소급 적용하므로 정확도가 낮을 수 있으나,
+ * NULL 방치보다 팩터 슬라이싱 품질에 유리하다.
  * 반환: 실제 UPDATE된 행 목록.
  */
 async function backfillGrades(
@@ -71,19 +73,28 @@ async function backfillGrades(
     `UPDATE tracked_stocks ts
      SET entry_sepa_grade = fs.grade
      FROM (
-       SELECT ts2.id, f.grade
+       SELECT ts2.id, COALESCE(before.grade, after.grade) AS grade
        FROM tracked_stocks ts2
-       JOIN LATERAL (
+       LEFT JOIN LATERAL (
          SELECT grade
          FROM fundamental_scores
          WHERE symbol = ts2.symbol
            AND scored_date <= ts2.entry_date
-           AND grade IS NOT NULL
-           AND grade != ''
+           AND grade IS NOT NULL AND grade != ''
          ORDER BY scored_date DESC
          LIMIT 1
-       ) f ON true
+       ) before ON true
+       LEFT JOIN LATERAL (
+         SELECT grade
+         FROM fundamental_scores
+         WHERE symbol = ts2.symbol
+           AND scored_date > ts2.entry_date
+           AND grade IS NOT NULL AND grade != ''
+         ORDER BY scored_date ASC
+         LIMIT 1
+       ) after ON true
        WHERE ts2.entry_sepa_grade IS NULL
+         AND COALESCE(before.grade, after.grade) IS NOT NULL
      ) fs
      WHERE ts.id = fs.id
      RETURNING ts.id, ts.symbol, ts.entry_sepa_grade AS grade`,
@@ -139,7 +150,6 @@ async function main() {
        AND EXISTS (
          SELECT 1 FROM fundamental_scores fs
          WHERE fs.symbol = ts.symbol
-           AND fs.scored_date <= ts.entry_date
            AND fs.grade IS NOT NULL
            AND fs.grade != ''
        )`,
