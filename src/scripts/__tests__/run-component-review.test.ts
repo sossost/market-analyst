@@ -71,7 +71,7 @@ describe("checkEtlAuto", () => {
 // ─── checkDetectionLag ──────────────────────────────────────
 
 describe("checkDetectionLag", () => {
-  const makeRow = (source: string, cnt: number, avg_lag: number): WeeklyQaDetectionLagRow => ({
+  const makeRow = (source: string, cnt: number, avg_lag: number, catchup_cnt = 0): WeeklyQaDetectionLagRow => ({
     source,
     cnt,
     avg_lag,
@@ -79,6 +79,7 @@ describe("checkDetectionLag", () => {
     early_cnt: 0,
     normal_cnt: 0,
     late_cnt: cnt,
+    catchup_cnt,
   });
 
   it("가중평균 > 10이고 총 cnt >= 5이면 ALERT", () => {
@@ -131,6 +132,28 @@ describe("checkDetectionLag", () => {
 
     expect(result.issues[0].body).toContain("etl_auto");
     expect(result.issues[0].body).toContain("source별 상세");
+  });
+
+  it("catch-up 건(>30일)은 KPI 판정에 영향을 주지 않는다", () => {
+    // 유효 포착 5건 avg 8 → OK, catch-up 800건은 제외
+    const result = checkDetectionLag([makeRow("etl_auto", 5, 8, 800)]);
+
+    expect(result.status).toBe("OK");
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it("currentValue에 유효 건수와 catch-up 건수가 모두 표시된다", () => {
+    const result = checkDetectionLag([makeRow("etl_auto", 10, 5, 50)]);
+
+    expect(result.currentValue).toContain("유효=10");
+    expect(result.currentValue).toContain("catch-up=50");
+  });
+
+  it("ALERT 시 이슈 본문에 catch-up 건수가 표시된다", () => {
+    const result = checkDetectionLag([makeRow("etl_auto", 10, 15, 100)]);
+
+    expect(result.status).toBe("ALERT");
+    expect(result.issues[0].body).toContain("catch-up 제외: 100건");
   });
 });
 

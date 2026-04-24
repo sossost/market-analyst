@@ -140,7 +140,9 @@ export function checkEtlAuto(
 export function checkDetectionLag(
   rows: WeeklyQaDetectionLagRow[],
 ): ComponentCheckResult {
+  // 유효 포착 건(≤30일 윈도우)만으로 KPI 판정. catch-up 건(>30일)은 별도 표시.
   const totalCnt = rows.reduce((sum, r) => sum + r.cnt, 0);
+  const totalCatchup = rows.reduce((sum, r) => sum + r.catchup_cnt, 0);
   const weightedAvg =
     totalCnt === 0
       ? null
@@ -148,7 +150,7 @@ export function checkDetectionLag(
 
   const avgDisplay = weightedAvg == null ? "N/A" : `${weightedAvg.toFixed(1)}일`;
   const kpiName = "avg detection_lag";
-  const currentValue = `${avgDisplay} (n=${totalCnt})`;
+  const currentValue = `${avgDisplay} (유효=${totalCnt}, catch-up=${totalCatchup})`;
 
   // 샘플 5건 미만이면 판단 보류
   if (totalCnt < DETECTION_LAG_MIN_SAMPLE || weightedAvg == null) {
@@ -162,23 +164,25 @@ export function checkDetectionLag(
   const sourceTable = rows
     .map(
       (r) =>
-        `| ${r.source} | ${r.cnt}건 | ${r.avg_lag == null ? "N/A" : `${r.avg_lag}일`} | ${r.median_lag == null ? "N/A" : `${r.median_lag}일`} | ${r.early_cnt}/${r.normal_cnt}/${r.late_cnt} |`,
+        `| ${r.source} | ${r.cnt}건 | ${r.avg_lag == null ? "N/A" : `${r.avg_lag}일`} | ${r.median_lag == null ? "N/A" : `${r.median_lag}일`} | ${r.early_cnt}/${r.normal_cnt}/${r.late_cnt} | ${r.catchup_cnt}건 |`,
     )
     .join("\n");
 
   const body = [
     `## tracked_stocks KPI 이탈`,
-    `- 전체 가중평균 detection_lag: **${weightedAvg.toFixed(1)}일** (임계치 ${DETECTION_LAG_THRESHOLD}일 초과)`,
-    `- 총 샘플: ${totalCnt}건`,
+    `- 유효 포착 가중평균 detection_lag: **${weightedAvg.toFixed(1)}일** (임계치 ${DETECTION_LAG_THRESHOLD}일 초과)`,
+    `- 유효 포착 샘플: ${totalCnt}건 (catch-up 제외: ${totalCatchup}건)`,
     "",
-    "## source별 상세",
-    "| source | cnt | avg_lag | median_lag | 초입/초기/후행 |",
-    "|--------|-----|---------|------------|--------------|",
+    "## source별 상세 (유효 포착 윈도우 ≤30일)",
+    "| source | cnt | avg_lag | median_lag | 초입/초기/후행 | catch-up |",
+    "|--------|-----|---------|------------|--------------|----------|",
     sourceTable,
     "",
     "## 판단 기준",
-    "- 초입: 0~3일 / 초기: 4~7일 / 후행: 8일+",
-    `- 임계치: 가중평균 > ${DETECTION_LAG_THRESHOLD}일 AND 샘플 >= ${DETECTION_LAG_MIN_SAMPLE}건`,
+    "- 유효 포착 윈도우: detection_lag ≤ 30일 (이내만 KPI 대상)",
+    "- catch-up: detection_lag > 30일 (Phase 2 중후반 등록 — KPI 제외)",
+    "- 초입: 0~3일 / 초기: 4~7일 / 후행: 8~30일",
+    `- 임계치: 유효 포착 가중평균 > ${DETECTION_LAG_THRESHOLD}일 AND 유효 샘플 >= ${DETECTION_LAG_MIN_SAMPLE}건`,
     "",
     "---",
     "_이 이슈는 컴포넌트 리뷰 스크립트에 의해 자동 생성되었습니다._",
