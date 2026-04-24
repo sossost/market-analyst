@@ -7,7 +7,7 @@ import { buildMemoryContext } from "@/debate/memoryLoader";
 import { loadMarketSnapshot, formatMarketSnapshot } from "@/debate/marketDataLoader";
 import { collectNews, formatNewsForPersona } from "@/debate/newsCollector";
 import { loadNewsForPersona } from "@/debate/newsLoader";
-import { saveTheses, resolveOrExpireStaleTheses, expireStalledTheses, getThesisStats, loadRecentThesesForDedup, formatExistingThesesForSynthesis } from "@/debate/thesisStore";
+import { saveTheses, resolveOrExpireStaleTheses, expireStalledTheses, getThesisStats, loadRecentThesesForDedup, formatExistingThesesForSynthesis, loadCandidateTheses, formatCandidateThesesForPrompt, expireStaleCandidateTheses } from "@/debate/thesisStore";
 import {
   validateRegimeInput,
   validateRegimeTransition,
@@ -581,6 +581,22 @@ async function main() {
     logger.warn("Thesis", `Stale thesis 안전망 만료 실패: ${reason}`);
   }
 
+  // 2.8. CANDIDATE thesis 수명 관리 (#981)
+  // - ACTIVE 전환된 동일 병목의 CANDIDATE 중복 정리
+  // - 30일 내 채택 없는 CANDIDATE 자동 만료
+  try {
+    const candidateResult = await expireStaleCandidateTheses(debateDate);
+    if (candidateResult.promotedCleanup > 0 || candidateResult.expired > 0) {
+      logger.info(
+        "Thesis",
+        `CANDIDATE 수명 관리: 중복 정리 ${candidateResult.promotedCleanup}건, 방치 만료 ${candidateResult.expired}건`,
+      );
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn("Thesis", `CANDIDATE thesis 수명 관리 실패: ${reason}`);
+  }
+
   const stats = await getThesisStats();
   logger.info("Thesis", `현재 상태: ${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(", ")}`);
 
@@ -765,12 +781,30 @@ async function main() {
   }
 
   // 4.8. 기존 ACTIVE/CONFIRMED thesis 로드 — Round 3 중복 생성 방지 (#764)
+  // CANDIDATE thesis 포함 — N+1 병목 후보를 Round 3 모더레이터가 검토할 수 있게 주입 (#981)
   let existingThesesContext = "";
   try {
     const recentTheses = await loadRecentThesesForDedup(debateDate);
-    existingThesesContext = formatExistingThesesForSynthesis(recentTheses);
-    if (existingThesesContext.length > 0) {
+    const activeConfirmedContext = formatExistingThesesForSynthesis(recentTheses);
+
+    const candidateTheses = await loadCandidateTheses();
+    const candidateContext = formatCandidateThesesForPrompt(candidateTheses);
+
+    const contextParts: string[] = [];
+    if (activeConfirmedContext.length > 0) {
+      contextParts.push(activeConfirmedContext);
+    }
+    if (candidateContext.length > 0) {
+      contextParts.push(candidateContext);
+    }
+
+    existingThesesContext = contextParts.join("\n\n");
+
+    if (recentTheses.length > 0) {
       logger.info("ThesisDedup", `기존 thesis ${recentTheses.length}건 로드 — 모더레이터 중복 방지 컨텍스트 주입`);
+    }
+    if (candidateTheses.length > 0) {
+      logger.info("ThesisDedup", `CANDIDATE thesis ${candidateTheses.length}건 로드 — Round 3 프롬프트 주입 (#981)`);
     }
   } catch (err) {
     logger.warn(
