@@ -11,6 +11,7 @@ import {
   updatePortfolioExit,
 } from "@/db/repositories/portfolioPositionsRepository";
 import { findPortfolioEligibleStock } from "@/db/repositories/stockPhaseRepository";
+import { FEATURED_MIN_RS_SCORE } from "@/tools/validation";
 
 // Tools — 데이터 수집용 직접 호출
 import { getIndexReturns } from "@/tools/getIndexReturns";
@@ -272,7 +273,8 @@ ${data.activePortfolioSymbols.length === 0
 
 **편입 조건 (모두 충족)**:
 1. Phase 2 + RS 60 이상 + SEPA S 또는 A 등급 (시스템이 DB에서 직접 검증)
-2. 이번 주 최대 5개 편입
+2. featured tier는 RS 70 이상만 허용 (RS 60-69는 시스템이 standard로 자동 다운그레이드)
+3. 이번 주 최대 5개 편입
 
 **탈락 조건 (1개라도 해당)**:
 - Phase 3 이상 진입
@@ -409,6 +411,20 @@ async function generateInsight(
 
 // ─── 포트폴리오 승격/탈락 처리 ──────────────────────────────────────────────
 
+/**
+ * RS 기반 featured tier 다운그레이드 판정.
+ * RS 70 미만(또는 RS 불명)이면 featured → standard 다운그레이드.
+ * standard 요청은 그대로 통과.
+ */
+export function resolvePortfolioTier(
+  requestedTier: "standard" | "featured",
+  rsScore: number | null | undefined,
+): "standard" | "featured" {
+  if (requestedTier !== "featured") return requestedTier;
+  if (rsScore == null || rsScore < FEATURED_MIN_RS_SCORE) return "standard";
+  return "featured";
+}
+
 interface PortfolioDelta {
   registered: WatchlistChange[];
   exited: WatchlistChange[];
@@ -439,6 +455,17 @@ async function evaluatePortfolio(
       continue;
     }
 
+    // RS 70 미만이면 featured → standard 다운그레이드 (#990)
+    const effectiveRs = item.rs_score ?? eligible.rs_score ?? null;
+    const effectiveTier = resolvePortfolioTier(item.tier, effectiveRs);
+
+    if (effectiveTier !== item.tier) {
+      logger.info(
+        "Portfolio",
+        `${item.symbol} featured → standard 다운그레이드 (RS ${effectiveRs ?? "N/A"} < ${FEATURED_MIN_RS_SCORE})`,
+      );
+    }
+
     const id = await insertPortfolioPosition({
       symbol: item.symbol,
       sector: item.sector ?? eligible.sector ?? undefined,
@@ -449,7 +476,7 @@ async function evaluatePortfolio(
       entryRsScore: item.rs_score ?? eligible.rs_score ?? undefined,
       entrySepaGrade: item.sepa_grade ?? eligible.sepa_grade ?? undefined,
       thesisId: item.thesis_id ?? undefined,
-      tier: item.tier,
+      tier: effectiveTier,
     });
 
     if (id != null) {
