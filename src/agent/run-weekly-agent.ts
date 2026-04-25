@@ -456,7 +456,7 @@ async function evaluatePortfolio(
     }
 
     // RS 70 미만이면 featured → standard 다운그레이드 (#990)
-    const effectiveRs = item.rs_score ?? eligible.rs_score ?? null;
+    const effectiveRs = eligible.rs_score ?? item.rs_score ?? null;
     const effectiveTier = resolvePortfolioTier(item.tier, effectiveRs);
 
     if (effectiveTier !== item.tier) {
@@ -468,13 +468,13 @@ async function evaluatePortfolio(
 
     const id = await insertPortfolioPosition({
       symbol: item.symbol,
-      sector: item.sector ?? eligible.sector ?? undefined,
-      industry: item.industry ?? eligible.industry ?? undefined,
+      sector: eligible.sector ?? item.sector ?? undefined,
+      industry: eligible.industry ?? item.industry ?? undefined,
       entryDate: targetDate,
       // entryPrice 생략 → Repository 내부에서 daily_prices 자동 조회
       entryPhase: eligible.phase, // DB 검증된 값 우선 (eligible.phase는 항상 2로 보장)
-      entryRsScore: item.rs_score ?? eligible.rs_score ?? undefined,
-      entrySepaGrade: item.sepa_grade ?? eligible.sepa_grade ?? undefined,
+      entryRsScore: eligible.rs_score ?? item.rs_score ?? undefined,
+      entrySepaGrade: eligible.sepa_grade ?? item.sepa_grade ?? undefined,
       thesisId: item.thesis_id ?? undefined,
       tier: effectiveTier,
     });
