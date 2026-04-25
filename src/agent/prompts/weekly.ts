@@ -130,7 +130,7 @@ ${ANALYSIS_FRAMEWORK}
 - 업종 RS 동반 상승 — 해당 종목의 업종 RS가 이번 주 상승 중이면 우선 등록
 - 개별 RS 60 이상 — RS 강세는 포착 선행성 판단 근거
 - 서사/thesis 연결 — ACTIVE thesis와 연결 시 thesis_id 명시
-- SEPA 등급 — S/A이면 featured 티어로 등록 고려
+- SEPA 등급 — RS 70 이상 AND S/A이면 featured 티어로 등록 고려 (RS 70 미만은 시스템이 standard로 다운그레이드)
 
 **"후보 없음" 케이스**: 이번 주 Phase 2 종목 중 에이전트 판단 기준을 충족하는 종목이 없으면 "이번 주 신규 등록 없음 — 이번 주 시장에서 포착할 만한 종목 없음"으로 명시한다. 등록 0개는 정상 운영이다. 억지로 등록하지 않는다.
 
@@ -147,7 +147,7 @@ ${ANALYSIS_FRAMEWORK}
       각 종목에 sepaGrade 필드 포함. 아래 기준으로 우선순위 평가:
       - Phase 2: ✓ (이미 필터링됨, 등록 필수 조건)
       - RS 60+: ✓ (이미 필터링됨, 등록 권장)
-      - SEPA: sepaGrade가 "S" 또는 "A"이면 featured 티어 우선 고려
+      - SEPA: sepaGrade가 "S" 또는 "A"이고 RS 70 이상이면 featured 티어 우선 고려 (RS 70 미만은 시스템이 standard로 다운그레이드)
       - 업종RS: get_leading_sectors(mode: "industry") 결과에서 해당 종목의 industry와 일치하는 항목의 changeWeek > 0이면 우선 등록
    b. **Phase 1 후기 종목** (get_phase1_late_stocks) — Phase 2 진입 직전 종목 (등록 불가, thesis가 강하면 gate5Summary에 "예비 워치리스트"로 언급)
    c. **RS 상승 초기 종목** (get_rising_rs) — RS 30~60 범위에서 가속 상승 중 (등록 가능성 낮음, 서사 기반 예비 워치리스트로 표기)
@@ -160,7 +160,7 @@ ${ANALYSIS_FRAMEWORK}
 10. **카탈리스트 검색** (search_catalyst) — 등록 후보 각각에 대해 뉴스/서사 확인
 
 11. **추적 종목 저장** (save_tracked_stock) — Phase 2 + 이유 명시로 등록. thesis_id 있으면 함께 전달.
-    - **Phase 2 + thesis 연결**: action: "register" (thesis_id 포함, tier='featured' 고려)
+    - **Phase 2 + thesis 연결 + RS 70+**: action: "register" (thesis_id 포함, tier='featured' 고려. RS 70 미만이면 standard)
     - **Phase 2 + 이유만 있음**: action: "register" (tier='standard')
     - **Phase 이탈 종목**: action: "exit"
     - **Phase 2 미충족**: save_tracked_stock 호출하지 않음

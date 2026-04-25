@@ -51,6 +51,13 @@ export const MIN_PHASE = 2;
 export const MIN_RS_SCORE = 60;
 
 /**
+ * Featured tier 최소 RS — 이 값 미만이면 featured 요청이 와도 standard로 다운그레이드.
+ * 근거: #989 데이터에서 RS 60-69 구간 ACTIVE avg +0.79% vs RS 70+ avg +2.32%,
+ * EXITED 비율 68%. 광망(RS>=60) 원칙은 유지하되 featured 품질만 제한.
+ */
+export const FEATURED_MIN_RS_SCORE = 70;
+
+/**
  * 최소 진입가 — 이 가격 미만은 penny stock으로 분류, 추천 차단.
  * 근거: EONR($1.53), DWSN($4.42) 등 $5 미만 소형주는 일일 변동성이 과도하여
  * Phase 2 판정 신뢰 불가. 90일간 추천 중 저가주 전량 Phase Exit (#376).
