@@ -38,6 +38,7 @@ import {
   applySectorCap,
 } from "@/tools/recommendationGates.js";
 import { findFundamentalGrades } from "@/db/repositories/fundamentalRepository.js";
+import { FEATURED_MIN_RS_SCORE } from "@/tools/validation.js";
 import {
   findActiveTrackedStocksBySymbols,
   findRecentlyExitedBySymbols,
@@ -449,9 +450,10 @@ async function main() {
       reason,
     } = candidate;
 
-    // featured 자동 판정: SEPA S/A 등급 시 featured
+    // featured 자동 판정: SEPA S/A 등급 + RS >= 70 시 featured (#992)
     const fundamentalGrade = fundamentalGradeMap.get(symbol) ?? null;
     const tier = fundamentalGrade != null && ["S", "A"].includes(fundamentalGrade)
+      && (rs_score ?? 0) >= FEATURED_MIN_RS_SCORE
       ? "featured" as const
       : "standard" as const;
 
