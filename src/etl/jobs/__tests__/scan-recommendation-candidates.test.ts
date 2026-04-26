@@ -69,6 +69,7 @@ import {
   MAX_SECTOR_RATIO,
   BEAR_REGIMES,
 } from "@/tools/recommendationGates.js";
+import { FEATURED_MIN_RS_SCORE } from "@/tools/validation.js";
 
 const mockGetLatestTradeDate = getLatestTradeDate as ReturnType<typeof vi.fn>;
 const mockLoadConfirmedRegime = loadConfirmedRegime as ReturnType<typeof vi.fn>;
@@ -427,5 +428,65 @@ describe("applySectorCap", () => {
     const result = applySectorCap(candidates, 0.3);
     expect(result.selected).toHaveLength(3);
     expect(result.capped).toHaveLength(7);
+  });
+});
+
+// =============================================================================
+// featured tier RS 가드레일 (#992)
+//
+// scan-recommendation-candidates.ts의 tier 결정 로직:
+//   SEPA S/A 등급 AND rs_score >= FEATURED_MIN_RS_SCORE → featured
+//   그 외 → standard
+//
+// 이 로직은 main() 내부 인라인이므로 상수 검증 + 동작 명세 테스트로 커버한다.
+// =============================================================================
+
+describe("featured tier RS 가드레일 (#992)", () => {
+  it("FEATURED_MIN_RS_SCORE가 70이다", () => {
+    expect(FEATURED_MIN_RS_SCORE).toBe(70);
+  });
+
+  // tier 결정 로직을 순수 함수로 재현하여 동작 검증
+  function resolveEtlTier(
+    fundamentalGrade: string | null,
+    rsScore: number | null,
+  ): "featured" | "standard" {
+    return fundamentalGrade != null && ["S", "A"].includes(fundamentalGrade)
+      && (rsScore ?? 0) >= FEATURED_MIN_RS_SCORE
+      ? "featured" as const
+      : "standard" as const;
+  }
+
+  it("SEPA A + RS 70 → featured", () => {
+    expect(resolveEtlTier("A", 70)).toBe("featured");
+  });
+
+  it("SEPA S + RS 85 → featured", () => {
+    expect(resolveEtlTier("S", 85)).toBe("featured");
+  });
+
+  it("SEPA A + RS 69 → standard (RS 미달)", () => {
+    expect(resolveEtlTier("A", 69)).toBe("standard");
+  });
+
+  it("SEPA A + RS 60 → standard (RS 미달)", () => {
+    expect(resolveEtlTier("A", 60)).toBe("standard");
+  });
+
+  it("SEPA S + RS null → standard (RS 없음 → 0으로 처리)", () => {
+    expect(resolveEtlTier("S", null)).toBe("standard");
+  });
+
+  it("SEPA B + RS 80 → standard (등급 미달)", () => {
+    expect(resolveEtlTier("B", 80)).toBe("standard");
+  });
+
+  it("등급 null + RS 90 → standard (등급 없음)", () => {
+    expect(resolveEtlTier(null, 90)).toBe("standard");
+  });
+
+  it("SEPA A + RS 70 경계값이 정확히 featured이다 (off-by-one 검증)", () => {
+    expect(resolveEtlTier("A", 70)).toBe("featured");
+    expect(resolveEtlTier("A", 69)).toBe("standard");
   });
 });
