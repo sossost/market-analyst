@@ -941,7 +941,7 @@ export interface ComponentKpiNarrativeChainsRow {
 }
 
 export interface ComponentKpiCorporateAnalystRow {
-  total_featured_active: number;
+  total_portfolio_active: number;
   covered_count: number;
   coverage_rate: number | null;
 }

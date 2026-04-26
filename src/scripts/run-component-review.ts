@@ -65,7 +65,7 @@ const THESIS_HIT_RATE_THRESHOLD = 0.40;
 const THESIS_HIT_RATE_MIN_N = 20;
 const DAILY_REPORT_MIN_7D = 3;
 const WEEKLY_REPORT_MIN_14D = 1;
-const CORPORATE_ANALYST_MIN_FEATURED = 3;
+const CORPORATE_ANALYST_MIN_PORTFOLIO = 3;
 const CORPORATE_ANALYST_COVERAGE_THRESHOLD = 50;
 const NARRATIVE_FRESHNESS_DAYS = 7;
 
@@ -369,14 +369,14 @@ export function checkReports(
 export function checkCorporateAnalyst(
   data: ComponentKpiCorporateAnalystRow,
 ): ComponentCheckResult {
-  const { total_featured_active, covered_count, coverage_rate } = data;
+  const { total_portfolio_active, covered_count, coverage_rate } = data;
   const coverageDisplay =
     coverage_rate == null ? "N/A" : `${coverage_rate}%`;
-  const kpiName = "featured 커버리지";
-  const currentValue = `${coverageDisplay} (${covered_count}/${total_featured_active})`;
+  const kpiName = "포트폴리오 커버리지";
+  const currentValue = `${coverageDisplay} (${covered_count}/${total_portfolio_active})`;
 
-  // featured 3개 미만이면 판단 의미 없음
-  if (total_featured_active < CORPORATE_ANALYST_MIN_FEATURED) {
+  // 포트폴리오 3개 미만이면 판단 의미 없음
+  if (total_portfolio_active < CORPORATE_ANALYST_MIN_PORTFOLIO) {
     return { name: "기업 분석", kpiName, currentValue, status: "OK", issues: [] };
   }
 
@@ -389,13 +389,13 @@ export function checkCorporateAnalyst(
 
   const body = [
     "## 기업 분석 KPI 이탈",
-    `- featured 커버리지: **${coveragePct}** (임계치 ${CORPORATE_ANALYST_COVERAGE_THRESHOLD}% 미달)`,
-    `- featured ACTIVE 종목: ${total_featured_active}개`,
+    `- 포트폴리오 커버리지: **${coveragePct}** (임계치 ${CORPORATE_ANALYST_COVERAGE_THRESHOLD}% 미달)`,
+    `- 포트폴리오 ACTIVE 종목: ${total_portfolio_active}개`,
     `- 분석 리포트 보유: ${covered_count}개`,
     "",
     "## 조치 방향",
     "- corporateAnalyst를 수동 또는 자동으로 실행하여 미커버 종목 분석 생성",
-    "- 미커버 종목: tracked_stocks(featured, ACTIVE) 중 stock_analysis_reports 없는 종목 확인",
+    "- 미커버 종목: portfolio_positions(ACTIVE) 중 stock_analysis_reports 없는 종목 확인",
     "",
     "---",
     "_이 이슈는 컴포넌트 리뷰 스크립트에 의해 자동 생성되었습니다._",
@@ -408,7 +408,7 @@ export function checkCorporateAnalyst(
     status: "ALERT",
     issues: [
       {
-        title: `[component-reviewer] 기업 분석 — featured 커버리지 ${coveragePct} (${covered_count}/${total_featured_active}, 임계치 50% 미달)`,
+        title: `[component-reviewer] 기업 분석 — 포트폴리오 커버리지 ${coveragePct} (${covered_count}/${total_portfolio_active}, 임계치 ${CORPORATE_ANALYST_COVERAGE_THRESHOLD}% 미달)`,
         body,
         labels: ["component-reviewer", "P2: medium"],
       },

@@ -309,7 +309,7 @@ describe("checkReports", () => {
 
 describe("checkCorporateAnalyst", () => {
   const baseRow: ComponentKpiCorporateAnalystRow = {
-    total_featured_active: 5,
+    total_portfolio_active: 5,
     covered_count: 3,
     coverage_rate: 60.0,
   };
@@ -324,7 +324,7 @@ describe("checkCorporateAnalyst", () => {
   });
 
   it("featured < 3이면 판단 의미 없음 → OK", () => {
-    const result = checkCorporateAnalyst({ total_featured_active: 2, covered_count: 0, coverage_rate: 0 });
+    const result = checkCorporateAnalyst({ total_portfolio_active: 2, covered_count: 0, coverage_rate: 0 });
 
     expect(result.status).toBe("OK");
     expect(result.issues).toHaveLength(0);
@@ -350,7 +350,7 @@ describe("checkCorporateAnalyst", () => {
   });
 
   it("ALERT 시 이슈 제목에 비율 포함", () => {
-    const result = checkCorporateAnalyst({ total_featured_active: 4, covered_count: 1, coverage_rate: 25 });
+    const result = checkCorporateAnalyst({ total_portfolio_active: 4, covered_count: 1, coverage_rate: 25 });
 
     expect(result.issues[0].title).toContain("25%");
   });
