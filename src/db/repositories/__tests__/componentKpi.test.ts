@@ -232,16 +232,15 @@ describe("queryComponentKpiNarrativeChains", () => {
 // ─── queryComponentKpiCorporateAnalyst ───────────────────────────────────────
 
 describe("queryComponentKpiCorporateAnalyst", () => {
-  it("tracked_stocks, stock_analysis_reports를 LEFT JOIN한다", async () => {
+  it("portfolio_positions, stock_analysis_reports를 LEFT JOIN한다", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
 
     await queryComponentKpiCorporateAnalyst(pool);
 
     const sql = mockQuery.mock.calls[0][0] as string;
-    expect(sql).toContain("tracked_stocks");
+    expect(sql).toContain("portfolio_positions");
     expect(sql).toContain("stock_analysis_reports");
     expect(sql).toContain("LEFT JOIN");
-    expect(sql).toContain("featured");
     expect(sql).toContain("ACTIVE");
   });
 
@@ -250,14 +249,14 @@ describe("queryComponentKpiCorporateAnalyst", () => {
 
     const result = await queryComponentKpiCorporateAnalyst(pool);
 
-    expect(result.total_featured_active).toBe(0);
+    expect(result.total_portfolio_active).toBe(0);
     expect(result.covered_count).toBe(0);
     expect(result.coverage_rate).toBeNull();
   });
 
   it("DB 결과를 그대로 반환한다", async () => {
     const mockRow = {
-      total_featured_active: 21,
+      total_portfolio_active: 21,
       covered_count: 17,
       coverage_rate: 81.0,
     };
@@ -265,7 +264,7 @@ describe("queryComponentKpiCorporateAnalyst", () => {
 
     const result = await queryComponentKpiCorporateAnalyst(pool);
 
-    expect(result.total_featured_active).toBe(21);
+    expect(result.total_portfolio_active).toBe(21);
     expect(result.covered_count).toBe(17);
     expect(result.coverage_rate).toBe(81.0);
   });

@@ -1405,32 +1405,34 @@ export async function queryComponentKpiNarrativeChains(pool: Pool): Promise<Comp
 
 /**
  * 기업 분석 리포트 컴포넌트 KPI를 조회한다.
- * - featured tier ACTIVE 총 수
- * - featured 중 stock_analysis_reports 보유 수 (커버리지 %)
+ * - portfolio_positions ACTIVE 총 수
+ * - ACTIVE 포지션 중 stock_analysis_reports 보유 수 (커버리지 %)
+ *
+ * #988에서 기업 리포트 대상을 portfolio_positions로 한정.
+ * KPI 측정 대상도 동일하게 portfolio_positions 기준으로 정합성 확보 (#994).
  */
 export async function queryComponentKpiCorporateAnalyst(pool: Pool): Promise<ComponentKpiCorporateAnalystRow> {
   const { rows } = await pool.query<ComponentKpiCorporateAnalystRow>(
-    `WITH featured_active AS (
+    `WITH portfolio_active AS (
        SELECT symbol
-       FROM tracked_stocks
-       WHERE tier = 'featured'
-         AND status = 'ACTIVE'
+       FROM portfolio_positions
+       WHERE status = 'ACTIVE'
      )
      SELECT
-       COUNT(fa.symbol)::int AS total_featured_active,
+       COUNT(pa.symbol)::int AS total_portfolio_active,
        COUNT(sar.symbol)::int AS covered_count,
        CASE
-         WHEN COUNT(fa.symbol) = 0 THEN NULL
-         ELSE ROUND(COUNT(sar.symbol)::numeric / COUNT(fa.symbol) * 100, 1)
+         WHEN COUNT(pa.symbol) = 0 THEN NULL
+         ELSE ROUND(COUNT(sar.symbol)::numeric / COUNT(pa.symbol) * 100, 1)
        END AS coverage_rate
-     FROM featured_active fa
+     FROM portfolio_active pa
      LEFT JOIN (
        SELECT DISTINCT symbol FROM stock_analysis_reports
-     ) sar ON sar.symbol = fa.symbol`,
+     ) sar ON sar.symbol = pa.symbol`,
   );
 
   return rows[0] ?? {
-    total_featured_active: 0,
+    total_portfolio_active: 0,
     covered_count: 0,
     coverage_rate: null,
   };
