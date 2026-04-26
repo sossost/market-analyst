@@ -1414,7 +1414,7 @@ export async function queryComponentKpiNarrativeChains(pool: Pool): Promise<Comp
 export async function queryComponentKpiCorporateAnalyst(pool: Pool): Promise<ComponentKpiCorporateAnalystRow> {
   const { rows } = await pool.query<ComponentKpiCorporateAnalystRow>(
     `WITH portfolio_active AS (
-       SELECT symbol
+       SELECT DISTINCT symbol
        FROM portfolio_positions
        WHERE status = 'ACTIVE'
      )

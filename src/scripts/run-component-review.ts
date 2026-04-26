@@ -408,7 +408,7 @@ export function checkCorporateAnalyst(
     status: "ALERT",
     issues: [
       {
-        title: `[component-reviewer] 기업 분석 — 포트폴리오 커버리지 ${coveragePct} (${covered_count}/${total_portfolio_active}, 임계치 50% 미달)`,
+        title: `[component-reviewer] 기업 분석 — 포트폴리오 커버리지 ${coveragePct} (${covered_count}/${total_portfolio_active}, 임계치 ${CORPORATE_ANALYST_COVERAGE_THRESHOLD}% 미달)`,
         body,
         labels: ["component-reviewer", "P2: medium"],
       },
