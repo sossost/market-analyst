@@ -69,7 +69,7 @@ import {
   MAX_SECTOR_RATIO,
   BEAR_REGIMES,
 } from "@/tools/recommendationGates.js";
-import { FEATURED_MIN_RS_SCORE } from "@/tools/validation";
+import { FEATURED_MIN_RS_SCORE } from "@/tools/validation.js";
 
 const mockGetLatestTradeDate = getLatestTradeDate as ReturnType<typeof vi.fn>;
 const mockLoadConfirmedRegime = loadConfirmedRegime as ReturnType<typeof vi.fn>;
