@@ -375,9 +375,14 @@ export function simulateStabilityFilter(
 
   for (const pos of positions) {
     const phases = phaseHistory.get(pos.symbol) ?? [];
-    const beforeEntry = phases
-      .filter((p) => p.date < pos.entryDate)
-      .sort((a, b) => b.date.localeCompare(a.date)); // 최신 순
+    // phases는 DB에서 date ASC 정렬 — 역순 순회 + 조기 탈출로 O(S) 달성
+    const beforeEntry: Array<{ date: string; phase: number }> = [];
+    for (let i = phases.length - 1; i >= 0; i--) {
+      if (phases[i].date < pos.entryDate) {
+        beforeEntry.push(phases[i]);
+      }
+      if (beforeEntry.length >= simulatedDays) break;
+    }
 
     // 시뮬레이션에 필요한 Phase 히스토리 부족 — 판정 불가, 제외
     if (beforeEntry.length < simulatedDays) {
