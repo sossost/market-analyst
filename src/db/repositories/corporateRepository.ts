@@ -321,7 +321,7 @@ export async function findUpcomingEarnings(
   pool: Pool,
 ): Promise<CorporateEarningCalendarRow[]> {
   const { rows } = await pool.query<CorporateEarningCalendarRow>(
-    `SELECT date, eps_estimated, revenue_estimated, time
+    `SELECT date::text, eps_estimated, revenue_estimated, time
      FROM earning_calendar
      WHERE symbol = $1
        AND date BETWEEN $2 AND ($2::date + INTERVAL '30 days')::date

@@ -347,7 +347,7 @@ interface StockNewsRow {
 }
 
 interface EarningCalendarRow {
-  date: string | Date;
+  date: string;
   eps_estimated: string | null;
   revenue_estimated: string | null;
   time: string | null;
@@ -684,7 +684,7 @@ export async function loadAnalysisInputs(
     upcomingEarningsRows == null || upcomingEarningsRows.length === 0
       ? null
       : upcomingEarningsRows.map((row) => ({
-          date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
+          date: row.date,
           epsEstimated: toNumOrNull(row.eps_estimated),
           revenueEstimated: toNumOrNull(row.revenue_estimated),
           time: row.time,
