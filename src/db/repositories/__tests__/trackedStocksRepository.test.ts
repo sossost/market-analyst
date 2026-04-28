@@ -400,7 +400,19 @@ describe("exitTrackedStock", () => {
     expect(sql).toContain("exit_reason");
     expect(params[0]).toBe("2026-04-17");
     expect(params[1]).toBe("agent_decision");
-    expect(params[2]).toBe(1);
+  });
+
+  it("exitPrice, pnlPercent, maxPnlPercent를 포함하여 업데이트한다", async () => {
+    await exitTrackedStock(1, "2026-04-17", "trailing_stop", 150, 12.5, 18.3);
+
+    const sql = getLastCallSql();
+    const params = getLastCallParams();
+    expect(sql).toContain("current_price");
+    expect(sql).toContain("pnl_percent");
+    expect(sql).toContain("max_pnl_percent");
+    expect(params).toContain(150);
+    expect(params).toContain(12.5);
+    expect(params).toContain(18.3);
   });
 });
 

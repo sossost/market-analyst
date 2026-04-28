@@ -2,10 +2,11 @@
  * update-tracked-stocks.ts — ACTIVE tracked_stocks 일간 갱신 ETL.
  *
  * 기존 update-recommendation-status + update-watchlist-tracking을 통합한다.
- * Phase exit 자동 청산 + 90일 만료 처리 + 7d/30d/90d 듀레이션 수익률 스냅샷.
+ * Trailing stop 수익 보호 + Phase exit 자동 청산 + 90일 만료 처리 + 7d/30d/90d 듀레이션 수익률 스냅샷.
  *
  * Issue #773 — tracked_stocks 통합 ETL Phase 2
  * Issue #833 — Phase Exit 자동화 (Phase 2 → Phase 1/4 전환 시 자동 EXITED)
+ * Issue #1000 — Trailing stop 복원 (수익 구간 보호)
  */
 
 import "dotenv/config";
@@ -36,6 +37,26 @@ const TAG = "UPDATE_TRACKED_STOCKS";
 const DURATION_7D = 7;
 const DURATION_30D = 30;
 const DURATION_90D = 90;
+
+// ─── Trailing Stop 설정 ──────────────────────────────────────────────────────
+
+/**
+ * 단계적 이익 실현 (Progressive Trailing Stop) 설정.
+ *
+ * maxPnL 구간별로 되돌림 허용 비율과 이익 바닥(profit floor)을 차등 적용한다.
+ * 배열은 minMaxPnl 내림차순으로 정렬해야 한다 (가장 높은 tier부터 매칭).
+ *
+ * - retracement: 고점 대비 허용 되돌림 비율 (0.25 = 25%)
+ * - profitFloor: 해당 tier 진입 후 최소 보장 수익률(%)
+ *
+ * 근거: #298 도입, #418 소수익 보호, #448 5-10% 타이트닝
+ */
+export const PROFIT_TIERS = [
+  { minMaxPnl: 20, retracement: 0.25, profitFloor: 10 },
+  { minMaxPnl: 10, retracement: 0.25, profitFloor: 5 },
+  { minMaxPnl: 5, retracement: 0.30, profitFloor: 1 },
+  { minMaxPnl: 2, retracement: 0.50, profitFloor: 0 },
+] as const;
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -165,6 +186,58 @@ export function calculateDurationReturn(params: {
   return ((currentPrice - entryPrice) / entryPrice) * 100;
 }
 
+/**
+ * 현재 maxPnl에 해당하는 profit tier를 찾는다.
+ * PROFIT_TIERS는 minMaxPnl 내림차순이므로 첫 번째 매칭이 가장 높은 tier.
+ */
+export function findProfitTier(maxPnlPercent: number) {
+  return PROFIT_TIERS.find((tier) => maxPnlPercent >= tier.minMaxPnl) ?? null;
+}
+
+/**
+ * Trailing stop 발동 여부를 판정하는 순수 함수.
+ *
+ * 가격 기반 수익 보호 메커니즘이므로 phase 상태와 무관하게 작동한다.
+ *
+ * 1. maxPnlPercent에 해당하는 profit tier 탐색
+ * 2. tier 없으면 (maxPnl < 2%) 미발동
+ * 3. trailing level = max(maxPnl * (1 - retracement), profitFloor)
+ * 4. pnlPercent < trailing level → 발동
+ */
+export function shouldTriggerTrailingStop(params: {
+  maxPnlPercent: number;
+  pnlPercent: number;
+}): boolean {
+  const tier = findProfitTier(params.maxPnlPercent);
+  if (tier == null) return false;
+
+  const trailingLevel = Math.max(
+    params.maxPnlPercent * (1 - tier.retracement),
+    tier.profitFloor,
+  );
+
+  return params.pnlPercent < trailingLevel;
+}
+
+/**
+ * 트레일링 스탑 발동 시 exit_reason에 포함할 설명 문자열 생성.
+ */
+export function formatTrailingStopReason(params: {
+  maxPnlPercent: number;
+  pnlPercent: number;
+}): string {
+  const tier = findProfitTier(params.maxPnlPercent);
+  if (tier == null) return `trailing_stop: maxPnL ${params.maxPnlPercent.toFixed(1)}%`;
+
+  const trailingLevel = Math.max(
+    params.maxPnlPercent * (1 - tier.retracement),
+    tier.profitFloor,
+  );
+  const retracementPct = tier.retracement * 100;
+
+  return `trailing_stop: maxPnL ${params.maxPnlPercent.toFixed(1)}% → 현재 ${params.pnlPercent.toFixed(1)}% (tier ${tier.minMaxPnl}%+: ${retracementPct}% 되돌림, floor ${tier.profitFloor}%, level ${trailingLevel.toFixed(1)}%)`;
+}
+
 // ─── DB 쿼리 헬퍼 ─────────────────────────────────────────────────────────────
 
 interface StockPhaseData {
@@ -261,21 +334,33 @@ async function processTrackedStock(
     return { action: "skipped", symbol: item.symbol, reason: "no_price" };
   }
 
-  // Phase Exit 검사 (Phase 2 진입 → Phase 1/4 전환 시 자동 청산)
-  if (phaseData?.phase != null && isPhaseExitTriggered(item.entry_phase, phaseData.phase)) {
-    const exitReason = `phase_exit: ${item.entry_phase} → ${phaseData.phase}`;
-    await retryDatabaseOperation(() =>
-      exitTrackedStock(item.id, date, exitReason, currentPrice),
-    );
-    logger.info(TAG, `${item.symbol}: Phase ${item.entry_phase} → ${phaseData.phase} 이탈 → EXITED`);
-    return { action: "exited", symbol: item.symbol, reason: exitReason };
-  }
-
-  // 수익률 계산
+  // 수익률 계산 (trailing stop 검사에 필요하므로 청산 검사 전에 수행)
   const entryPrice = toNum(item.entry_price);
   const pnlPercent = calculatePnlPercent(entryPrice === 0 ? null : entryPrice, currentPrice);
   const prevMax = item.max_pnl_percent != null ? toNum(item.max_pnl_percent) : null;
   const maxPnlPercent = calculateMaxPnlPercent(prevMax, pnlPercent);
+
+  // Trailing Stop 검사 (Phase Exit보다 우선 — 수익 보호 #298/#418/#448/#531)
+  if (pnlPercent != null && maxPnlPercent != null) {
+    if (shouldTriggerTrailingStop({ maxPnlPercent, pnlPercent })) {
+      const exitReason = formatTrailingStopReason({ maxPnlPercent, pnlPercent });
+      await retryDatabaseOperation(() =>
+        exitTrackedStock(item.id, date, exitReason, currentPrice, pnlPercent, maxPnlPercent),
+      );
+      logger.info(TAG, `${item.symbol}: ${exitReason}`);
+      return { action: "exited", symbol: item.symbol, reason: exitReason };
+    }
+  }
+
+  // Phase Exit 검사 (Phase 2 진입 → Phase 1/4 전환 시 자동 청산)
+  if (phaseData?.phase != null && isPhaseExitTriggered(item.entry_phase, phaseData.phase)) {
+    const exitReason = `phase_exit: ${item.entry_phase} → ${phaseData.phase}`;
+    await retryDatabaseOperation(() =>
+      exitTrackedStock(item.id, date, exitReason, currentPrice, pnlPercent, maxPnlPercent),
+    );
+    logger.info(TAG, `${item.symbol}: Phase ${item.entry_phase} → ${phaseData.phase} 이탈 → EXITED`);
+    return { action: "exited", symbol: item.symbol, reason: exitReason };
+  }
 
   // 경과일
   const daysTracked = calculateDaysTracked(item.entry_date, date);
