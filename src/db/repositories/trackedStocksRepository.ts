@@ -360,22 +360,32 @@ export async function exitTrackedStock(
   exitDate: string,
   exitReason: string,
   exitPrice?: number | null,
+  pnlPercent?: number | null,
+  maxPnlPercent?: number | null,
 ): Promise<void> {
+  const setClauses = ["status = 'EXITED'", "exit_date = $1", "exit_reason = $2"];
+  const params: (string | number)[] = [exitDate, exitReason];
+
   if (exitPrice != null) {
-    await pool.query(
-      `UPDATE tracked_stocks
-       SET status = 'EXITED', exit_date = $1, exit_reason = $2, current_price = $3
-       WHERE id = $4`,
-      [exitDate, exitReason, exitPrice, id],
-    );
-  } else {
-    await pool.query(
-      `UPDATE tracked_stocks
-       SET status = 'EXITED', exit_date = $1, exit_reason = $2
-       WHERE id = $3`,
-      [exitDate, exitReason, id],
-    );
+    params.push(exitPrice);
+    setClauses.push(`current_price = $${params.length}`);
   }
+  if (pnlPercent != null) {
+    params.push(pnlPercent);
+    setClauses.push(`pnl_percent = $${params.length}`);
+  }
+  if (maxPnlPercent != null) {
+    params.push(maxPnlPercent);
+    setClauses.push(`max_pnl_percent = $${params.length}`);
+  }
+
+  params.push(id);
+  await pool.query(
+    `UPDATE tracked_stocks
+     SET ${setClauses.join(", ")}
+     WHERE id = $${params.length}`,
+    params,
+  );
 }
 
 /**

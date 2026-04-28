@@ -197,19 +197,17 @@ export function findProfitTier(maxPnlPercent: number) {
 /**
  * Trailing stop 발동 여부를 판정하는 순수 함수.
  *
- * 1. currentPhase == null → ETL 미완료, 미발동
- * 2. maxPnlPercent에 해당하는 profit tier 탐색
- * 3. tier 없으면 (maxPnl < 2%) 미발동
- * 4. trailing level = max(maxPnl * (1 - retracement), profitFloor)
- * 5. pnlPercent < trailing level → 발동
+ * 가격 기반 수익 보호 메커니즘이므로 phase 상태와 무관하게 작동한다.
+ *
+ * 1. maxPnlPercent에 해당하는 profit tier 탐색
+ * 2. tier 없으면 (maxPnl < 2%) 미발동
+ * 3. trailing level = max(maxPnl * (1 - retracement), profitFloor)
+ * 4. pnlPercent < trailing level → 발동
  */
 export function shouldTriggerTrailingStop(params: {
-  currentPhase: number | null;
   maxPnlPercent: number;
   pnlPercent: number;
 }): boolean {
-  if (params.currentPhase == null) return false;
-
   const tier = findProfitTier(params.maxPnlPercent);
   if (tier == null) return false;
 
@@ -344,11 +342,10 @@ async function processTrackedStock(
 
   // Trailing Stop 검사 (Phase Exit보다 우선 — 수익 보호 #298/#418/#448/#531)
   if (pnlPercent != null && maxPnlPercent != null) {
-    const currentPhase = phaseData?.phase ?? null;
-    if (shouldTriggerTrailingStop({ currentPhase, maxPnlPercent, pnlPercent })) {
+    if (shouldTriggerTrailingStop({ maxPnlPercent, pnlPercent })) {
       const exitReason = formatTrailingStopReason({ maxPnlPercent, pnlPercent });
       await retryDatabaseOperation(() =>
-        exitTrackedStock(item.id, date, exitReason, currentPrice),
+        exitTrackedStock(item.id, date, exitReason, currentPrice, pnlPercent, maxPnlPercent),
       );
       logger.info(TAG, `${item.symbol}: ${exitReason}`);
       return { action: "exited", symbol: item.symbol, reason: exitReason };
@@ -359,7 +356,7 @@ async function processTrackedStock(
   if (phaseData?.phase != null && isPhaseExitTriggered(item.entry_phase, phaseData.phase)) {
     const exitReason = `phase_exit: ${item.entry_phase} → ${phaseData.phase}`;
     await retryDatabaseOperation(() =>
-      exitTrackedStock(item.id, date, exitReason, currentPrice),
+      exitTrackedStock(item.id, date, exitReason, currentPrice, pnlPercent, maxPnlPercent),
     );
     logger.info(TAG, `${item.symbol}: Phase ${item.entry_phase} → ${phaseData.phase} 이탈 → EXITED`);
     return { action: "exited", symbol: item.symbol, reason: exitReason };

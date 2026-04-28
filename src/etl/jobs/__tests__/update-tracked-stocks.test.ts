@@ -400,17 +400,8 @@ describe("findProfitTier", () => {
 // =============================================================================
 
 describe("shouldTriggerTrailingStop", () => {
-  it("currentPhase가 null이면 발동하지 않는다", () => {
-    expect(shouldTriggerTrailingStop({
-      currentPhase: null,
-      maxPnlPercent: 25,
-      pnlPercent: 10,
-    })).toBe(false);
-  });
-
   it("maxPnl < 2%이면 tier 없으므로 발동하지 않는다", () => {
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 1.5,
       pnlPercent: 0.5,
     })).toBe(false);
@@ -419,7 +410,6 @@ describe("shouldTriggerTrailingStop", () => {
   it("maxPnl 27.4%, pnl 20%이면 발동한다 (20%+ tier: level = max(20.55, 10) = 20.55)", () => {
     // trailing level = 27.4 * (1 - 0.25) = 20.55
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 27.4,
       pnlPercent: 20,
     })).toBe(true);
@@ -427,7 +417,6 @@ describe("shouldTriggerTrailingStop", () => {
 
   it("maxPnl 27.4%, pnl 21%이면 발동하지 않는다 (level 20.55 미만 아님)", () => {
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 27.4,
       pnlPercent: 21,
     })).toBe(false);
@@ -435,7 +424,6 @@ describe("shouldTriggerTrailingStop", () => {
 
   it("maxPnl 15%, pnl 5%이면 발동한다 (10%+ tier: level = max(11.25, 5) = 11.25)", () => {
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 15,
       pnlPercent: 5,
     })).toBe(true);
@@ -443,7 +431,6 @@ describe("shouldTriggerTrailingStop", () => {
 
   it("maxPnl 7%, pnl 4%이면 발동한다 (5%+ tier: level = max(4.9, 1) = 4.9)", () => {
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 7,
       pnlPercent: 4,
     })).toBe(true);
@@ -451,7 +438,6 @@ describe("shouldTriggerTrailingStop", () => {
 
   it("maxPnl 3%, pnl 1%이면 발동한다 (2%+ tier: level = max(1.5, 0) = 1.5)", () => {
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 3,
       pnlPercent: 1,
     })).toBe(true);
@@ -459,7 +445,6 @@ describe("shouldTriggerTrailingStop", () => {
 
   it("maxPnl 3%, pnl 2%이면 발동하지 않는다 (2%+ tier: level = 1.5)", () => {
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 3,
       pnlPercent: 2,
     })).toBe(false);
@@ -468,17 +453,8 @@ describe("shouldTriggerTrailingStop", () => {
   it("profitFloor가 적용된다: maxPnl 10%, pnl 4%이면 발동 (10%+ tier: floor 5%)", () => {
     // trailing level = max(10 * 0.75, 5) = max(7.5, 5) = 7.5
     expect(shouldTriggerTrailingStop({
-      currentPhase: 2,
       maxPnlPercent: 10,
       pnlPercent: 4,
-    })).toBe(true);
-  });
-
-  it("Phase 1에서도 정상 동작한다 (Phase 조건은 null 체크만)", () => {
-    expect(shouldTriggerTrailingStop({
-      currentPhase: 1,
-      maxPnlPercent: 25,
-      pnlPercent: 10,
     })).toBe(true);
   });
 });
